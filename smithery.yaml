@@ -2,20 +2,25 @@ startCommand:
   type: stdio
   configSchema:
     type: object
-    required:
-      - privateKeyWif
     properties:
       privateKeyWif:
         type: string
         description: "Your private key WIF (Wallet Import Format) for Bitcoin SV transactions. This key is used to sign transactions and is required for wallet operations."
   commandFunction: |
-    (config) => ({
-      "command": "bun",
-      "args": [
-        "run",
-        "index.ts"
-      ],
-      "env": {
-        "PRIVATE_KEY_WIF": config.privateKeyWif
+    (config) => {
+      const env = {};
+      
+      // Only set PRIVATE_KEY_WIF if a valid value is provided
+      if (config.privateKeyWif && typeof config.privateKeyWif === 'string' && config.privateKeyWif.length > 0) {
+        env.PRIVATE_KEY_WIF = config.privateKeyWif;
       }
-    })
+      
+      return {
+        "command": "bun",
+        "args": [
+          "run",
+          "index.ts"
+        ],
+        "env": env
+      };
+    }
