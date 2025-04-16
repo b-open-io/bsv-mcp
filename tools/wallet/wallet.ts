@@ -10,7 +10,6 @@ import {
 	PrivateKey,
 	ProtoWallet,
 	Transaction,
-	Utils,
 } from "@bsv/sdk";
 import type {
 	AbortActionArgs,
@@ -19,10 +18,6 @@ import type {
 	AuthenticatedResult,
 	CreateActionArgs,
 	CreateActionResult,
-	CreateHmacArgs,
-	CreateHmacResult,
-	CreateSignatureArgs,
-	CreateSignatureResult,
 	DiscoverByAttributesArgs,
 	DiscoverByIdentityKeyArgs,
 	DiscoverCertificatesResult,
@@ -53,15 +48,7 @@ import type {
 	RevealSpecificKeyLinkageResult,
 	SignActionArgs,
 	SignActionResult,
-	VerifyHmacArgs,
-	VerifyHmacResult,
-	VerifySignatureArgs,
-	VerifySignatureResult,
 	WalletCertificate,
-	WalletDecryptArgs,
-	WalletDecryptResult,
-	WalletEncryptArgs,
-	WalletEncryptResult,
 	WalletInterface,
 } from "@bsv/sdk";
 import {
@@ -152,28 +139,29 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 	): Promise<RevealSpecificKeyLinkageResult> {
 		return Promise.reject(new Error("Not implemented"));
 	}
-	async encrypt(args: WalletEncryptArgs): Promise<WalletEncryptResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async decrypt(args: WalletDecryptArgs): Promise<WalletDecryptResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async createHmac(args: CreateHmacArgs): Promise<CreateHmacResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async verifyHmac(args: VerifyHmacArgs): Promise<VerifyHmacResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async createSignature(
-		args: CreateSignatureArgs,
-	): Promise<CreateSignatureResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async verifySignature(
-		args: VerifySignatureArgs,
-	): Promise<VerifySignatureResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
+	// Implemented by ProtoWallet
+	// async encrypt(args: WalletEncryptArgs): Promise<WalletEncryptResult> {
+	// 	return this.encrypt(args);
+	// }
+	// async decrypt(args: WalletDecryptArgs): Promise<WalletDecryptResult> {
+	// 	return this.decrypt(args);
+	// }
+	// async createHmac(args: CreateHmacArgs): Promise<CreateHmacResult> {
+	// 	return this.createHmac(args);
+	// }
+	// async verifyHmac(args: VerifyHmacArgs): Promise<VerifyHmacResult> {
+	// 	return this.verifyHmac(args);
+	// }
+	// async createSignature(
+	// 	args: CreateSignatureArgs,
+	// ): Promise<CreateSignatureResult> {
+	// 	return Promise.reject(new Error("Not implemented"));
+	// }
+	// async verifySignature(
+	// 	args: VerifySignatureArgs,
+	// ): Promise<VerifySignatureResult> {
+	// 	return Promise.reject(new Error("Not implemented"));
+	// }
 	async createAction(args: CreateActionArgs): Promise<CreateActionResult> {
 		console.log("createAction called with", args);
 

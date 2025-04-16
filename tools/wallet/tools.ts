@@ -1,44 +1,47 @@
-import type {
-	McpServer,
-	ToolCallback,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
-import { convertData } from "../utils/conversion";
-import { registerGetAddressTool } from "./getAddress";
-import { registerPurchaseListingTool } from "./purchaseListing";
-import {
-	createSignatureArgsSchema,
-	type emptyArgsSchema,
-	getPublicKeyArgsSchema,
-	verifySignatureArgsSchema,
-	walletDecryptArgsSchema,
-	walletEncryptArgsSchema,
-} from "./schemas";
 import type {
 	abortActionArgsSchema,
 	acquireCertificateArgsSchema,
 	createHmacArgsSchema,
 	discoverByAttributesArgsSchema,
 	discoverByIdentityKeyArgsSchema,
-	getAddressArgsSchema,
 	getHeaderArgsSchema,
 	internalizeActionArgsSchema,
 	listActionsArgsSchema,
 	listCertificatesArgsSchema,
 	listOutputsArgsSchema,
 	proveCertificateArgsSchema,
-	purchaseListingArgsSchema,
 	relinquishCertificateArgsSchema,
 	relinquishOutputArgsSchema,
 	revealCounterpartyKeyLinkageArgsSchema,
 	revealSpecificKeyLinkageArgsSchema,
-	sendToAddressArgsSchema,
 	verifyHmacArgsSchema,
 } from "./schemas";
-import { registerSendToAddressTool } from "./sendToAddress";
 import type { Wallet } from "./wallet";
+
+import {
+	createSignatureArgsSchema,
+	type emptyArgsSchema,
+	type getAddressArgsSchema,
+	getPublicKeyArgsSchema,
+	type purchaseListingArgsSchema,
+	type sendToAddressArgsSchema,
+	verifySignatureArgsSchema,
+	walletDecryptArgsSchema,
+	walletEncryptArgsSchema,
+} from "./schemas";
+
+import { registerCreateOrdinalsTool } from "./createOrdinals";
+import type { createOrdinalsArgsSchema } from "./createOrdinals";
+import { registerGetAddressTool } from "./getAddress";
+import { registerPurchaseListingTool } from "./purchaseListing";
+import { registerSendToAddressTool } from "./sendToAddress";
+import { registerSendOrdinalsTool } from "./sendOrdinals";
+import type { sendOrdinalsArgsSchema } from "./sendOrdinals";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
@@ -70,6 +73,8 @@ type ToolArgSchemas = {
 	wallet_getAddress: typeof getAddressArgsSchema;
 	wallet_sendToAddress: typeof sendToAddressArgsSchema;
 	wallet_purchaseListing: typeof purchaseListingArgsSchema;
+	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
+	wallet_sendOrdinals: typeof sendOrdinalsArgsSchema;
 };
 
 // Define a type for the handler function with proper argument types
@@ -201,6 +206,12 @@ export function registerWalletTools(
 			}
 		},
 	);
+
+	// Register ordinals extension tools
+	// Register the wallet_createOrdinals tool
+	registerCreateOrdinalsTool(server, wallet);
+	// Register the wallet_sendOrdinals tool
+	registerSendOrdinalsTool(server, wallet);
 
 	return handlers;
 }

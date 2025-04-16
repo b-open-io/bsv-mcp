@@ -1,6 +1,7 @@
-import { PrivateKey } from "@bsv/sdk";
+// import { PrivateKey } from "@bsv/sdk"; // not used here
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
 	type ExistingListing,
 	type Payment,
@@ -52,7 +53,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 		async (
 			{ args }: { args: z.infer<typeof purchaseListingArgsSchema> },
 			extra: RequestHandlerExtra,
-		) => {
+		): Promise<CallToolResult> => {
 			try {
 				console.log(`Attempting to purchase listing: ${args.listingOutpoint}`);
 				console.log("Using wallet instance:", wallet);
@@ -199,7 +200,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 								listingOutpoint: args.listingOutpoint,
 								destinationAddress: args.ordAddress,
 								price: listingData.data.list.price,
-								marketFee: marketFee,
+								marketFee,
 								marketFeeAddress: MARKET_WALLET_ADDRESS,
 							}),
 						},
