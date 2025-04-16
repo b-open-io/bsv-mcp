@@ -14,16 +14,6 @@ To install dependencies:
 bun install
 ```
 
-For global installation (recommended for MCP client integration):
-
-```bash
-# Install globally with bun
-bun install -g bsv-mcp
-
-# Or with npm
-npm install -g bsv-mcp
-```
-
 ## External Dependencies
 
 For full functionality of all tools, the following additional dependencies are installed:
@@ -38,11 +28,7 @@ js-1sat-ord
 Start the MCP server:
 
 ```bash
-# If installed locally
 bun run index.ts
-
-# If installed globally
-bunx bsv-mcp
 ```
 
 ## Connecting to MCP Clients
@@ -54,7 +40,7 @@ This server implements the [Model Context Protocol](https://modelcontextprotocol
 To use the BSV MCP server with [Cursor](https://cursor.sh/):
 
 1. Install Cursor if you haven't already
-2. Install this package globally: `bun install -g bsv-mcp`
+2. Clone this repository and run `bun install` in the project directory
 3. Open Cursor and navigate to Settings → Extensions → Model Context Protocol
 4. Click "Add a new global MCP server"
 5. Enter the following configuration in JSON format:
@@ -65,15 +51,17 @@ To use the BSV MCP server with [Cursor](https://cursor.sh/):
     "command": "env",
     "args": [
       "PRIVATE_KEY_WIF=<your_private_key_wif>",
-      "bunx",
-      "bsv-mcp"
+      "bun",
+      "run",
+      "<path_to_project>/index.ts"
     ]
   }
 }
 ```
 
 6. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!)
-7. Click "Save"
+7. Replace `<path_to_project>` with the full path to where you cloned this repository
+8. Click "Save"
 
 The BSV tools will now be available to Cursor's AI assistant under the "Bitcoin SV" namespace.
 
@@ -82,7 +70,7 @@ The BSV tools will now be available to Cursor's AI assistant under the "Bitcoin 
 To connect this server to Claude for Desktop:
 
 1. Ensure you have [Claude for Desktop](https://claude.ai/desktop) installed and updated to the latest version
-2. Install this package globally: `bun install -g bsv-mcp`
+2. Clone this repository and run `bun install` in the project directory
 3. Open your Claude for Desktop configuration file:
    ```bash
    # macOS/Linux
@@ -99,16 +87,18 @@ To connect this server to Claude for Desktop:
          "command": "env",
          "args": [
            "PRIVATE_KEY_WIF=<your_private_key_wif>",
-           "bunx",
-           "bsv-mcp"
+           "bun",
+           "run",
+           "<path_to_project>/index.ts"
          ]
        }
      }
    }
    ```
 5. Replace `<your_private_key_wif>` with your actual private key WIF
-6. Save the file and restart Claude for Desktop
-7. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
+6. Replace `<path_to_project>` with the full path to where you cloned this repository
+7. Save the file and restart Claude for Desktop
+8. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
 
 ### Generic MCP Client Integration
 
@@ -120,8 +110,9 @@ For other MCP clients that support JSON configuration:
     "command": "env",
     "args": [
       "PRIVATE_KEY_WIF=<your_private_key_wif>",
-      "bunx",
-      "bsv-mcp"
+      "bun",
+      "run",
+      "<path_to_project>/index.ts"
     ]
   }
 }
@@ -134,7 +125,7 @@ If running the server directly:
 export PRIVATE_KEY_WIF=<your_private_key_wif>
 
 # Then run the server
-bunx bsv-mcp
+bun run index.ts
 ```
 
 ## Available Tools
@@ -225,7 +216,7 @@ When you interact with an MCP-enabled AI assistant:
 
 If you're having issues connecting to the server:
 
-1. Ensure the package is properly installed: `bun install -g bsv-mcp`
+1. Ensure the package dependencies are properly installed: `bun install`
 2. Verify your WIF private key is correctly set in the environment
 3. Check that your client supports MCP and is properly configured
 4. Look for error messages in the client's console output
@@ -254,18 +245,7 @@ This project was created using `bun init` in bun v1.2.9. [Bun](https://bun.sh) i
 
 ### Package Configuration
 
-To ensure the package can be run with `bunx bsv-mcp`, make sure your `package.json` includes:
-
-```json
-{
-  "name": "bsv-mcp",
-  "bin": {
-    "bsv-mcp": "./index.ts"
-  },
-  "type": "module"
-  // ...other configuration
-}
-```
+The main entry point for this package is `index.ts`.
 
 ### Running Tests
 
