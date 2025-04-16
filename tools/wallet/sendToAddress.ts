@@ -1,6 +1,7 @@
 import { P2PKH } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import { toSatoshi } from "satoshi-token";
 import type { z } from "zod";
 import { sendToAddressArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";
@@ -56,17 +57,20 @@ export function registerSendToAddressTool(server: McpServer, wallet: Wallet) {
 					description = "Send to address",
 				} = args;
 
-				// Convert USD to satoshis if needed
-				let satoshis = amount;
+				// Convert to satoshis
+				let satoshis: number;
 				if (currency === "USD") {
 					// Get current BSV price
 					const bsvPriceUsd = await getBsvPrice();
-
-					// Convert USD to BSV, then to satoshis
-					satoshis = Math.floor((amount / bsvPriceUsd) * 100000000);
+					
+					// Convert USD to BSV
+					const bsvAmount = amount / bsvPriceUsd;
+					
+					// Convert BSV to satoshis using the library
+					satoshis = toSatoshi(bsvAmount);
 				} else {
-					// Convert BSV to satoshis
-					satoshis = Math.floor(amount * 100000000);
+					// Convert BSV to satoshis using the library
+					satoshis = toSatoshi(amount);
 				}
 
 				// Create P2PKH script from address
