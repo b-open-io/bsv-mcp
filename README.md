@@ -1,5 +1,9 @@
 # Bitcoin SV MCP Server
 
+> **⚠️ NOTICE: Experimental Work in Progress**  
+> This project is in an early experimental stage. Features may change, and the API is not yet stable.
+> Contributions, feedback, and bug reports are welcome! Feel free to open issues or submit pull requests.
+
 A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework. This library provides wallet, ordinals, and utility functions for BSV blockchain interaction.
 
 ## Installation
