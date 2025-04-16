@@ -3,11 +3,17 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
 	type ExistingListing,
+	type Payment,
 	type Utxo,
 	oneSatBroadcaster,
 	purchaseOrdListing,
 } from "js-1sat-ord";
 import type { z } from "zod";
+import {
+	MARKET_FEE_PERCENTAGE,
+	MARKET_WALLET_ADDRESS,
+	MINIMUM_MARKET_FEE_SATOSHIS,
+} from "../constants";
 import { purchaseListingArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";
 
@@ -32,7 +38,7 @@ interface ListingResponse {
  * 1. Parses the listing outpoint to get the txid and vout
  * 2. Fetches the listing UTXO from the ordinals API
  * 3. Gets the wallet's payment UTXOs (using the wallet's internal UTXO management)
- * 4. Uses purchaseOrdListing to create a purchase transaction
+ * 4. Uses purchaseOrdListing to create a purchase transaction with market fee
  * 5. Broadcasts the transaction
  * 6. Returns the transaction details
  */
@@ -74,6 +80,20 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 					throw new Error("Listing doesn't have payout information");
 				}
 
+				// Calculate the market fee (3% of listing price)
+				const listingPrice = listingData.data.list.price;
+				let marketFee = Math.round(listingPrice * MARKET_FEE_PERCENTAGE);
+
+				// Ensure minimum fee
+				if (marketFee < MINIMUM_MARKET_FEE_SATOSHIS) {
+					marketFee = MINIMUM_MARKET_FEE_SATOSHIS;
+				}
+
+				console.log(`Listing price: ${listingPrice} satoshis`);
+				console.log(
+					`Market fee: ${marketFee} satoshis (${MARKET_FEE_PERCENTAGE * 100}%)`,
+				);
+
 				// Parse the listing outpoint to get txid and vout
 				const [txid, voutStr] = args.listingOutpoint.split("_");
 				if (!txid) {
@@ -112,9 +132,24 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 					throw new Error(
 						`No payment UTXOs available for address ${paymentAddress}. 
 Please fund this wallet address with enough BSV to cover the purchase price 
-(${listingData.data.list.price} satoshis) plus transaction fees.`,
+(${listingData.data.list.price} satoshis) plus market fee (${marketFee} satoshis) and transaction fees.`,
 					);
 				}
+
+				// Define market fee payment
+				const additionalPayments: Payment[] = [
+					{
+						to: MARKET_WALLET_ADDRESS,
+						amount: marketFee,
+					},
+				];
+
+				// Define metadata for the transaction
+				const metaData = {
+					app: "bsv-mcp",
+					type: "ord",
+					op: "purchase",
+				};
 
 				// Create the purchase transaction using the library's config type
 				const transaction = await purchaseOrdListing({
@@ -122,6 +157,8 @@ Please fund this wallet address with enough BSV to cover the purchase price
 					paymentPk,
 					ordAddress: args.ordAddress,
 					listing,
+					additionalPayments,
+					metaData,
 				});
 
 				// After successful transaction creation, refresh the wallet's UTXOs
@@ -162,6 +199,8 @@ Please fund this wallet address with enough BSV to cover the purchase price
 								listingOutpoint: args.listingOutpoint,
 								destinationAddress: args.ordAddress,
 								price: listingData.data.list.price,
+								marketFee: marketFee,
+								marketFeeAddress: MARKET_WALLET_ADDRESS,
 							}),
 						},
 					],

@@ -62,10 +62,10 @@ export function registerSendToAddressTool(server: McpServer, wallet: Wallet) {
 				if (currency === "USD") {
 					// Get current BSV price
 					const bsvPriceUsd = await getBsvPrice();
-					
+
 					// Convert USD to BSV
 					const bsvAmount = amount / bsvPriceUsd;
-					
+
 					// Convert BSV to satoshis using the library
 					satoshis = toSatoshi(bsvAmount);
 				} else {

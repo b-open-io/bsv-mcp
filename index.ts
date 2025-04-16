@@ -1,7 +1,5 @@
 #!/usr/bin/env bun
-import {
-	PrivateKey,
-} from "@bsv/sdk";
+import { PrivateKey } from "@bsv/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAllTools } from "./tools";
@@ -10,7 +8,7 @@ import { Wallet } from "./tools/wallet/wallet";
 
 const server = new McpServer({
 	name: "Bitcoin SV MCP",
-	version: "1.0.0",
+	version: "0.0.1",
 });
 
 // Singleton wallet instance (for demo, could be replaced with real key management)
