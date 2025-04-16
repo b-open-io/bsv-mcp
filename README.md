@@ -1,6 +1,6 @@
 # Bitcoin SV MCP Server
 
-[![smithery badge](https://smithery.ai/badge/@b-open-io/bsv)](https://smithery.ai/server/@b-open-io/bsv)
+[![smithery badge](https://smithery.ai/badge/@b-open-io/bsv-mcp)](https://smithery.ai/server/@b-open-io/bsv-mcp)
 
 > **⚠️ NOTICE: Experimental Work in Progress**  
 > This project is in an early experimental stage. Features may change, and the API is not yet stable.
