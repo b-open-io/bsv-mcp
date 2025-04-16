@@ -24,11 +24,6 @@ export const marketSalesArgsSchema = z.object({
 		.enum(["bsv20", "bsv21", "all"])
 		.default("bsv20")
 		.describe("Type of token to search for (bsv20, bsv21, or all)"),
-	bsv20Type: z
-		.enum(["v1", "v2", "all"])
-		.default("all")
-		.optional()
-		.describe("BSV20 token type (v1, v2, or all)"),
 	id: z.string().optional().describe("Token ID in outpoint format"),
 	tick: z.string().optional().describe("Token ticker symbol"),
 	pending: z.boolean().default(false).optional().describe("Include pending sales"),
@@ -85,7 +80,6 @@ export function registerMarketSalesTool(server: McpServer): void {
 					offset, 
 					dir, 
 					tokenType, 
-					bsv20Type, 
 					id, 
 					tick, 
 					pending, 
@@ -94,23 +88,20 @@ export function registerMarketSalesTool(server: McpServer): void {
 
 				// Determine the API endpoint based on tokenType
 				let baseUrl = "https://ordinals.gorillapool.io/api";
-				
-				if (tokenType === "bsv21") {
-					baseUrl += "/bsv21/market/sales";
-				} else {
-					// Default to BSV20 for "bsv20" or "all"
-					baseUrl += "/bsv20/market/sales";
-				}
+
+				// Default to BSV20 for all token types
+				baseUrl += "/bsv20/market/sales";
 
 				// Build the URL with query parameters
 				const url = new URL(baseUrl);
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
+				url.searchParams.append("script", "true");
 				
-				// Add type parameter for bsv20 only if specified
-				if (bsv20Type && bsv20Type !== "all") {
-					url.searchParams.append("type", bsv20Type);
+				// Add type parameter for bsv21 if needed
+				if (tokenType === "bsv21") {
+					url.searchParams.append("type", "v2");
 				}
 
 				if (id) url.searchParams.append("id", id);

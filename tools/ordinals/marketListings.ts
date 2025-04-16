@@ -37,11 +37,6 @@ export const marketListingsArgsSchema = z.object({
 		.enum(["recent", "price", "num", "height", "price_per_token"])
 		.default("recent")
 		.describe("Sort method (recent, price, num, height, price_per_token)"),
-	bsv20Type: z
-		.enum(["v1", "v2", "all"])
-		.default("all")
-		.optional()
-		.describe("BSV20 token type (v1, v2, or all)"),
 	id: z.string().optional().describe("Token ID in outpoint format"),
 	tick: z.string().optional().describe("Token ticker symbol"),
 	pending: z.boolean().default(false).optional().describe("Include pending sales"),
@@ -114,7 +109,6 @@ export function registerMarketListingsTool(server: McpServer): void {
 					minPrice,
 					maxPrice,
 					tokenType,
-					bsv20Type,
 					id,
 					tick,
 					pending,
@@ -124,11 +118,8 @@ export function registerMarketListingsTool(server: McpServer): void {
 				let baseUrl = "https://ordinals.gorillapool.io/api";
 				let useTokenParams = false;
 				
-				if (tokenType === "bsv20") {
+				if (tokenType === "bsv20" || tokenType === "bsv21") {
 					baseUrl += "/bsv20/market";
-					useTokenParams = true;
-				} else if (tokenType === "bsv21") {
-					baseUrl += "/bsv21/market"; // Assuming BSV21 endpoint follows similar pattern
 					useTokenParams = true;
 				} else if (tokenType === "nft" || tokenType === "all") {
 					baseUrl += "/market";
@@ -139,6 +130,7 @@ export function registerMarketListingsTool(server: McpServer): void {
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
+				url.searchParams.append("script", "true");
 				
 				// Add sort parameter based on token type
 				if (useTokenParams) {
@@ -147,8 +139,8 @@ export function registerMarketListingsTool(server: McpServer): void {
 						url.searchParams.append("sort", sort);
 					}
 					// Add token-specific parameters
-					if (bsv20Type && bsv20Type !== "all") {
-						url.searchParams.append("type", bsv20Type);
+					if (tokenType === "bsv21") {
+						url.searchParams.append("type", "v2");
 					}
 					if (id) url.searchParams.append("id", id);
 					if (tick) url.searchParams.append("tick", tick);

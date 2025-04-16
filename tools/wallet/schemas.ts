@@ -261,7 +261,7 @@ export const getAddressArgsSchema = z.object({});
 export const sendToAddressArgsSchema = z.object({
 	address: z.string(),
 	amount: z.number(),
-	currency: z.enum(["BSV", "USD"]).optional(),
+	currency: z.enum(["BSV", "USD"]).optional().default("BSV"),
 	description: z.string().optional(),
 });
 
@@ -275,22 +275,24 @@ export const purchaseListingArgsSchema = z.object({
 	ordAddress: z
 		.string()
 		.describe("The ordinal address to receive the purchased item"),
-	description: z
-		.string()
-		.optional()
-		.describe("Optional description for the transaction"),
 	listingType: z
 		.enum(["nft", "token"])
 		.default("nft")
 		.describe("Type of listing: 'nft' for ordinal NFTs, 'token' for BSV-20 tokens"),
 	tokenProtocol: z
 		.enum(["bsv-20", "bsv-21"])
-		.optional()
+		.optional().default("bsv-21")
 		.describe("Token protocol for token listings (required when listingType is 'token')"),
 	tokenID: z
 		.string()
 		.optional()
 		.describe("Token ID for BSV-21 tokens or ticker for BSV-20 tokens (required when listingType is 'token')"),
+	description: z
+		.string()
+		.optional()
+		.describe("Optional description for the transaction"),
 });
 
+// Export types
+export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
 export type PurchaseListingArgs = z.infer<typeof purchaseListingArgsSchema>;

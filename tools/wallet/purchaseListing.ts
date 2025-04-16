@@ -183,6 +183,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						satoshis: 1, // TokenUtxo's satoshis must be exactly 1
 						amt: listingData.data.bsv20.amt,
 						id: args.tokenID,
+            payout: listingData.data.list.payout,
 					};
 					
 					transaction = await purchaseOrdTokenListing({
