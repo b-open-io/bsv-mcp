@@ -9,8 +9,9 @@ import { z } from "zod";
 export function registerGetAddressTool(server: McpServer): void {
 	server.tool(
 		"wallet_getAddress",
+		"Retrieves the current wallet's Bitcoin SV address. This address can be used to receive BSV, ordinals, or tokens, and is derived from the wallet's private key.",
 		{
-			args: z.object({}).optional(),
+			args: z.object({}).optional().describe("No parameters required - simply returns the current wallet address"),
 		},
 		async () => {
 			try {

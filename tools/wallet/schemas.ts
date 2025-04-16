@@ -291,7 +291,7 @@ export const purchaseListingArgsSchema = z.object({
 		.string()
 		.optional()
 		.describe("Optional description for the transaction"),
-});
+}).describe("Schema for the wallet_purchaseListing tool arguments (purchase NFTs or tokens), with detailed field descriptions.");
 
 // Export types
 export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;

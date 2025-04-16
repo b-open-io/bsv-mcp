@@ -40,6 +40,7 @@ interface InscriptionResponse {
 export function registerGetInscriptionTool(server: McpServer): void {
 	server.tool(
 		"ordinals_getInscription",
+		"Retrieves detailed information about a specific ordinal inscription by its outpoint. Returns complete inscription data including content type, file information, inscription origin, and current status. Useful for verifying NFT authenticity or retrieving metadata about digital artifacts.",
 		{
 			args: getInscriptionArgsSchema,
 		},

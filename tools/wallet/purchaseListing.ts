@@ -61,13 +61,17 @@ interface OrdUtxo {
 /**
  * Register the purchaseListing tool
  *
- * This tool:
+ * This tool enables purchasing listed ordinals (NFTs or tokens) from the marketplace:
  * 1. Parses the listing outpoint to get the txid and vout
  * 2. Fetches the listing UTXO from the ordinals API
  * 3. Gets the wallet's payment UTXOs (using the wallet's internal UTXO management)
  * 4. Uses purchaseOrdListing or purchaseOrdTokenListing based on the listing type
- * 5. Broadcasts the transaction
- * 6. Returns the transaction details
+ * 5. For NFTs, automatically detects and processes royalty payments to original creators
+ * 6. Broadcasts the transaction
+ * 7. Returns the transaction details including success status and txid
+ *
+ * The tool supports both NFT and token listings with appropriate type-specific handling.
+ * Royalty payments are supported for NFT purchases only (based on creator-defined metadata).
  */
 export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 	// Store a reference to check if wallet is persistent
@@ -75,6 +79,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 
 	server.tool(
 		"wallet_purchaseListing",
+		"Purchases a listing from the Bitcoin SV ordinals marketplace. Supports both NFT purchases (with royalty payments to original creators) and BSV-20/BSV-21 token purchases. The tool handles all aspects of the transaction - from fetching listing details, calculating fees, creating and broadcasting the transaction.",
 		{ args: purchaseListingArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof purchaseListingArgsSchema> },
@@ -200,7 +205,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						satoshis: 1, // TokenUtxo's satoshis must be exactly 1
 						amt: listingData.data.bsv20.amt,
 						id: args.tokenID,
-            payout: listingData.data.list.payout,
+						payout: listingData.data.list.payout,
 					};
 					
 					transaction = await purchaseOrdTokenListing({
@@ -229,6 +234,9 @@ Please fund this wallet address with enough BSV to cover the purchase price
 					};
 					
 					// Check for royalties in the NFT origin data
+					// Royalties are only supported for NFTs, not for tokens
+					// The royalties are defined by the original creator as a JSON string
+					// in the NFT's metadata and parsed into a Royalty[] array
 					let royalties: Royalty[] = [];
 					if (listingData.origin?.data?.map?.royalties) {
 						try {

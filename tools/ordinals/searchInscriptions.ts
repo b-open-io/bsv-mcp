@@ -57,6 +57,7 @@ interface InscriptionSearchResponse {
 export function registerSearchInscriptionsTool(server: McpServer): void {
 	server.tool(
 		"ordinals_searchInscriptions",
+		"Searches for Bitcoin SV ordinal inscriptions using flexible criteria. This powerful search tool supports filtering by address, inscription content, MIME type, MAP fields, and other parameters. Results include detailed information about each matched inscription. Ideal for discovering NFTs and exploring the ordinals ecosystem.",
 		{
 			args: searchInscriptionsArgsSchema,
 		},

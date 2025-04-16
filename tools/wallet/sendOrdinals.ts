@@ -26,6 +26,7 @@ export type SendOrdinalsArgs = z.infer<typeof sendOrdinalsArgsSchema>;
 export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
   server.tool(
     "wallet_sendOrdinals",
+    "Transfers ordinals (NFTs) from your wallet to another address on the Bitcoin SV blockchain. This tool enables sending inscriptions you own to any valid BSV address. The transaction is created, signed, and broadcast automatically, with appropriate fee calculation and change handling.",
     { args: sendOrdinalsArgsSchema },
     async (
       { args }: { args: SendOrdinalsArgs },

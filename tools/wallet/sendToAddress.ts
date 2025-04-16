@@ -42,6 +42,7 @@ export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
 export function registerSendToAddressTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_sendToAddress",
+		"Sends Bitcoin SV (BSV) to a specified address. This tool supports payments in both BSV and USD amounts (with automatic conversion using current exchange rates). Transaction fees are automatically calculated and a confirmation with transaction ID is returned upon success.",
 		{
 			args: sendToAddressArgsSchema,
 		},

@@ -37,6 +37,7 @@ export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>;
 export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_createOrdinals",
+		"Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
 		{ args: createOrdinalsArgsSchema },
 		async (
 			{ args }: { args: CreateOrdinalsArgs },

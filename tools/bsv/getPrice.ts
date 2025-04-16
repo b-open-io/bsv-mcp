@@ -8,8 +8,9 @@ import { z } from "zod";
 export function registerGetPriceTool(server: McpServer): void {
 	server.tool(
 		"bsv_getPrice",
+		"Retrieves the current price of Bitcoin SV (BSV) in USD from a reliable exchange API. This tool provides real-time market data that can be used for calculating transaction values, monitoring market conditions, or converting between BSV and fiat currencies.",
 		{
-			args: z.object({}).optional(),
+			args: z.object({}).optional().describe("No parameters required - simply returns the current BSV price in USD"),
 		},
 		async () => {
 			try {

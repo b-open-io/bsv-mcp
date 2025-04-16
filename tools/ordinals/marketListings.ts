@@ -89,6 +89,7 @@ interface MarketListingResponse {
 export function registerMarketListingsTool(server: McpServer): void {
 	server.tool(
 		"ordinals_marketListings",
+		"Retrieves current marketplace listings for Bitcoin SV ordinals with flexible filtering. Supports multiple asset types (NFTs, BSV-20 tokens, BSV-21 tokens) through a unified interface. Results include listing prices, details about the assets, and seller information.",
 		{
 			args: marketListingsArgsSchema,
 		},

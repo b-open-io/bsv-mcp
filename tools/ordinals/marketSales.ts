@@ -67,6 +67,7 @@ interface MarketSaleResponse {
 export function registerMarketSalesTool(server: McpServer): void {
 	server.tool(
 		"ordinals_marketSales",
+		"Retrieves recent sales data for BSV-20 and BSV-21 tokens on the ordinals marketplace. This tool provides insights into market activity, including sale prices, transaction details, and token information. Supports filtering by token ID, ticker symbol, or seller address to help analyze market trends and track specific token sales.",
 		{
 			args: marketSalesArgsSchema,
 		},

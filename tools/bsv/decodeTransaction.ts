@@ -118,6 +118,7 @@ function isTxid(str: string): boolean {
 export function registerDecodeTransactionTool(server: McpServer): void {
 	server.tool(
 		"bsv_decodeTransaction",
+		"Decodes and analyzes Bitcoin SV transactions to provide detailed insights. This powerful tool accepts either a transaction ID or raw transaction data and returns comprehensive information including inputs, outputs, fee calculations, script details, and blockchain context. Supports both hex and base64 encoded transactions and automatically fetches additional on-chain data when available.",
 		{
 			args: decodeTransactionArgsSchema,
 		},
