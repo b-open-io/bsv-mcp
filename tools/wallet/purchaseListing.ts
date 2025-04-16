@@ -3,11 +3,15 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
+	type ChangeResult,
 	type ExistingListing,
 	type Payment,
+	type TokenUtxo,
 	type Utxo,
+	TokenType,
 	oneSatBroadcaster,
 	purchaseOrdListing,
+	purchaseOrdTokenListing,
 } from "js-1sat-ord";
 import type { z } from "zod";
 import {
@@ -29,6 +33,11 @@ interface ListingResponse {
 			price: number;
 			payout: string;
 		};
+		bsv20?: {
+			amt?: string;
+			tick?: string;
+			id?: string;
+		};
 	};
 }
 
@@ -39,7 +48,7 @@ interface ListingResponse {
  * 1. Parses the listing outpoint to get the txid and vout
  * 2. Fetches the listing UTXO from the ordinals API
  * 3. Gets the wallet's payment UTXOs (using the wallet's internal UTXO management)
- * 4. Uses purchaseOrdListing to create a purchase transaction with market fee
+ * 4. Uses purchaseOrdListing or purchaseOrdTokenListing based on the listing type
  * 5. Broadcasts the transaction
  * 6. Returns the transaction details
  */
@@ -56,6 +65,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 		): Promise<CallToolResult> => {
 			try {
 				console.log(`Attempting to purchase listing: ${args.listingOutpoint}`);
+				console.log(`Listing type: ${args.listingType}`);
 				console.log("Using wallet instance:", wallet);
 				console.log("Wallet has UTXOs:", await wallet.getUtxos());
 
@@ -102,20 +112,6 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 				}
 				const vout = Number.parseInt(voutStr || "0", 10);
 
-				// Create listing UTXO object in the format required by js-1sat-ord
-				const listingUtxo: Utxo = {
-					txid,
-					vout,
-					script: listingData.script,
-					satoshis: listingData.satoshis,
-				};
-
-				// Create the ExistingListing object
-				const listing: ExistingListing = {
-					payout: listingData.data.list.payout,
-					listingUtxo,
-				};
-
 				// Get private key from the wallet
 				const paymentPk = wallet.getPrivateKey();
 				if (!paymentPk) {
@@ -152,15 +148,77 @@ Please fund this wallet address with enough BSV to cover the purchase price
 					op: "purchase",
 				};
 
-				// Create the purchase transaction using the library's config type
-				const transaction = await purchaseOrdListing({
-					utxos: paymentUtxos,
-					paymentPk,
-					ordAddress: args.ordAddress,
-					listing,
-					additionalPayments,
-					metaData,
-				});
+				// Create the purchase transaction based on listing type
+				let transaction: ChangeResult;
+				
+				if (args.listingType === "token") {
+					if (!args.tokenProtocol) {
+						throw new Error("tokenProtocol is required for token listings");
+					}
+					
+					if (!args.tokenID) {
+						throw new Error("tokenID is required for token listings");
+					}
+					
+					// Validate token data from the listing
+					if (!listingData.data.bsv20) {
+						throw new Error("This is not a valid BSV-20 token listing");
+					}
+					
+					// For BSV-20, the amount should be included in the listing data
+					if (!listingData.data.bsv20.amt) {
+						throw new Error("Token listing doesn't have an amount specified");
+					}
+					
+					// Convert the token protocol to the enum type expected by js-1sat-ord
+					const protocol = args.tokenProtocol === "bsv-20" 
+						? TokenType.BSV20
+						: TokenType.BSV21;
+					
+					// Create a TokenUtxo with the required fields
+					const listingUtxo: TokenUtxo = {
+						txid,
+						vout,
+						script: listingData.script,
+						satoshis: 1, // TokenUtxo's satoshis must be exactly 1
+						amt: listingData.data.bsv20.amt,
+						id: args.tokenID,
+					};
+					
+					transaction = await purchaseOrdTokenListing({
+						protocol,
+						tokenID: args.tokenID,
+						utxos: paymentUtxos,
+						paymentPk,
+						listingUtxo,
+						ordAddress: args.ordAddress,
+						additionalPayments,
+						metaData,
+					});
+				} else {
+					// Create a regular Utxo for NFT listing
+					const listingUtxo: Utxo = {
+						txid,
+						vout,
+						script: listingData.script,
+						satoshis: listingData.satoshis,
+					};
+					
+					// Create the ExistingListing object for NFT listings
+					const listing: ExistingListing = {
+						payout: listingData.data.list.payout,
+						listingUtxo,
+					};
+					
+					transaction = await purchaseOrdListing({
+						utxos: paymentUtxos,
+						paymentPk,
+						ordAddress: args.ordAddress,
+						listing,
+						additionalPayments,
+						metaData,
+					});
+				}
 
 				// After successful transaction creation, refresh the wallet's UTXOs
 				// This ensures the wallet doesn't try to reuse spent UTXOs
@@ -199,6 +257,9 @@ Please fund this wallet address with enough BSV to cover the purchase price
 								txid: transaction.tx.id("hex"),
 								listingOutpoint: args.listingOutpoint,
 								destinationAddress: args.ordAddress,
+								listingType: args.listingType,
+								tokenProtocol: args.tokenID ? args.tokenProtocol : undefined,
+								tokenID: args.tokenID,
 								price: listingData.data.list.price,
 								marketFee,
 								marketFeeAddress: MARKET_WALLET_ADDRESS,

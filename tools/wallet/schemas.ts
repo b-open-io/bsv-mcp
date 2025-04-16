@@ -279,6 +279,18 @@ export const purchaseListingArgsSchema = z.object({
 		.string()
 		.optional()
 		.describe("Optional description for the transaction"),
+	listingType: z
+		.enum(["nft", "token"])
+		.default("nft")
+		.describe("Type of listing: 'nft' for ordinal NFTs, 'token' for BSV-20 tokens"),
+	tokenProtocol: z
+		.enum(["bsv-20", "bsv-21"])
+		.optional()
+		.describe("Token protocol for token listings (required when listingType is 'token')"),
+	tokenID: z
+		.string()
+		.optional()
+		.describe("Token ID for BSV-21 tokens or ticker for BSV-20 tokens (required when listingType is 'token')"),
 });
 
 export type PurchaseListingArgs = z.infer<typeof purchaseListingArgsSchema>;

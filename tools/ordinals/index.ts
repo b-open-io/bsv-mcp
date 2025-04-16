@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerBsv20MarketSalesTool } from "./bsv20MarketSales";
 import { registerGetBsv20ByIdTool } from "./getBsv20ById";
 import { registerGetInscriptionTool } from "./getInscription";
 import { registerMarketListingsTool } from "./marketListings";
+import { registerMarketSalesTool } from "./marketSales";
 import { registerSearchInscriptionsTool } from "./searchInscriptions";
 
 /**
@@ -14,6 +14,6 @@ export function registerOrdinalsTools(server: McpServer): void {
 	registerGetInscriptionTool(server);
 	registerSearchInscriptionsTool(server);
 	registerMarketListingsTool(server);
-	registerBsv20MarketSalesTool(server);
+	registerMarketSalesTool(server);
 	registerGetBsv20ByIdTool(server);
 }

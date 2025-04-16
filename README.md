@@ -154,7 +154,8 @@ Wallet tools provide core BSV wallet functionality:
 | `wallet_decrypt` | Decrypts data using a specified protocol and key |
 | `wallet_getAddress` | Returns a BSV address for the current wallet or a derived path |
 | `wallet_sendToAddress` | Sends BSV to a specified address (supports BSV or USD amounts) |
-| `wallet_purchaseListing` | Purchases an NFT from a marketplace listing |
+| `wallet_purchaseListing` | Purchases NFTs or BSV-20/BSV-21 tokens from marketplace listings |
+| `wallet_createOrdinals` | Creates and inscribes ordinals on the BSV blockchain |
 
 ### BSV Tools
 
@@ -173,8 +174,8 @@ Tools for working with ordinals (NFTs) on BSV:
 |-----------|-------------|
 | `ordinals_getInscription` | Retrieves detailed information about a specific inscription |
 | `ordinals_searchInscriptions` | Searches for inscriptions based on various criteria |
-| `ordinals_marketListings` | Retrieves current marketplace listings for inscriptions |
-| `ordinals_bsv20MarketSales` | Gets information about BSV20 token market sales |
+| `ordinals_marketListings` | Retrieves market listings for NFTs, BSV-20, and BSV-21 tokens with unified interface |
+| `ordinals_marketSales` | Gets information about BSV-20 and BSV-21 token market sales |
 | `ordinals_getBsv20ById` | Retrieves details about a specific BSV20 token by ID |
 
 ### Utility Tools
@@ -193,11 +194,15 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 - "Get my Bitcoin SV address"
 - "Send 0.01 BSV to 1ExampleBsvAddressXXXXXXXXXXXXXXXXX"
 - "Send $5 USD worth of BSV to 1ExampleBsvAddressXXXXXXXXXXXXXXXXX"
+- "Purchase this NFT listing: txid_vout"
+- "Purchase this BSV-20 token listing: txid_vout"
 
 ### Ordinals (NFTs)
 - "Show me information about the NFT with outpoint 6a89047af2cfac96da17d51ae8eb62c5f1d982be2bc4ba0d0cd2084b7ffed325_0"
 - "Search for Pixel Zoide NFTs"
 - "Show me the current marketplace listings for BSV NFTs"
+- "Show me BSV-20 token listings for ticker PEPE"
+- "Get recent BSV-20 token sales"
 
 ### Blockchain Operations
 - "What is the current BSV price?"
@@ -231,6 +236,17 @@ tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
 ```
 
 For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Context Protocol.
+
+## Recent Updates
+
+### Enhanced Marketplace Tools
+- **Unified Market Listings**: The `ordinals_marketListings` tool now supports NFTs, BSV-20, and BSV-21 tokens through a single interface with appropriate filtering.
+- **Improved Market Sales**: The `ordinals_marketSales` tool (renamed from `ordinals_bsv20MarketSales`) now supports both BSV-20 and BSV-21 token sales.
+- **Token Purchases**: The `wallet_purchaseListing` tool has been enhanced to support purchasing both NFTs and BSV-20/BSV-21 tokens.
+
+### API Refinements
+- Standardized endpoint structure for interactions with the GorillaPool API.
+- Improved parameter handling for different token types and marketplace actions.
 
 ## Development
 

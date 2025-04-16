@@ -2,8 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z } from "zod";
 
-// Schema for market listings arguments
+// Enhanced schema for unified market listings arguments
 export const marketListingsArgsSchema = z.object({
+	// Common parameters
 	limit: z
 		.number()
 		.int()
@@ -12,29 +13,47 @@ export const marketListingsArgsSchema = z.object({
 		.default(20)
 		.describe("Number of results (1-100, default 20)"),
 	offset: z.number().int().min(0).default(0).describe("Pagination offset"),
-	sort: z
-		.enum(["recent", "price", "num"])
-		.default("recent")
-		.describe("Sort method (recent, price, or num)"),
 	dir: z
 		.enum(["asc", "desc"])
 		.default("desc")
 		.describe("Sort direction (asc or desc)"),
 	address: z.string().optional().describe("Bitcoin address"),
+	
+	// NFT-specific parameters
 	origin: z.string().optional().describe("Origin outpoint"),
 	mime: z.string().optional().describe("MIME type filter"),
 	num: z.string().optional().describe("Inscription number"),
+	
+	// General market parameters
 	minPrice: z.number().optional().describe("Minimum price in satoshis"),
 	maxPrice: z.number().optional().describe("Maximum price in satoshis"),
+	
+	// Token-specific parameters
+	tokenType: z
+		.enum(["nft", "bsv20", "bsv21", "all"])
+		.default("all")
+		.describe("Type of token to search for (nft, bsv20, bsv21, or all)"),
+	sort: z
+		.enum(["recent", "price", "num", "height", "price_per_token"])
+		.default("recent")
+		.describe("Sort method (recent, price, num, height, price_per_token)"),
+	bsv20Type: z
+		.enum(["v1", "v2", "all"])
+		.default("all")
+		.optional()
+		.describe("BSV20 token type (v1, v2, or all)"),
+	id: z.string().optional().describe("Token ID in outpoint format"),
+	tick: z.string().optional().describe("Token ticker symbol"),
+	pending: z.boolean().default(false).optional().describe("Include pending sales"),
 });
 
 export type MarketListingsArgs = z.infer<typeof marketListingsArgsSchema>;
 
-// Simplified market listing response type
+// Unified response type that covers all token types
 interface MarketListingResponse {
 	results: Array<{
 		outpoint: string;
-		origin: {
+		origin?: {
 			outpoint: string;
 			data?: {
 				insc?: {
@@ -51,16 +70,26 @@ interface MarketListingResponse {
 				price?: number;
 				payout?: string;
 				sale?: boolean;
+				price_per_token?: number;
+			};
+			bsv20?: {
+				id?: string;
+				tick?: string;
+				sym?: string;
+				amt?: string;
+				op?: string;
 			};
 		};
 		satoshis?: number;
+		height?: number;
 		[key: string]: unknown;
 	}>;
 	total: number;
 }
 
 /**
- * Register the Ordinals market listings tool
+ * Register the unified Ordinals market listings tool
+ * Handles NFTs, BSV20, and BSV21 tokens
  */
 export function registerMarketListingsTool(server: McpServer): void {
 	server.tool(
@@ -84,25 +113,68 @@ export function registerMarketListingsTool(server: McpServer): void {
 					num,
 					minPrice,
 					maxPrice,
+					tokenType,
+					bsv20Type,
+					id,
+					tick,
+					pending,
 				} = args;
 
+				// Determine the API endpoint based on tokenType
+				let baseUrl = "https://ordinals.gorillapool.io/api";
+				let useTokenParams = false;
+				
+				if (tokenType === "bsv20") {
+					baseUrl += "/bsv20/market";
+					useTokenParams = true;
+				} else if (tokenType === "bsv21") {
+					baseUrl += "/bsv21/market"; // Assuming BSV21 endpoint follows similar pattern
+					useTokenParams = true;
+				} else if (tokenType === "nft" || tokenType === "all") {
+					baseUrl += "/market";
+				}
+
 				// Build the URL with query parameters
-				const url = new URL("https://ordinals.gorillapool.io/api/market");
+				const url = new URL(baseUrl);
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
-				url.searchParams.append("sort", sort);
 				url.searchParams.append("dir", dir);
-
+				
+				// Add sort parameter based on token type
+				if (useTokenParams) {
+					// BSV20/BSV21 specific sort options
+					if (sort === "height" || sort === "price" || sort === "price_per_token") {
+						url.searchParams.append("sort", sort);
+					}
+					// Add token-specific parameters
+					if (bsv20Type && bsv20Type !== "all") {
+						url.searchParams.append("type", bsv20Type);
+					}
+					if (id) url.searchParams.append("id", id);
+					if (tick) url.searchParams.append("tick", tick);
+					if (pending !== undefined) url.searchParams.append("pending", pending.toString());
+					// For BSV20/21, min/max price parameters have slightly different names
+					if (minPrice !== undefined) url.searchParams.append("min_price", minPrice.toString());
+					if (maxPrice !== undefined) url.searchParams.append("max_price", maxPrice.toString());
+				} else {
+					// NFT specific sort options
+					if (sort === "recent" || sort === "price" || sort === "num") {
+						url.searchParams.append("sort", sort);
+					}
+					// Add NFT-specific parameters
+					if (origin) url.searchParams.append("origin", origin);
+					if (mime) url.searchParams.append("mime", mime);
+					if (num) url.searchParams.append("num", num);
+					// For NFTs, min/max price parameters use short names
+					if (minPrice !== undefined) url.searchParams.append("min", minPrice.toString());
+					if (maxPrice !== undefined) url.searchParams.append("max", maxPrice.toString());
+				}
+				
+				// Add common parameters
 				if (address) url.searchParams.append("address", address);
-				if (origin) url.searchParams.append("origin", origin);
-				if (mime) url.searchParams.append("mime", mime);
-				if (num) url.searchParams.append("num", num);
-				if (minPrice !== undefined)
-					url.searchParams.append("min", minPrice.toString());
-				if (maxPrice !== undefined)
-					url.searchParams.append("max", maxPrice.toString());
 
-				// Fetch market listings from GorillaPool API
+				// Make the fetch request
+				console.log(`Fetching market listings from: ${url.toString()}`);
 				const response = await fetch(url.toString());
 
 				if (!response.ok) {

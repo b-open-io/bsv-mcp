@@ -2,8 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z } from "zod";
 
-// Schema for BSV20 market sales arguments
-export const bsv20MarketSalesArgsSchema = z.object({
+// Schema for unified market sales arguments
+export const marketSalesArgsSchema = z.object({
+	// Common parameters
 	limit: z
 		.number()
 		.int()
@@ -16,20 +17,27 @@ export const bsv20MarketSalesArgsSchema = z.object({
 		.enum(["asc", "desc"])
 		.default("desc")
 		.describe("Sort direction (asc or desc)"),
-	type: z
+	address: z.string().optional().describe("Bitcoin address"),
+
+	// Token-specific parameters
+	tokenType: z
+		.enum(["bsv20", "bsv21", "all"])
+		.default("bsv20")
+		.describe("Type of token to search for (bsv20, bsv21, or all)"),
+	bsv20Type: z
 		.enum(["v1", "v2", "all"])
 		.default("all")
-		.describe("Token type (v1, v2, or all)"),
+		.optional()
+		.describe("BSV20 token type (v1, v2, or all)"),
 	id: z.string().optional().describe("Token ID in outpoint format"),
 	tick: z.string().optional().describe("Token ticker symbol"),
-	pending: z.boolean().default(false).describe("Include pending sales"),
-	address: z.string().optional().describe("Bitcoin address"),
+	pending: z.boolean().default(false).optional().describe("Include pending sales"),
 });
 
-export type Bsv20MarketSalesArgs = z.infer<typeof bsv20MarketSalesArgsSchema>;
+export type MarketSalesArgs = z.infer<typeof marketSalesArgsSchema>;
 
-// Simplified BSV20 sale response type
-interface Bsv20SaleResponse {
+// Unified response type for token sales
+interface MarketSaleResponse {
 	results: Array<{
 		outpoint: string;
 		data?: {
@@ -48,42 +56,70 @@ interface Bsv20SaleResponse {
 		};
 		satoshis?: number;
 		height?: number;
+		owner?: string;
+		spend?: string;
+		spendHeight?: number;
+		spendIdx?: string;
 		[key: string]: unknown;
 	}>;
 	total: number;
 }
 
 /**
- * Register the BSV20 market sales tool
+ * Register the unified market sales tool
+ * Handles BSV20 and BSV21 token sales
  */
-export function registerBsv20MarketSalesTool(server: McpServer): void {
+export function registerMarketSalesTool(server: McpServer): void {
 	server.tool(
-		"ordinals_bsv20MarketSales",
+		"ordinals_marketSales",
 		{
-			args: bsv20MarketSalesArgsSchema,
+			args: marketSalesArgsSchema,
 		},
 		async (
-			{ args }: { args: Bsv20MarketSalesArgs },
+			{ args }: { args: MarketSalesArgs },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const { limit, offset, dir, type, id, tick, pending, address } = args;
+				const { 
+					limit, 
+					offset, 
+					dir, 
+					tokenType, 
+					bsv20Type, 
+					id, 
+					tick, 
+					pending, 
+					address 
+				} = args;
+
+				// Determine the API endpoint based on tokenType
+				let baseUrl = "https://ordinals.gorillapool.io/api";
+				
+				if (tokenType === "bsv21") {
+					baseUrl += "/bsv21/market/sales";
+				} else {
+					// Default to BSV20 for "bsv20" or "all"
+					baseUrl += "/bsv20/market/sales";
+				}
 
 				// Build the URL with query parameters
-				const url = new URL(
-					"https://ordinals.gorillapool.io/api/bsv20/market/sales",
-				);
+				const url = new URL(baseUrl);
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
-				url.searchParams.append("type", type);
-				url.searchParams.append("pending", pending.toString());
+				
+				// Add type parameter for bsv20 only if specified
+				if (bsv20Type && bsv20Type !== "all") {
+					url.searchParams.append("type", bsv20Type);
+				}
 
 				if (id) url.searchParams.append("id", id);
 				if (tick) url.searchParams.append("tick", tick);
+				if (pending !== undefined) url.searchParams.append("pending", pending.toString());
 				if (address) url.searchParams.append("address", address);
 
-				// Fetch BSV20 market sales from GorillaPool API
+				// Fetch market sales from GorillaPool API
+				console.log(`Fetching market sales from: ${url.toString()}`);
 				const response = await fetch(url.toString());
 
 				if (!response.ok) {
@@ -92,7 +128,7 @@ export function registerBsv20MarketSalesTool(server: McpServer): void {
 					);
 				}
 
-				const data = (await response.json()) as Bsv20SaleResponse;
+				const data = (await response.json()) as MarketSaleResponse;
 
 				return {
 					content: [

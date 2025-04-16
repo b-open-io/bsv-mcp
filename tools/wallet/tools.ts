@@ -40,8 +40,6 @@ import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
-import { registerSendOrdinalsTool } from "./sendOrdinals";
-import type { sendOrdinalsArgsSchema } from "./sendOrdinals";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
@@ -74,7 +72,6 @@ type ToolArgSchemas = {
 	wallet_sendToAddress: typeof sendToAddressArgsSchema;
 	wallet_purchaseListing: typeof purchaseListingArgsSchema;
 	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
-	wallet_sendOrdinals: typeof sendOrdinalsArgsSchema;
 };
 
 // Define a type for the handler function with proper argument types
@@ -210,8 +207,6 @@ export function registerWalletTools(
 	// Register ordinals extension tools
 	// Register the wallet_createOrdinals tool
 	registerCreateOrdinalsTool(server, wallet);
-	// Register the wallet_sendOrdinals tool
-	registerSendOrdinalsTool(server, wallet);
 
 	return handlers;
 }
