@@ -4,14 +4,11 @@ FROM oven/bun:1
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy all application code first
+COPY . .
 
 # Install dependencies
 RUN bun install --frozen-lockfile
-
-# Copy application code
-COPY . .
 
 # Set user for security
 USER bun
