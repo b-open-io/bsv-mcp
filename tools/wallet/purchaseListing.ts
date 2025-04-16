@@ -6,6 +6,7 @@ import {
 	type ChangeResult,
 	type ExistingListing,
 	type Payment,
+	type Royalty,
 	type TokenUtxo,
 	type Utxo,
 	TokenType,
@@ -23,11 +24,27 @@ import { purchaseListingArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";
 
 // Define types for 1Sat API response
-interface ListingResponse {
+interface OrdUtxo {
 	txid: string;
 	vout: number;
 	satoshis: number;
 	script: string;
+	origin?: {
+		outpoint: string;
+		data?: {
+			map?: {
+				royalties?: string;
+				[key: string]: string | number | boolean | null | undefined;
+			};
+			insc?: {
+				text?: string;
+				file?: {
+					type?: string;
+					size?: number;
+				};
+			};
+		};
+	};
 	data?: {
 		list?: {
 			price: number;
@@ -79,7 +96,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 					);
 				}
 
-				const listingData = (await response.json()) as ListingResponse;
+				const listingData = (await response.json()) as OrdUtxo;
 
 				// Check if the listing is valid and has a price
 				if (!listingData.data?.list?.price) {
@@ -211,6 +228,16 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						listingUtxo,
 					};
 					
+					// Check for royalties in the NFT origin data
+					let royalties: Royalty[] = [];
+					if (listingData.origin?.data?.map?.royalties) {
+						try {
+							royalties = JSON.parse(listingData.origin.data.map.royalties);
+						} catch (error) {
+							console.warn("Failed to parse royalties:", error);
+						}
+					}
+					
 					transaction = await purchaseOrdListing({
 						utxos: paymentUtxos,
 						paymentPk,
@@ -218,6 +245,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						listing,
 						additionalPayments,
 						metaData,
+						royalties,
 					});
 				}
 
@@ -264,6 +292,8 @@ Please fund this wallet address with enough BSV to cover the purchase price
 								price: listingData.data.list.price,
 								marketFee,
 								marketFeeAddress: MARKET_WALLET_ADDRESS,
+								royaltiesPaid: args.listingType === "nft" && listingData.origin?.data?.map?.royalties ? 
+									JSON.parse(listingData.origin.data.map.royalties) : undefined,
 							}),
 						},
 					],

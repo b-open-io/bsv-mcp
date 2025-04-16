@@ -97,7 +97,6 @@ export function registerMarketSalesTool(server: McpServer): void {
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
-				url.searchParams.append("script", "true");
 				
 				// Add type parameter for bsv21 if needed
 				if (tokenType === "bsv21") {

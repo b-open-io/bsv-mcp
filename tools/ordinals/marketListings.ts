@@ -130,7 +130,6 @@ export function registerMarketListingsTool(server: McpServer): void {
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
-				url.searchParams.append("script", "true");
 				
 				// Add sort parameter based on token type
 				if (useTokenParams) {
