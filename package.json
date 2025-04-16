@@ -1,0 +1,30 @@
+{
+	"name": "bsv-mcp",
+	"module": "index.ts",
+	"type": "module",
+	"bin": {
+		"bsv-mcp": "./index.ts"
+	},
+	"private": false,
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/bun": "latest"
+	},
+	"peerDependencies": {
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"@bsv/sdk": "^1.4.19",
+		"@modelcontextprotocol/sdk": "^1.9.0",
+		"@types/node": "^22.14.1",
+		"js-1sat-ord": "^0.1.80",
+		"satoshi-token": "^0.0.4",
+		"tsx": "^4.19.3",
+		"zod": "^3.24.2"
+	},
+	"scripts": {
+		"lint": "biome check .",
+		"lint:fix": "biome check . --write",
+		"prepare": "chmod +x ./index.ts"
+	}
+}
