@@ -76,14 +76,15 @@ export const walletDecryptArgsSchema = z.object({
 export const walletEncryptionArgsSchema = z.object({
 	mode: z.enum(["encrypt", "decrypt"]).describe("Operation mode: 'encrypt' to encrypt data or 'decrypt' to decrypt data"),
 	data: z.array(z.number()).describe("Data to process: plaintext for encryption or ciphertext for decryption"),
-	protocolID: walletProtocolSchema,
-	keyID: z.string(),
-	privilegedReason: z.string().optional(),
+	protocolID: walletProtocolSchema.describe("Protocol identifier - common values are 'aes' for symmetric encryption or 'ecies' for asymmetric encryption"),
+	keyID: z.string().describe("Key identifier - use 'default' or 'primary' for the default wallet key"),
+	privilegedReason: z.string().optional().describe("Required reason for privileged operations"),
 	counterparty: z
 		.union([z.string(), z.literal("self"), z.literal("anyone")])
-		.optional(),
-	privileged: z.boolean().optional(),
-}).describe("Combined schema for encryption and decryption operations, with a mode parameter to switch between functions");
+		.optional()
+		.describe("Recipient of encryption. Use 'self' for personal encryption, or provide a specific key for a recipient"),
+	privileged: z.boolean().optional().describe("Indicates if operation requires elevated privileges"),
+}).describe("Combined schema for encryption and decryption operations. Use 'mode' to specify the operation type, with required parameters data, protocolID, and keyID.");
 
 // Create HMAC arguments
 export const createHmacArgsSchema = z.object({

@@ -173,7 +173,29 @@ export function registerWalletTools(
 	// Register combined wallet_encryption tool
 	registerTool(
 		"wallet_encryption",
-		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys. Supports both encryption of plaintext data and decryption of previously encrypted content. Use the 'mode' parameter to switch between operations.",
+		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.\n\n" +
+		"PARAMETERS:\n" +
+		"- mode: (required) Either \"encrypt\" to encrypt plaintext or \"decrypt\" to decrypt ciphertext\n" +
+		"- data: (required) Array of byte values to process (plaintext for encryption or ciphertext for decryption)\n" +
+		"- protocolID: (required) Protocol to use (commonly \"aes\" or \"ecies\")\n" +
+		"- keyID: (required) Key identifier (use \"default\" or \"primary\" for default wallet key)\n" +
+		"- counterparty: (optional) Set to \"self\" for personal encryption or specific key for recipient\n" +
+		"- privileged: (optional) Boolean indicating if operation requires elevated privileges\n\n" +
+		"EXAMPLES:\n" +
+		"1. Encrypt data:\n" +
+		"   {\n" +
+		"     \"mode\": \"encrypt\",\n" +
+		"     \"data\": [84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116],\n" +
+		"     \"protocolID\": \"aes\",\n" +
+		"     \"keyID\": \"default\"\n" +
+		"   }\n\n" +
+		"2. Decrypt previously encrypted data:\n" +
+		"   {\n" +
+		"     \"mode\": \"decrypt\",\n" +
+		"     \"data\": [encrypted bytes from previous response],\n" +
+		"     \"protocolID\": \"aes\",\n" +
+		"     \"keyID\": \"default\"\n" +
+		"   }",
 		{ args: walletEncryptionArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof walletEncryptionArgsSchema> },
