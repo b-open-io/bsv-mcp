@@ -138,45 +138,45 @@ The toolkit is organized into several categories:
 
 Wallet tools provide core BSV wallet functionality:
 
-| Tool Name | Description |
-|-----------|-------------|
-| `wallet_getPublicKey` | Retrieves a public key for a specified protocol and key ID |
-| `wallet_createSignature` | Creates a cryptographic signature for the provided data |
-| `wallet_verifySignature` | Verifies a cryptographic signature against the provided data |
-| `wallet_encryption` | Combined tool for encrypting and decrypting data using the wallet's cryptographic keys (replaces separate encrypt/decrypt tools) |
-| `wallet_getAddress` | Returns a BSV address for the current wallet or a derived path |
-| `wallet_sendToAddress` | Sends BSV to a specified address (supports BSV or USD amounts) |
-| `wallet_purchaseListing` | Purchases NFTs or BSV-20/BSV-21 tokens from marketplace listings |
-| `wallet_createOrdinals` | Creates and inscribes ordinals on the BSV blockchain |
+| Tool Name | Description | Example Output |
+|-----------|-------------|----------------|
+| `wallet_getPublicKey` | Retrieves a public key for a specified protocol and key ID | `{"publicKey":"032d0c73eb9270e9e009fd1f9dd77e19cf764fbad5f799560c4e8fd414e40d6fc2"}` |
+| `wallet_createSignature` | Creates a cryptographic signature for the provided data | `{"signature":[144,124,85,193,226,45,140,249,9,177,11,167,33,215,209,38,...]}` |
+| `wallet_verifySignature` | Verifies a cryptographic signature against the provided data | `{"isValid":true}` |
+| `wallet_encryption` | Combined tool for encrypting and decrypting data using the wallet's cryptographic keys (replaces separate encrypt/decrypt tools) | Encrypt: `{"ciphertext":[89,32,155,38,125,22,49,226,26,...]}` <br> Decrypt: `{"plaintext":[104,101,108,108,111,32,119,111,114,108,100]}` |
+| `wallet_getAddress` | Returns a BSV address for the current wallet or a derived path | `{"address":"1ExampleBsvAddressXXXXXXXXXXXXXXXXX","status":"ok"}` |
+| `wallet_sendToAddress` | Sends BSV to a specified address (supports BSV or USD amounts) | `{"status":"success","txid":"a1b2c3d4e5f6...","satoshis":1000000}` |
+| `wallet_purchaseListing` | Purchases NFTs or BSV-20/BSV-21 tokens from marketplace listings | `{"status":"success","txid":"a1b2c3d4e5f6...","type":"nft","origin":"abcdef123456..."}` |
+| `wallet_createOrdinals` | Creates and inscribes ordinals on the BSV blockchain | `{"txid":"a1b2c3d4e5f6...","inscriptionAddress":"1ExampleAddress...","contentType":"image/png"}` |
 
 ### BSV Tools
 
 Tools for interacting with the BSV blockchain and network:
 
-| Tool Name | Description |
-|-----------|-------------|
-| `bsv_getPrice` | Gets the current BSV price from an exchange API |
-| `bsv_decodeTransaction` | Decodes a BSV transaction and returns detailed information |
+| Tool Name | Description | Example Output |
+|-----------|-------------|----------------|
+| `bsv_getPrice` | Gets the current BSV price from an exchange API | `Current BSV price: $38.75 USD` |
+| `bsv_decodeTransaction` | Decodes a BSV transaction and returns detailed information | `{"txid":"a1b2c3d4e5f6...","version":1,"locktime":0,"size":225,"inputs":[...],"outputs":[...]}` |
 
 ### Ordinals Tools
 
 Tools for working with ordinals (NFTs) on BSV:
 
-| Tool Name | Description |
-|-----------|-------------|
-| `ordinals_getInscription` | Retrieves detailed information about a specific inscription |
-| `ordinals_searchInscriptions` | Searches for inscriptions based on various criteria |
-| `ordinals_marketListings` | Retrieves market listings for NFTs, BSV-20, and BSV-21 tokens with unified interface |
-| `ordinals_marketSales` | Gets information about BSV-20 and BSV-21 token market sales |
-| `ordinals_getBsv20ById` | Retrieves details about a specific BSV20 token by ID |
+| Tool Name | Description | Example Output |
+|-----------|-------------|----------------|
+| `ordinals_getInscription` | Retrieves detailed information about a specific inscription | `{"id":"a1b2c3d4e5f6...","origin":"a1b2c3d4e5f6...","contentType":"image/png","content":"iVBORw0KGgoAAA..."}` |
+| `ordinals_searchInscriptions` | Searches for inscriptions based on various criteria | `{"results":[{"id":"a1b2c3...","contentType":"image/png","owner":"1Example..."},...]}` |
+| `ordinals_marketListings` | Retrieves market listings for NFTs, BSV-20, and BSV-21 tokens with unified interface | `{"results":[{"txid":"a1b2c3...","price":9990000,"tick":"PEPE","listing":true},...]}` |
+| `ordinals_marketSales` | Gets information about BSV-20 and BSV-21 token market sales | `{"results":[{"txid":"a1b2c3...","price":34710050,"tick":"$BTC","sale":true},...]}` |
+| `ordinals_getTokenByIdOrTicker` | Retrieves details about a specific BSV20 token by ID | `{"tick":"PEPE","max":"21000000","lim":"1000","dec":"2"}` |
 
 ### Utility Tools
 
 General-purpose utility functions:
 
-| Tool Name | Description |
-|-----------|-------------|
-| `utils_convertData` | Converts data between different encodings (utf8, hex, base64, binary) |
+| Tool Name | Description | Example Output |
+|-----------|-------------|----------------|
+| `utils_convertData` | Converts data between different encodings (utf8, hex, base64, binary) | `68656c6c6f20776f726c64` (UTF-8 "hello world" converted to hex) |
 
 ## Using the Tools with MCP
 
@@ -232,6 +232,11 @@ tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
 For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Context Protocol.
 
 ## Recent Updates
+
+### Infrastructure Improvements
+- **Price Caching**: Added intelligent caching for BSV price data, reducing API calls and improving performance.
+- **Enhanced Documentation**: Added detailed example outputs for all tools to show expected results.
+- **Better Validation**: Implemented early validation for private keys with clear error messages for troubleshooting.
 
 ### Unified Encryption Tool
 - **Combined Wallet Encryption**: The `wallet_encrypt` and `wallet_decrypt` tools have been merged into a single `wallet_encryption` tool with a mode parameter to switch between encryption and decryption operations.

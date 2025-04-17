@@ -5,33 +5,7 @@ import { toSatoshi } from "satoshi-token";
 import type { z } from "zod";
 import { sendToAddressArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";
-
-/**
- * Fetch the current BSV price from whatsonchain API
- * @returns The BSV price in USD
- */
-async function getBsvPrice(): Promise<number> {
-	try {
-		const res = await fetch(
-			"https://api.whatsonchain.com/v1/bsv/main/exchangerate",
-		);
-		if (!res.ok) throw new Error("Failed to fetch BSV price");
-
-		// Parse the response with proper type casting
-		const data = (await res.json()) as {
-			rate: string;
-			currency: string;
-			time: number;
-		};
-		const price = Number(data.rate);
-
-		if (Number.isNaN(price) || price <= 0) throw new Error("Invalid BSV price");
-		return price;
-	} catch (error) {
-		console.error("BSV price fetch error:", error);
-		throw error;
-	}
-}
+import { getBsvPriceWithCache } from "../bsv/getPrice";
 
 // Use the schema imported from schemas.ts
 export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
@@ -62,7 +36,7 @@ export function registerSendToAddressTool(server: McpServer, wallet: Wallet) {
 				let satoshis: number;
 				if (currency === "USD") {
 					// Get current BSV price
-					const bsvPriceUsd = await getBsvPrice();
+					const bsvPriceUsd = await getBsvPriceWithCache();
 
 					// Convert USD to BSV
 					const bsvAmount = amount / bsvPriceUsd;

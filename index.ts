@@ -6,16 +6,43 @@ import { registerAllTools } from "./tools";
 import { registerWalletTools } from "./tools/wallet/tools";
 import { Wallet } from "./tools/wallet/wallet";
 
+/**
+ * Validate the private key from environment variables
+ * Exits the process with an error message if validation fails
+ */
+function validatePrivateKey(): PrivateKey {
+	const privateKeyWif = process.env.PRIVATE_KEY_WIF;
+	
+	// Check if private key is set
+	if (!privateKeyWif) {
+		console.error("\x1b[31mError: PRIVATE_KEY_WIF environment variable is not set\x1b[0m");
+		console.error("Please set this variable with a valid Bitcoin SV private key in WIF format");
+		console.error("Example: PRIVATE_KEY_WIF=your_private_key_wif bun run index.ts");
+		process.exit(1);
+	}
+	
+	// Validate the private key format
+	try {
+		return PrivateKey.fromWif(privateKeyWif);
+	} catch (error) {
+		console.error("\x1b[31mError: Invalid private key format\x1b[0m");
+		console.error("The PRIVATE_KEY_WIF provided is not a valid Bitcoin SV private key in WIF format");
+		console.error("Please check your key and try again");
+		process.exit(1);
+	}
+}
+
+// Validate private key early before starting the server
+const privKey = validatePrivateKey();
+console.log("\x1b[32mPrivate key validated successfully\x1b[0m");
+
 const server = new McpServer({
 	name: "Bitcoin SV MCP",
 	version: "0.0.1",
 });
 
-// Singleton wallet instance (for demo, could be replaced with real key management)
-// If PRIVATE_KEY_WIF is set in the environment, use it to instantiate the Wallet
-const privateKeyWif = process.env.PRIVATE_KEY_WIF;
-const privKey = privateKeyWif ? PrivateKey.fromWif(privateKeyWif) : undefined;
-const wallet = privKey ? new Wallet(privKey) : new Wallet();
+// Initialize wallet with the validated private key
+const wallet = new Wallet(privKey);
 
 // Register wallet tools separately (needs wallet instance)
 registerWalletTools(server, wallet);
@@ -25,7 +52,7 @@ registerAllTools(server);
 
 // Debug: Log all registered tools
 console.log("Registered tools:", Object.keys(server));
-console.log("MCP Server:", server);
+console.log("MCP Server ready 🚀");
 
 // Connect to the transport
 const transport = new StdioServerTransport();
