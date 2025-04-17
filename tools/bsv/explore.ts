@@ -17,6 +17,7 @@ enum ExploreEndpoint {
   // Block endpoints
   BLOCK_BY_HASH = "block_by_hash",
   BLOCK_BY_HEIGHT = "block_by_height",
+  TAG_COUNT_BY_HEIGHT = "tag_count_by_height",
   
   // Transaction endpoints
   TX_BY_HASH = "tx_by_hash",
@@ -65,7 +66,8 @@ export function registerExploreTool(server: McpServer): void {
     "- peer_info: Connected peer statistics\n\n" +
     "BLOCK DATA:\n" +
     "- block_by_hash: Complete block data via hash (requires blockHash parameter)\n" +
-    "- block_by_height: Complete block data via height (requires blockHeight parameter)\n\n" +
+    "- block_by_height: Complete block data via height (requires blockHeight parameter)\n" +
+    "- tag_count_by_height: Stats on tag count for a specific block via height (requires blockHeight parameter)\n\n" +
     "TRANSACTION DATA:\n" +
     "- tx_by_hash: Detailed transaction data (requires txHash parameter)\n" +
     "- tx_raw: Raw transaction hex data (requires txHash parameter)\n" +
@@ -86,8 +88,8 @@ export function registerExploreTool(server: McpServer): void {
           throw new Error("blockHash is required for block_by_hash endpoint");
         }
         
-        if (params.endpoint === ExploreEndpoint.BLOCK_BY_HEIGHT && params.blockHeight === undefined) {
-          throw new Error("blockHeight is required for block_by_height endpoint");
+        if ((params.endpoint === ExploreEndpoint.BLOCK_BY_HEIGHT || params.endpoint === ExploreEndpoint.TAG_COUNT_BY_HEIGHT) && params.blockHeight === undefined) {
+          throw new Error("blockHeight is required for block_by_height and tag_count_by_height endpoints");
         }
 
         if ([ExploreEndpoint.TX_BY_HASH, ExploreEndpoint.TX_RAW, ExploreEndpoint.TX_RECEIPT].includes(params.endpoint) && !params.txHash) {
@@ -119,6 +121,9 @@ export function registerExploreTool(server: McpServer): void {
             break;
           case ExploreEndpoint.BLOCK_BY_HEIGHT:
             apiUrl += `/block/height/${params.blockHeight}`;
+            break;
+          case ExploreEndpoint.TAG_COUNT_BY_HEIGHT:
+            apiUrl += `/block/tagcount/height/${params.blockHeight}/stats`;
             break;
           case ExploreEndpoint.TX_BY_HASH:
             apiUrl += `/tx/hash/${params.txHash}`;

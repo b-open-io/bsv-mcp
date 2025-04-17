@@ -266,6 +266,7 @@ The tool supports the following endpoint categories and specific endpoints:
 |----------|-------------|---------------------|------------------|
 | `block_by_hash` | Complete block data via hash | `blockHash` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
 | `block_by_height` | Complete block data via height | `blockHeight` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
+| `tag_count_by_height` | Stats on tag count for a specific block | `blockHeight` | `{"tags":{"amp":3,"bitkey":5,"metanet":12,"planaria":7,"b":120}}` |
 
 #### Transaction Data
 | Endpoint | Description | Required Parameters | Example Response |
@@ -292,6 +293,7 @@ The `bsv_explore` tool can be used with natural language prompts like:
 ```
 "Get the current Bitcoin SV blockchain information"
 "Show me block #800000 details"
+"Get tag count statistics for block #800000"
 "Fetch transaction history for address 1ExampleBsvAddressXXXXXXXX"
 "Get unspent outputs for my wallet address"
 "Check transaction details for txid a1b2c3d4e5f6..."
