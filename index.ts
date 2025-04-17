@@ -34,11 +34,10 @@ function validatePrivateKey(): PrivateKey {
 
 // Validate private key early before starting the server
 const privKey = validatePrivateKey();
-console.log("\x1b[32mPrivate key validated successfully\x1b[0m");
 
 const server = new McpServer({
 	name: "Bitcoin SV MCP Server",
-	version: "0.0.13",
+	version: "0.0.14",
 });
 
 // Initialize wallet with the validated private key
@@ -49,10 +48,6 @@ registerWalletTools(server, wallet);
 
 // Register all other tools (BSV, Ordinals, Utils, etc.)
 registerAllTools(server);
-
-// Debug: Log all registered tools
-console.log("Registered tools:", Object.keys(server));
-console.log("MCP Server ready 🚀");
 
 // Connect to the transport
 const transport = new StdioServerTransport();

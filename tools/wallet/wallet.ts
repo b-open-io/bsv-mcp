@@ -94,7 +94,6 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 			this.nftUtxos = nftUtxos;
 			this.lastUtxoFetch = Date.now();
 
-			// console.log(`Fetched ${utxos.length} UTXOs for address ${address}`);
 		} catch (error) {
 			console.error("Error refreshing UTXOs:", error);
 			throw error;
