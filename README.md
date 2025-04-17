@@ -177,7 +177,7 @@ General-purpose utility functions:
 
 | Tool Name | Description | Example Output |
 |-----------|-------------|----------------|
-| `utils_convertData` | Converts data between different encodings (utf8, hex, base64, binary) | `68656c6c6f20776f726c64` (UTF-8 "hello world" converted to hex) |
+| `utils_convertData` | Converts data between different encoding formats (utf8, hex, base64, binary).<br><br>**Parameters:**<br>- `data` (required): The string to convert<br>- `from` (required): Source encoding format (utf8, hex, base64, or binary)<br>- `to` (required): Target encoding format (utf8, hex, base64, or binary)<br><br>**Examples:**<br>- UTF-8 to hex: `{"data": "hello world", "from": "utf8", "to": "hex"}` → `68656c6c6f20776f726c64`<br>- UTF-8 to base64: `{"data": "Hello World", "from": "utf8", "to": "base64"}` → `SGVsbG8gV29ybGQ=`<br>- base64 to UTF-8: `{"data": "SGVsbG8gV29ybGQ=", "from": "base64", "to": "utf8"}` → `Hello World`<br>- hex to base64: `{"data": "68656c6c6f20776f726c64", "from": "hex", "to": "base64"}` → `aGVsbG8gd29ybGQ=`<br><br>**Notes:**<br>- All parameters are required<br>- The tool returns the converted data as a string<br>- For binary conversion, data is represented as an array of byte values | `"SGVsbG8gV29ybGQ="` (UTF-8 "Hello World" converted to base64) |
 
 ## Using the Tools with MCP
 
