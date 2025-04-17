@@ -157,6 +157,7 @@ Tools for interacting with the BSV blockchain and network:
 |-----------|-------------|----------------|
 | `bsv_getPrice` | Gets the current BSV price from an exchange API | `Current BSV price: $38.75 USD` |
 | `bsv_decodeTransaction` | Decodes a BSV transaction and returns detailed information | `{"txid":"a1b2c3d4e5f6...","version":1,"locktime":0,"size":225,"inputs":[...],"outputs":[...]}` |
+| `bsv_explore` | Comprehensive blockchain explorer tool accessing WhatsOnChain API endpoints | `{"chain_info":{"chain":"main","blocks":826458,"headers":826458,"bestblockhash":"0000000000..."}}` |
 
 ### Ordinals Tools
 
@@ -201,6 +202,11 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 ### Blockchain Operations
 - "What is the current BSV price?"
 - "Decode this BSV transaction: (transaction hex or ID)"
+- "Get the latest Bitcoin SV chain information"
+- "Show me block details for height 800000"
+- "Explore transaction history for address 1ExampleBsvAddressXXXX"
+- "Check unspent outputs (UTXOs) for my wallet address"
+- "Get details for transaction with hash a1b2c3d4e5f6..."
 
 ### Data Conversion
 - "Convert 'Hello World' from UTF-8 to hex format"
@@ -233,22 +239,81 @@ For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Conte
 
 ## Recent Updates
 
-### Infrastructure Improvements
-- **Price Caching**: Added intelligent caching for BSV price data, reducing API calls and improving performance.
-- **Enhanced Documentation**: Added detailed example outputs for all tools to show expected results.
-- **Better Validation**: Implemented early validation for private keys with clear error messages for troubleshooting.
+- **Blockchain Explorer**: Added `bsv_explore` tool for WhatsOnChain API access with mainnet/testnet support
+- **Unified Tools**: Merged `wallet_encrypt`/`wallet_decrypt` into single `wallet_encryption` tool
+- **Enhanced Marketplace**: Support for NFTs, BSV-20/21 tokens in listings, sales and purchases
+- **Performance**: Added price caching and optimized API endpoint structure
+- **Improved Validation**: Better error handling for private keys and parameters
 
-### Unified Encryption Tool
-- **Combined Wallet Encryption**: The `wallet_encrypt` and `wallet_decrypt` tools have been merged into a single `wallet_encryption` tool with a mode parameter to switch between encryption and decryption operations.
+## Bitcoin SV Blockchain Explorer
 
-### Enhanced Marketplace Tools
-- **Unified Market Listings**: The `ordinals_marketListings` tool now supports NFTs, BSV-20, and BSV-21 tokens through a single interface with appropriate filtering.
-- **Improved Market Sales**: The `ordinals_marketSales` tool (renamed from `ordinals_bsv20MarketSales`) now supports both BSV-20 and BSV-21 token sales.
-- **Token Purchases**: The `wallet_purchaseListing` tool has been enhanced to support purchasing both NFTs and BSV-20/BSV-21 tokens.
+The `bsv_explore` tool provides comprehensive access to the Bitcoin SV blockchain through the WhatsOnChain API. This powerful explorer tool allows you to query various aspects of the blockchain, including chain data, blocks, transactions, and address information.
 
-### API Refinements
-- Standardized endpoint structure for interactions with the GorillaPool API.
-- Improved parameter handling for different token types and marketplace actions.
+### Available Endpoints
+
+The tool supports the following endpoint categories and specific endpoints:
+
+#### Chain Data
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `chain_info` | Network statistics, difficulty, and chain work | None | `{"chain":"main","blocks":826458,"headers":826458,"bestblockhash":"000000000000..."}` |
+| `chain_tips` | Current chain tips including heights and states | None | `[{"height":826458,"hash":"000000000000...","branchlen":0,"status":"active"}]` |
+| `circulating_supply` | Current BSV circulating supply | None | `{"bsv":21000000}` |
+| `peer_info` | Connected peer statistics | None | `[{"addr":"1.2.3.4:8333","services":"000000000000...","lastsend":1621234567}]` |
+
+#### Block Data
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `block_by_hash` | Complete block data via hash | `blockHash` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
+| `block_by_height` | Complete block data via height | `blockHeight` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
+
+#### Transaction Data
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `tx_by_hash` | Detailed transaction data | `txHash` | `{"txid":"a1b2c3d4e5f6...","version":1,"locktime":0,"size":225,...}` |
+| `tx_raw` | Raw transaction hex data | `txHash` | `"01000000012345abcdef..."` |
+| `tx_receipt` | Transaction receipt | `txHash` | `{"blockHash":"000000000000...","blockHeight":800000,"confirmations":26458}` |
+
+#### Address Data
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `address_history` | Transaction history for address | `address`, optional: `limit` | `[{"tx_hash":"a1b2c3d4e5f6...","height":800000},...]` |
+| `address_utxos` | Unspent outputs for address | `address` | `[{"tx_hash":"a1b2c3d4e5f6...","tx_pos":0,"value":100000},...]` |
+
+#### Network
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `health` | API health check | None | `{"status":"synced"}` |
+
+### Usage Examples
+
+The `bsv_explore` tool can be used with natural language prompts like:
+
+```
+"Get the current Bitcoin SV blockchain information"
+"Show me block #800000 details"
+"Fetch transaction history for address 1ExampleBsvAddressXXXXXXXX"
+"Get unspent outputs for my wallet address"
+"Check transaction details for txid a1b2c3d4e5f6..."
+"What is the current BSV circulating supply?"
+```
+
+Under the hood, the tool accepts parameters to specify which data to retrieve:
+
+- `endpoint`: The specific WhatsOnChain endpoint to query (e.g., `chain_info`, `tx_by_hash`)
+- `network`: The BSV network to use (`main` or `test`)
+- Additional parameters as required by the specific endpoint:
+  - `blockHash`: For block_by_hash endpoint
+  - `blockHeight`: For block_by_height endpoint
+  - `txHash`: For transaction-related endpoints
+  - `address`: For address-related endpoints
+  - `limit`: Optional pagination limit for address_history
+
+### Network Options
+
+The tool supports both mainnet and testnet:
+- `main`: Bitcoin SV mainnet (default)
+- `test`: Bitcoin SV testnet
 
 ## Development
 
