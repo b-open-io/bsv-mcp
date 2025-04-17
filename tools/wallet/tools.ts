@@ -39,6 +39,7 @@ import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
+import { Utils } from "@bsv/sdk";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
@@ -176,24 +177,23 @@ export function registerWalletTools(
 		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.\n\n" +
 		"PARAMETERS:\n" +
 		"- mode: (required) Either \"encrypt\" to encrypt plaintext or \"decrypt\" to decrypt ciphertext\n" +
-		"- data: (required) Array of byte values to process (plaintext for encryption or ciphertext for decryption)\n" +
-		"- protocolID: (required) Protocol to use (commonly \"aes\" or \"ecies\")\n" +
-		"- keyID: (required) Key identifier (use \"default\" or \"primary\" for default wallet key)\n" +
-		"- counterparty: (optional) Set to \"self\" for personal encryption or specific key for recipient\n" +
-		"- privileged: (optional) Boolean indicating if operation requires elevated privileges\n\n" +
+		"- data: (required) Text string or array of numbers to process (plaintext for encryption or ciphertext for decryption)\n" +
+		"- encoding: (optional) For text input, the encoding format (utf8, hex, base64) - default is utf8\n" +
+		"- protocolID: (required) Protocol identifier - common values are 'aes' for symmetric encryption or 'ecies' for asymmetric encryption\n" +
+		"- keyID: (required) Key identifier - use 'default' or 'primary' for the default wallet key\n\n" +
 		"EXAMPLES:\n" +
-		"1. Encrypt data:\n" +
+		"1. Encrypt text data:\n" +
 		"   {\n" +
 		"     \"mode\": \"encrypt\",\n" +
-		"     \"data\": [84, 104, 105, 115, 32, 105, 115, 32, 116, 101, 115, 116],\n" +
-		"     \"protocolID\": \"aes\",\n" +
+		"     \"data\": \"Hello World\",\n" +
+		"     \"protocolID\": [1, \"aes\"],\n" +
 		"     \"keyID\": \"default\"\n" +
 		"   }\n\n" +
 		"2. Decrypt previously encrypted data:\n" +
 		"   {\n" +
 		"     \"mode\": \"decrypt\",\n" +
 		"     \"data\": [encrypted bytes from previous response],\n" +
-		"     \"protocolID\": \"aes\",\n" +
+		"     \"protocolID\": [1, \"aes\"],\n" +
 		"     \"keyID\": \"default\"\n" +
 		"   }",
 		{ args: walletEncryptionArgsSchema },
@@ -202,32 +202,59 @@ export function registerWalletTools(
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				let result: { ciphertext?: number[]; plaintext?: number[] };
-				if (args.mode === "encrypt") {
-					// For encryption, the data is treated as plaintext
-					result = await wallet.encrypt({
-						plaintext: args.data,
-						protocolID: args.protocolID,
-						keyID: args.keyID,
-						privilegedReason: args.privilegedReason,
-						counterparty: args.counterparty,
-						privileged: args.privileged,
-					});
+				const { mode, data, protocolID, keyID, encoding } = args;
+				
+				// Convert string data to binary if needed
+				let binaryData: number[];
+				if (Array.isArray(data)) {
+					binaryData = data;
 				} else {
-					// For decryption, the data is treated as ciphertext
-					result = await wallet.decrypt({
-						ciphertext: args.data,
-						protocolID: args.protocolID,
-						keyID: args.keyID,
-						privilegedReason: args.privilegedReason,
-						counterparty: args.counterparty,
-						privileged: args.privileged,
-					});
+					// String data with encoding
+					const { toArray } = Utils;
+					binaryData = toArray(data, encoding || "utf8");
 				}
+				
+				let result: { ciphertext?: number[]; plaintext?: number[] } = {};
+				if (mode === "encrypt") {
+					result = await wallet.encrypt({
+						plaintext: binaryData,
+						protocolID,
+						keyID,
+					});
+				} else if (mode === "decrypt") {
+					result = await wallet.decrypt({
+						ciphertext: binaryData,
+						protocolID,
+						keyID,
+					});
+					
+					// For decryption, convert plaintext back to string if it's likely UTF-8 text
+					if (result.plaintext) {
+						try {
+							const { toUTF8 } = Utils;
+							const textResult = toUTF8(result.plaintext);
+							// If conversion succeeds and seems like valid text, return as string
+							if (textResult && textResult.length > 0) {
+								return { 
+									content: [{ 
+										type: "text", 
+										text: JSON.stringify({ plaintext: textResult }) 
+									}] 
+								};
+							}
+						} catch (e) {
+							// If UTF-8 conversion fails, continue with binary result
+						}
+					}
+				}
+				
 				return { content: [{ type: "text", text: JSON.stringify(result) }] };
-			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: msg }], isError: true };
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				return { 
+					content: [{ type: "text", text: `Error during ${args.mode}: ${errorMessage}` }],
+					isError: true
+				};
 			}
 		},
 	);

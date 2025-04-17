@@ -143,7 +143,7 @@ Wallet tools provide core BSV wallet functionality:
 | `wallet_getPublicKey` | Retrieves a public key for a specified protocol and key ID | `{"publicKey":"032d0c73eb9270e9e009fd1f9dd77e19cf764fbad5f799560c4e8fd414e40d6fc2"}` |
 | `wallet_createSignature` | Creates a cryptographic signature for the provided data | `{"signature":[144,124,85,193,226,45,140,249,9,177,11,167,33,215,209,38,...]}` |
 | `wallet_verifySignature` | Verifies a cryptographic signature against the provided data | `{"isValid":true}` |
-| `wallet_encryption` | Combined tool for encrypting and decrypting data using the wallet's cryptographic keys (replaces separate encrypt/decrypt tools) | Encrypt: `{"ciphertext":[89,32,155,38,125,22,49,226,26,...]}` <br> Decrypt: `{"plaintext":[104,101,108,108,111,32,119,111,114,108,100]}` |
+| `wallet_encryption` | Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.<br><br>**Examples:**<br>1. Encrypt text: `"Encrypt this message: Hello World"`<br>2. Decrypt data: `"Decrypt this data that was previously encrypted for me"` | Encrypt: `{"ciphertext":[89,32,155,38,125,22,49,226,26,...]}` <br> Decrypt: `{"plaintext":"hello world"}` |
 | `wallet_getAddress` | Returns a BSV address for the current wallet or a derived path | `{"address":"1ExampleBsvAddressXXXXXXXXXXXXXXXXX","status":"ok"}` |
 | `wallet_sendToAddress` | Sends BSV to a specified address (supports BSV or USD amounts) | `{"status":"success","txid":"a1b2c3d4e5f6...","satoshis":1000000}` |
 | `wallet_purchaseListing` | Purchases NFTs or BSV-20/BSV-21 tokens from marketplace listings | `{"status":"success","txid":"a1b2c3d4e5f6...","type":"nft","origin":"abcdef123456..."}` |
