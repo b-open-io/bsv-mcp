@@ -38,6 +38,7 @@ import type {
 	ListOutputsResult,
 	ProveCertificateArgs,
 	ProveCertificateResult,
+	PubKeyHex,
 	RelinquishCertificateArgs,
 	RelinquishCertificateResult,
 	RelinquishOutputArgs,
@@ -127,7 +128,15 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 	}
 
 	async getPublicKey(args: GetPublicKeyArgs): Promise<GetPublicKeyResult> {
-		return Promise.reject(new Error("Not implemented"));
+		const privateKey = this.getPrivateKey();
+		if (!privateKey) {
+			throw new Error("No private key available");
+		}
+		
+		const publicKey = privateKey.toPublicKey();
+		return {
+			publicKey: publicKey.toDER("hex") as PubKeyHex,
+		};
 	}
 	async revealCounterpartyKeyLinkage(
 		args: RevealCounterpartyKeyLinkageArgs,

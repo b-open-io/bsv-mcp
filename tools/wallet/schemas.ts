@@ -72,6 +72,19 @@ export const walletDecryptArgsSchema = z.object({
 	privileged: z.boolean().optional(),
 });
 
+// Combined wallet encryption/decryption args
+export const walletEncryptionArgsSchema = z.object({
+	mode: z.enum(["encrypt", "decrypt"]).describe("Operation mode: 'encrypt' to encrypt data or 'decrypt' to decrypt data"),
+	data: z.array(z.number()).describe("Data to process: plaintext for encryption or ciphertext for decryption"),
+	protocolID: walletProtocolSchema,
+	keyID: z.string(),
+	privilegedReason: z.string().optional(),
+	counterparty: z
+		.union([z.string(), z.literal("self"), z.literal("anyone")])
+		.optional(),
+	privileged: z.boolean().optional(),
+}).describe("Combined schema for encryption and decryption operations, with a mode parameter to switch between functions");
+
 // Create HMAC arguments
 export const createHmacArgsSchema = z.object({
 	message: z.string(),
@@ -296,3 +309,4 @@ export const purchaseListingArgsSchema = z.object({
 // Export types
 export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
 export type PurchaseListingArgs = z.infer<typeof purchaseListingArgsSchema>;
+export type WalletEncryptionArgs = z.infer<typeof walletEncryptionArgsSchema>;

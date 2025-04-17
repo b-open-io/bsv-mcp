@@ -31,8 +31,7 @@ import {
 	type purchaseListingArgsSchema,
 	type sendToAddressArgsSchema,
 	verifySignatureArgsSchema,
-	walletDecryptArgsSchema,
-	walletEncryptArgsSchema,
+	walletEncryptionArgsSchema,
 } from "./schemas";
 
 import { registerCreateOrdinalsTool } from "./createOrdinals";
@@ -46,8 +45,7 @@ type ToolArgSchemas = {
 	wallet_getPublicKey: typeof getPublicKeyArgsSchema;
 	wallet_createSignature: typeof createSignatureArgsSchema;
 	wallet_verifySignature: typeof verifySignatureArgsSchema;
-	wallet_encrypt: typeof walletEncryptArgsSchema;
-	wallet_decrypt: typeof walletDecryptArgsSchema;
+	wallet_encryption: typeof walletEncryptionArgsSchema;
 	wallet_listActions: typeof listActionsArgsSchema;
 	wallet_listOutputs: typeof listOutputsArgsSchema;
 	wallet_getNetwork: typeof emptyArgsSchema;
@@ -94,11 +92,12 @@ export function registerWalletTools(
 	// Handle tools registration with properly typed parameters
 	function registerTool<T extends z.ZodType>(
 		name: keyof ToolArgSchemas,
+		description: string,
 		schema: { args: T },
 		handler: ToolCallback<{ args: T }>,
 	): void {
 		// Register all tools normally
-		server.tool(name, schema, handler);
+		server.tool(name, description, schema, handler);
 		handlers[name] = handler as ToolHandler;
 	}
 
@@ -117,6 +116,7 @@ export function registerWalletTools(
 	// Register wallet_getPublicKey
 	registerTool(
 		"wallet_getPublicKey",
+		"Retrieves the current wallet's public key. This public key can be used for cryptographic operations like signature verification or encryption.",
 		{ args: getPublicKeyArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof getPublicKeyArgsSchema> },
@@ -135,6 +135,7 @@ export function registerWalletTools(
 	// Register wallet_createSignature
 	registerTool(
 		"wallet_createSignature",
+		"Creates a cryptographic signature using the wallet's private key. This tool enables secure message signing and transaction authorization, supporting various signature protocols.",
 		{ args: createSignatureArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof createSignatureArgsSchema> },
@@ -153,6 +154,7 @@ export function registerWalletTools(
 	// Register wallet_verifySignature
 	registerTool(
 		"wallet_verifySignature",
+		"Verifies a cryptographic signature against a message or data. This tool supports various verification protocols and can validate signatures from both the wallet's own keys and external public keys.",
 		{ args: verifySignatureArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof verifySignatureArgsSchema> },
@@ -168,16 +170,38 @@ export function registerWalletTools(
 		},
 	);
 
-	// Register wallet_encrypt
+	// Register combined wallet_encryption tool
 	registerTool(
-		"wallet_encrypt",
-		{ args: walletEncryptArgsSchema },
+		"wallet_encryption",
+		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys. Supports both encryption of plaintext data and decryption of previously encrypted content. Use the 'mode' parameter to switch between operations.",
+		{ args: walletEncryptionArgsSchema },
 		async (
-			{ args }: { args: z.infer<typeof walletEncryptArgsSchema> },
+			{ args }: { args: z.infer<typeof walletEncryptionArgsSchema> },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const result = await wallet.encrypt(args);
+				let result: { ciphertext?: number[]; plaintext?: number[] };
+				if (args.mode === "encrypt") {
+					// For encryption, the data is treated as plaintext
+					result = await wallet.encrypt({
+						plaintext: args.data,
+						protocolID: args.protocolID,
+						keyID: args.keyID,
+						privilegedReason: args.privilegedReason,
+						counterparty: args.counterparty,
+						privileged: args.privileged,
+					});
+				} else {
+					// For decryption, the data is treated as ciphertext
+					result = await wallet.decrypt({
+						ciphertext: args.data,
+						protocolID: args.protocolID,
+						keyID: args.keyID,
+						privilegedReason: args.privilegedReason,
+						counterparty: args.counterparty,
+						privileged: args.privileged,
+					});
+				}
 				return { content: [{ type: "text", text: JSON.stringify(result) }] };
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -186,27 +210,8 @@ export function registerWalletTools(
 		},
 	);
 
-	// Register wallet_decrypt
-	registerTool(
-		"wallet_decrypt",
-		{ args: walletDecryptArgsSchema },
-		async (
-			{ args }: { args: z.infer<typeof walletDecryptArgsSchema> },
-			extra: RequestHandlerExtra,
-		) => {
-			try {
-				const result = await wallet.decrypt(args);
-				return { content: [{ type: "text", text: JSON.stringify(result) }] };
-			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: msg }], isError: true };
-			}
-		},
-	);
-
-	// Register ordinals extension tools
-	// Register the wallet_createOrdinals tool
+	// Register createOrdinals tool
 	registerCreateOrdinalsTool(server, wallet);
-
+	
 	return handlers;
 }

@@ -143,8 +143,7 @@ Wallet tools provide core BSV wallet functionality:
 | `wallet_getPublicKey` | Retrieves a public key for a specified protocol and key ID |
 | `wallet_createSignature` | Creates a cryptographic signature for the provided data |
 | `wallet_verifySignature` | Verifies a cryptographic signature against the provided data |
-| `wallet_encrypt` | Encrypts data using a specified protocol and key |
-| `wallet_decrypt` | Decrypts data using a specified protocol and key |
+| `wallet_encryption` | Combined tool for encrypting and decrypting data using the wallet's cryptographic keys (replaces separate encrypt/decrypt tools) |
 | `wallet_getAddress` | Returns a BSV address for the current wallet or a derived path |
 | `wallet_sendToAddress` | Sends BSV to a specified address (supports BSV or USD amounts) |
 | `wallet_purchaseListing` | Purchases NFTs or BSV-20/BSV-21 tokens from marketplace listings |
@@ -187,6 +186,8 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 - "Get my Bitcoin SV address"
 - "Send 0.01 BSV to 1ExampleBsvAddressXXXXXXXXXXXXXXXXX"
 - "Send $5 USD worth of BSV to 1ExampleBsvAddressXXXXXXXXXXXXXXXXX"
+- "Encrypt this message using my wallet's keys"
+- "Decrypt this data that was previously encrypted for me"
 - "Purchase this NFT listing: txid_vout"
 - "Purchase this BSV-20 token listing: txid_vout"
 
@@ -231,6 +232,9 @@ tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
 For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Context Protocol.
 
 ## Recent Updates
+
+### Unified Encryption Tool
+- **Combined Wallet Encryption**: The `wallet_encrypt` and `wallet_decrypt` tools have been merged into a single `wallet_encryption` tool with a mode parameter to switch between encryption and decryption operations.
 
 ### Enhanced Marketplace Tools
 - **Unified Market Listings**: The `ordinals_marketListings` tool now supports NFTs, BSV-20, and BSV-21 tokens through a single interface with appropriate filtering.
