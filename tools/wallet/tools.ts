@@ -39,7 +39,7 @@ import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
-import { Utils } from "@bsv/sdk";
+import { Utils, type WalletProtocol } from "@bsv/sdk";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
@@ -199,7 +199,7 @@ export function registerWalletTools(
 				const { mode, data, encoding } = args;
 				
 				// Set default values for required parameters
-				const protocolID = [1 as const, "aes256"] as const;
+				const protocolID: WalletProtocol = [1, "aes256"];
 				const keyID = "default";
 				
 				// Convert string data to binary if needed
@@ -227,10 +227,10 @@ export function registerWalletTools(
 					});
 					
 					// For decryption, convert plaintext back to string if it's likely UTF-8 text
-					if (result.plaintext) {
+					if (result.plaintext as number[]) {
 						try {
 							const { toUTF8 } = Utils;
-							const textResult = toUTF8(result.plaintext);
+							const textResult = toUTF8(result.plaintext as number[]);
 							// If conversion succeeds and seems like valid text, return as string
 							if (textResult && textResult.length > 0) {
 								return { 
