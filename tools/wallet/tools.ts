@@ -39,6 +39,8 @@ import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
+import { registerTransferOrdTokenTool } from "./transferOrdToken";
+import type { transferOrdTokenArgsSchema } from "./transferOrdToken";
 import { Utils, type WalletProtocol } from "@bsv/sdk";
 
 // Define mapping from tool names to argument schemas
@@ -70,6 +72,7 @@ type ToolArgSchemas = {
 	wallet_getAddress: typeof getAddressArgsSchema;
 	wallet_sendToAddress: typeof sendToAddressArgsSchema;
 	wallet_purchaseListing: typeof purchaseListingArgsSchema;
+	wallet_transferOrdToken: typeof transferOrdTokenArgsSchema;
 	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
 };
 
@@ -110,6 +113,9 @@ export function registerWalletTools(
 
 	// Register the wallet_purchaseListing tool
 	registerPurchaseListingTool(server, wallet);
+
+	// Register the wallet_transferOrdToken tool
+	registerTransferOrdTokenTool(server, wallet);
 
 	// Register only the minimal public-facing tools
 	// wallet_createAction, wallet_signAction and wallet_getHeight have been removed
