@@ -1,12 +1,9 @@
-# Smithery configuration file: https://smithery.ai/docs/config
-
 build:
-  dockerBuildPath: ./
-
+  dockerBuildPath: ./ 
+  
 startCommand:
   type: stdio
   configSchema:
-    # JSON Schema defining the configuration options for the MCP.
     type: object
     required:
       - privateKeyWif
