@@ -74,21 +74,13 @@ export const walletDecryptArgsSchema = z.object({
 
 // Combined wallet encryption/decryption args
 export const walletEncryptionArgsSchema = z.object({
-	mode: z.enum(["encrypt", "decrypt"]).describe("Operation mode: 'encrypt' to encrypt data or 'decrypt' to decrypt data"),
+	mode: z.enum(["encrypt", "decrypt"]).describe("Operation mode: 'encrypt' to encrypt plaintext or 'decrypt' to decrypt data"),
 	data: z.union([
-		z.string().describe("Text data (with encoding specified by the encoding parameter)"),
-		z.array(z.number()).describe("Binary data as an array of numbers")
-	]).describe("Data to process: plaintext for encryption or ciphertext for decryption"),
+		z.string().describe("Text data to encrypt or decrypt"),
+		z.array(z.number()).describe("Binary data to encrypt or decrypt")
+	]).describe("Data to process: text/data for encryption or decryption"),
 	encoding: z.enum(["utf8", "hex", "base64"]).optional().default("utf8").describe("Encoding of text data (default: utf8)"),
-	protocolID: walletProtocolSchema.describe("Protocol identifier - common values are 'aes' for symmetric encryption or 'ecies' for asymmetric encryption"),
-	keyID: z.string().describe("Key identifier - use 'default' or 'primary' for the default wallet key"),
-	privilegedReason: z.string().optional().describe("Required reason for privileged operations"),
-	counterparty: z
-		.union([z.string(), z.literal("self"), z.literal("anyone")])
-		.optional()
-		.describe("Recipient of encryption. Use 'self' for personal encryption, or provide a specific key for a recipient"),
-	privileged: z.boolean().optional().describe("Indicates if operation requires elevated privileges"),
-}).describe("Combined schema for encryption and decryption operations. Use 'mode' to specify the operation type, with required parameters data, protocolID, and keyID.");
+}).describe("Schema for encryption and decryption operations");
 
 // Create HMAC arguments
 export const createHmacArgsSchema = z.object({

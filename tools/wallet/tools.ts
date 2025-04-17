@@ -177,24 +177,18 @@ export function registerWalletTools(
 		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.\n\n" +
 		"PARAMETERS:\n" +
 		"- mode: (required) Either \"encrypt\" to encrypt plaintext or \"decrypt\" to decrypt ciphertext\n" +
-		"- data: (required) Text string or array of numbers to process (plaintext for encryption or ciphertext for decryption)\n" +
-		"- encoding: (optional) For text input, the encoding format (utf8, hex, base64) - default is utf8\n" +
-		"- protocolID: (required) Protocol identifier - common values are 'aes' for symmetric encryption or 'ecies' for asymmetric encryption\n" +
-		"- keyID: (required) Key identifier - use 'default' or 'primary' for the default wallet key\n\n" +
+		"- data: (required) Text string or array of numbers to process\n" +
+		"- encoding: (optional) For text input, the encoding format (utf8, hex, base64) - default is utf8\n\n" +
 		"EXAMPLES:\n" +
 		"1. Encrypt text data:\n" +
 		"   {\n" +
 		"     \"mode\": \"encrypt\",\n" +
-		"     \"data\": \"Hello World\",\n" +
-		"     \"protocolID\": [1, \"aes\"],\n" +
-		"     \"keyID\": \"default\"\n" +
+		"     \"data\": \"Hello World\"\n" +
 		"   }\n\n" +
 		"2. Decrypt previously encrypted data:\n" +
 		"   {\n" +
 		"     \"mode\": \"decrypt\",\n" +
-		"     \"data\": [encrypted bytes from previous response],\n" +
-		"     \"protocolID\": [1, \"aes\"],\n" +
-		"     \"keyID\": \"default\"\n" +
+		"     \"data\": [encrypted bytes from previous response]\n" +
 		"   }",
 		{ args: walletEncryptionArgsSchema },
 		async (
@@ -202,7 +196,11 @@ export function registerWalletTools(
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const { mode, data, protocolID, keyID, encoding } = args;
+				const { mode, data, encoding } = args;
+				
+				// Set default values for required parameters
+				const protocolID = [1 as const, "aes256"] as const;
+				const keyID = "default";
 				
 				// Convert string data to binary if needed
 				let binaryData: number[];
@@ -214,7 +212,7 @@ export function registerWalletTools(
 					binaryData = toArray(data, encoding || "utf8");
 				}
 				
-				let result: { ciphertext?: number[]; plaintext?: number[] } = {};
+				let result: { ciphertext?: number[]; plaintext?: number[] | string } = {};
 				if (mode === "encrypt") {
 					result = await wallet.encrypt({
 						plaintext: binaryData,
