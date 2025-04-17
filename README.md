@@ -267,6 +267,15 @@ The tool supports the following endpoint categories and specific endpoints:
 | `block_by_hash` | Complete block data via hash | `blockHash` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
 | `block_by_height` | Complete block data via height | `blockHeight` | `{"hash":"000000000000...","confirmations":1000,"size":1000000,...}` |
 | `tag_count_by_height` | Stats on tag count for a specific block | `blockHeight` | `{"tags":{"amp":3,"bitkey":5,"metanet":12,"planaria":7,"b":120}}` |
+| `block_headers` | Retrieves the last 10 block headers | None | `[{"hash":"000000000000...","height":826458,"version":536870912,...},...]` |
+| `block_pages` | Retrieves pages of transaction IDs for large blocks | `blockHash`, optional: `pageNumber` | `["tx1hash","tx2hash","tx3hash",...]` |
+
+#### Stats Data
+| Endpoint | Description | Required Parameters | Example Response |
+|----------|-------------|---------------------|------------------|
+| `block_stats_by_height` | Block statistics for a specific height | `blockHeight` | `{"size":123456,"txCount":512,"outputTotal":54.12345678,"outputTotalUsd":2345.67,...}` |
+| `block_miner_stats` | Block mining statistics for a time period | optional: `days` (default 7) | `{"blocks":{"miner1":412,"miner2":208,...},"total":1008}` |
+| `miner_summary_stats` | Summary of mining statistics | optional: `days` (default 7) | `{"totalBlocks":1008,"totalFees":1.23456789,"totalFeesUsd":53.67,...}` |
 
 #### Transaction Data
 | Endpoint | Description | Required Parameters | Example Response |
@@ -274,6 +283,7 @@ The tool supports the following endpoint categories and specific endpoints:
 | `tx_by_hash` | Detailed transaction data | `txHash` | `{"txid":"a1b2c3d4e5f6...","version":1,"locktime":0,"size":225,...}` |
 | `tx_raw` | Raw transaction hex data | `txHash` | `"01000000012345abcdef..."` |
 | `tx_receipt` | Transaction receipt | `txHash` | `{"blockHash":"000000000000...","blockHeight":800000,"confirmations":26458}` |
+| `bulk_tx_details` | Retrieve multiple transactions in one request | `txids` (array) | `[{"txid":"a1b2c3d4e5f6...","version":1,...}, {"txid":"b2c3d4e5f6a7...","version":1,...}]` |
 
 #### Address Data
 | Endpoint | Description | Required Parameters | Example Response |
@@ -298,6 +308,12 @@ The `bsv_explore` tool can be used with natural language prompts like:
 "Get unspent outputs for my wallet address"
 "Check transaction details for txid a1b2c3d4e5f6..."
 "What is the current BSV circulating supply?"
+"Show me the latest block headers"
+"Get transaction IDs for page 2 of a large block"
+"Show me block statistics for height 800000"
+"What are the mining statistics for the last 14 days?"
+"Get a summary of mining activity over the past 30 days"
+"Retrieve details for multiple transactions in a single query"
 ```
 
 Under the hood, the tool accepts parameters to specify which data to retrieve:
@@ -305,9 +321,12 @@ Under the hood, the tool accepts parameters to specify which data to retrieve:
 - `endpoint`: The specific WhatsOnChain endpoint to query (e.g., `chain_info`, `tx_by_hash`)
 - `network`: The BSV network to use (`main` or `test`)
 - Additional parameters as required by the specific endpoint:
-  - `blockHash`: For block_by_hash endpoint
-  - `blockHeight`: For block_by_height endpoint
-  - `txHash`: For transaction-related endpoints
+  - `blockHash`: For block_by_hash and block_pages endpoints
+  - `blockHeight`: For block_by_height, tag_count_by_height, and block_stats_by_height endpoints
+  - `pageNumber`: For block_pages endpoint (pagination)
+  - `days`: For block_miner_stats and miner_summary_stats endpoints (defaults to 7)
+  - `txHash`: For transaction-related endpoints (tx_by_hash, tx_raw, tx_receipt)
+  - `txids`: For bulk_tx_details endpoint (array of transaction IDs)
   - `address`: For address-related endpoints
   - `limit`: Optional pagination limit for address_history
 
