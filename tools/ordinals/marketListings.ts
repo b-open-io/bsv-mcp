@@ -166,7 +166,6 @@ export function registerMarketListingsTool(server: McpServer): void {
 				if (address) url.searchParams.append("address", address);
 
 				// Make the fetch request
-				console.log(`Fetching market listings from: ${url.toString()}`);
 				const response = await fetch(url.toString());
 
 				if (!response.ok) {

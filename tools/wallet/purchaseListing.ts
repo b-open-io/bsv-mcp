@@ -75,7 +75,6 @@ interface OrdUtxo {
  */
 export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 	// Store a reference to check if wallet is persistent
-	console.log("Registering purchaseListing tool with wallet:", wallet);
 
 	server.tool(
 		"wallet_purchaseListing",
@@ -86,11 +85,6 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 			extra: RequestHandlerExtra,
 		): Promise<CallToolResult> => {
 			try {
-				console.log(`Attempting to purchase listing: ${args.listingOutpoint}`);
-				console.log(`Listing type: ${args.listingType}`);
-				console.log("Using wallet instance:", wallet);
-				console.log("Wallet has UTXOs:", await wallet.getUtxos());
-
 				// Fetch the listing info directly from the API
 				const response = await fetch(
 					`https://ordinals.gorillapool.io/api/txos/${args.listingOutpoint}?script=true`,
@@ -122,11 +116,6 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 					marketFee = MINIMUM_MARKET_FEE_SATOSHIS;
 				}
 
-				console.log(`Listing price: ${listingPrice} satoshis`);
-				console.log(
-					`Market fee: ${marketFee} satoshis (${MARKET_FEE_PERCENTAGE * 100}%)`,
-				);
-
 				// Parse the listing outpoint to get txid and vout
 				const [txid, voutStr] = args.listingOutpoint.split("_");
 				if (!txid) {
@@ -142,7 +131,6 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 
 				// Get payment address
 				const paymentAddress = paymentPk.toAddress().toString();
-				console.log(`Using payment address: ${paymentAddress}`);
 
 				// Get payment UTXOs from the wallet's managed UTXOs
 				const { paymentUtxos } = await wallet.getUtxos();
@@ -242,7 +230,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						try {
 							royalties = JSON.parse(listingData.origin.data.map.royalties);
 						} catch (error) {
-							console.warn("Failed to parse royalties:", error);
+							// Remove console.warn
 						}
 					}
 					
@@ -262,10 +250,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 				try {
 					await wallet.refreshUtxos();
 				} catch (refreshError) {
-					console.warn(
-						"Failed to refresh UTXOs after transaction:",
-						refreshError,
-					);
+					// Remove console.warn
 				}
 
 				// Broadcast the transaction

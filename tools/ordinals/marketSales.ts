@@ -110,7 +110,6 @@ export function registerMarketSalesTool(server: McpServer): void {
 				if (address) url.searchParams.append("address", address);
 
 				// Fetch market sales from GorillaPool API
-				console.log(`Fetching market sales from: ${url.toString()}`);
 				const response = await fetch(url.toString());
 
 				if (!response.ok) {

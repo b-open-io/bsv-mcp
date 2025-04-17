@@ -87,8 +87,7 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 			}
 
 			const address = privateKey.toAddress();
-			console.log(`Fetching UTXOs for address: ${address}`);
-
+			
 			const utxos = await fetchPayUtxos(address);
 			const nftUtxos = await fetchNftUtxos(address);
 			this.paymentUtxos = utxos;
@@ -172,8 +171,6 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 	// 	return Promise.reject(new Error("Not implemented"));
 	// }
 	async createAction(args: CreateActionArgs): Promise<CreateActionResult> {
-		console.log("createAction called with", args);
-
 		const tx = new Transaction();
 
 		// Add outputs

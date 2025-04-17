@@ -14,11 +14,9 @@ let cachedPrice: { value: number; timestamp: number } | null = null;
 async function getBsvPriceWithCache(): Promise<number> {
 	// Return cached price if it's still valid
 	if (cachedPrice && (Date.now() - cachedPrice.timestamp) < PRICE_CACHE_DURATION) {
-		console.log("Using cached BSV price");
 		return cachedPrice.value;
 	}
 
-	console.log("Fetching fresh BSV price");
 	// If no valid cache, fetch new price
 	const res = await fetch(
 		"https://api.whatsonchain.com/v1/bsv/main/exchangerate",
