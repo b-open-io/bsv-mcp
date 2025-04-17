@@ -3,6 +3,23 @@
 	"module": "index.ts",
 	"type": "module",
 	"version": "0.0.9",
+	"license": "MIT",
+	"author": "satchmo",
+	"description": "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/b-open-io/bsv-mcp"
+	},
+	"keywords": [
+		"bitcoin",
+		"bsv",
+		"bitcoin-sv",
+		"mcp",
+		"model-context-protocol",
+		"wallet",
+		"ordinals",
+		"blockchain"
+	],
 	"bin": {
 		"bsv-mcp": "./index.ts"
 	},
