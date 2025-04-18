@@ -48,22 +48,23 @@ To use the BSV MCP server with [Cursor](https://cursor.sh/):
 5. Enter the following configuration in JSON format:
 
 ```json
-{
-  "Bitcoin SV": {
-    "command": "env",
-    "args": [
-      "PRIVATE_KEY_WIF=<your_private_key_wif>",
-      "bun",
-      "run",
-      "<path_to_project>/index.ts"
-    ]
+  {
+    "mcpServers": {
+      "Bitcoin SV": {
+        "command": "bunx",
+        "args": [
+          "bsv-mcp@latest"
+        ],
+        "env": {
+          "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+        }
+      }
+    }
   }
-}
 ```
 
 6. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!)
-7. Replace `<path_to_project>` with the full path to where you cloned this repository
-8. Click "Save"
+7. Click "Save"
 
 The BSV tools will now be available to Cursor's AI assistant under the "Bitcoin SV" namespace.
 
@@ -76,59 +77,30 @@ To connect this server to Claude for Desktop:
 3. Open your Claude for Desktop configuration file:
    ```bash
    # macOS/Linux
-   code ~/Library/Application\ Support/Claude/claude_desktop_config.json
+   code ~/Library/Application Support/Claude/claude_desktop_config.json
    
    # Windows
    code %APPDATA%\Claude\claude_desktop_config.json
    ```
 4. Add the BSV MCP server to your configuration (create the file if it doesn't exist):
    ```json
-   {
-     "mcpServers": {
-       "Bitcoin SV": {
-         "command": "env",
-         "args": [
-           "PRIVATE_KEY_WIF=<your_private_key_wif>",
-           "bun",
-           "run",
-           "<path_to_project>/index.ts"
-         ]
-       }
-     }
-   }
+  {
+    "mcpServers": {
+      "Bitcoin SV": {
+        "command": "bunx",
+        "args": [
+          "bsv-mcp@latest"
+        ],
+        "env": {
+          "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+        }
+      }
+    }
+  }
    ```
 5. Replace `<your_private_key_wif>` with your actual private key WIF
-6. Replace `<path_to_project>` with the full path to where you cloned this repository
-7. Save the file and restart Claude for Desktop
-8. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
-
-### Generic MCP Client Integration
-
-For other MCP clients that support JSON configuration:
-
-```json
-{
-  "Bitcoin SV": {
-    "command": "env",
-    "args": [
-      "PRIVATE_KEY_WIF=<your_private_key_wif>",
-      "bun",
-      "run",
-      "<path_to_project>/index.ts"
-    ]
-  }
-}
-```
-
-If running the server directly:
-
-```bash
-# Set environment variable first
-export PRIVATE_KEY_WIF=<your_private_key_wif>
-
-# Then run the server
-bun run index.ts
-```
+6. Save the file and restart Claude for Desktop
+7. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
 
 ## Available Tools
 
