@@ -2,15 +2,8 @@
 
 ## Table of Contents
 - [Payments](#payments)
-  - [Schema](#schema)
-  - [Examples](#examples)
-  - [Including Payment in A2A Calls](#including-payment-in-a2a-calls)
-  - [Error Codes](#error-codes)
-  - [Refunds & Partial Payments](#refunds--partial-payments)
 - [Registry](#registry)
-  - [Publishing with 1Sat Ordinals + MAP](#publishing-with-1sat-ordinals--map)
-  - [Updates & Identity Attestation](#updates--identity-attestation)
-  - [Discovery Workflow](#discovery-workflow)
+- [Including Payment in A2A Calls](#including-payment-in-a2a-calls)
 - [Benefits](#benefits-of-this-approach)
 - [Payment Verification](#payment-verification)
 - [Implementation Guide](#implementation-guide)
@@ -18,20 +11,22 @@
 ---
 
 ## Overview
-**A2B** extends Google’s Agent‑to‑Agent (A2A) protocol with two blockchain layers:
+**A2B** extends Google’s Agent‑to‑Agent (A2A) protocol with:
 
-| Layer        | Purpose                                                                                                            |
-|--------------|--------------------------------------------------------------------------------------------------------------------|
-| **Payments** | Advertise pricing (`x-payment.configs`) and attach verifiable on‑chain payments to each JSON‑RPC call.             |
-| **Registry** | Inscribe the Agent Card as a **1Sat Ordinal file** and tag it with **MAP** so anyone can discover it trustlessly.   |
+| Layer        | Purpose                                                                                                      |
+|--------------|--------------------------------------------------------------------------------------------------------------|
+| **Payments** | Describe prices in your Agent Card (`x-payment.configs`) and attach verifiable on‑chain payments to every call. |
+| **Registry** | Publish the Agent Card as a **1Sat Ordinal inscription** plus **MAP tags** so anyone can discover, trade, and update it without a central directory. |
 
-Any asset whose transfers are verifiable by `txid` works (BSV, BTC, BCH, ETH, SOL, …).
+Any chain whose transfers are provable by `txid` can be used (BSV, BTC, BCH, ETH, SOL, …).
 
 ---
 
 ## Payments
+
 ### Schema
-Vendor‑extension `x-payment` holds **pricing configurations** (not “plans”):
+Add vendor‑extension `x-payment` to `.well‑known/agent.json`.  
+It contains **pricing configurations** — each an object with the fields below.
 
 ```typescript
 interface PricingConfig {
@@ -48,7 +43,7 @@ interface PricingConfig {
 }
 ```
 
-### Examples
+### Example
 ```json
 "x-payment": {
   "configs": [
@@ -68,21 +63,13 @@ interface PricingConfig {
       "interval": "month",
       "skills": ["getWeather","getNews"],
       "includedCalls": { "getWeather": 1000 }
-    },
-    {
-      "id": "fx-demo",
-      "currency": "USD",
-      "amount": 1,
-      "address": "1UsdProxy",
-      "acceptedCurrencies": ["BSV","SOL"],
-      "interval": null
     }
   ]
 }
 ```
 
-### Including Payment in A2A Calls
-Insert a **DataPart** with an `x-payment` claim:
+### Including Payment in a Call
+Embed a DataPart:
 
 ```jsonc
 {
@@ -93,110 +80,93 @@ Insert a **DataPart** with an `x-payment` claim:
       "txid": "abcdef…",
       "vout": 0,
       "amount": 0.00001,
-      "currency": "BSV",
-      "signature": "MEUCIQ…"     // optional ECDSA over txid|vout|configId
+      "currency": "BSV"
     }
   }
 }
 ```
 
-### Error Codes
-| HTTP | JSON‑RPC code | Description                      |
-|------|---------------|----------------------------------|
-| 402  | `-32030`      | PaymentMissing                   |
-| 402  | `-32031`      | PaymentInsufficient              |
-| 402  | `-32032`      | TxUnconfirmed                    |
-| 402  | `-32033`      | AddressMismatch                  |
-| 402  | `-32034`      | CurrencyUnsupported              |
-
-### Refunds & Partial Payments
-* **Refund**: server returns coins to `refundAddress` or stores credit.  
-* **Metered tasks**: agent pauses stream, issues `PaymentInsufficient`; client sends new tx and resumes.
+Servers validate the payment and reply, or return HTTP 402 with JSON‑RPC error codes (`-32030`…`34`) on failure.
 
 ---
 
 ## Registry
+
 ### Publishing with 1Sat Ordinals + MAP
-A2B agent inscription lives in a **single‑satoshi output** (dust‑free on BSV).  
-Script layout (simplified):
+An Agent Card is stored in a **single satoshi output**.  
+Typical transaction:
 
-```
-<1sat P2PKH locking script>
-OP_FALSE OP_IF
-  6f7264                      -- "ord" tag
-  OP_1  "application/json"    -- Content‑Type field/value
-  OP_0  <agent.json bytes>    -- Content
-OP_ENDIF
-OP_RETURN
-  1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5  SET app bsv-mcp type agent
-```
+1. **Output 0 (1 sat)** — locking script carries the **ord envelope**  
+   ```
+   <P2PKH>          -- spendable script controlling ownership
+   OP_FALSE
+   OP_IF
+     6f7264                     -- "ord" tag
+     OP_1 "application/json"    -- content‑type field
+     OP_1 ".well-known/agent.json" -- filename field
+     OP_0 <agent.json bytes>    -- file data
+   OP_ENDIF
+   ```
+2. **Output 1 (0 sat OP_RETURN)** — **MAP** metadata  
+   ```
+   OP_RETURN
+     1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5
+     SET app bsv-mcp type agent
+   ```
 
-* `OP_FALSE OP_IF … OP_ENDIF`   → **ord envelope** (valid 1Sat inscription) [oai_citation_attribution:0‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com)  
-* `OP_RETURN … MAP`             → **Magic Attribute Protocol** metadata behind the inscription [oai_citation_attribution:1‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/adding-metadata?utm_source=chatgpt.com)  
-* Filename `.well‑known/agent.json` and UTF‑8 encoding live inside an additional envelope field (not shown for brevity).
+* The ord envelope follows the spec documented at docs.1satordinals.com  [oai_citation_attribution:0‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com).  
+* MAP tags make the inscription discoverable by indexers .
 
-Use **`js-1sat-ord`** to create:  
+#### Updating (“Re‑inscribing”)
+* **Spend** the 1‑sat output into a new 1‑sat output under your control.  
+* **Include a new ord envelope** carrying the updated `agent.json` **in the same satoshi**.  
+* Emit a new MAP output with identical keys.  
 
-```ts
-const inscription = { dataB64, contentType: 'application/json', filename: '.well-known/agent.json' };
-const meta = { app: 'bsv-mcp', type: 'agent' };
-await createOrdinals({ utxos, destinations:[{address:target, inscription}], paymentPk, changeAddress, metaData: meta });
-```
- [oai_citation_attribution:2‡GitHub](https://github.com/BitcoinSchema/js-1sat-ord?utm_source=chatgpt.com)
-
-### Updates & Identity Attestation
-* Add a **BAP (AIP04) signature** push after MAP to bind the card to an identity key [oai_citation_attribution:3‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/adding-metadata?utm_source=chatgpt.com).  
-* To supersede, inscribe a new ordinal with `SET updateOf <prevTxid>`; indexers treat the newest by signature key as active.
+Ownership of the inscription = ownership of the UTXO; whoever controls the satoshi can update and even list it on DEXs. No extra signature schemes (AIP/BAP) are required.
 
 ### Discovery Workflow
-1. Indexer scans chain → finds ord envelope + MAP `app=bsv-mcp&type=agent`.  
-2. Extracts and caches `agent.json`.  
-3. Verifies AIP04 signature → establishes author identity.  
-4. Provides API filtering by skills, price, provider, etc.
+1. Indexer scans for ord envelopes with MAP `app=bsv-mcp&type=agent`.  
+2. For each UTXO, keeps **latest inscription in that satoshi**.  
+3. Provides search endpoints (skill, capability, price ceiling, provider, etc.).  
+4. Clients may buy the ordinal on‑chain; the new owner can re‑inscribe to change endpoints or pricing.
 
-Example query:
+---
 
-```typescript
-const results = await indexer.searchAgents({
-  skills: ["getWeather"],
-  maxPrice: { currency: "BSV", amount: 0.0001 }
-});
-```
+## Including Payment in A2A Calls
+Use A2A JSON‑RPC `tasks/send` with a DataPart containing `x-payment` as shown earlier. If payment insufficient, the agent returns HTTP 402 with a JSON‑RPC error object.
 
 ---
 
 ## Benefits of This Approach
-* **Protocol‑native**: leverages A2A Parts and 1Sat standards.  
-* **Immutable discovery**: Agent Card stored on‑chain.  
-* **Transparent pricing**: costs visible in `x-payment`.  
-* **No custodians**: payments verified on the public ledger.  
-* **Currency‑agnostic**: pay with any chain the agent accepts.
+* **Immutable yet updatable** – data bound to a satoshi; transfer sat → new owner can re‑inscribe.  
+* **No extra signature layers** – authority = UTXO control.  
+* **Protocol‑native** – uses A2A Parts and ord spec without custom transport.  
+* **Marketplace‑ready** – inscriptions are standard ord tokens, listable on DEXs.  
 
 ---
 
 ## Payment Verification
-1. Confirm tx exists & meets confirmation depth.  
-2. Check output pays advertised `address`.  
-3. Ensure `amount` ≥ price (apply FX if `acceptedCurrencies`).  
-4. Verify UTXO unspent.  
-5. For `interval` ≠ null: extend subscription window.  
-6. If signature present: recover pubkey & verify hash(txid|vout|configId).
+See server checklist:
+
+1. Tx confirmed.  
+2. Output pays `address`.  
+3. Amount ≥ price (FX converted if `acceptedCurrencies`).  
+4. UTXO unspent.  
+5. For recurring configs, extend `validUntil`.
 
 ---
 
 ## Implementation Guide
 ### Client
-1. **Discover** agents via indexer.  
-2. **Fetch** on‑chain Agent Card; verify AIP04 signature.  
-3. **Pick** a pricing config.  
-4. **Pay** on‑chain; wait for confirmation.  
-5. **Call** `tasks/send` with `x-payment` DataPart; handle 402 errors.
+1. Query indexer → fetch `agent.json`.  
+2. Pick a `configId`; pay on‑chain; wait confirmations.  
+3. Call `tasks/send` with `x-payment`.  
+4. Handle 402 errors, retry with correct payment.
 
 ### Server
-1. **Publish** Agent Card with `wallet_a2bPublish`.  
-2. **Parse** `x-payment` claim on each call.  
-3. **Validate** payment on the relevant chain.  
-4. **Track** allowances/subscriptions.  
-5. **Respond** with data or JSON‑RPC error + HTTP 402.
+1. Inscribe Agent Card via tooling (1Sat Ord + MAP).  
+2. On call, parse `x-payment` DataPart; verify tx on chosen chain.  
+3. Track usage / subscriptions.  
+4. On success → run task; on failure → 402.
 
 ---
