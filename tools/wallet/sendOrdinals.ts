@@ -10,12 +10,19 @@ import type { Wallet } from "./wallet";
  * Schema for the sendOrdinals tool arguments
  */
 export const sendOrdinalsArgsSchema = z.object({
-  // Outpoint of the inscription to send (txid_vout format)
-  inscriptionOutpoint: z.string().describe("Inscription outpoint in format txid_vout"),
-  // Destination address to send the inscription to
-  destinationAddress: z.string().describe("Destination address for the inscription"),
-  // Optional metadata for the ordinal transfer
-  metadata: z.any().optional().describe("Optional MAP metadata for the transfer"),
+	// Outpoint of the inscription to send (txid_vout format)
+	inscriptionOutpoint: z
+		.string()
+		.describe("Inscription outpoint in format txid_vout"),
+	// Destination address to send the inscription to
+	destinationAddress: z
+		.string()
+		.describe("Destination address for the inscription"),
+	// Optional metadata for the ordinal transfer
+	metadata: z
+		.any()
+		.optional()
+		.describe("Optional MAP metadata for the transfer"),
 });
 
 export type SendOrdinalsArgs = z.infer<typeof sendOrdinalsArgsSchema>;
@@ -24,97 +31,104 @@ export type SendOrdinalsArgs = z.infer<typeof sendOrdinalsArgsSchema>;
  * Registers the wallet_sendOrdinals tool for transferring ordinals
  */
 export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
-  server.tool(
-    "wallet_sendOrdinals",
-    "Transfers ordinals (NFTs) from your wallet to another address on the Bitcoin SV blockchain. This tool enables sending inscriptions you own to any valid BSV address. The transaction is created, signed, and broadcast automatically, with appropriate fee calculation and change handling.",
-    { args: sendOrdinalsArgsSchema },
-    async (
-      { args }: { args: SendOrdinalsArgs },
-      extra: RequestHandlerExtra,
-    ): Promise<CallToolResult> => {
-      try {
-        // 1. Get private key from wallet
-        const paymentPk = wallet.getPrivateKey();
-        if (!paymentPk) {
-          throw new Error("No private key available in wallet");
-        }
+	server.tool(
+		"wallet_sendOrdinals",
+		"Transfers ordinals (NFTs) from your wallet to another address on the Bitcoin SV blockchain. This tool enables sending inscriptions you own to any valid BSV address. The transaction is created, signed, and broadcast automatically, with appropriate fee calculation and change handling.",
+		{ args: sendOrdinalsArgsSchema },
+		async (
+			{ args }: { args: SendOrdinalsArgs },
+			extra: RequestHandlerExtra,
+		): Promise<CallToolResult> => {
+			try {
+				// 1. Get private key from wallet
+				const paymentPk = wallet.getPrivateKey();
+				if (!paymentPk) {
+					throw new Error("No private key available in wallet");
+				}
 
-        // 2. Get payment UTXOs from wallet
-        const { paymentUtxos, nftUtxos } = await wallet.getUtxos();
-        if (!paymentUtxos || paymentUtxos.length === 0) {
-          throw new Error("No payment UTXOs available to fund this transaction");
-        }
+				// 2. Get payment UTXOs from wallet
+				const { paymentUtxos, nftUtxos } = await wallet.getUtxos();
+				if (!paymentUtxos || paymentUtxos.length === 0) {
+					throw new Error(
+						"No payment UTXOs available to fund this transaction",
+					);
+				}
 
-        // 3. Get the wallet address for change
-        const walletAddress = paymentPk.toAddress().toString();
+				// 3. Get the wallet address for change
+				const walletAddress = paymentPk.toAddress().toString();
 
-        // 4. Parse the inscription outpoint
-        const [txid, voutStr] = args.inscriptionOutpoint.split('_');
-        if (!txid || !voutStr) {
-          throw new Error("Invalid inscription outpoint format. Expected txid_vout");
-        }
-        const vout = Number.parseInt(voutStr, 10);
-        
-        // 5. Find the inscription in nftUtxos
-        const inscription = nftUtxos.find(
-          (utxo) => utxo.txid === txid && utxo.vout === vout
-        );
-        
-        if (!inscription) {
-          throw new Error(
-            `Inscription ${args.inscriptionOutpoint} not found in your wallet`
-          );
-        }
+				// 4. Parse the inscription outpoint
+				const [txid, voutStr] = args.inscriptionOutpoint.split("_");
+				if (!txid || !voutStr) {
+					throw new Error(
+						"Invalid inscription outpoint format. Expected txid_vout",
+					);
+				}
+				const vout = Number.parseInt(voutStr, 10);
 
-        // 6. Create config and transfer the inscription
-        const sendOrdinalsConfig: SendOrdinalsConfig = {
-          paymentPk,
-          paymentUtxos,
-          ordinals: [inscription],
-          destinations: [{ address: args.destinationAddress }],
-          changeAddress: walletAddress,
-        };
+				// 5. Find the inscription in nftUtxos
+				const inscription = nftUtxos.find(
+					(utxo) => utxo.txid === txid && utxo.vout === vout,
+				);
 
-        // Add metadata if provided
-        if (args.metadata) {
-          sendOrdinalsConfig.metaData = args.metadata;
-        }
+				if (!inscription) {
+					throw new Error(
+						`Inscription ${args.inscriptionOutpoint} not found in your wallet`,
+					);
+				}
 
-        // Using the wallet's key for both payment and ordinals
-        sendOrdinalsConfig.ordPk = paymentPk;
+				// 6. Create config and transfer the inscription
+				const sendOrdinalsConfig: SendOrdinalsConfig = {
+					paymentPk,
+					paymentUtxos,
+					ordinals: [inscription],
+					destinations: [{ address: args.destinationAddress }],
+					changeAddress: walletAddress,
+				};
 
-        const result = await sendOrdinals(sendOrdinalsConfig);
-        const changeResult = result as ChangeResult;
-        
-        // 7. Broadcast the transaction
-        await changeResult.tx.broadcast();
-        
-        // 8. Refresh the wallet's UTXOs after spending
-        try {
-          await wallet.refreshUtxos();
-        } catch (refreshError) {
-          console.warn("Failed to refresh UTXOs after transaction:", refreshError);
-        }
+				// Add metadata if provided
+				if (args.metadata) {
+					sendOrdinalsConfig.metaData = args.metadata;
+				}
 
-        // 9. Return transaction details
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                txid: changeResult.tx.id("hex"),
-                spentOutpoints: changeResult.spentOutpoints,
-                payChange: changeResult.payChange,
-                inscriptionOutpoint: args.inscriptionOutpoint,
-                destinationAddress: args.destinationAddress,
-              }),
-            },
-          ],
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: msg }], isError: true };
-      }
-    },
-  );
-} 
+				// Using the wallet's key for both payment and ordinals
+				sendOrdinalsConfig.ordPk = paymentPk;
+
+				const result = await sendOrdinals(sendOrdinalsConfig);
+				const changeResult = result as ChangeResult;
+
+				// 7. Broadcast the transaction
+				await changeResult.tx.broadcast();
+
+				// 8. Refresh the wallet's UTXOs after spending
+				try {
+					await wallet.refreshUtxos();
+				} catch (refreshError) {
+					console.warn(
+						"Failed to refresh UTXOs after transaction:",
+						refreshError,
+					);
+				}
+
+				// 9. Return transaction details
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								txid: changeResult.tx.id("hex"),
+								spentOutpoints: changeResult.spentOutpoints,
+								payChange: changeResult.payChange,
+								inscriptionOutpoint: args.inscriptionOutpoint,
+								destinationAddress: args.destinationAddress,
+							}),
+						},
+					],
+				};
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				return { content: [{ type: "text", text: msg }], isError: true };
+			}
+		},
+	);
+}

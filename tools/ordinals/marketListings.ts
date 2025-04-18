@@ -18,16 +18,16 @@ export const marketListingsArgsSchema = z.object({
 		.default("desc")
 		.describe("Sort direction (asc or desc)"),
 	address: z.string().optional().describe("Bitcoin address"),
-	
+
 	// NFT-specific parameters
 	origin: z.string().optional().describe("Origin outpoint"),
 	mime: z.string().optional().describe("MIME type filter"),
 	num: z.string().optional().describe("Inscription number"),
-	
+
 	// General market parameters
 	minPrice: z.number().optional().describe("Minimum price in satoshis"),
 	maxPrice: z.number().optional().describe("Maximum price in satoshis"),
-	
+
 	// Token-specific parameters
 	tokenType: z
 		.enum(["nft", "bsv20", "bsv21", "all"])
@@ -39,7 +39,11 @@ export const marketListingsArgsSchema = z.object({
 		.describe("Sort method (recent, price, num, height, price_per_token)"),
 	id: z.string().optional().describe("Token ID in outpoint format"),
 	tick: z.string().optional().describe("Token ticker symbol"),
-	pending: z.boolean().default(false).optional().describe("Include pending sales"),
+	pending: z
+		.boolean()
+		.default(false)
+		.optional()
+		.describe("Include pending sales"),
 });
 
 export type MarketListingsArgs = z.infer<typeof marketListingsArgsSchema>;
@@ -118,7 +122,7 @@ export function registerMarketListingsTool(server: McpServer): void {
 				// Determine the API endpoint based on tokenType
 				let baseUrl = "https://ordinals.gorillapool.io/api";
 				let useTokenParams = false;
-				
+
 				if (tokenType === "bsv20" || tokenType === "bsv21") {
 					baseUrl += "/bsv20/market";
 					useTokenParams = true;
@@ -131,11 +135,15 @@ export function registerMarketListingsTool(server: McpServer): void {
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
-				
+
 				// Add sort parameter based on token type
 				if (useTokenParams) {
 					// BSV20/BSV21 specific sort options
-					if (sort === "height" || sort === "price" || sort === "price_per_token") {
+					if (
+						sort === "height" ||
+						sort === "price" ||
+						sort === "price_per_token"
+					) {
 						url.searchParams.append("sort", sort);
 					}
 					// Add token-specific parameters
@@ -144,10 +152,13 @@ export function registerMarketListingsTool(server: McpServer): void {
 					}
 					if (id) url.searchParams.append("id", id);
 					if (tick) url.searchParams.append("tick", tick);
-					if (pending !== undefined) url.searchParams.append("pending", pending.toString());
+					if (pending !== undefined)
+						url.searchParams.append("pending", pending.toString());
 					// For BSV20/21, min/max price parameters have slightly different names
-					if (minPrice !== undefined) url.searchParams.append("min_price", minPrice.toString());
-					if (maxPrice !== undefined) url.searchParams.append("max_price", maxPrice.toString());
+					if (minPrice !== undefined)
+						url.searchParams.append("min_price", minPrice.toString());
+					if (maxPrice !== undefined)
+						url.searchParams.append("max_price", maxPrice.toString());
 				} else {
 					// NFT specific sort options
 					if (sort === "recent" || sort === "price" || sort === "num") {
@@ -158,10 +169,12 @@ export function registerMarketListingsTool(server: McpServer): void {
 					if (mime) url.searchParams.append("mime", mime);
 					if (num) url.searchParams.append("num", num);
 					// For NFTs, min/max price parameters use short names
-					if (minPrice !== undefined) url.searchParams.append("min", minPrice.toString());
-					if (maxPrice !== undefined) url.searchParams.append("max", maxPrice.toString());
+					if (minPrice !== undefined)
+						url.searchParams.append("min", minPrice.toString());
+					if (maxPrice !== undefined)
+						url.searchParams.append("max", maxPrice.toString());
 				}
-				
+
 				// Add common parameters
 				if (address) url.searchParams.append("address", address);
 

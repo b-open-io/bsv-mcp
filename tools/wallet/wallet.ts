@@ -5,12 +5,7 @@
  *
  * See: https://github.com/bitcoin-sv/ts-sdk/blob/main/src/wallet/Wallet.interfaces.ts
  */
-import {
-	LockingScript,
-	PrivateKey,
-	ProtoWallet,
-	Transaction,
-} from "@bsv/sdk";
+import { LockingScript, PrivateKey, ProtoWallet, Transaction } from "@bsv/sdk";
 import type {
 	AbortActionArgs,
 	AbortActionResult,
@@ -87,13 +82,12 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 			}
 
 			const address = privateKey.toAddress();
-			
+
 			const utxos = await fetchPayUtxos(address);
 			const nftUtxos = await fetchNftUtxos(address);
 			this.paymentUtxos = utxos;
 			this.nftUtxos = nftUtxos;
 			this.lastUtxoFetch = Date.now();
-
 		} catch (error) {
 			console.error("Error refreshing UTXOs:", error);
 			throw error;
@@ -130,7 +124,7 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 		if (!privateKey) {
 			throw new Error("No private key available");
 		}
-		
+
 		const publicKey = privateKey.toPublicKey();
 		return {
 			publicKey: publicKey.toDER("hex") as PubKeyHex,

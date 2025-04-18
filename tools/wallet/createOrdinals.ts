@@ -2,13 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createOrdinals } from "js-1sat-ord";
-import type { 
-	ChangeResult, 
-	Destination, 
-	Inscription, 
-	PreMAP,
+import type {
+	ChangeResult,
+	CreateOrdinalsCollectionItemMetadata,
 	CreateOrdinalsCollectionMetadata,
-	CreateOrdinalsCollectionItemMetadata
+	Destination,
+	Inscription,
+	PreMAP,
 } from "js-1sat-ord";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
@@ -24,9 +24,15 @@ export const createOrdinalsArgsSchema = z.object({
 	// Content type (e.g., "image/jpeg", "text/plain", etc.)
 	contentType: z.string().describe("MIME type of the content"),
 	// Optional destination address (if not provided, uses the wallet's address)
-	destinationAddress: z.string().optional().describe("Optional destination address for the ordinal"),
+	destinationAddress: z
+		.string()
+		.optional()
+		.describe("Optional destination address for the ordinal"),
 	// Optional metadata for the inscription
-	metadata: z.any().optional().describe("Optional MAP metadata for the inscription")
+	metadata: z
+		.any()
+		.optional()
+		.describe("Optional MAP metadata for the inscription"),
 });
 
 export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>;
@@ -53,7 +59,9 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 				// 2. Get payment UTXOs from wallet
 				const { paymentUtxos } = await wallet.getUtxos();
 				if (!paymentUtxos || paymentUtxos.length === 0) {
-					throw new Error("No payment UTXOs available to fund this inscription");
+					throw new Error(
+						"No payment UTXOs available to fund this inscription",
+					);
 				}
 
 				// 3. Get the wallet address for change/destination if not provided
@@ -79,19 +87,25 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 					destinations,
 					paymentPk,
 					changeAddress: walletAddress,
-					metaData: args.metadata as PreMAP | CreateOrdinalsCollectionMetadata | CreateOrdinalsCollectionItemMetadata,
+					metaData: args.metadata as
+						| PreMAP
+						| CreateOrdinalsCollectionMetadata
+						| CreateOrdinalsCollectionItemMetadata,
 				});
 
 				const changeResult = result as ChangeResult;
-				
+
 				// 7. Broadcast the transaction
 				await changeResult.tx.broadcast();
-				
+
 				// 8. Refresh the wallet's UTXOs after spending
 				try {
 					await wallet.refreshUtxos();
 				} catch (refreshError) {
-					console.warn("Failed to refresh UTXOs after transaction:", refreshError);
+					console.warn(
+						"Failed to refresh UTXOs after transaction:",
+						refreshError,
+					);
 				}
 
 				// 9. Return transaction details

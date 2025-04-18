@@ -3,9 +3,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { toSatoshi } from "satoshi-token";
 import type { z } from "zod";
+import { getBsvPriceWithCache } from "../bsv/getPrice";
 import { sendToAddressArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";
-import { getBsvPriceWithCache } from "../bsv/getPrice";
 
 // Use the schema imported from schemas.ts
 export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;

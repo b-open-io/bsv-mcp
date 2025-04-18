@@ -7,9 +7,9 @@ import {
 	type ExistingListing,
 	type Payment,
 	type Royalty,
+	TokenType,
 	type TokenUtxo,
 	type Utxo,
-	TokenType,
 	oneSatBroadcaster,
 	purchaseOrdListing,
 	purchaseOrdTokenListing,
@@ -160,31 +160,30 @@ Please fund this wallet address with enough BSV to cover the purchase price
 
 				// Create the purchase transaction based on listing type
 				let transaction: ChangeResult;
-				
+
 				if (args.listingType === "token") {
 					if (!args.tokenProtocol) {
 						throw new Error("tokenProtocol is required for token listings");
 					}
-					
+
 					if (!args.tokenID) {
 						throw new Error("tokenID is required for token listings");
 					}
-					
+
 					// Validate token data from the listing
 					if (!listingData.data.bsv20) {
 						throw new Error("This is not a valid BSV-20 token listing");
 					}
-					
+
 					// For BSV-20, the amount should be included in the listing data
 					if (!listingData.data.bsv20.amt) {
 						throw new Error("Token listing doesn't have an amount specified");
 					}
-					
+
 					// Convert the token protocol to the enum type expected by js-1sat-ord
-					const protocol = args.tokenProtocol === "bsv-20" 
-						? TokenType.BSV20
-						: TokenType.BSV21;
-					
+					const protocol =
+						args.tokenProtocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21;
+
 					// Create a TokenUtxo with the required fields
 					const listingUtxo: TokenUtxo = {
 						txid,
@@ -195,7 +194,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						id: args.tokenID,
 						payout: listingData.data.list.payout,
 					};
-					
+
 					transaction = await purchaseOrdTokenListing({
 						protocol,
 						tokenID: args.tokenID,
@@ -214,13 +213,13 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						script: listingData.script,
 						satoshis: listingData.satoshis,
 					};
-					
+
 					// Create the ExistingListing object for NFT listings
 					const listing: ExistingListing = {
 						payout: listingData.data.list.payout,
 						listingUtxo,
 					};
-					
+
 					// Check for royalties in the NFT origin data
 					// Royalties are only supported for NFTs, not for tokens
 					// The royalties are defined by the original creator as a JSON string
@@ -233,7 +232,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 							// Remove console.warn
 						}
 					}
-					
+
 					transaction = await purchaseOrdListing({
 						utxos: paymentUtxos,
 						paymentPk,
@@ -285,8 +284,11 @@ Please fund this wallet address with enough BSV to cover the purchase price
 								price: listingData.data.list.price,
 								marketFee,
 								marketFeeAddress: MARKET_WALLET_ADDRESS,
-								royaltiesPaid: args.listingType === "nft" && listingData.origin?.data?.map?.royalties ? 
-									JSON.parse(listingData.origin.data.map.royalties) : undefined,
+								royaltiesPaid:
+									args.listingType === "nft" &&
+									listingData.origin?.data?.map?.royalties
+										? JSON.parse(listingData.origin.data.map.royalties)
+										: undefined,
 							}),
 						},
 					],

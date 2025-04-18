@@ -1,21 +1,21 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerGetBalanceTool } from "./getBalance";
 import Mnee from "mnee";
-import { registerSendMneeTool } from "./sendMnee";
+import { registerGetBalanceTool } from "./getBalance";
 import { registerParseTxTool } from "./parseTx";
+import { registerSendMneeTool } from "./sendMnee";
 
 const mnee = new Mnee({
-  environment: "production",
+	environment: "production",
 });
 /**
  * Register all MNEE tools with the MCP server
  * @param server The MCP server instance
  */
 export function registerMneeTools(server: McpServer): void {
-  // Register MNEE-related tools
-  registerGetBalanceTool(server, mnee);
+	// Register MNEE-related tools
+	registerGetBalanceTool(server, mnee);
 
-  registerSendMneeTool(server, mnee);
+	registerSendMneeTool(server, mnee);
 
-  registerParseTxTool(server, mnee);
+	registerParseTxTool(server, mnee);
 }

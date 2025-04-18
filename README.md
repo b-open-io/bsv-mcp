@@ -12,6 +12,8 @@ A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) fram
 
 This server implements the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), allowing AI assistants to utilize Bitcoin SV functionalities. You can connect this server to various MCP-compatible clients.
 
+![MCP Configuration Example](docs/images/mcp-config-example.png)
+
 ### Cursor
 
 To use the BSV MCP server with [Cursor](https://cursor.sh/):
