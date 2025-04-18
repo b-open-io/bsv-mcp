@@ -1,47 +1,56 @@
 # A2B (Agent‑to‑Bitcoin)
-A chain-agnostic protocol for A2A agent discovery and payments between them.
 
 ## Table of Contents
 - [Payments](#payments)
   - [Schema](#schema)
   - [Examples](#examples)
-  - [Including Payment in A2A Calls](#including-payment-in-a2a-calls)
+  - [Including Payment in A2A Calls](#including-payment-in-a2a-calls)
+  - [Partial / Staged Payments](#partial--staged-payments)
   - [Error Codes](#error-codes)
-  - [Refunds & Partial Payments](#refunds--partial-payments)
 - [Registry](#registry)
-  - [Publishing with 1Sat Ordinals + MAP](#publishing-with-1sat-ordinals--map)
-  - [Updating by Re‑inscription](#updating-by-re-inscription)
+  - [Publishing with 1Sat Ordinals + MAP](#publishing-with-1sat-ordinals--map)
+  - [Updating by Re‑inscription](#updating-by-re-inscription)
   - [Discovery Workflow](#discovery-workflow)
-- [Benefits](#benefits-of-this-approach)
+- [Benefits](#benefits)
 - [Payment Verification](#payment-verification)
 - [Implementation Guide](#implementation-guide)
 
 ---
 
 ## Overview
-**A2B** adds blockchain‑native payments and a decentralized registry to Google’s A2A protocol. Agents declare pricing through `x-payment-config` in their `.well‑known/agent.json`, receive **raw transactions** from clients that the agent itself broadcasts only after successful execution, and publish the Agent Card on‑chain as a **1Sat Ordinal inscription** tagged with **MAP** metadata. Ownership of the satoshi equals authority: inscriptions can be traded on ordinal DEXs and re‑inscribed by the new owner. A2B is currency‑agnostic (BSV, BTC, BCH, ETH, SOL, …).
+A2B adds **on‑chain payments** and a **decentralized registry** to Google’s Agent‑to‑Agent (A2A) protocol.  
+* Agents declare pricing with `x‑payment‑config`.  
+* Clients send **raw transactions** that the agent broadcasts only after the work succeeds—so clients are never charged for failed jobs.  
+* The same Agent Card is stored on‑chain as a **1Sat Ordinal inscription** inside an *ord envelope*  [oai_citation_attribution:0‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com) and tagged with **MAP** key/value pairs for discovery .  
+* Ownership follows the satoshi—inscriptions can be traded on ordinal DEXs and **re‑inscribed** by the new owner to update endpoints or prices  [oai_citation_attribution:1‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions/delegate.html?utm_source=chatgpt.com).
+
+A2B is **currency‑agnostic**; any coin whose transfers can be carried as a raw transaction works.
 
 ---
 
 ## Payments
 
 ### Schema
-Add vendor‑extension **`x-payment-config`** to your Agent Card.  
-It is **an array of pricing configurations**:
+`x‑payment‑config` is an **array** of pricing objects added to `.well‑known/agent.json`.  
+A2A’s schema allows vendor keys because it lacks `additionalProperties:false`  [oai_citation_attribution:2‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/partially-signed-transactions?utm_source=chatgpt.com).
 
 ```typescript
 interface PricingConfig {
-  id: string;                       // unique identifier
-  currency: string;                 // unit for amount
-  amount: number;                   // price in that unit
-  address: string;                  // public receiving address
-  description?: string | null;
-  acceptedCurrencies?: string[];    // extra tickers accepted
-  skills?: string[];                // skills covered
-  interval?: 'day'|'week'|'month'|'year'|null; // null = one‑off
-  includedCalls?: Record<string, number>;
+  id: string;              // unique ID used in payment claims
+  currency: string;        // price unit
+  amount: number;          // total price
+  address: string;         // receiver
+  depositPct?: number;     // 0–1  (omit for full‑up‑front)
+  description?: string;
+  acceptedCurrencies?: string[];
+  skills?: string[];
+  interval?: 'day'|'week'|'month'|'year'|null;
+  includedCalls?: Record<string,number>;
+  termsUrl?: string;
 }
 ```
+
+*`depositPct` introduces a simple two‑stage model: **deposit** then **final balance**.*
 
 ### Examples
 ```json
@@ -51,179 +60,120 @@ interface PricingConfig {
     "currency": "BSV",
     "amount": 0.00001,
     "address": "1BSVPayAddr",
-    "skillIds": ["getWeather"],
-    "acceptedCurrencies": ["BSV","SOL"],
+    "skills": ["getWeather"],
     "interval": null
   },
   {
-    "id": "subscription-premium",
-    "currency": "USD",
-    "amount": 10,
-    "address": "1UsdProxy",
-    "interval": "month",
-    "skillIds": ["getWeather","getNews"],
-    "acceptedCurrencies": ["BSV","SOL"],
-    "includedCalls": { "getWeather": 1000 }
-  },
-  {
-    "id": "fx-demo",
-    "currency": "USD",
-    "amount": 1,
-    "address": "1UsdProxy",
-    "acceptedCurrencies": ["BSV","SOL"],
-    "interval": null
+    "id": "ml-training",
+    "currency": "BSV",
+    "amount": 0.005,
+    "address": "1TrainAddr",
+    "depositPct": 0.3,
+    "skills": ["trainModel"]
   }
 ]
 ```
 
-### Including Payment in A2A Calls
-Clients construct—but do **not** broadcast—a **raw transaction** paying the advertised `address`.  
-They embed the payment claim in a DataPart as **`x-payment`**:
+### Including Payment in A2A Calls
+All structured data must go into a **DataPart**  [oai_citation_attribution:3‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/partially-signed-transactions?utm_source=chatgpt.com).  
+The client supplies one raw transaction per stage:
 
 ```jsonc
 {
   "type": "data",
   "data": {
     "x-payment": {
-      "configId": "pay-per-call",
-      "rawTx": "0100000001e34ac1e2baac09c3…00000000",
+      "configId": "ml-training",
+      "stage": "deposit",                     // "deposit" or "final"
+      "rawTx": "0100000001e34ac1e2…00000000",
       "currency": "BSV",
-      "refundAddress": "1AliceRefundAddr"   // optional
+      "refundAddress": "1AliceRefund"         // optional
     }
   }
 }
 ```
+
+### Partial / Staged Payments
+| Stage    | Trigger | Amount                           | Server action |
+|----------|---------|----------------------------------|---------------|
+| deposit  | first `tasks/send` | `amount × depositPct` | Validate → broadcast → start job |
+| final    | client polls / server signals `AmountInsufficient` | `amount – deposit` | Validate → broadcast → return results |
+
+If `depositPct` is omitted, only **one** stage (`full`) is required.
 
 ### Error Codes
-| HTTP | JSON‑RPC code | Description                      |
-|------|---------------|----------------------------------|
-| 402  | `-32030`      | **PaymentMissing** – no DataPart |
-| 402  | `-32031`      | **PaymentInvalid** – rawTx malformed |
-| 402  | `-32032`      | **AddressMismatch** – output pays wrong address |
-| 402  | `-32033`      | **AmountInsufficient** – value < price |
-| 402  | `-32034`      | **CurrencyUnsupported** – config can’t accept that coin |
-
-### Refunds & Partial Payments
-* **Refunds** – If execution fails after broadcast, the agent returns funds to `refundAddress` or credits future calls.  
-* **Metered streaming** – agent pauses, issues `PaymentInsufficient`; client sends another rawTx in a new DataPart; agent resumes.
+| HTTP | JSON‑RPC code | Meaning                                 |
+|------|---------------|-----------------------------------------|
+| 402  | `-32030`      | PaymentMissing – no DataPart            |
+| 402  | `-32031`      | PaymentInvalid – rawTx malformed        |
+| 402  | `-32032`      | StageMismatch – wrong stage             |
+| 402  | `-32033`      | AmountInsufficient – deposit or final   |
+| 402  | `-32034`      | AddressMismatch / CurrencyUnsupported   |
 
 ---
 
 ## Registry
 
-## Registry
-### Publishing with 1Sat Ordinals + MAP
-A 1Sat inscription must reside in a **single‑satoshi P2PKH output** with an **ord envelope** in the script  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com). The agent file is embedded as:
+### Publishing with 1Sat Ordinals + MAP
+* **Output 0 – 1 sat:** P2PKH + ord envelope (`OP_FALSE OP_IF 6f7264 … OP_ENDIF`) holding `.well‑known/agent.json`  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com) [oai_citation_attribution:5‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions.html?utm_source=chatgpt.com).  
+* **Output 1 – 0 sat:** `OP_RETURN 1PuQa7K… SET app bsv-mcp type agent` .  
+Create with `js‑1sat‑ord`  [oai_citation_attribution:6‡Medium](https://scryptplatform.medium.com/integrate-ordinals-with-smart-contracts-on-bitcoin-part-1-33e421314ac0?utm_source=chatgpt.com).
 
-```
-… P2PKH …
-OP_FALSE OP_IF
-  "ord"
-  OP_1 "application/json"
-  OP_0 <agent.json bytes>
-OP_ENDIF OP_RETURN
-"1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5" 
-    "SET" 
-        "app" "bsv-mcp" 
-        "type" "a2b"
-```
-
-### Publishing with 1Sat Ordinals + MAP
-Construct an inscription with the .well-known/agent.json as the data. Add metadata using MAP tags.
-
-You build this easily with `js-1sat-ord`:
-
-```ts
-const inscription = {
-  dataB64,
-  contentType: 'application/json',
-};
-const meta = { app: 'bsv-mcp', type: 'a2b' };
-await createOrdinals({ utxos, destinations:[{address:target, inscription}], paymentPk, changeAddress, metaData: meta });
-```
-
-### Updating by Re‑inscription
-To update pricing or endpoints:
-
-1. Spend the same satoshi into a new output you control.  
-2. Embed a **new ord envelope** with revised `agent.json`.  
-3. Append identical MAP tags.  
-
-Indexers treat **latest inscription in that satoshi** as canonical. Authority follows UTXO ownership; registry inscriptions can be listed on any ordinal DEX and updated by the buyer.
+### Updating by Re‑inscription
+Spend the **same satoshi** into a new output and include a new ord envelope with the updated Agent Card; append the same MAP tags. The latest inscription in that satoshi overrides older ones  [oai_citation_attribution:7‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions/delegate.html?utm_source=chatgpt.com).
 
 ### Discovery Workflow
-1. Indexer scans for ord envelopes whose accompanying MAP = `app=bsv-mcp&type=a2b`.  
-2. Caches the newest inscription per satoshi.  
-3. Exposes query API (skill, capability, price ceiling, provider, update height).  
-4. Clients fetch `agent.json`, compare to live HTTPS copy, and warn on mismatch.
+1. Indexer scans blockchain for ord envelopes + MAP filter.  
+2. Caches the **newest inscription per satoshi** (authoritative).  
+3. Serves query API (skill, capability, price ceiling, etc.).  
+4. Buyers can purchase the satoshi on any ordinal DEX and update pricing by re‑inscribing.
 
 ---
 
-## Including Payment in A2A Calls
-Full request example:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "task-1234",
-  "method": "tasks/send",
-  "params": {
-    "id": "task-1234",
-    "sessionId": "sess-5678",
-    "message": {
-      "role": "user",
-      "parts": [
-        { "type": "text", "text": "What's the weather in New York?" },
-        {
-          "type": "data",
-          "data": {
-            "x-payment": {
-              "configId": "pay-per-call",
-              "rawTx": "0100000001e34ac1e2…00000000",
-              "currency": "BSV"
-            }
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
----
-
-## Benefits of This Approach
-* **Ownership = control** – spend the sat, re‑inscribe; no extra signatures.  
-* **Tradable registry entries** – inscriptions behave like NFTs; list them on DEXs.  
-* **Atomic payments** – agent broadcasts tx only after successful work.  
-* **Transparent pricing & discovery** – all pricing visible on‑chain and searchable without central servers.
+## Benefits
+* **Simple flexibility** – optional `depositPct` enables pay‑as‑you‑go without complex milestones.  
+* **Atomic payments** – agent broadcasts tx only after each stage succeeds, mirroring hold‑invoice semantics  [oai_citation_attribution:8‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions/delegate.html?utm_source=chatgpt.com).  
+* **Ownership = control** – no extra signature layer; spend the satoshi, own the listing.  
+* **Tradability** – registry entries are standard ordinals, instantly listable  [oai_citation_attribution:9‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/partially-signed-transactions?utm_source=chatgpt.com).
 
 ---
 
 ## Payment Verification
-Server routine:
-
-1. Decode `rawTx`; confirm output pays `address` at least `amount`.  
-2. Ensure `rawTx` not yet on‑chain, and inputs aren't spent.  
-3. Validate `currency` and any FX conversions.  
-4. Execute task.  
-5. On success broadcast `rawTx`; on failure discard.  
-6. For recurring configs, update subscription expiry.
+1. Decode `rawTx`; check output pays `address` ≥ stage amount.  
+2. Ensure tx not yet confirmed.  
+3. For deposit: verify stage == `"deposit"`. For second payment: `"final"`.  
+4. Execute work; on success broadcast `rawTx`.  
+5. If work fails, discard tx (client keeps funds).  
+6. Track per‑task payment state (`"pending"`, `"deposit-paid"`, `"paid-in-full"`).
 
 ---
 
-## Implementation Guide
+## Implementation Guide
 ### Client
-1. Discover agents via indexer; fetch latest `agent.json`.  
-2. Select a pricing **config** (`configId`).  
-3. Build & sign a rawTx paying `address`; keep locally.  
-4. Send A2A call with `x-payment` DataPart containing `rawTx`.  
-5. Handle HTTP 402 / JSON‑RPC error; if needed, build a new rawTx and retry.
+1. Discover agent via indexer; fetch latest Agent Card.  
+2. Choose a pricing config.  
+3. Build rawTx for deposit or full price; keep locally.  
+4. Send A2A request (`tasks/send` or `tasks/sendSubscribe`) with DataPart `x-payment.stage:"deposit"| "full"`.  
+5. Poll for progress. If server replies with `AmountInsufficient`, build final rawTx and resend.  
+6. Receive results after final payment broadcast.
 
 ### Server
-1. Publish Agent Card via `wallet_a2bPublish` (1Sat Ordinal + MAP).  
-2. On each call, parse `rawTx`; validate.  
-3. Execute task; on success broadcast `rawTx`, on failure discard.  
-4. Manage subscription windows & usage limits.
+1. Inscribe Agent Card via `wallet_a2bPublish`.  
+2. On request: validate stage, decode rawTx, check amount.  
+3. Run task; on success broadcast rawTx, update task state.  
+4. If only deposit paid, keep task `"in-progress"`.  
+5. Once final paid, mark task `"completed"`, return artifacts.
 
 ---
+
+### Key References  
+1. 1Sat Ords envelope spec  [oai_citation_attribution:10‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com)  
+2. Ordinal Theory Handbook on envelopes  [oai_citation_attribution:11‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions.html?utm_source=chatgpt.com)  
+3. A2A JSON schema lacks `additionalProperties:false`  [oai_citation_attribution:12‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/partially-signed-transactions?utm_source=chatgpt.com)  
+4. MAP protocol address & SET syntax   
+5. `js-1sat-ord` library usage  [oai_citation_attribution:13‡Medium](https://scryptplatform.medium.com/integrate-ordinals-with-smart-contracts-on-bitcoin-part-1-33e421314ac0?utm_source=chatgpt.com)  
+6. Raw‑tx deferred broadcast API pattern  [oai_citation_attribution:14‡Bitcoin financial services - Unchained](https://www.unchained.com/blog/bitcoin-inscriptions-ordinals?utm_source=chatgpt.com)  
+7. Re‑inscription & DEX trading discourse  [oai_citation_attribution:15‡Ordinal Theory Handbook](https://docs.ordinals.com/inscriptions/delegate.html?utm_source=chatgpt.com)  
+8. OrdinalHub envelope explainer  [oai_citation_attribution:16‡OrdinalHub](https://blog.ordinalhub.com/what-is-an-envelope/?utm_source=chatgpt.com)  
+9. BSV push‑data rule (no 520‑byte limit)  [oai_citation_attribution:17‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com)  
+10. StackExchange parsing Ordinals tx  [oai_citation_attribution:18‡bitcoin.stackexchange.com](https://bitcoin.stackexchange.com/questions/121978/parsing-ordinals-transaction-the-inscribed-data-part?utm_source=chatgpt.com)
