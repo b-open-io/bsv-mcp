@@ -14,7 +14,7 @@ import {
   type Distribution,
   type TokenChangeResult,
 } from "js-1sat-ord";
-import type { Wallet } from "../wallet";
+import type { Wallet } from "./wallet";
 
 // Schema for BSV-20/BSV-21 token transfer arguments
 export const transferOrdTokenArgsSchema = z.object({

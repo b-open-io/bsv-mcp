@@ -8,31 +8,6 @@
 
 A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework. This library provides wallet, ordinals, and utility functions for BSV blockchain interaction.
 
-## Installation
-
-To install dependencies:
-
-```bash
-bun install
-```
-
-## External Dependencies
-
-For full functionality of all tools, the following additional dependencies are installed:
-
-```bash
-# For ordinal listing purchase functionality
-js-1sat-ord
-```
-
-## Running the Server
-
-Start the MCP server:
-
-```bash
-bun run index.ts
-```
-
 ## Connecting to MCP Clients
 
 This server implements the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), allowing AI assistants to utilize Bitcoin SV functionalities. You can connect this server to various MCP-compatible clients.
@@ -334,6 +309,14 @@ The tool supports both mainnet and testnet:
 
 - `main`: Bitcoin SV mainnet (default)
 - `test`: Bitcoin SV testnet
+
+# Development
+
+## Running the Server
+
+```bash
+bun run index.ts
+```
 
 ### Running Tests
 

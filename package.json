@@ -2,7 +2,7 @@
 	"name": "bsv-mcp",
 	"module": "index.ts",
 	"type": "module",
-	"version": "0.0.21",
+	"version": "0.0.22",
 	"license": "MIT",
 	"author": "satchmo",
 	"description": "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -42,12 +42,12 @@
 	},
 	"dependencies": {
 		"@bsv/sdk": "^1.4.19",
-		"@modelcontextprotocol/sdk": "^1.9.0",
+		"@modelcontextprotocol/sdk": "^1.10.1",
 		"@types/node": "^22.14.1",
-		"js-1sat-ord": "^0.1.80",
+		"js-1sat-ord": "^0.1.81",
 		"mnee": "^2.0.0",
 		"satoshi-token": "^0.0.4",
-		"zod": "^3.24.2"
+		"zod": "^3.24.3"
 	},
 	"scripts": {
 		"lint": "biome check .",

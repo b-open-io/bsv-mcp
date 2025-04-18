@@ -45,7 +45,7 @@ const privKey = validatePrivateKey();
 
 const server = new McpServer({
 	name: "Bitcoin SV MCP Server",
-	version: "0.0.21",
+	version: "0.0.22",
 });
 
 // Initialize wallet with the validated private key
