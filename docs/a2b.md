@@ -1,5 +1,5 @@
 # A2B (Agent‑to‑Bitcoin)
-A chain-agnostic protocol for A2A agent discovery payments between them.
+A chain-agnostic protocol for A2A agent discovery and payments between them.
 
 ## Table of Contents
 - [Payments](#payments)
@@ -34,7 +34,7 @@ interface PricingConfig {
   id: string;                       // unique identifier
   currency: string;                 // unit for amount
   amount: number;                   // price in that unit
-  address: string;                  // receiving address
+  address: string;                  // public receiving address
   description?: string | null;
   acceptedCurrencies?: string[];    // extra tickers accepted
   skills?: string[];                // skills covered
@@ -51,7 +51,8 @@ interface PricingConfig {
     "currency": "BSV",
     "amount": 0.00001,
     "address": "1BSVPayAddr",
-    "skills": ["getWeather"],
+    "skillIds": ["getWeather"],
+    "acceptedCurrencies": ["BSV","SOL"],
     "interval": null
   },
   {
@@ -60,7 +61,8 @@ interface PricingConfig {
     "amount": 10,
     "address": "1UsdProxy",
     "interval": "month",
-    "skills": ["getWeather","getNews"],
+    "skillIds": ["getWeather","getNews"],
+    "acceptedCurrencies": ["BSV","SOL"],
     "includedCalls": { "getWeather": 1000 }
   },
   {
@@ -109,9 +111,26 @@ They embed the payment claim in a DataPart as **`x-payment`**:
 
 ## Registry
 
+## Registry
 ### Publishing with 1Sat Ordinals + MAP
-* **Output 0 (1 sat)** – P2PKH script with ord envelope storing `.well‑known/agent.json`.  
-* **Output 1 (0 sat OP_RETURN)** – MAP tags `SET app bsv-mcp type agent`.
+A 1Sat inscription must reside in a **single‑satoshi P2PKH output** with an **ord envelope** in the script  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com). The agent file is embedded as:
+
+```
+… P2PKH …
+OP_FALSE OP_IF
+  "ord"
+  OP_1 "application/json"
+  OP_0 <agent.json bytes>
+OP_ENDIF OP_RETURN
+"1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5" 
+    "SET" 
+        "app" "bsv-mcp" 
+        "type" "agent"
+```
+
+### Publishing with 1Sat Ordinals + MAP
+* **Output 0 (1 sat)** – OP_FALSE OP_IF P2PKH script with ord envelope storing `.well‑known/agent.json`.  
+    * **MAP tags** – `SET app bsv-mcp type a2b`.
 
 Create via `js-1sat-ord`:
 
@@ -121,7 +140,7 @@ const inscription = {
   contentType: 'application/json',
   filename: '.well-known/agent.json'
 };
-const meta = { app: 'bsv-mcp', type: 'agent' };
+const meta = { app: 'bsv-mcp', type: 'a2b' };
 await createOrdinals({ utxos, destinations:[{address:target, inscription}], paymentPk, changeAddress, metaData: meta });
 ```
 
@@ -135,7 +154,7 @@ To update pricing or endpoints:
 Indexers treat **latest inscription in that satoshi** as canonical. Authority follows UTXO ownership; registry inscriptions can be listed on any ordinal DEX and updated by the buyer.
 
 ### Discovery Workflow
-1. Indexer scans for ord envelopes whose accompanying MAP = `app=bsv-mcp&type=agent`.  
+1. Indexer scans for ord envelopes whose accompanying MAP = `app=bsv-mcp&type=a2b`.  
 2. Caches the newest inscription per satoshi.  
 3. Exposes query API (skill, capability, price ceiling, provider, update height).  
 4. Clients fetch `agent.json`, compare to live HTTPS copy, and warn on mismatch.
