@@ -18,24 +18,25 @@
 ---
 
 ## Overview
-**A2B** augments Google’s Agent‑to‑Agent (A2A) protocol with blockchain‑native payments and a decentralized registry. Agents publish price data inside `.well‑known/agent.json`, receive **raw transactions** from clients (the agent broadcasts only after successful execution), and store the same Agent Card on‑chain as a **1Sat Ordinal inscription** tagged with **MAP** metadata for permissionless discovery. Because ownership follows the satoshi, the inscription can be traded on any ordinal‑aware DEX and re‑inscribed by the new owner—no extra signature layer required. The design is currency‑agnostic; any coin whose payments can be conveyed with a raw transaction works (BSV, BTC, BCH, ETH, SOL, …).
+**A2B** adds blockchain‑native payments and a decentralized registry to Google’s A2A protocol. Agents declare pricing through `x-payment-config` in their `.well‑known/agent.json`, receive **raw transactions** from clients that the agent itself broadcasts only after successful execution, and publish the Agent Card on‑chain as a **1Sat Ordinal inscription** tagged with **MAP** metadata. Ownership of the satoshi equals authority: inscriptions can be traded on ordinal DEXs and re‑inscribed by the new owner. A2B is currency‑agnostic (BSV, BTC, BCH, ETH, SOL, …).
 
 ---
 
 ## Payments
+
 ### Schema
-A2A’s JSON schema allows arbitrary vendor keys because it omits `additionalProperties:false`  [oai_citation_attribution:0‡GitHub](https://github.com/google/A2A/blob/main/specification/json/a2a.json?utm_source=chatgpt.com) [oai_citation_attribution:1‡APIMatic](https://www.apimatic.io/openapi/additionalproperties?utm_source=chatgpt.com).  
-Define an **`x-payment` array** of pricing configurations:
+Add vendor‑extension **`x-payment-config`** to your Agent Card.  
+It is **an array of pricing configurations**:
 
 ```typescript
 interface PricingConfig {
-  id: string;
-  currency: string;
-  amount: number;
-  address: string;
+  id: string;                       // unique identifier
+  currency: string;                 // unit for amount
+  amount: number;                   // price in that unit
+  address: string;                  // receiving address
   description?: string | null;
-  acceptedCurrencies?: string[];
-  skills?: string[];
+  acceptedCurrencies?: string[];    // extra tickers accepted
+  skills?: string[];                // skills covered
   interval?: 'day'|'week'|'month'|'year'|null; // null = one‑off
   includedCalls?: Record<string, number>;
   termsUrl?: string;
@@ -44,7 +45,7 @@ interface PricingConfig {
 
 ### Examples
 ```json
-"x-payment": [
+"x-payment-config": [
   {
     "id": "pay-per-call",
     "currency": "BSV",
@@ -74,8 +75,8 @@ interface PricingConfig {
 ```
 
 ### Including Payment in A2A Calls
-A2A messages are JSON‑RPC; structured payloads must sit inside a **DataPart**  [oai_citation_attribution:2‡GitHub](https://github.com/google/A2A/blob/main/specification/json/a2a.json?utm_source=chatgpt.com).  
-Clients create and sign—but do **not** broadcast—a raw transaction paying the advertised `address`. They embed it:
+Clients construct—but do **not** broadcast—a **raw transaction** paying the advertised `address`.  
+They embed the payment claim in a DataPart as **`x-payment`**:
 
 ```jsonc
 {
@@ -84,13 +85,12 @@ Clients create and sign—but do **not** broadcast—a raw transaction paying th
     "x-payment": {
       "configId": "pay-per-call",
       "rawTx": "0100000001e34ac1e2baac09c3…00000000",
-      "currency": "BSV"
+      "currency": "BSV",
+      "refundAddress": "1AliceRefundAddr"   // optional
     }
   }
 }
 ```
-
-Because the agent is the broadcaster, the client is never charged if the request fails. This “pay‑to‑provider‑broadcast” pattern is common in pay‑per‑call APIs  [oai_citation_attribution:3‡Bitcoin Stack Exchange](https://bitcoin.stackexchange.com/questions/69842/create-a-raw-transaction-and-broadcast-it-to-blockchain-using-bitcoin-core?utm_source=chatgpt.com).
 
 ### Error Codes
 | HTTP | JSON‑RPC code | Description                      |
@@ -102,40 +102,48 @@ Because the agent is the broadcaster, the client is never charged if the request
 | 402  | `-32034`      | **CurrencyUnsupported** – config can’t accept that coin |
 
 ### Refunds & Partial Payments
-* **Refunds** – if something breaks *after* broadcast, the agent can automatically send coins back to a `refundAddress` included in the claim.  
-* **Metered streaming** – agent pauses stream, returns `PaymentInsufficient`; client supplies an additional rawTx in a new DataPart; agent resumes.
+* **Refunds** – if execution fails after broadcast, the agent returns funds to `refundAddress` or credits future calls.  
+* **Metered streaming** – agent pauses, issues `PaymentInsufficient`; client sends another rawTx in a new DataPart; agent resumes.
 
 ---
 
 ## Registry
+
 ### Publishing with 1Sat Ordinals + MAP
-A 1Sat inscription must reside in a **single‑satoshi P2PKH output** with an **ord envelope** in the script  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com). The agent file is embedded as:
+* **Output 0 (1 sat)** – P2PKH script with ord envelope storing `.well‑known/agent.json`.  
+* **Output 1 (0 sat OP_RETURN)** – MAP tags `SET app bsv-mcp type agent`.
 
-```
-… P2PKH …
-OP_FALSE OP_IF
-  6f7264
-  OP_1 "application/json"
-  OP_1 ".well-known/agent.json"
-  OP_0 <agent.json bytes>
-OP_ENDIF
-```
+Create via `js-1sat-ord`:
 
-A separate zero‑sat output carries MAP metadata (`1PuQa7K…` prefix) setting `app bsv-mcp` and `type agent`  [oai_citation_attribution:5‡GitHub](https://github.com/rohenaz/MAP?utm_source=chatgpt.com).  
-The `js-1sat-ord` library automates inscription creation  [oai_citation_attribution:6‡GitHub](https://github.com/BitcoinSchema/js-1sat-ord?utm_source=chatgpt.com).
+```ts
+const inscription = {
+  dataB64,
+  contentType: 'application/json',
+  filename: '.well-known/agent.json'
+};
+const meta = { app: 'bsv-mcp', type: 'agent' };
+await createOrdinals({ utxos, destinations:[{address:target, inscription}], paymentPk, changeAddress, metaData: meta });
+```
 
 ### Updating by Re‑inscription
-To update, **spend the same satoshi** into a new output you control and include a new ord envelope with the updated Agent Card. “Re‑inscribing” is explicitly supported by ordinal tooling; the latest inscription in a satoshi supersedes earlier ones  [oai_citation_attribution:7‡Reddit](https://www.reddit.com/r/BitcoinOrdinals/comments/18ociox/is_it_possible_to_reinscribe_an_ordinal/?utm_source=chatgpt.com). Because authority follows UTXO ownership, inscriptions are naturally tradable on ordinal DEXs.
+To update pricing or endpoints:
+
+1. Spend the same satoshi into a new output you control.  
+2. Embed a **new ord envelope** with revised `agent.json`.  
+3. Append identical MAP tags.  
+
+Indexers treat **latest inscription in that satoshi** as canonical. Authority follows UTXO ownership; inscriptions can be listed on any ordinal DEX and updated by the buyer.
 
 ### Discovery Workflow
-1. Indexer watches the blockchain; when it sees an ord envelope and MAP `app=bsv-mcp&type=agent`, it records that satoshi.  
-2. Keeps **the newest inscription for that satoshi** as canonical.  
-3. Exposes query APIs: by skill, capability, price ceiling, provider, update height, etc.
+1. Indexer scans for ord envelopes whose accompanying MAP = `app=bsv-mcp&type=agent`.  
+2. Caches the newest inscription per satoshi.  
+3. Exposes query API (skill, capability, price ceiling, provider, update height).  
+4. Clients fetch `agent.json`, compare to live HTTPS copy, and warn on mismatch.
 
 ---
 
 ## Including Payment in A2A Calls
-Full request:
+Full request example:
 
 ```json
 {
@@ -168,51 +176,37 @@ Full request:
 ---
 
 ## Benefits of This Approach
-* **Ownership = Control** – whoever owns the satoshi controls the Agent Card.  
-* **Tradable** – inscriptions behave like NFTs; list them on marketplaces  [oai_citation_attribution:8‡Reddit](https://www.reddit.com/r/BitcoinOrdinals/comments/18ociox/is_it_possible_to_reinscribe_an_ordinal/?utm_source=chatgpt.com).  
-* **Atomic Payment** – agent only broadcasts rawTx after success; client isn’t charged for failed jobs.  
-* **No signature layers** – authority shown by spending the sat, not external schemes.  
-* **Open discovery** – anyone can run an indexer; no gatekeepers.
+* **Ownership = control** – spend the sat, re‑inscribe; no extra signatures.  
+* **Tradable registry entries** – inscriptions behave like NFTs; list them on DEXs.  
+* **Atomic payments** – agent broadcasts tx only after successful work.  
+* **Transparent pricing & discovery** – all pricing visible on‑chain and searchable without central servers.
 
 ---
 
 ## Payment Verification
-Server workflow:
+Server routine:
 
-1. Decode `rawTx`; ensure it contains an output paying `address` at least `amount`.  
-2. Validate that `rawTx` is not yet seen on‑chain.  
-3. Verify `currency` accepted (or FX via `acceptedCurrencies`).  
+1. Decode `rawTx`; confirm output pays `address` at least `amount`.  
+2. Ensure `rawTx` not yet on‑chain.  
+3. Validate `currency` and any FX conversions.  
 4. Execute task.  
-5. If task succeeds → broadcast `rawTx`. If it fails → discard `rawTx` (no charge).  
-6. For recurring configs, update subscription expiration.
+5. On success broadcast `rawTx`; on failure discard.  
+6. For recurring configs, update subscription expiry.
 
 ---
 
 ## Implementation Guide
 ### Client
 1. Discover agents via indexer; fetch latest `agent.json`.  
-2. Select a `configId`.  
-3. Construct & sign a rawTx paying `address`; keep it local.  
-4. Send A2A request with DataPart containing `rawTx`.  
-5. On HTTP 402 / JSON‑RPC error, build a new rawTx and retry.
+2. Select a pricing **config** (`configId`).  
+3. Build & sign a rawTx paying `address`; keep locally.  
+4. Send A2A call with `x-payment` DataPart containing `rawTx`.  
+5. Handle HTTP 402 / JSON‑RPC error; if needed, build a new rawTx and retry.
 
 ### Server
-1. Publish Agent Card with `wallet_a2bPublish` (1Sat Ord + MAP).  
-2. For each call, parse `rawTx` from `x-payment`.  
-3. Validate outputs and amount.  
-4. Run task; on success broadcast `rawTx` and return result; on failure return 500 and do **not** broadcast.  
-5. Manage subscription windows and usage counters.
+1. Publish Agent Card via `wallet_a2bPublish` (1Sat Ordinal + MAP).  
+2. On each call, parse `rawTx`; validate.  
+3. Execute task; on success broadcast `rawTx`, on failure discard.  
+4. Manage subscription windows & usage limits.
 
 ---
-
-### References  
-1. 1Sat Ordinals envelope spec  [oai_citation_attribution:9‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com)  
-2. MAP protocol prefix & docs  [oai_citation_attribution:10‡GitHub](https://github.com/rohenaz/MAP?utm_source=chatgpt.com)  
-3. A2A JSON schema (no `additionalProperties:false`)  [oai_citation_attribution:11‡GitHub](https://github.com/google/A2A/blob/main/specification/json/a2a.json?utm_source=chatgpt.com)  
-4. OpenAPI note on extra properties  [oai_citation_attribution:12‡APIMatic](https://www.apimatic.io/openapi/additionalproperties?utm_source=chatgpt.com)  
-5. `js-1sat-ord` library usage  [oai_citation_attribution:13‡GitHub](https://github.com/BitcoinSchema/js-1sat-ord?utm_source=chatgpt.com)  
-6. Re‑inscription (discourse on updating ordinals)  [oai_citation_attribution:14‡Reddit](https://www.reddit.com/r/BitcoinOrdinals/comments/18ociox/is_it_possible_to_reinscribe_an_ordinal/?utm_source=chatgpt.com)  
-7. MAP in Bitcoin Wiki application layer  [oai_citation_attribution:15‡Bitcoin Wiki](https://wiki.bitcoinsv.io/index.php/Application_layer_protocol?utm_source=chatgpt.com)  
-8. Raw transaction broadcast workflow  [oai_citation_attribution:16‡Bitcoin Stack Exchange](https://bitcoin.stackexchange.com/questions/69842/create-a-raw-transaction-and-broadcast-it-to-blockchain-using-bitcoin-core?utm_source=chatgpt.com)  
-9. Stripe explainer on A2A payments for context  [oai_citation_attribution:17‡Stripe](https://stripe.com/en-jp/resources/more/what-are-a2a-payments-a-quick-guide-to-account-to-account-payments?__from__=talkingdev&utm_source=chatgpt.com)  
-10. Transaction fee factors (fee sizing)  [oai_citation_attribution:18‡tangem.com](https://tangem.com/en/blog/post/bitcoin-transaction-fees/?utm_source=chatgpt.com)
