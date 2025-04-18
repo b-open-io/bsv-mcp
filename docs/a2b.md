@@ -1,83 +1,98 @@
-# A2B (Agent‑to‑Bitcoin)  
-*A payment and discovery extension for Google A2A*
+# A2B (Agent‑to‑Bitcoin)  
+*A payment + discovery extension for Google A2A*
 
 ---
 
 ## Table of Contents
-1. [Scope](#scope)  
+1. [Overview](#overview)  
 2. [Terminology](#terminology)  
 3. [Payments](#payments)  
    3.1 [Pricing Configuration (`x-payment-config`)](#schema)  
    3.2 [Example Agent Card](#examples)  
-   3.3 [Payment Claim (`x-payment` DataPart)](#including-payment-in-a2a-calls)  
-   3.4 [Two‑Stage Deposit Model](#partial-payments)  
+   3.3 [Payment Claim (`x-payment` DataPart)](#payment-claim)  
+   3.4 [Two‑Stage Deposit Model](#two-stage-deposit-model)  
    3.5 [Error Codes](#error-codes)  
 4. [Registry](#registry)  
-   4.1 [1Sat Ordinal + MAP Format](#publishing-with-1sat-ordinals--map)  
+   4.1 [1Sat Ordinal + MAP Format](#1sat-ordinal--map-format)  
    4.2 [Updating by Re‑inscription](#updating-by-re-inscription)  
-   4.3 [Discovery API Requirements](#discovery-workflow)  
+   4.3 [Discovery Workflow](#discovery-workflow)  
 5. [Protocol Guidelines](#protocol-guidelines)  
-   5.1 [Immediate Tasks](#immediate-tasks)  
+   5.1 [Immediate Tasks](#immediate-tasks)  
    5.2 [Streaming Tasks](#streaming-tasks)  
    5.3 [Interactive Sessions](#interactive-sessions)  
    5.4 [Long‑Running Jobs](#long-running-jobs)  
-   5.5 [Subscription Services](#subscription-services)  
-6. [Payment Verification Algorithm](#payment-verification)  
+   5.5 [Subscription Services](#subscription-services)  
+6. [Payment Verification Algorithm](#payment-verification-algorithm)  
 7. [Implementation Guide](#implementation-guide)
 
 ---
 
-## 1  Scope<a id="scope"></a>
+## 1  Overview<a id="overview"></a>
 
-A2B specifies:
+A2B adds:
 
-* **How an A2A agent advertises crypto‑priced services** (`x-payment-config`).  
-* **How a client submits a raw transaction payment claim** (`x-payment` DataPart).  
-* **How an Agent Card is inscribed on‑chain** as a 1Sat Ordinal plus MAP metadata for decentralized discovery.  
+* **Crypto pricing** via `x-payment-config` in the AgentCard.  
+* **Per‑task payments** supplied as raw blockchain transactions; **the server broadcasts** the transaction immediately after a successful task.  
+* **Decentralized discovery** by inscribing the AgentCard on‑chain as a **1Sat Ordinal** tagged with MAP (`app=bsv‑mcp type=a2b`).  
+* **Ownership‑driven updates**: whoever controls the inscription satoshi can re‑inscribe new pricing or metadata.
 
-The payment flow is chain‑agnostic; examples use **BSV** and **USD‑proxy UTXOs**.
+The model is chain‑agnostic; examples use **BSV** and **USD‑proxy UTXOs**.
 
 ---
 
 ## 2  Terminology<a id="terminology"></a>
 
-| Term             | Meaning                                                                                       |
-|------------------|------------------------------------------------------------------------------------------------|
-| *Pricing Config* | One entry in `x-payment-config`; defines price, currency, address, optional `depositPct`.      |
-| *Deposit*        | Up‑front raw transaction covering `amount × depositPct`.                                       |
-| *Final*          | Raw transaction covering `amount − deposit`.                                                   |
-| *Stage*          | `"deposit"`, `"final"`, or `"full"` depending on config and task.                              |
-| *Claim*          | The `x-payment` object inside a DataPart that carries a raw transaction for a stage.           |
-| *Success*        | An A2A task reaches `completed` state **and** the corresponding rawTx is broadcast.            |
-| *Re‑inscription* | Spending the inscription satoshi into a new output with a new ord envelope + MAP.              |
+| Term             | Meaning                                                                    |
+|------------------|----------------------------------------------------------------------------|
+| *Pricing Config* | One object in `x-payment-config`.                                          |
+| *Deposit*        | Up‑front rawTx = `amount × depositPct`.                                    |
+| *Final*          | RawTx = `amount − deposit`.                                                |
+| *Stage*          | `"deposit"`, `"final"`, or `"full"`.                                       |
+| *Claim*          | The `x-payment` DataPart supplied by the client.                           |
+| *Re‑inscription* | Spending the inscription satoshi, then adding a new ord envelope + MAP.    |
 
 ---
 
 ## 3  Payments<a id="payments"></a>
 
-### 3.1  Schema (`x-payment-config`)<a id="schema"></a>
+### 3.1  Pricing Configuration (`x-payment-config`)<a id="schema"></a>
 
 ```jsonc
 "x-payment-config": [
   {
-    "id": "string",             // unique
-    "currency": "BSV | USD | …",
-    "amount": 0.01,             // total cost in currency unit
-    "address": "1Receiver",     // destination of rawTx output
-    "depositPct": 0.50,         // optional, 0–1
-    "description": "text",
-    "acceptedCurrencies": ["SOL"],
-    "skills": ["skillId"],
-    "interval": null,           // or "month" | "year"
-    "includedCalls": { "skillId": 100 },
-    "termsUrl": "https://…"
+    "id": "hashrate-rental",
+    "currency": "BSV",
+    "amount": 0.01,
+    "address": "1HashRentAddr",
+    "depositPct": 0.5,             // optional (0–1)
+    "description": "24 h, 1 MH/s SHA‑256",
+    "skills": ["rentHashrate"]
+  },
+  {
+    "id": "dex-chart",
+    "currency": "USD",
+    "amount": 0.05,
+    "address": "1DexDataAddr",
+    "description": "Candlestick JSON, any trading pair",
+    "skills": ["getDexChart"],
+    "interval": null
   }
 ]
 ```
 
-### 3.2  Example Agent Card<a id="examples"></a>
+Field semantics:
 
-Agent offers hash‑rate rental and DEX chart data.
+| Field            | Notes                                                                   |
+|------------------|-------------------------------------------------------------------------|
+| `id`             | Used by client in `x-payment.configId`.                                 |
+| `currency`       | Ticker symbol; free‑form (e.g. `BSV`, `USD`).                           |
+| `amount`         | Price in `currency` units.                                              |
+| `address`        | Destination output for rawTx.                                           |
+| `depositPct`     | If present, enables two‑stage pay (deposit + final).                    |
+| `skills`         | Skills this price covers.                                               |
+| `interval`       | `null` (one‑off) or billing term (`day`,`week`,`month`,`year`).         |
+
+### 3.2  Example Agent Card<a id="examples"></a>
 
 ```jsonc
 {
@@ -89,29 +104,11 @@ Agent offers hash‑rate rental and DEX chart data.
     { "id": "rentHashrate", "name": "Hash‑rate Rental" },
     { "id": "getDexChart", "name": "DEX Chart JSON" }
   ],
-  "x-payment-config": [
-    {
-      "id": "hashrate-rental",
-      "currency": "BSV",
-      "amount": 0.01,
-      "address": "1HashRentAddr",
-      "depositPct": 0.5,
-      "skills": ["rentHashrate"],
-      "description": "SHA‑256 1 MH/s × 24h"
-    },
-    {
-      "id": "dex-chart",
-      "currency": "USD",
-      "amount": 0.05,
-      "address": "1DexDataAddr",
-      "skills": ["getDexChart"],
-      "description": "OHLCV JSON per trading pair"
-    }
-  ]
+  "x-payment-config": [ /* as above */ ]
 }
 ```
 
-### 3.3  Payment Claim (`x-payment` DataPart)<a id="including-payment-in-a2a-calls"></a>
+### 3.3  Payment Claim (`x-payment` DataPart)<a id="payment-claim"></a>
 
 ```jsonc
 {
@@ -119,123 +116,126 @@ Agent offers hash‑rate rental and DEX chart data.
   "data": {
     "x-payment": {
       "configId": "hashrate-rental",
-      "stage": "deposit",          // deposit | final | full
-      "rawTx": "<hex>",
+      "stage": "deposit",                   // deposit | final | full
+      "rawTx": "<signed-rawtx-hex>",
       "currency": "BSV",
-      "refundAddress": "1ClientBack"
+      "refundAddress": "1ClientRefund"
     }
   }
 }
 ```
 
-### 3.4  Two‑Stage Deposit Model<a id="partial-payments"></a>
+### 3.4  Two‑Stage Deposit Model<a id="two-stage-deposit-model"></a>
 
-| When sent | Required `stage` | Amount                                   |
-|-----------|------------------|-------------------------------------------|
-| Task start (`tasks/send` or `…/sendSubscribe`) | `deposit` if `depositPct` present else `full` | `amount × depositPct` or full |
-| Server returns **402 / AmountInsufficient** | Client resubmits DataPart<br>`stage:"final"` | `amount – deposit` |
+| Stage   | When included by client                | Value sent in `rawTx`          | Broadcast by |
+|---------|----------------------------------------|--------------------------------|--------------|
+| deposit | Initial request                        | `amount × depositPct`          | **Server**   |
+| final   | After `402 / AmountInsufficient`       | `amount − deposit`             | **Server**   |
+| full    | One‑stage pricing (no `depositPct`)    | `amount`                       | **Server**   |
 
 ### 3.5  Error Codes<a id="error-codes"></a>
 
-| HTTP | JSON‑RPC code | Condition                              |
-|------|---------------|----------------------------------------|
-| 402  | `-32030`      | `x-payment` DataPart missing           |
-| 402  | `-32031`      | `rawTx` malformed / not decodable      |
-| 402  | `-32032`      | `stage` did not match expected         |
-| 402  | `-32033`      | Output value < required amount         |
-| 402  | `-32034`      | Output address or currency mismatch    |
+| HTTP | JSON‑RPC code | Meaning                                   |
+|------|---------------|-------------------------------------------|
+| 402  | `-32030`      | PaymentMissing – no `x-payment` DataPart |
+| 402  | `-32031`      | PaymentInvalid – rawTx malformed         |
+| 402  | `-32032`      | StageMismatch – invalid or duplicate     |
+| 402  | `-32033`      | AmountInsufficient                       |
+| 402  | `-32034`      | CurrencyUnsupported / AddressMismatch    |
 
 ---
 
 ## 4  Registry<a id="registry"></a>
 
-### 4.1  1Sat Ordinal + MAP Format<a id="publishing-with-1sat-ordinals--map"></a>
+### 4.1  1Sat Ordinal + MAP Format<a id="1sat-ordinal--map-format"></a>
 
 ```
-Output 0 (1 sat):
+Output 0 (1 sat):
   <P2PKH>
   OP_FALSE OP_IF
-    6f7264                     // "ord"
+    6f7264
     OP_1 "application/json"
-    OP_0 <file-bytes>
+    OP_1 ".well-known/agent.json"
+    OP_0 <agent.json bytes>
   OP_ENDIF
 
-Output 1 (0 sat):
+Output 1 (0 sat):
   OP_RETURN
     1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5
     SET app bsv-mcp type a2b
 ```
 
-Create with `js-1sat-ord`.
-
 ### 4.2  Updating by Re‑inscription<a id="updating-by-re-inscription"></a>
 
-1. Spend the inscription satoshi into a new output you control.  
-2. Embed a new ord envelope containing the updated Agent Card.  
-3. Add the same MAP tags.
+Spend the inscription satoshi and attach a new ord envelope (+ identical MAP) with updated pricing or metadata.
 
 ### 4.3  Discovery Workflow<a id="discovery-workflow"></a>
 
-1. Indexer filters inscriptions by `app=bsv-mcp&type=a2b`.  
-2. Keeps newest inscription per satoshi.  
-3. Exposes API fields: `skill`, `maxPrice`, `currency`, `updateHeight`.
+1. Indexer scans blockchain for MAP `app=bsv-mcp&type=a2b`.  
+2. Stores the newest inscription per satoshi.  
+3. Exposes query parameters: `skill`, `currency`, `maxPrice`, `updatedAfter`.
 
 ---
 
 ## 5  Protocol Guidelines<a id="protocol-guidelines"></a>
 
-### 5.1  Immediate Tasks<a id="immediate-tasks"></a>
-* Supply `stage:"full"` payment with request.  
-* Client broadcasts rawTx only if server marks task `completed`.
+### 5.1  Immediate Tasks<a id="immediate-tasks"></a>
+
+* Client sends `stage:"full"` (or `"deposit"` if configured).  
+* **Server** validates rawTx, executes task, broadcasts rawTx on success, returns result.  
+* On failure, server discards rawTx.
 
 ### 5.2  Streaming Tasks<a id="streaming-tasks"></a>
-* Provide payment at start (`deposit` or `full`).  
-* Agent may delay high‑value output until after `final` stage is received.  
-* If client disconnects mid‑stream, no payment is broadcast.
+
+* Client supplies first stage payment at stream start.  
+* Server streams updates; high‑value data may be withheld until `stage:"final"` payment arrives.  
+* Server broadcasts each stage’s rawTx on success of that stage.
 
 ### 5.3  Interactive Sessions<a id="interactive-sessions"></a>
-* One task may include multiple `input-required` cycles.  
-* Payment covers the entire session; agent should cap turns or use subscription plans to avoid abuse.
+
+* One payment covers the entire session under one task.  
+* Agents may limit turns or require subscription configs for extensive sessions.
 
 ### 5.4  Long‑Running Jobs<a id="long-running-jobs"></a>
-* Client funds remain locked until completion; agent resources remain uncompensated until payment broadcasts.  
-* Agents may set `depositPct` high enough to offset partial costs.
 
-### 5.5  Subscription Services<a id="subscription-services"></a>
-* Treat each billing interval as a separate task priced in `x-payment-config` (e.g. monthly plan).  
-* Renewal = new task with new payment.
+* Funds remain un‑broadcast until job success; server carries risk if task is lengthy.  
+* Agents can mitigate by higher `depositPct` or splitting work into milestones (separate tasks).
+
+### 5.5  Subscription Services<a id="subscription-services"></a>
+
+* Treat each billing period as its own task (e.g. `interval:"month"` config).  
+* Renewal = new task + new payment claim.
 
 ---
 
-## 6  Payment Verification<a id="payment-verification"></a>
+## 6  Payment Verification Algorithm<a id="payment-verification-algorithm"></a>
 
-```text
-validatePayment(rawTx, stage):
-    decode rawTx
-    require output.address == config.address
-    required = (stage == "deposit")
-                 ? config.amount * config.depositPct
-                 : config.amount - (config.amount * config.depositPct or 0)
-    require output.amount >= required
-    require rawTx not in mempool or chain
-    return true
+```pseudo
+validateAndBroadcast(rawTx, stage, config):
+    tx = decode(rawTx)
+    required = stage == "deposit"
+               ? config.amount * config.depositPct
+               : config.amount - (config.amount * config.depositPct or 0)
+    assert tx pays config.address >= required
+    assert tx not seen in mempool/chain
+    broadcast(tx)                // server action
 ```
 
-Agent broadcasts `rawTx` immediately after `task.state == completed`.
-
 ---
 
-## 7  Implementation Guide<a id="implementation-guide"></a>
+## 7  Implementation Guide<a id="implementation-guide"></a>
 
-| Role   | Step                                                                                                  |
-|--------|-------------------------------------------------------------------------------------------------------|
-| Client | Discover agent via indexer → fetch Agent Card → choose `configId`.                                     |
-|        | Build rawTx for `deposit` or `full`.                                                                   |
-|        | Send A2A `tasks/send` (or `…/sendSubscribe`) with DataPart `x-payment`.                                |
-|        | On `402 / AmountInsufficient`, build rawTx for `final` and resend.                                     |
-|        | Broadcast nothing; wait for server success → broadcast.                                               |
-| Server | Validate `rawTx`, verify stage and value → start work.                                                |
-|        | On success: broadcast tx, mark task `completed`, return artifacts / SSE events.                       |
-|        | On failure: discard tx, mark task `failed`, client keeps funds.                                        |
+### Client
+1. Query indexer → fetch AgentCard.  
+2. Select `configId`; build rawTx for required stage; include it in `x-payment`.  
+3. Send `tasks/send` / `…/sendSubscribe`.  
+4. On `402 / AmountInsufficient`, build rawTx for `stage:"final"` and resend.  
+5. Server broadcasts; client sees on‑chain payment.
+
+### Server
+1. Publish AgentCard via `wallet_a2bPublish` (1Sat + MAP).  
+2. On request: validate stage & rawTx; execute task.  
+3. On success: broadcast rawTx, mark task `completed`, return result/stream.  
+4. On failure: discard rawTx, mark `failed`.
 
 ---
