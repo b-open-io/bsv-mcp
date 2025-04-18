@@ -45,6 +45,7 @@
 		"@modelcontextprotocol/sdk": "^1.9.0",
 		"@types/node": "^22.14.1",
 		"js-1sat-ord": "^0.1.80",
+		"mnee": "^2.0.0",
 		"satoshi-token": "^0.0.4",
 		"zod": "^3.24.2"
 	},
