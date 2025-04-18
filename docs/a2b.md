@@ -129,10 +129,9 @@ OP_ENDIF OP_RETURN
 ```
 
 ### Publishing with 1Sat Ordinals + MAP
-* **Output 0 (1 sat)** – OP_FALSE OP_IF P2PKH script with ord envelope storing `.well‑known/agent.json`.  
-    * **MAP tags** – `SET app bsv-mcp type a2b`.
+Construct an inscription with the .well-known/agent.json as the data. Add metadata using MAP tags.
 
-Create via `js-1sat-ord`:
+You build this easily with `js-1sat-ord`:
 
 ```ts
 const inscription = {
@@ -205,7 +204,7 @@ Full request example:
 Server routine:
 
 1. Decode `rawTx`; confirm output pays `address` at least `amount`.  
-2. Ensure `rawTx` not yet on‑chain.  
+2. Ensure `rawTx` not yet on‑chain, and inputs aren't spent.  
 3. Validate `currency` and any FX conversions.  
 4. Execute task.  
 5. On success broadcast `rawTx`; on failure discard.  
