@@ -113,7 +113,7 @@ They embed the payment claim in a DataPart as **`x-payment`**:
 
 ## Registry
 ### Publishing with 1Sat Ordinals + MAP
-A 1Sat inscription must reside in a **single‑satoshi P2PKH output** with an **ord envelope** in the script  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com/?utm_source=chatgpt.com). The agent file is embedded as:
+A 1Sat inscription must reside in a **single‑satoshi P2PKH output** with an **ord envelope** in the script  [oai_citation_attribution:4‡Protocol Specification | 1Sat Ordinals](https://docs.1satordinals.com). The agent file is embedded as:
 
 ```
 … P2PKH …
