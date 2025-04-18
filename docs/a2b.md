@@ -125,7 +125,7 @@ OP_ENDIF OP_RETURN
 "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5" 
     "SET" 
         "app" "bsv-mcp" 
-        "type" "agent"
+        "type" "a2b"
 ```
 
 ### Publishing with 1Sat Ordinals + MAP
