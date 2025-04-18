@@ -1,4 +1,5 @@
 # A2B (Agent‑to‑Bitcoin)
+A chain-agnostic protocol for A2A agent discovery payments between them.
 
 ## Table of Contents
 - [Payments](#payments)
@@ -39,7 +40,6 @@ interface PricingConfig {
   skills?: string[];                // skills covered
   interval?: 'day'|'week'|'month'|'year'|null; // null = one‑off
   includedCalls?: Record<string, number>;
-  termsUrl?: string;
 }
 ```
 
@@ -102,7 +102,7 @@ They embed the payment claim in a DataPart as **`x-payment`**:
 | 402  | `-32034`      | **CurrencyUnsupported** – config can’t accept that coin |
 
 ### Refunds & Partial Payments
-* **Refunds** – if execution fails after broadcast, the agent returns funds to `refundAddress` or credits future calls.  
+* **Refunds** – If execution fails after broadcast, the agent returns funds to `refundAddress` or credits future calls.  
 * **Metered streaming** – agent pauses, issues `PaymentInsufficient`; client sends another rawTx in a new DataPart; agent resumes.
 
 ---
@@ -132,7 +132,7 @@ To update pricing or endpoints:
 2. Embed a **new ord envelope** with revised `agent.json`.  
 3. Append identical MAP tags.  
 
-Indexers treat **latest inscription in that satoshi** as canonical. Authority follows UTXO ownership; inscriptions can be listed on any ordinal DEX and updated by the buyer.
+Indexers treat **latest inscription in that satoshi** as canonical. Authority follows UTXO ownership; registry inscriptions can be listed on any ordinal DEX and updated by the buyer.
 
 ### Discovery Workflow
 1. Indexer scans for ord envelopes whose accompanying MAP = `app=bsv-mcp&type=agent`.  
