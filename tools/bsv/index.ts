@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerDecodeTransactionTool } from "./decodeTransaction";
-import { registerGetPriceTool } from "./getPrice";
 import { registerExploreTool } from "./explore";
+import { registerGetPriceTool } from "./getPrice";
 
 /**
  * Register all BSV tools with the MCP server

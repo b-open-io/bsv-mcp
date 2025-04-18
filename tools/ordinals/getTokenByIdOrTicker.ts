@@ -3,14 +3,21 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import { z } from "zod";
 
 // Schema for get token by ID or ticker arguments
-export const getTokenByIdOrTickerArgsSchema = z.object({
-	id: z.string().optional().describe("BSV20 token ID in outpoint format (txid_vout)"),
-	tick: z.string().optional().describe("BSV20 token ticker symbol"),
-}).refine(data => data.id || data.tick, {
-	message: "Either id or tick must be provided",
-});
+export const getTokenByIdOrTickerArgsSchema = z
+	.object({
+		id: z
+			.string()
+			.optional()
+			.describe("BSV20 token ID in outpoint format (txid_vout)"),
+		tick: z.string().optional().describe("BSV20 token ticker symbol"),
+	})
+	.refine((data) => data.id || data.tick, {
+		message: "Either id or tick must be provided",
+	});
 
-export type GetTokenByIdOrTickerArgs = z.infer<typeof getTokenByIdOrTickerArgsSchema>;
+export type GetTokenByIdOrTickerArgs = z.infer<
+	typeof getTokenByIdOrTickerArgsSchema
+>;
 
 // BSV20 token response type
 interface TokenResponse {

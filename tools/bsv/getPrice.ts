@@ -13,7 +13,10 @@ let cachedPrice: { value: number; timestamp: number } | null = null;
  */
 async function getBsvPriceWithCache(): Promise<number> {
 	// Return cached price if it's still valid
-	if (cachedPrice && (Date.now() - cachedPrice.timestamp) < PRICE_CACHE_DURATION) {
+	if (
+		cachedPrice &&
+		Date.now() - cachedPrice.timestamp < PRICE_CACHE_DURATION
+	) {
 		return cachedPrice.value;
 	}
 
@@ -22,22 +25,23 @@ async function getBsvPriceWithCache(): Promise<number> {
 		"https://api.whatsonchain.com/v1/bsv/main/exchangerate",
 	);
 	if (!res.ok) throw new Error("Failed to fetch price");
-	
+
 	const data = (await res.json()) as {
 		currency: string;
 		rate: string;
 		time: number;
 	};
-	
+
 	const price = Number(data.rate);
-	if (Number.isNaN(price) || price <= 0) throw new Error("Invalid price received");
-	
+	if (Number.isNaN(price) || price <= 0)
+		throw new Error("Invalid price received");
+
 	// Update cache
-	cachedPrice = { 
-		value: price, 
-		timestamp: Date.now() 
+	cachedPrice = {
+		value: price,
+		timestamp: Date.now(),
 	};
-	
+
 	return price;
 }
 
@@ -50,7 +54,12 @@ export function registerGetPriceTool(server: McpServer): void {
 		"bsv_getPrice",
 		"Retrieves the current price of Bitcoin SV (BSV) in USD from a reliable exchange API. This tool provides real-time market data that can be used for calculating transaction values, monitoring market conditions, or converting between BSV and fiat currencies.",
 		{
-			args: z.object({}).optional().describe("No parameters required - simply returns the current BSV price in USD"),
+			args: z
+				.object({})
+				.optional()
+				.describe(
+					"No parameters required - simply returns the current BSV price in USD",
+				),
 		},
 		async () => {
 			try {

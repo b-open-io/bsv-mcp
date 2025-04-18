@@ -11,7 +11,7 @@ type WalletToolName =
 	| "wallet_getPublicKey"
 	| "wallet_createSignature"
 	| "wallet_verifySignature"
-	| "wallet_encryption";	
+	| "wallet_encryption";
 
 const toolNames: WalletToolName[] = [
 	"wallet_getPublicKey",
@@ -34,9 +34,9 @@ function getDummyArgs(tool: WalletToolName): Record<string, unknown> {
 				signature: "sig",
 				publicKey: "pubkey",
 			};
-			// TODO we merged encrypt and decrypt into encryption we need to update the test file
+		// TODO we merged encrypt and decrypt into encryption we need to update the test file
 		// case "wallet_encryption":
-		// 	if 
+		// 	if
 		// 	return { data: "test", publicKey: "pubkey" };
 		// case "wallet_decryption":
 		// 	return { encryptedData: "data" };

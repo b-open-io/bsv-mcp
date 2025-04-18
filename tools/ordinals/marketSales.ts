@@ -26,7 +26,11 @@ export const marketSalesArgsSchema = z.object({
 		.describe("Type of token to search for (bsv20, bsv21, or all)"),
 	id: z.string().optional().describe("Token ID in outpoint format"),
 	tick: z.string().optional().describe("Token ticker symbol"),
-	pending: z.boolean().default(false).optional().describe("Include pending sales"),
+	pending: z
+		.boolean()
+		.default(false)
+		.optional()
+		.describe("Include pending sales"),
 });
 
 export type MarketSalesArgs = z.infer<typeof marketSalesArgsSchema>;
@@ -71,21 +75,10 @@ export function registerMarketSalesTool(server: McpServer): void {
 		{
 			args: marketSalesArgsSchema,
 		},
-		async (
-			{ args }: { args: MarketSalesArgs },
-			extra: RequestHandlerExtra,
-		) => {
+		async ({ args }: { args: MarketSalesArgs }, extra: RequestHandlerExtra) => {
 			try {
-				const { 
-					limit, 
-					offset, 
-					dir, 
-					tokenType, 
-					id, 
-					tick, 
-					pending, 
-					address 
-				} = args;
+				const { limit, offset, dir, tokenType, id, tick, pending, address } =
+					args;
 
 				// Determine the API endpoint based on tokenType
 				let baseUrl = "https://ordinals.gorillapool.io/api";
@@ -98,7 +91,7 @@ export function registerMarketSalesTool(server: McpServer): void {
 				url.searchParams.append("limit", limit.toString());
 				url.searchParams.append("offset", offset.toString());
 				url.searchParams.append("dir", dir);
-				
+
 				// Add type parameter for bsv21 if needed
 				if (tokenType === "bsv21") {
 					url.searchParams.append("type", "v2");
@@ -106,7 +99,8 @@ export function registerMarketSalesTool(server: McpServer): void {
 
 				if (id) url.searchParams.append("id", id);
 				if (tick) url.searchParams.append("tick", tick);
-				if (pending !== undefined) url.searchParams.append("pending", pending.toString());
+				if (pending !== undefined)
+					url.searchParams.append("pending", pending.toString());
 				if (address) url.searchParams.append("address", address);
 
 				// Fetch market sales from GorillaPool API

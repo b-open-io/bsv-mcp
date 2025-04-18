@@ -1,7 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	CallToolResult,
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import type {
 	abortActionArgsSchema,
@@ -34,6 +38,7 @@ import {
 	walletEncryptionArgsSchema,
 } from "./schemas";
 
+import { Utils, type WalletProtocol } from "@bsv/sdk";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
 import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
@@ -43,7 +48,6 @@ import { registerTransferOrdTokenTool } from "./transferOrdToken";
 import { registerA2bPublishTool } from "./a2bPublish";
 import type { transferOrdTokenArgsSchema } from "./transferOrdToken";
 import type { a2bPublishArgsSchema } from "./a2bPublish";
-import { Utils, type WalletProtocol } from "@bsv/sdk";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
@@ -82,7 +86,7 @@ type ToolArgSchemas = {
 // Define a type for the handler function with proper argument types
 type ToolHandler = (
 	params: { args: unknown },
-	extra: RequestHandlerExtra,
+	extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 ) => Promise<CallToolResult>;
 
 // Define a map type for tool name to handler functions
@@ -133,7 +137,7 @@ export function registerWalletTools(
 		{ args: getPublicKeyArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof getPublicKeyArgsSchema> },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const result = await wallet.getPublicKey(args);
@@ -152,7 +156,7 @@ export function registerWalletTools(
 		{ args: createSignatureArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof createSignatureArgsSchema> },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const result = await wallet.createSignature(args);
@@ -171,7 +175,7 @@ export function registerWalletTools(
 		{ args: verifySignatureArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof verifySignatureArgsSchema> },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const result = await wallet.verifySignature(args);
@@ -187,33 +191,33 @@ export function registerWalletTools(
 	registerTool(
 		"wallet_encryption",
 		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.\n\n" +
-		"PARAMETERS:\n" +
-		"- mode: (required) Either \"encrypt\" to encrypt plaintext or \"decrypt\" to decrypt ciphertext\n" +
-		"- data: (required) Text string or array of numbers to process\n" +
-		"- encoding: (optional) For text input, the encoding format (utf8, hex, base64) - default is utf8\n\n" +
-		"EXAMPLES:\n" +
-		"1. Encrypt text data:\n" +
-		"   {\n" +
-		"     \"mode\": \"encrypt\",\n" +
-		"     \"data\": \"Hello World\"\n" +
-		"   }\n\n" +
-		"2. Decrypt previously encrypted data:\n" +
-		"   {\n" +
-		"     \"mode\": \"decrypt\",\n" +
-		"     \"data\": [encrypted bytes from previous response]\n" +
-		"   }",
+			"PARAMETERS:\n" +
+			'- mode: (required) Either "encrypt" to encrypt plaintext or "decrypt" to decrypt ciphertext\n' +
+			"- data: (required) Text string or array of numbers to process\n" +
+			"- encoding: (optional) For text input, the encoding format (utf8, hex, base64) - default is utf8\n\n" +
+			"EXAMPLES:\n" +
+			"1. Encrypt text data:\n" +
+			"   {\n" +
+			'     "mode": "encrypt",\n' +
+			'     "data": "Hello World"\n' +
+			"   }\n\n" +
+			"2. Decrypt previously encrypted data:\n" +
+			"   {\n" +
+			'     "mode": "decrypt",\n' +
+			'     "data": [encrypted bytes from previous response]\n' +
+			"   }",
 		{ args: walletEncryptionArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof walletEncryptionArgsSchema> },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const { mode, data, encoding } = args;
-				
+
 				// Set default values for required parameters
 				const protocolID: WalletProtocol = [1, "aes256"];
 				const keyID = "default";
-				
+
 				// Convert string data to binary if needed
 				let binaryData: number[];
 				if (Array.isArray(data)) {
@@ -223,8 +227,9 @@ export function registerWalletTools(
 					const { toArray } = Utils;
 					binaryData = toArray(data, encoding || "utf8");
 				}
-				
-				let result: { ciphertext?: number[]; plaintext?: number[] | string } = {};
+
+				let result: { ciphertext?: number[]; plaintext?: number[] | string } =
+					{};
 				if (mode === "encrypt") {
 					result = await wallet.encrypt({
 						plaintext: binaryData,
@@ -237,7 +242,7 @@ export function registerWalletTools(
 						protocolID,
 						keyID,
 					});
-					
+
 					// For decryption, convert plaintext back to string if it's likely UTF-8 text
 					if (result.plaintext as number[]) {
 						try {
@@ -245,11 +250,13 @@ export function registerWalletTools(
 							const textResult = toUTF8(result.plaintext as number[]);
 							// If conversion succeeds and seems like valid text, return as string
 							if (textResult && textResult.length > 0) {
-								return { 
-									content: [{ 
-										type: "text", 
-										text: JSON.stringify({ plaintext: textResult }) 
-									}] 
+								return {
+									content: [
+										{
+											type: "text",
+											text: JSON.stringify({ plaintext: textResult }),
+										},
+									],
 								};
 							}
 						} catch (e) {
@@ -257,13 +264,19 @@ export function registerWalletTools(
 						}
 					}
 				}
-				
+
 				return { content: [{ type: "text", text: JSON.stringify(result) }] };
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error);
-				return { 
-					content: [{ type: "text", text: `Error during ${args.mode}: ${errorMessage}` }],
-					isError: true
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error during ${args.mode}: ${errorMessage}`,
+						},
+					],
+					isError: true,
 				};
 			}
 		},
@@ -271,6 +284,6 @@ export function registerWalletTools(
 
 	// Register createOrdinals tool
 	registerCreateOrdinalsTool(server, wallet);
-	
+
 	return handlers;
 }

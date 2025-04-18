@@ -12,21 +12,29 @@ import { Wallet } from "./tools/wallet/wallet";
  */
 function validatePrivateKey(): PrivateKey {
 	const privateKeyWif = process.env.PRIVATE_KEY_WIF;
-	
+
 	// Check if private key is set
 	if (!privateKeyWif) {
-		console.error("\x1b[31mError: PRIVATE_KEY_WIF environment variable is not set\x1b[0m");
-		console.error("Please set this variable with a valid Bitcoin SV private key in WIF format");
-		console.error("Example: PRIVATE_KEY_WIF=your_private_key_wif bun run index.ts");
+		console.error(
+			"\x1b[31mError: PRIVATE_KEY_WIF environment variable is not set\x1b[0m",
+		);
+		console.error(
+			"Please set this variable with a valid Bitcoin SV private key in WIF format",
+		);
+		console.error(
+			"Example: PRIVATE_KEY_WIF=your_private_key_wif bun run index.ts",
+		);
 		process.exit(1);
 	}
-	
+
 	// Validate the private key format
 	try {
 		return PrivateKey.fromWif(privateKeyWif);
 	} catch (error) {
 		console.error("\x1b[31mError: Invalid private key format\x1b[0m");
-		console.error("The PRIVATE_KEY_WIF provided is not a valid Bitcoin SV private key in WIF format");
+		console.error(
+			"The PRIVATE_KEY_WIF provided is not a valid Bitcoin SV private key in WIF format",
+		);
 		console.error("Please check your key and try again");
 		process.exit(1);
 	}
@@ -37,7 +45,7 @@ const privKey = validatePrivateKey();
 
 const server = new McpServer({
 	name: "Bitcoin SV MCP Server",
-	version: "0.0.20",
+	version: "0.0.23",
 });
 
 // Initialize wallet with the validated private key
