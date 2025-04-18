@@ -325,7 +325,6 @@ export const purchaseListingArgsSchema = z
 	.describe(
 		"Schema for the wallet_purchaseListing tool arguments (purchase NFTs or tokens), with detailed field descriptions.",
 	);
-
 // Export types
 export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
 export type PurchaseListingArgs = z.infer<typeof purchaseListingArgsSchema>;

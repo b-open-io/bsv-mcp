@@ -42,6 +42,10 @@ import { Utils, type WalletProtocol } from "@bsv/sdk";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
 import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
+import {
+	type getBalanceArgsSchema,
+	registerGetBalanceTool,
+} from "./getBalance";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
@@ -74,6 +78,7 @@ type ToolArgSchemas = {
 	wallet_waitForAuthentication: typeof emptyArgsSchema;
 	wallet_getHeaderForHeight: typeof getHeaderArgsSchema;
 	wallet_getAddress: typeof getAddressArgsSchema;
+	wallet_getBalance: typeof getBalanceArgsSchema;
 	wallet_sendToAddress: typeof sendToAddressArgsSchema;
 	wallet_purchaseListing: typeof purchaseListingArgsSchema;
 	wallet_transferOrdToken: typeof transferOrdTokenArgsSchema;
@@ -109,17 +114,45 @@ export function registerWalletTools(
 		handlers[name] = handler as ToolHandler;
 	}
 
-	// Register the wallet_sendToAddress tool
-	registerSendToAddressTool(server, wallet);
+	// Create a wrapper for the server.tool function that captures handlers
+	const toolRegistrationProxy = new Proxy(server, {
+		get(target, prop) {
+			if (prop === 'tool') {
+				return (
+					name: string,
+					description: string,
+					schema: { args: z.ZodType },
+					handler: ToolCallback<{ args: unknown }>
+				) => {
+					// Call the original method
+					target.tool(name, description, schema, handler);
+					// Save the handler
+					if (typeof name === 'string' && name.startsWith('wallet_')) {
+						handlers[name as keyof ToolArgSchemas] = handler as ToolHandler;
+					}
+				};
+			}
+			return target[prop as keyof typeof target];
+		}
+	});
 
-	// Register the wallet_getAddress tool
-	registerGetAddressTool(server);
+	// Register the wallet_sendToAddress tool using the proxy
+	registerSendToAddressTool(toolRegistrationProxy, wallet);
 
-	// Register the wallet_purchaseListing tool
-	registerPurchaseListingTool(server, wallet);
+	// Register the wallet_getAddress tool using the proxy
+	registerGetAddressTool(toolRegistrationProxy);
 
-	// Register the wallet_transferOrdToken tool
-	registerTransferOrdTokenTool(server, wallet);
+	// Register the wallet_getBalance tool using the proxy
+	registerGetBalanceTool(toolRegistrationProxy, wallet);
+
+	// Register the wallet_purchaseListing tool using the proxy
+	registerPurchaseListingTool(toolRegistrationProxy, wallet);
+
+	// Register the wallet_transferOrdToken tool using the proxy
+	registerTransferOrdTokenTool(toolRegistrationProxy, wallet);
+
+	// Register the wallet_createOrdinals tool using the proxy
+	registerCreateOrdinalsTool(toolRegistrationProxy, wallet);
 
 	// Register only the minimal public-facing tools
 	// wallet_createAction, wallet_signAction and wallet_getHeight have been removed
@@ -275,9 +308,6 @@ export function registerWalletTools(
 			}
 		},
 	);
-
-	// Register createOrdinals tool
-	registerCreateOrdinalsTool(server, wallet);
 
 	return handlers;
 }

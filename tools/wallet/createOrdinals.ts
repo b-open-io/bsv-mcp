@@ -1,6 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	CallToolResult,
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
@@ -47,7 +51,7 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 		{ args: createOrdinalsArgsSchema },
 		async (
 			{ args }: { args: CreateOrdinalsArgs },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
 				// 1. Get private key from wallet
@@ -65,7 +69,7 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 				}
 
 				// 3. Get the wallet address for change/destination if not provided
-				const walletAddress = paymentPk.toAddress().toString();
+				const walletAddress = paymentPk.toAddress();
 
 				// 4. Create the inscription object
 				const inscription: Inscription = {

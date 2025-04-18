@@ -1,6 +1,8 @@
 import { Transaction, Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { ServerRequest } from "@modelcontextprotocol/sdk/types.js";
+import type { ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 // Schema for decode transaction arguments
@@ -124,7 +126,7 @@ export function registerDecodeTransactionTool(server: McpServer): void {
 		},
 		async (
 			{ args }: { args: DecodeTransactionArgs },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const { tx, encoding } = args;
