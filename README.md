@@ -335,14 +335,6 @@ The tool supports both mainnet and testnet:
 - `main`: Bitcoin SV mainnet (default)
 - `test`: Bitcoin SV testnet
 
-## Development
-
-This project was created using `bun init` in bun v1.2.9. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
-
-### Package Configuration
-
-The main entry point for this package is `index.ts`.
-
 ### Running Tests
 
 ```bash
