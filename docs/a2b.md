@@ -138,7 +138,6 @@ Create via `js-1sat-ord`:
 const inscription = {
   dataB64,
   contentType: 'application/json',
-  filename: '.well-known/agent.json'
 };
 const meta = { app: 'bsv-mcp', type: 'a2b' };
 await createOrdinals({ utxos, destinations:[{address:target, inscription}], paymentPk, changeAddress, metaData: meta });
