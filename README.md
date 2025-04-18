@@ -86,19 +86,19 @@ To connect this server to Claude for Desktop:
 
 4. Add the BSV MCP server to your configuration (create the file if it doesn't exist):
    ```json
-  {
-    "mcpServers": {
-      "Bitcoin SV": {
-        "command": "bunx",
-        "args": [
-          "bsv-mcp@latest"
-        ],
-        "env": {
-          "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+    {
+      "mcpServers": {
+        "Bitcoin SV": {
+          "command": "bunx",
+          "args": [
+            "bsv-mcp@latest"
+          ],
+          "env": {
+            "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+          }
         }
       }
     }
-  }
    ```
 5. Replace `<your_private_key_wif>` with your actual private key WIF
 6. Save the file and restart Claude for Desktop
