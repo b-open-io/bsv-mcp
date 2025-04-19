@@ -57,20 +57,27 @@ sequenceDiagram
     participant S as A2B Agent (A2A Server)
     participant T as MCP Server
 
-    Note over O,B: Overlay ≘ indexer — it continuously scans Blockchain for a2b inscriptions
+    Note over O,B: Overlay indexes Blockchain (1Sat Ordinal + MAP) and exposes search
 
     C->>O: search("watchtower penalty")
-    O->>B: lookup inscriptions (skillId / text)
-    B-->>O: matching hashes + metadata
-    O-->>C: results list
+    O->>B: query inscriptions
+    B-->>O: matching entries
+    O-->>C: results list (AgentCard hash + summary)
 
     C->>S: GET /.well-known/agent.json
-    S-->>C: AgentCard (HTTPS)
+    S-->>C: AgentCard JSON
     C->>C: verify hash == inscription
 
     C->>C: sign rawTx (deposit/full)
-    C->>S: tasks/send + x‑payment
-    S->>S: validate & broadcast (see Part 2)
+    C->>S: tasks/send + x‑payment
+    S->>B: broadcast rawTx (deposit or full)
+
+    alt Agent needs external compute
+        S-->>T: mcp.tool.call(params)
+        T-->>S: result / partial stream
+    end
+
+    S-->>C: TaskStatus / data stream
 ```
 
 ---
