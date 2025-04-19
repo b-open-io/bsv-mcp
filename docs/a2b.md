@@ -26,9 +26,9 @@
 8. [Security Considerations](#security-considerations)
 9. [Payment Verification Algorithm](#payment-verification-algorithm)
 10. [Implementation Guide](#implementation-guide)
-    * 10.1 Client  
-    * 10.2 Server  
-    * 10.3 Publisher  
+    * 10.1 [Client](#client)  
+    * 10.2 [Server](#server)  
+    * 10.3 [Publisher](#publisher)  
 11. [Glossary](#glossary)
 
 ---
@@ -596,7 +596,7 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 
 ## 10  Implementation Guide<a id="implementation-guide"></a>
 
-### Client
+### Client<a id="client"></a>
 1. Search overlay; choose pricing config.  
 2. Verify AgentCard hash.  
 3. Sign rawTx.  
@@ -604,14 +604,14 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 5. Handle `402` (deposit model) & resend `final`.  
 6. Watch mempool for server broadcast.
 
-### Server
+### Server<a id="server"></a>
 1. Inscribe AgentCard (`type=a2b`).  
 2. Validate payment claim.  
 3. Execute task; call MCP tools if needed.  
 4. Broadcast rawTx; stream updates.  
 5. Re‑inscribe satoshi for updates.
 
-### Publisher
+### Publisher<a id="publisher"></a>
 1. Publish AgentCard to overlay.  
 2. Can be a local MCP tool like bsv-mcp
 3. Either user or platform can pay the  network fee. 
