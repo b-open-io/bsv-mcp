@@ -70,12 +70,15 @@ sequenceDiagram
 
     C->>C: sign rawTx (deposit/full)
     C->>S: tasks/send + x‑payment
-    S->>B: broadcast rawTx (deposit or full)
+
+    S->>B: Validate payment claim
 
     alt Agent needs external compute
         S-->>T: mcp.tool.call(params)
         T-->>S: result / partial stream
     end
+
+    S->>B: broadcast rawTx (deposit or full)
 
     S-->>C: TaskStatus / data stream
 ```
