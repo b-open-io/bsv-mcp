@@ -4,248 +4,383 @@
 ---
 
 ## Table of Contents
-1. [Overview](#overview)  
-2. [Terminology](#terminology)  
-3. [Payments](#payments)  
-   3.1 [Pricing Configuration (`x-payment-config`)](#schema)  
-   3.2 [Example Agent Card (Lightning Watchtower)](#examples)  
-   3.3 [Payment Claim (`x-payment` DataPart)](#payment-claim)  
-   3.4 [Two‑Stage Deposit Model](#two-stage-deposit-model)  
-   3.5 [Error Codes](#error-codes)  
-4. [Registry](#registry)  
-   4.1 [1Sat Ordinal + MAP Format](#1sat-ordinal--map-format)  
-   4.2 [Updating by Re‑inscription](#updating-by-re-inscription)  
-   4.3 [Discovery Workflow](#discovery-workflow)  
-5. [Protocol Guidelines](#protocol-guidelines)  
-   5.1 [Immediate Tasks](#immediate-tasks)  
-   5.2 [Streaming Tasks](#streaming-tasks)  
-   5.3 [Interactive Sessions](#interactive-sessions)  
-   5.4 [Long‑Running Jobs](#long-running-jobs)  
-   5.5 [Subscription Services](#subscription-services)  
-6. [Payment Verification Algorithm](#payment-verification-algorithm)  
-7. [Implementation Guide](#implementation-guide)
+1. [Purpose & Scope](#purpose--scope)  
+2. [Key Concepts](#key-concepts)  
+3. [End‑to‑End Flow (Diagram)](#end-to-end-flow-diagram)  
+4. [Data Structures](#data-structures)  
+   * 4.1 [Pricing Configuration (`x-payment-config`)](#pricing-configuration)  
+   * 4.2 [Payment Claim (`x-payment` DataPart)](#payment-claim)  
+   * 4.3 [Agent Card Examples](#agent-card-examples)  
+5. [Payment Flow](#payment-flow)  
+   * 5.1 [Two‑Stage Deposit Model](#two-stage-deposit-model)  
+   * 5.2 [FX Conversion & Price Feeds](#fx-conversion--price-feeds)  
+   * 5.3 [Error Codes](#error-codes)  
+6. [On‑Chain Registry](#on-chain-registry)  
+   * 6.1 [1Sat Ordinal + MAP Format](#1sat-ordinal--map-format)  
+   * 6.2 [Updating via Re‑inscription](#updating-via-re-inscription)  
+   * 6.3 [Discovery API Requirements](#discovery-api-requirements)  
+7. [Protocol Guidelines](#protocol-guidelines)  
+8. [Security & Robustness](#security--robustness)  
+9. [Payment Verification Algorithm](#payment-verification-algorithm)  
+10. [Implementation Guide](#implementation-guide)  
+11. [Glossary](#glossary)
 
 ---
 
-## 1  Overview<a id="overview"></a>
+## 1  Purpose & Scope<a id="purpose--scope"></a>
 
-A2B adds:
+A2B overlays **crypto‑native payments** and a **permissionless registry** on top of Google’s **Agent‑to‑Agent (A2A)** protocol:
 
-* **Crypto‑priced services** via `x-payment-config`.  
-* **Per‑task payments** delivered as raw blockchain transactions; **the agent server broadcasts** the transaction only after a successful task.  
-* **Decentralized discovery**: every AgentCard is a **1Sat Ordinal** tagged with MAP (`app=bsv‑mcp type=a2b`).  
-* The inscription satoshi is fully transferrable; the new owner may re‑inscribe updated pricing or metadata.
+| Feature            | Mechanism / Standard                                                                                                         |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------|
+| Pricing            | `x-payment-config` block in AgentCard – anchor `currency`, `amount`, human `name`, `acceptedCurrencies`, intervals, deposits |
+| Payment            | Client signs rawTx → embeds in `x-payment` → **server broadcasts** only on task success (*pay‑on‑success*)                   |
+| Discovery          | AgentCards stored as **1‑satoshi Ordinal inscriptions** with MAP tag `app=bsv-mcp type=a2b`                                  |
+| Ownership & Update | Re‑inscribe the satoshi to update pricing/metadata; inscription (and service reputation) can be bought/sold like an NFT      |
 
----
-
-## 2  Terminology<a id="terminology"></a>
-
-| Term             | Meaning                                                                    |
-|------------------|----------------------------------------------------------------------------|
-| *Pricing Config* | One object in `x-payment-config`.                                          |
-| *Deposit*        | Up‑front rawTx = `amount × depositPct`.                                    |
-| *Final*          | RawTx = `amount − deposit`.                                                |
-| *Stage*          | `"deposit"`, `"final"`, or `"full"`.                                       |
-| *Claim*          | The `x-payment` DataPart supplied by the client.                           |
-| *Re‑inscription* | Spending the inscription satoshi, then adding a new ord envelope + MAP.    |
+Currency‑agnostic: examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
 
 ---
 
-## 3  Payments<a id="payments"></a>
+## 2  Key Concepts<a id="key-concepts"></a>
 
-### 3.1  Pricing Configuration (`x-payment-config`)<a id="schema"></a>
+| Term / Concept          | Description                                                                                          |
+|-------------------------|-------------------------------------------------------------------------------------------------------|
+| **Pricing Config**      | One entry in `x-payment-config`; has machine `id` and human `name`                                    |
+| **skillIds**            | Array of A2A Skill ID **strings** (not friendly names)                                                |
+| **acceptedCurrencies**  | Required list of tickers agent accepts (must include anchor `currency`)                               |
+| **depositPct**          | Fraction (0–1) for two‑stage payments (`deposit` + `final`)                                           |
+| **interval**            | `null`, shorthand (`day|week|month|year`), or ISO 8601 duration (e.g. `"P18M"` for 18 months)         |
+| **priceFeedUrl**        | Optional oracle endpoint returning spot FX rates `{ "rates": { "BTC":0.000012 } }`                    |
+| **MCP Tool Server**     | Remote endpoint exposing Model‑Context‑Protocol tools; may be called by an A2A server during a task   |
 
-The agent lists **one or more** pricing configurations.  
-`acceptedCurrencies` is **required** and must include the primary `currency`.  
-Currency codes follow **ISO‑4217** for fiat (`USD`, `EUR`) and common crypto tickers (`BSV`, `BTC`, `SOL`, etc.).
+---
 
-A provider may include an optional `priceFeedUrl` (JSON or REST) returning spot‑rate data for conversions.
+## 3  End‑to‑End Flow (Diagram)<a id="end-to-end-flow-diagram"></a>
 
-```jsonc
-"x-payment-config": [
-  {
-    "id": "watchtower-monitor",
-    "currency": "BSV",                  // price anchor
-    "amount": 0.002,                    // 0.002 BSV covers 1 month watch
-    "address": "1WatchtowerAddr",
-    "acceptedCurrencies": ["BSV","BTC","USD"],
-    "depositPct": 0.3,                  // 30 % up‑front, 70 % on success
-    "priceFeedUrl": "https://oracle.example/spot",  // optional
-    "skills": ["watchChannels"],
-    "description": "Lightning watchtower service · 30 days coverage"
-  },
-  {
-    "id": "dex-chart",
-    "currency": "USD",
-    "amount": 0.05,                     // $0.05 per OHLCV JSON
-    "address": "1DexDataAddr",
-    "acceptedCurrencies": ["USD","BSV","SOL"],
-    "skills": ["getDexChart"],
-    "description": "Candlestick JSON, any on‑chain DEX pair"
-  }
-]
+> GitHub renders Mermaid natively in Markdown files.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as A2B Client
+    participant I as A2B Indexer
+    participant S as A2B Agent (A2A Server)
+    participant T as MCP Tool Server
+    participant B as Blockchain
+
+    Note over I,B: On‑chain registry (1Sat + MAP)
+
+    C->>I: Search skillId="watchChannels"
+    I-->>C: AgentCard + inscription hash
+
+    C->>S: GET /.well-known/agent.json
+    S-->>C: AgentCard (HTTPS)
+    C->>C: Verify on‑chain hash
+
+    C->>C: Build rawTx (deposit or full)
+    C->>S: tasks/send + x‑payment
+    S->>S: Validate rawTx (FX, stage)
+    S->>B: Broadcast rawTx (deposit)
+
+    alt S needs external compute
+        S-->>T: MCP.tool.call(params)
+        T-->>S: Tool result / stream
+    end
+
+    S-->>C: Initial TaskStatus / streaming updates
+
+    alt depositPct present
+        S-->>C: 402 AmountInsufficient
+        C->>C: Build final rawTx
+        C->>S: tasks/send (stage=final)
+        S->>B: Broadcast rawTx (final)
+    end
+
+    S-->>C: Task completed (artifact / final stream chunk)
 ```
 
-#### Minimum validation rules for providers  
-* `acceptedCurrencies` **must** list at least `currency`.  
-* If the client pays in an alternate ticker, the server converts at spot rate from `priceFeedUrl` (or its own source) and accepts the transaction if value ≥ `amount` at conversion time plus optional slippage margin.  
-* Spot conversions and slippage policies are implementation‑specific and outside A2B core.
+---
 
-### 3.2  Example Agent Card (Lightning Watchtower)<a id="examples"></a>
+## 4  Data Structures<a id="data-structures"></a>
+
+### 4.1  Pricing Configuration<a id="pricing-configuration"></a>
 
 ```jsonc
 {
-  "name": "Watchtower & DEX Data Agent",
-  "url": "https://tower.example",
-  "version": "1.0.0",
-  "capabilities": {
-    "streaming": true,
-    "pushNotifications": true,
-    "stateTransitionHistory": true
-  },
-  "skills": [
-    { "id": "watchChannels", "name": "Watch Lightning Channels" },
-    { "id": "getDexChart",  "name": "DEX Chart JSON"          }
-  ],
-  "x-payment-config": [ /* see schema example above */ ]
+  "id": "watchtower-18m",
+  "name": "18‑Month Enterprise Watchtower",
+  "currency": "BSV",
+  "amount": 0.030,
+  "address": "1WatchtowerAddr",
+  "acceptedCurrencies": ["BSV","BTC","USD"],
+  "depositPct": 0.20,
+  "priceFeedUrl": "https://oracle.example/spot",
+  "interval": "P18M",
+  "skillIds": ["watchChannels"],
+  "description": "Long‑term SLA ‑ 20 % up‑front, 80 % on success"
 }
 ```
 
-### 3.3  Payment Claim (`x-payment` DataPart)<a id="payment-claim"></a>
+### 4.2  Payment Claim (`x-payment` DataPart)<a id="payment-claim"></a>
 
 ```jsonc
 {
   "type": "data",
   "data": {
     "x-payment": {
-      "configId": "watchtower-monitor",
-      "stage": "deposit",                   // deposit | final | full
-      "rawTx": "<signed-rawtx-hex>",
-      "currency": "BTC",                    // must be in acceptedCurrencies
-      "refundAddress": "bc1qclientrefund"
+      "configId": "dex-chart-sub-month",
+      "stage": "full",
+      "rawTx": "<hex>",
+      "currency": "SOL",
+      "refundAddress": "solRefundPubKey"
     }
   }
 }
 ```
 
-### 3.4  Two‑Stage Deposit Model<a id="two-stage-deposit-model"></a>
+### 4.3  Agent Card Examples<a id="agent-card-examples"></a>
 
-| Stage   | When included by client                | Value sent in `rawTx`                 | Broadcast by |
-|---------|----------------------------------------|---------------------------------------|--------------|
-| deposit | Initial request                        | `amount × depositPct` (converted if paying alt currency) | **Server**   |
-| final   | After `402 / AmountInsufficient`       | `amount − deposit` (converted)        | **Server**   |
-| full    | Single‑stage configs (`depositPct` omitted) | `amount` (converted)                  | **Server**   |
+#### **A. Tower‑Guard Watch Services**
 
-### 3.5  Error Codes<a id="error-codes"></a>
+```jsonc
+{
+  "name": "Tower‑Guard Watch Services",
+  "url": "https://watchtower.example",
+  "version": "2.1.0",
+  "capabilities": { "streaming": true, "pushNotifications": true },
+  "skills": [
+    { "id": "watchChannels", "name": "Lightning Watchtower" }
+  ],
+  "x-payment-config": [
+    {
+      "id": "watchtower-month",
+      "name": "30‑Day Watchtower",
+      "currency": "BSV",
+      "amount": 0.002,
+      "address": "1WatchtowerAddr",
+      "acceptedCurrencies": ["BSV","BTC","USD"],
+      "interval": "month",
+      "skillIds": ["watchChannels"],
+      "description": "Penalty‑tx monitoring for 30 days"
+    },
+    {
+      "id": "watchtower-18m",
+      "name": "18‑Month Enterprise Watchtower",
+      "currency": "BSV",
+      "amount": 0.030,
+      "address": "1WatchtowerAddr",
+      "acceptedCurrencies": ["BSV","BTC","USD"],
+      "interval": "P18M",
+      "depositPct": 0.20,
+      "skillIds": ["watchChannels"],
+      "description": "Long‑term SLA; 20 % up‑front, 80 % on completion"
+    }
+  ]
+}
+```
 
-| HTTP | JSON‑RPC code | Description                              |
-|------|---------------|------------------------------------------|
-| 402  | `-32030`      | PaymentMissing                           |
-| 402  | `-32031`      | PaymentInvalid (rawTx decode / txid seen)|
-| 402  | `-32032`      | StageMismatch                            |
-| 402  | `-32033`      | AmountInsufficient                       |
-| 402  | `-32034`      | CurrencyUnsupported / AddressMismatch    |
+#### **B. On‑Chain DEX Chart API**
+
+```jsonc
+{
+  "name": "On‑Chain DEX Chart API",
+  "url": "https://dexcharts.example",
+  "version": "1.0.0",
+  "capabilities": { "streaming": false },
+  "skills": [
+    { "id": "getDexChart", "name": "DEX Chart JSON" }
+  ],
+  "x-payment-config": [
+    {
+      "id": "dex-chart-call",
+      "name": "Single OHLCV Request",
+      "currency": "USD",
+      "amount": 0.05,
+      "address": "1DexDataAddr",
+      "acceptedCurrencies": ["USD","BSV","SOL"],
+      "skillIds": ["getDexChart"],
+      "description": "Returns 500‑candle OHLCV JSON"
+    },
+    {
+      "id": "dex-chart-sub-month",
+      "name": "Unlimited Charts · 30 Days",
+      "currency": "USD",
+      "amount": 20,
+      "address": "1DexDataAddr",
+      "acceptedCurrencies": ["USD","BSV","SOL"],
+      "interval": "month",
+      "skillIds": ["getDexChart"],
+      "description": "Unlimited OHLCV queries for one month"
+    }
+  ]
+}
+```
 
 ---
 
-## 4  Registry<a id="registry"></a>
+## 5  Payment Flow<a id="payment-flow"></a>
 
-### 4.1  1Sat Ordinal + MAP Format<a id="1sat-ordinal--map-format"></a>
+1. **Discover** AgentCard (indexer → HTTPS) and verify on‑chain hash.  
+2. **Prepare** rawTx paying `address` in any `acceptedCurrencies` value.  
+3. **Embed** `x-payment` DataPart with `stage:"deposit"` or `"full"`.  
+4. **Submit** via `tasks/send` or `tasks/sendSubscribe`.  
+5. **Validate** – server checks amount, FX, stage, duplicate txid.  
+6. **Broadcast** rawTx (deposit or full).  
+7. **Execute** task; may call MCP tools.  
+8. **Optionally send 402** for `stage:"final"` if using deposit model.  
+9. **Broadcast** final rawTx, mark `completed`, return artifact / stream.  
+10. **Fail** – if job fails, discard rawTx; client keeps funds.
+
+### 5.1  Two‑Stage Deposit Model<a id="two-stage-deposit-model"></a>
+
+| Stage   | Required rawTx value (after FX)     | Who sends rawTx | Who broadcasts |
+|---------|--------------------------------------|-----------------|----------------|
+| deposit | `amount × depositPct`               | Client          | **Server**     |
+| final   | `amount − deposit`                  | Client          | **Server**     |
+| full    | `amount`                            | Client          | **Server**     |
+
+### 5.2  FX Conversion & Price Feeds<a id="fx-conversion--price-feeds"></a>
+
+* Conversion formula:  
+  `required = anchorAmount × spotRate(anchor→payCurrency)`  
+* `spotRate` fetched from `priceFeedUrl` or server’s oracle; cache ≤ 60 s.  
+* Slippage tolerance default ±1 %; configurable per service.
+
+### 5.3  Error Codes<a id="error-codes"></a>
+
+| HTTP | JSON‑RPC code | Message Stub                        |
+|------|---------------|-------------------------------------|
+| 402  | `-32030`      | PaymentMissing                      |
+| 402  | `-32031`      | PaymentInvalid (rawTx)              |
+| 402  | `-32032`      | StageMismatch                       |
+| 402  | `-32033`      | AmountInsufficient                  |
+| 402  | `-32034`      | CurrencyUnsupported / AddressMismatch |
+
+---
+
+## 6  On‑Chain Registry<a id="on-chain-registry"></a>
+
+### 6.1  1Sat Ordinal + MAP Format<a id="1sat-ordinal--map-format"></a>
 
 ```
-Output 0 (1 sat):
+Output 0 (1 sat):
   <P2PKH>
   OP_FALSE OP_IF
     6f7264
     OP_1 "application/json"
     OP_1 ".well-known/agent.json"
-    OP_0 <agent.json bytes>
+    OP_0 <AgentCard bytes>
   OP_ENDIF
 
-Output 1 (0 sat):
+Output 1 (0 sat):
   OP_RETURN
     1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5
     SET app bsv-mcp type a2b
 ```
 
-### 4.2  Updating by Re‑inscription<a id="updating-by-re-inscription"></a>
+### 6.2  Updating via Re‑inscription<a id="updating-via-re-inscription"></a>
 
-Spend the satoshi; attach new envelope + identical MAP. Newest inscription is authoritative.
+* Spend the inscription satoshi to a new output you control.  
+* Attach a new ord envelope with updated AgentCard.  
+* Add identical MAP tag line.  
+* Indexers pick the newest inscription per satoshi.
 
-### 4.3  Discovery Workflow<a id="discovery-workflow"></a>
+### 6.3  Discovery API Requirements<a id="discovery-api-requirements"></a>
 
-* Indexer filters `app=bsv-mcp&type=a2b`.  
-* Stores newest inscription per sat.  
-* Query parameters: `skill`, `currency`, `maxPrice`, `acceptedCurrency`, `updateHeight`.
-
----
-
-## 5  Protocol Guidelines<a id="protocol-guidelines"></a>
-
-### 5.1  Immediate Tasks<a id="immediate-tasks"></a>
-
-* Client includes `stage:"full"` (or `"deposit"`).  
-* **Server** validates, runs task, broadcasts rawTx if `state == completed`.  
-* On failure, server discards rawTx.
-
-### 5.2  Streaming Tasks<a id="streaming-tasks"></a>
-
-* Client supplies first stage at stream start.  
-* Server may withhold high‑value output until `stage:"final"`.  
-* Each stage’s rawTx broadcast is done by server on success.
-
-### 5.3  Interactive Sessions<a id="interactive-sessions"></a>
-
-* One payment covers entire session.  
-* Agents should limit turns or use subscription pricing to avoid abuse.
-
-### 5.4  Long‑Running Jobs<a id="long-running-jobs"></a>
-
-* Funds locked until completion; server risk proportional to job cost.  
-* Use higher `depositPct` or split job into separate tasks if needed.
-
-### 5.5  Subscription Services<a id="subscription-services"></a>
-
-* Represent each billing period as its own task with a corresponding payment.  
-* Renewal = new task + new payment claim.
+| Query Parameter        | Purpose                                            |
+|------------------------|----------------------------------------------------|
+| `skillId`              | Filter configs containing the skill ID             |
+| `currency`             | Anchor currency filter                             |
+| `acceptedCurrency`     | Agents accepting a specific ticker                 |
+| `interval`             | Filter by billing period (e.g. `month`, `P18M`)    |
+| `maxPrice.amount`      | Upper bound in anchor currency                     |
+| `updateHeight`         | Only inscriptions newer than given block height    |
 
 ---
 
-## 6  Payment Verification Algorithm<a id="payment-verification-algorithm"></a>
+## 7  Protocol Guidelines<a id="protocol-guidelines"></a>
+
+| Mode / Scenario     | Guidelines                                                                                      |
+|---------------------|--------------------------------------------------------------------------------------------------|
+| Immediate Task      | Use `stage:"full"` when `depositPct` omitted; broadcast on success.                              |
+| Streaming Task      | Require deposit at start; allow server to withhold final chunk until `stage:"final"`.            |
+| Interactive Session | One payment per Task ID; switch to subscription (`interval`) if conversation becomes lengthy.    |
+| Long‑Running Job    | Recommend `depositPct ≥ 0.5`; split into milestones if runtime > 24 h.                           |
+| Subscription Plan   | Each interval is its own task & pricing config (`interval`); server tracks expiry.               |
+| MCP Tool Calls      | Server may call MCP endpoints; A2B governs only client↔server settlement.                        |
+
+---
+
+## 8  Security & Robustness<a id="security--robustness"></a>
+
+* **Oracle Signing** – Sign FX JSON (HMAC or ECDSA) and verify signature.  
+* **Mempool Replay** – Reject duplicate txid before broadcast.  
+* **Grace Timeout** – Default 30 min for missing `final` stage.  
+* **Task Expiry** – Cancel tasks and refund deposits if no success within policy window.  
+* **RawTx Storage** – Encrypt pending rawTxs at rest.  
+* **Rate Limits** – Cost‑based throttling (e.g. satoshis / second per IP).  
+* **Double Spend** – Check inputs unspent at broadcast time.
+
+---
+
+## 9  Payment Verification Algorithm<a id="payment-verification-algorithm"></a>
 
 ```pseudo
-validateAndBroadcast(rawTx, stage, config, currency):
-    tx = decode(rawTx)
-    output = findOutputTo(tx, config.address)
-    requiredAnchor = stage == "deposit"
-                     ? config.amount * (config.depositPct or 1)
-                     : config.amount - (config.amount * (config.depositPct or 0))
-    if currency != config.currency:
-        rate  = fetchSpotRate(currency, config.currency, config.priceFeedUrl)
-        required = requiredAnchor * rate
-    else:
-        required = requiredAnchor
-    assert output.value >= required
-    assert txid not seen
-    broadcast(tx)            // server action
+verifyAndBroadcast(rawTx, stage, cfg, payTicker):
+    tx     = decode(rawTx)
+    output = findOutput(tx, cfg.address)
+    if !output                -> 32034
+    anchor = stage == 'deposit'
+             ? cfg.amount * (cfg.depositPct or 1)
+             : stage == 'final'
+             ? cfg.amount - cfg.amount*(cfg.depositPct or 0)
+             : cfg.amount
+    fxRate = payTicker == cfg.currency
+             ? 1
+             : fetchSpot(payTicker, cfg.currency, cfg.priceFeedUrl)
+    required = anchor * fxRate
+    if output.value < required*(1 - slippage): -> 32033
+    if txidInMempoolOrChain(tx.id):            -> 32031
+    broadcast(tx)
 ```
 
 ---
 
-## 7  Implementation Guide<a id="implementation-guide"></a>
+## 10  Implementation Guide<a id="implementation-guide"></a>
 
-### Client
-1. Discover agent → fetch AgentCard.  
-2. Select `configId`, currency to pay, and build rawTx for `deposit` or `full`.  
-3. Send `tasks/send` / `…/sendSubscribe` with DataPart `x-payment`.  
-4. If server responds `402 / AmountInsufficient`, build rawTx for `stage:"final"` and resend.  
-5. Observe on‑chain broadcast by server.
+### Client Workflow
 
-### Server
-1. Inscribe AgentCard via `wallet_a2bPublish`.  
-2. On request: validate stage, currency, and rawTx value.  
-3. Execute job. On success broadcast rawTx, mark task `completed`, return result / stream.  
-4. On failure: discard rawTx, mark `failed`.  
-5. For subscription configs, enforce expiry based on interval.
+1. **Discover** ‑ call indexer:  
+   `GET /agents?skillId=watchChannels&acceptedCurrency=BTC`.  
+2. **Verify** ‑ compare inscription hash ↔ HTTPS `agent.json`.  
+3. **Prepare** ‑ sign rawTx ≥ required value (after FX).  
+4. **Send** ‑ `tasks/send` with DataPart `x-payment`.  
+5. **Handle** ‑ if `402 / AmountInsufficient`, construct `stage:"final"` rawTx and resend.  
+6. **Confirm** ‑ watch mempool/chain for server broadcast.
+
+### Server Workflow
+
+1. **Publish** ‑ inscribe AgentCard (`type=a2b`).  
+2. **Validate** ‑ verify rawTx value, stage, FX.  
+3. **Execute** ‑ optionally call MCP tools; stream progress.  
+4. **Broadcast** ‑ rawTx on success; mark `completed`.  
+5. **Fail** ‑ discard rawTx, mark task `failed`.  
+6. **Update** ‑ re‑inscribe satoshi to change pricing/metadata.
 
 ---
+
+## 11  Glossary<a id="glossary"></a>
+
+| Term                 | Definition                                                     |
+|----------------------|----------------------------------------------------------------|
+| **1Sat Ordinal**     | An inscription controlling a single satoshi (Bitcoin SV model) |
+| **MAP**              | Minimal Address Protocol: `OP_RETURN 1PuQa7K… SET key val …`   |
+| **ISO 8601 `P18M`**  | Duration literal “Period 18 Months”.                           |
+| **Skill ID**         | Canonical ID of an A2A skill (e.g. `watchChannels`).           |
+| **Slippage**         | Allowed % difference between expected and actual paid value.   |
+| **MCP**              | *Model‑Context Protocol* – tool‑invocation layer; orthogonal to A2B. |
+
+---
+
+*End of comprehensive specification (2025‑04‑18).*  
