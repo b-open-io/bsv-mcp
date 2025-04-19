@@ -28,8 +28,7 @@
 10. [Implementation Guide](#implementation-guide)
     * 10.1 [Client](#client)  
     * 10.2 [Server](#server)  
-    * 10.3 [Publisher](#publisher)  
-11. [Glossary](#glossary)
+    * 10.3 [Publisher](#publisher)
 
 ---
 
@@ -48,16 +47,16 @@ These components can function **independently or in tandem**, providing flexibil
 
 AI agents are increasingly ubiquitous, yet two core requirements remain underserved:
 
-1. **Discovery** – Today, agent discovery relies on centralised registries or ad‑hoc web crawling. This both limits reach for smaller publishers and introduces single points of failure.
-2. **Monetisation** – Payment flows typically depend on proprietary API keys and external billing systems, resulting in fragmented, less secure implementations.
+1. **Discovery** – Today, agent discovery relies on centralized registries or ad‑hoc web crawling. This both limits reach for smaller publishers and introduces single points of failure.
+2. **Monetization** – Payment flows typically depend on proprietary API keys and external billing systems, resulting in fragmented, less secure implementations.
 
 A2B addresses these challenges by:
 
-* **Democratising Discovery** – By inscribing AgentCards as 1Sat Ordinals, any participant can run an indexer and surface agents without heavy infrastructure.
-* **Streamlining Monetisation** – Payment configurations (`x‑payment‑config`) live in the same AgentCard that advertises an agent's skills, while signed payment claims (`x‑payment`) travel with each request – eliminating external billing glue.
+* **Democratizing Discovery** – By inscribing AgentCards as 1Sat Ordinals, any participant can run an indexer and surface agents without heavy infrastructure.
+* **Streamlining Monetization** – Payment configurations (`x‑payment‑config`) live in the same AgentCard that advertises an agent's skills, while signed payment claims (`x‑payment`) travel with each request – eliminating external billing glue.
 * **Enabling Ownership & Transferability** – The inscription model confers on‑chain ownership. Registry entries can be transferred or sold, allowing a marketplace of agent reputations and services.
 
-Together, these features pave the way for a more **robust, decentralised, and monetisable** agent ecosystem that scales with the evolving needs of AI‑driven interactions.
+Together, these features pave the way for a more **robust, decentralized, and monetizable** agent ecosystem that scales with the evolving needs of AI‑driven interactions.
 
 ---
 
@@ -455,13 +454,13 @@ sequenceDiagram
     participant S as Agent
     participant B as Blockchain
 
-    C->>S: tasks/send (+ x‑payment month 1)
+    C->>S: tasks/send (+ x‑payment month 1)
     S->>B: broadcast tx₁
-    S-->>C: data stream (month 1)
+    S-->>C: data stream (month 1)
     Note over C,S: 30 days pass
-    C->>S: tasks/send (+ x‑payment month 2)
+    C->>S: tasks/send (+ x‑payment month 2)
     S->>B: broadcast tx₂
-    S-->>C: data stream (month 2)
+    S-->>C: data stream (month 2)
 ```
 </details>
 
@@ -619,17 +618,5 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 
 ---
 
-## 11  Glossary<a id="glossary"></a>
-
-| Term                 | Definition |
-|----------------------|------------|
-| **1Sat Ordinal**     | Single‑satoshi inscription registry entry. |
-| **MAP**              | Magic Attribute Protocol key‑value OP_RETURN. |
-| **Skill ID**         | Identifier in AgentCard `skills[].id`. |
-| **ISO 8601 Duration**| `"P18M"` = 18 months. |
-| **Overlay**          | A2B discovery marketplace. |
-| **MCP**              | Model‑Context Protocol tool host. |
-
----
 
 *Specification version 2025‑04‑19.*
