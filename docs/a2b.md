@@ -53,21 +53,25 @@ sequenceDiagram
     autonumber
     participant C as A2B Client
     participant O as A2B Overlay
+    participant B as Blockchain
     participant S as A2B Agent (A2A Server)
     participant T as MCP Server
-    participant B as Blockchain
 
-    Note over O,B: Registry = 1Sat Ordinal + MAP
+    Note over O,B: Overlay ≘ indexer — it continuously scans Blockchain for a2b inscriptions
 
     C->>O: search("watchtower penalty")
+    O->>B: lookup inscriptions (skillId / text)
+    B-->>O: matching hashes + metadata
     O-->>C: results list
 
     C->>S: GET /.well-known/agent.json
-    S-->>C: AgentCard
-    C->>C: verify hash
-```
+    S-->>C: AgentCard (HTTPS)
+    C->>C: verify hash == inscription
 
-*(full sequence continues in Part 2)*
+    C->>C: sign rawTx (deposit/full)
+    C->>S: tasks/send + x‑payment
+    S->>S: validate & broadcast (see Part 2)
+```
 
 ---
 
