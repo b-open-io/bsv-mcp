@@ -11,25 +11,21 @@
    * 4.1 [Pricing Configuration (`x-payment-config`)](#pricing-configuration)  
    * 4.2 [Payment Claim (`x-payment` DataPart)](#payment-claim)  
    * 4.3 [Agent Card Examples](#agent-card-examples)  
-5. [Payment Flow](#payment-flow)  
-   * 5.1 [Two‑Stage Deposit Model](#two-stage-deposit-model)  
-   * 5.2 [FX Conversion & Price Feeds](#fx-conversion--price-feeds)  
-   * 5.3 [Error Codes](#error-codes)  
-6. [On‑Chain Registry](#on-chain-registry) ••• **continues in Part 2** •••  
+5. [Payment Flow](#payment-flow)  <!-- section stub; content in Part 2 -->  
 
 ---
 
 ## 1  Purpose & Scope<a id="purpose--scope"></a>
 
-A2B overlays **crypto‑native payments** and a **permissionless satoshi registry** on top of Google’s **Agent‑to‑Agent (A2A)** protocol:
+A2B overlays **crypto‑native payments** and a **permissionless satoshi registry** on Google’s **Agent‑to‑Agent (A2A)** protocol:
 
-| Capability          | Mechanism / Standard                                                                                                             |
-|---------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| Pricing             | `x-payment-config` — anchor `currency`, `amount`, human‑readable `name`, `acceptedCurrencies`, `interval`, optional `depositPct` |
-| Payment             | Client signs rawTx → embeds in `x-payment` → **server broadcasts** only on success (*pay‑on‑success*)                             |
-| Discovery           | AgentCards are **1‑satoshi Ordinal inscriptions** with MAP tag `app=your‑app‑name type=a2b`                                       |
-| Ownership & Update  | Re‑inscribe that satoshi to change metadata; inscription (and reputation) is portable & tradeable                                |
-| Tooling (MCP)       | An A2A server may invoke **MCP tool servers** internally; A2B handles only *client ↔ agent* settlement                            |
+| Capability          | Mechanism / Standard                                                                                                          |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| Pricing             | `x-payment-config` — anchor `currency`, `amount`, human `name`, `acceptedCurrencies`, `interval`, optional `depositPct`        |
+| Payment             | Client signs rawTx → embeds in `x-payment` → **server broadcasts** only on success (*pay‑on‑success*)                          |
+| Discovery           | AgentCards are **1‑satoshi Ordinal inscriptions** with MAP tag `app=your‑app‑name type=a2b`                                    |
+| Ownership & Update  | Re‑inscribe that satoshi to update metadata; inscription (and reputation) is portable & tradeable                             |
+| Tooling (MCP)       | A2A servers may invoke **MCP tool servers** during execution; A2B covers only *client ↔ agent* settlement                      |
 
 Currency‑agnostic — examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
 
@@ -42,10 +38,10 @@ Currency‑agnostic — examples use **BSV**, **BTC**, **SOL**, and fiat **USD**
 | **Pricing Config**     | One entry in `x-payment-config`; machine `id`, human `name`, price, currencies. |
 | **skillIds**           | Array of A2A Skill ID strings (`"watchChannels"`, `"getDexChart"`, …). |
 | **acceptedCurrencies** | Required tickers the agent accepts (must include anchor). |
-| **depositPct**         | 0–1 fraction for two‑stage payments (`deposit` + `final`). |
-| **interval**           | `null`, shorthand (`day|week|month|year`), or ISO 8601 duration like `"P18M"`. |
-| **priceFeedUrl**       | Optional oracle returning `{ "rates": { "BTC": 0.000012 } }`. |
-| **Overlay**            | A2B discovery index w/ VS‑Code‑style fuzzy search. |
+| **depositPct**         | 0–1 fraction enabling two‑stage payments (`deposit` + `final`). |
+| **interval**           | `null`, shorthand (`day | week | month | year`), or ISO 8601 duration like `"P18M"`. |
+| **priceFeedUrl**       | Optional oracle used by the service to determine price of accepted and anchor currencies returning `{ "rates": { "BTC": 0.000012 } }`. |
+| **Overlay**            | A2B discovery index (marketplace‑style fuzzy search). |
 | **MCP Server**         | Local Model‑Context‑Protocol tool host an agent may call. |
 
 ---
@@ -64,37 +60,46 @@ sequenceDiagram
     Note over O,B: Registry = 1Sat Ordinal + MAP
 
     C->>O: search("watchtower penalty")
-    O-->>C: results[] (AgentCard + hash + score)
+    O-->>C: results list
 
     C->>S: GET /.well-known/agent.json
-    S-->>C: AgentCard (HTTPS)
-    C->>C: verify hash == inscription
-
-    C->>C: sign rawTx (deposit/full)
-    C->>S: tasks/send + x‑payment
-    S->>S: validate rawTx (FX, stage)
-    S->>B: broadcast deposit rawTx
-
-    alt needs MCP compute
-        S-->>T: mcp.tool.call(params)
-        T-->>S: result / stream
-    end
-
-    S-->>C: TaskStatus / stream
-
-    alt depositPct present
-        S-->>C: 402 AmountInsufficient
-        C->>C: sign final rawTx
-        C->>S: tasks/send (stage=final)
-        S->>B: broadcast final rawTx
-    end
-
-    S-->>C: completed artifact / final stream chunk
+    S-->>C: AgentCard
+    C->>C: verify hash
 ```
+
+*(full sequence continues in Part 2)*
 
 ---
 
 ## 4  Data Structures<a id="data-structures"></a>
+
+### Type Definitions
+
+```typescript
+/** On‑chain pricing entry */
+export interface PricingConfig {
+  id: string;
+  name: string;
+  currency: string;            // anchor ticker
+  amount: number;              // price in anchor units
+  address: string;             // pay‑to address for anchor currency
+  acceptedCurrencies: string[]; // other tickers accepted
+  skillIds: string[];          // skills this price unlocks
+  interval?: 'day'|'week'|'month'|'year'|string|null;
+  description?: string|null;
+  depositPct?: number;         // 0‑1 for two‑stage payments
+  priceFeedUrl?: string;       // optional FX oracle
+}
+
+/** DataPart claim sent with tasks/send */
+export interface PaymentClaim {
+  configId: string;
+  stage: 'deposit' | 'final' | 'full';
+  rawTx: string;               // hex‑encoded unsigned or signed tx
+  currency: string;            // ticker of UTXO value
+  refundAddress?: string;      // optional alt‑chain refund
+}
+```
 
 ### 4.1  Pricing Configuration<a id="pricing-configuration"></a>
 
@@ -321,24 +326,28 @@ sequenceDiagram
 
 ## 5  Payment Flow<a id="payment-flow"></a>
 
-*(identical text, plus Mermaid diagrams for deposit model & FX math appear in Part 2)*
-
----
-## 5  Payment Flow (continued)<a id="payment-flow"></a>
+A2B’s payment logic has three variants — *full*, *deposit + final* and *subscription*. The client always signs a raw transaction but **only the server broadcasts** it once the task reaches the corresponding stage.
 
 <details>
 <summary>Mermaid · Deposit vs Full Path</summary>
 
 ```mermaid
 flowchart TD
-    A[Client<br>signs rawTx] --> B{depositPct<br>present?}
-    B -- No --> F[stage=full]<br/>→ server validate → broadcast → run task → done
-    B -- Yes --> C[stage=deposit]<br/>→ server validate → broadcast
-    C --> D[run task]
-    D --> E{needs final?}
-    E -- success w/ deposit --> G[402 AmountInsufficient]
-    G --> H[Client signs final rawTx]
-    H --> I[stage=final]<br/>→ server validate → broadcast → done
+    A[Client signs rawTx] --> B{depositPct set?}
+    B -- No --> F[stage full]
+    F --> G[validate & broadcast]
+    G --> H[run task]
+    H --> I[done]
+
+    B -- Yes --> C[stage deposit]
+    C --> D[validate & broadcast]
+    D --> E[run task]
+    E --> J{needs final?}
+    J -- Yes --> K[402 AmountInsufficient]
+    K --> L[Client signs final rawTx]
+    L --> M[stage final]
+    M --> N[validate & broadcast]
+    N --> I
 ```
 </details>
 
@@ -346,9 +355,9 @@ flowchart TD
 
 | Stage   | RawTx ≥ (after FX) | Sender | Broadcast |
 |---------|--------------------|--------|-----------|
-| deposit | `amount×depositPct`| Client | Server    |
-| final   | `amount−deposit`   | Client | Server    |
-| full    | `amount`           | Client | Server    |
+| deposit | `amount × depositPct` | Client | Server |
+| final   | `amount − deposit`    | Client | Server |
+| full    | `amount`              | Client | Server |
 
 ---
 
@@ -359,21 +368,31 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[anchor amount<br>(cfg.amount)] --> B[spotRate<br>anchor→pay]
-    B --> C[required = anchor×rate]
-    C --> D[apply slippage<br>(1 − tol)]
-    D --> E{UTXO value ≥ required?}
+    A[anchor amount] --> B[spot rate]
+    B --> C[required = anchor×rate]
+    C --> D[apply slippage]
+    D --> E{UTXO ≥ required?}
     E -- Yes --> F[valid]
-    E -- No --> G[402 AmountInsufficient]
+    E -- No  --> G[402 AmountInsufficient]
 ```
 </details>
 
-* Oracle JSON: `{ "rates": { "USD":123.45,"BTC":0.000014 } }`  
-* Default slippage ±1 %; override per‑service with `slippagePct`.
+* Oracle JSON example: `{ "rates": { "USD": 123.45, "BTC": 0.000014 } }`
+* Default slippage tolerance: **±1 %** (override per pricing config).
+
+### 5.3  Error Codes<a id="error-codes"></a>
+
+| HTTP | JSON‑RPC code | Meaning                       |
+|------|---------------|-------------------------------|
+| 402  | `-32030`      | PaymentMissing                |
+| 402  | `-32031`      | PaymentInvalid (rawTx)        |
+| 402  | `-32032`      | StageMismatch                 |
+| 402  | `-32033`      | AmountInsufficient            |
+| 402  | `-32034`      | CurrencyUnsupported / AddressMismatch |
 
 ---
 
-### 5.3  Task State Machine
+### 5.4  Task State Machine
 
 <details>
 <summary>Mermaid · Task States</summary>
@@ -382,17 +401,17 @@ flowchart LR
 stateDiagram-v2
     [*] --> pending
     pending --> running : deposit/full valid
-    running --> needsFinal : 402 AmountInsufficient
+    running --> needsFinal : 402
     needsFinal --> running : final valid
     running --> completed : success
-    running --> failed : error/timeout
-    needsFinal --> failed : grace timeout
+    running --> failed : error
+    needsFinal --> failed : timeout
 ```
 </details>
 
 ---
 
-### 5.4  Subscription Renewal Example
+### 5.5  Subscription Renewal Flow
 
 <details>
 <summary>Mermaid · Monthly Subscription Sequence</summary>
@@ -403,28 +422,47 @@ sequenceDiagram
     participant C as Client
     participant S as Agent
     participant B as Blockchain
-    Note over C,S: config interval = "month"
-    C->>S: tasks/send + x‑payment (month 1)
-    S->>B: broadcast tx1
-    S-->>C: data stream (month 1)
-    Note over C,S: 30 days pass
-    C->>S: tasks/send + x‑payment (month 2)
-    S->>B: broadcast tx2
-    S-->>C: data stream (month 2)
+
+    C->>S: tasks/send (+ x‑payment month 1)
+    S->>B: broadcast tx₁
+    S-->>C: data stream (month 1)
+    Note over C,S: 30 days pass
+    C->>S: tasks/send (+ x‑payment month 2)
+    S->>B: broadcast tx₂
+    S-->>C: data stream (month 2)
 ```
 </details>
 
 ---
 
-## 6  On‑Chain Registry (continued)<a id="on-chain-registry"></a>
+## 6  On‑Chain Registry<a id="on-chain-registry"></a>
+
+### 6.1  1Sat Ordinal + MAP Format<a id="1sat-ordinal--map-format"></a>
+
+```
+Output 0 (1 sat):
+  <P2PKH>
+  OP_FALSE OP_IF
+    "ord"
+    OP_1 "application/json"
+    OP_0 <AgentCard bytes>
+  OP_ENDIF
+
+Output 1 (0 sat):
+  OP_RETURN
+    1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5  SET
+    app your-app-name  type a2b
+```
+
+### 6.2  Updating via Re‑inscription<a id="updating-via-re-inscription"></a>
+
+Spend the satoshi, attach a new envelope with updated card and identical MAP; newest wins.
 
 ### 6.3  Overlay Search UX<a id="overlay-search-ux"></a>
 
-Marketplace‑style search:
-
-* Full‑text over `name`, `description`, `tags`.
-* Structured filters: `skillId`, `interval`, `acceptedCurrency`, `maxPrice`.
-* Results show card logo, summary, cheapest plan, update height, rating.
+* Fuzzy search over `name`, `description`, `tags`.  
+* Filters: `skillId`, `acceptedCurrency`, `interval`, `maxPrice`.  
+* Result card shows logo, summary, cheapest price, update height, rating.
 
 ---
 
@@ -433,11 +471,11 @@ Marketplace‑style search:
 | Scenario         | Recommendation |
 |------------------|----------------|
 | Immediate        | `stage:"full"`; server broadcasts on success. |
-| Streaming        | Deposit first; final chunk after `stage:"final"`. |
-| Interactive      | One payment per task; consider subscription if heavy usage. |
-| Long‑Running     | Deposit ≥ 50 % or split milestones. |
-| Subscription     | Each billing interval uses its own config (`interval`). |
-| MCP Payments     | Optional nested A2B hop for downstream tools. |
+| Streaming        | Deposit then `final`; server withholds last chunk until paid. |
+| Interactive      | One payment per task; switch to subscription for heavy usage. |
+| Long‑Running     | Deposit ≥ 50 % or milestone split. |
+| Subscription     | One config per billing interval (`interval`). |
+| MCP Payments     | Agent may embed nested A2B hop for downstream tools. |
 
 ---
 
@@ -448,21 +486,22 @@ Marketplace‑style search:
 
 ```mermaid
 flowchart TD
-    A[Attacker<br>sends duplicate txid] --> B[Server validate]
-    B -->|txidSeen| C[Reject -32031]
-    D[Attacker alters oracle JSON] --> E[Verify signature]
-    E -->|sig bad| C
-    F[Client<br>double‑spend] --> G[Broadcast fails]
-    G --> H[Task failed & deposit refundable]
+    A[Duplicate txid] --> B[validate]
+    B -->|seen| X[Reject -32031]
+    C[Fake oracle JSON] --> D[verify sig]
+    D -->|bad| X
+    E[Double spend] --> F[mempool check]
+    F -->|bad| X
+    H[Valid path] --> I[broadcast]
 ```
 </details>
 
-* **Grace timeout** — 30 min default for missing `final`.  
-* **Task expiry** — refund deposits if job exceeds SLA.  
-* **Encrypted rawTx store** — protect pre‑broadcast payments.  
-* **Rate limits** — throttle by satoshi/s & request count.  
-* **Double‑spend check** — ensure inputs unspent at broadcast.  
-* **Signed oracle** — verify HMAC/ECDSA to prevent FX tampering.
+* Grace timeout 30 min for missing `final`.  
+* Refund deposits on task expiry.  
+* Encrypt pending rawTx.  
+* Rate‑limit by satoshi/s & requests.  
+* Double‑spend detection before broadcast.  
+* Verify signed oracle feeds.
 
 ---
 
@@ -472,7 +511,7 @@ flowchart TD
 verifyAndBroadcast(rawTx, stage, cfg, payTicker):
     tx   = decode(rawTx)
     out  = findOutput(tx, cfg.address)
-    if !out                      -> 32034
+    if !out           -> 32034
     anchor = (stage=='deposit') ? cfg.amount*cfg.depositPct
            : (stage=='final')   ? cfg.amount - cfg.amount*cfg.depositPct
            : cfg.amount
@@ -488,20 +527,20 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 
 ## 10  Implementation Guide<a id="implementation-guide"></a>
 
-### Client Steps
-1. Search overlay (`q=` + filters).  
+### Client
+1. Search overlay; choose pricing config.  
 2. Verify AgentCard hash.  
 3. Sign rawTx.  
-4. Call `tasks/send` with `x-payment`.  
-5. Handle `402` (if deposit model) & resend `final`.  
-6. Watch mempool for broadcast.
+4. `tasks/send` + `x-payment`.  
+5. Handle `402` (deposit model) & resend `final`.  
+6. Watch mempool for server broadcast.
 
-### Server Steps
+### Server
 1. Inscribe AgentCard (`type=a2b`).  
 2. Validate payment claim.  
-3. Execute task; invoke MCP tools as needed.  
+3. Execute task; call MCP tools if needed.  
 4. Broadcast rawTx; stream updates.  
-5. Re‑inscribe satoshi to update pricing/metadata.
+5. Re‑inscribe satoshi for updates.
 
 ---
 
@@ -509,13 +548,13 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 
 | Term                 | Definition |
 |----------------------|------------|
-| **1Sat Ordinal**     | Single‑satoshi inscription used as registry entry. |
+| **1Sat Ordinal**     | Single‑satoshi inscription registry entry. |
 | **MAP**              | Magic Attribute Protocol key‑value OP_RETURN. |
-| **Skill ID**         | Canonical identifier in AgentCard `skills[].id`. |
-| **ISO 8601 Duration**| Example `"P18M"` = 18 months. |
-| **Overlay**          | A2B discovery service with marketplace UX. |
+| **Skill ID**         | Identifier in AgentCard `skills[].id`. |
+| **ISO 8601 Duration**| `"P18M"` = 18 months. |
+| **Overlay**          | A2B discovery marketplace. |
 | **MCP**              | Model‑Context Protocol tool host. |
 
 ---
 
-*Specification version 2025‑04‑18.*  
+*Specification version 2025‑04‑18.*
