@@ -71,6 +71,7 @@ sequenceDiagram
     C->>C: sign rawTx (deposit/full)
     C->>S: tasks/send + x‑payment
 
+    
     S->>B: Validate payment claim
 
     alt Agent needs external compute
@@ -78,9 +79,10 @@ sequenceDiagram
         T-->>S: result / partial stream
     end
 
+    S-->>C: TaskStatus / data stream
+
     S->>B: broadcast rawTx (deposit or full)
 
-    S-->>C: TaskStatus / data stream
 ```
 
 ---
@@ -477,6 +479,50 @@ Spend the satoshi, attach a new envelope with updated card and identical MAP; ne
 * Fuzzy search over `name`, `description`, `tags`.  
 * Filters: `skillId`, `acceptedCurrency`, `interval`, `maxPrice`.  
 * Result card shows logo, summary, cheapest price, update height, rating.
+### 6.4  Cross‑Chain Registry Compatibility
+
+Full 1‑sat‑style inscriptions are effortless on **Bitcoin SV** (design target), but other ledgers impose tighter data caps or higher gas costs. The table ranks practicality for storing *the entire `agent.json`* versus a lightweight pointer.
+
+| Chain | Native data capacity (per tx / script) | Full JSON on‑chain | Pointer variant¹ | Notes |
+|-------|----------------------------------------|--------------------|------------------|-------|
+| **Bitcoin SV** | OP_FALSE+ord ≈ 100 kB | ✅ | — | Native design. |
+| **Bitcoin (Taproot)** | Witness pushes ≤ 520 B, unlimited chunks (Ordinals) | ⚠️ costly | ✅ | Same inscription flow; high fee/weight. |
+| **Litecoin (Taproot)** | BTC rules, cheaper fees | ⚠️ | ✅ | LTC‑20 shows viability. |
+| **Bitcoin Cash** | OP_RETURN total 223 B | ❌ | ✅ | Store hash + URL only. |
+| **Dogecoin** | OP_RETURN 80 B | ❌ | ✅ | Use multi‑output “Stamps” style. |
+| **Ethereum / EVM** | Calldata / storage; ~16 k gas / byte | ⚠️ very expensive | ✅ | Emit LOG event with hash + IPFS; full storage = $$$. |
+| **Solana** | Account data ≤ 10 MB | ✅ | — | Rent‑exempt account holds JSON. |
+| **Avalanche / Polygon / BSC** | EVM rules, cheaper gas | ⚠️ | ✅ | Pointer is practical; full JSON still big. |
+
+**Legend**  ✅ feasible · ⚠️ feasible but high cost/complexity · ❌ impractical  
+¹ *Pointer variant* = small MAP record containing a SHA‑256 hash and URI of the card.
+
+#### Pointer Variant Specification
+
+```text
+OP_RETURN
+  1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5  SET
+  app your-app-name  type a2b
+  hash <32‑byte‑hex>
+  uri  https://example.com/.well-known/agent.json
+```
+
+> **Overlay behaviour** – When the indexer encounters a `hash / uri` record, it **must**:  
+> 1. Download the referenced `.well-known/agent.json`.  
+> 2. Verify `SHA‑256(body) == hash`.  
+> 3. Parse and ingest the JSON exactly as if it were stored on‑chain, so the agent’s metadata remains fully searchable.
+
+Using pointers lets *any* UTXO or EVM chain participate in A2B discovery with only ~75 bytes on‑chain, while still providing strong integrity via hash verification.
+
+---
+
+#### Why BSV Comes First
+
+* Supports large ord‑style envelopes in‑script, no size kludges.  
+* Ultra‑low fees (< $0.001 for 10 kB) enable updates & rich metadata.  
+* Re‑inscription model = identical to BTC/LTC Taproot flow, easing future multichain parity.
+
+Other chains can join immediately via the pointer method, then migrate to full on‑chain JSON if/when their ecosystems adopt high‑capacity inscription tech (e.g., BTC ordinals, Ethereum blobs / proto‑danksharding  [oai_citation_attribution:9‡investopedia.com](https://www.investopedia.com/what-you-need-to-know-ahead-of-ethereum-dencun-update-wednesday-8607518?utm_source=chatgpt.com)).
 
 ---
 
@@ -511,8 +557,7 @@ flowchart TD
 </details>
 
 * Grace timeout 30 min for missing `final`.  
-* Refund deposits on task expiry.  
-* Encrypt pending rawTx.  
+* Refund deposits on task expiry. 
 * Rate‑limit by satoshi/s & requests.  
 * Double‑spend detection before broadcast.  
 * Verify signed oracle feeds.
