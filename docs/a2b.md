@@ -4,45 +4,60 @@
 ---
 
 ## Table of Contents
-1. [Purpose & Scope](#purpose--scope)  
-2. [Key Concepts](#key-concepts)  
+1. [Introduction](#introduction)  
+2. [Motivation](#motivation)  
 3. [End‑to‑End Flow (Diagram)](#end-to-end-flow-diagram)  
 4. [Data Structures](#data-structures)  
    * 4.1 [Pricing Configuration (`x-payment-config`)](#pricing-configuration)  
    * 4.2 [Payment Claim (`x-payment` DataPart)](#payment-claim)  
    * 4.3 [Agent Card Examples](#agent-card-examples)  
-5. [Payment Flow](#payment-flow)  <!-- section stub; content in Part 2 -->  
+5. [Payment Flow](#payment-flow)
+    * 5.1 [Two‑Stage Deposit Model](#two-stage-deposit-model)
+    * 5.2 [FX Conversion & Price Feeds](#fx-conversion--price-feeds)
+    * 5.3 [Error Codes](#error-codes)
+    * 5.4 [Task State Machine](#task-state-machine)
+    * 5.5 [Subscription Renewal Flow](#subscription-renewal-flow)
+6. [On‑Chain Registry](#on-chain-registry)
+   * 6.1 [1Sat Ordinal + MAP Format](#1sat-ordinal--map-format)
+   * 6.2 [Updating via Re‑inscription](#updating-via-re-inscription)
+   * 6.3 [Overlay Search UX](#overlay-search-ux)
+   * 6.4 [Cross‑Chain Registry Compatibility](#cross-chain-registry-compatibility)
+7. [Protocol Guidelines](#protocol-guidelines)
+8. [Security Considerations](#security-considerations)
+9. [Payment Verification Algorithm](#payment-verification-algorithm)
+10. [Implementation Guide](#implementation-guide)
+    * 10.1 Client  
+    * 10.2 Server  
+    * 10.3 Publisher  
+11. [Glossary](#glossary)
 
 ---
 
-## 1  Purpose & Scope<a id="purpose--scope"></a>
+## 1  Introduction<a id="introduction"></a>
 
-A2B overlays **crypto‑native payments** and a **permissionless satoshi registry** on Google’s **Agent‑to‑Agent (A2A)** protocol:
+A2B (Agent‑to‑Bitcoin) is a modular extension to Google's Agent‑to‑Agent (A2A) protocol, introducing **native payment** and **decentralized discovery** capabilities. It comprises two interoperable components:
 
-| Capability          | Mechanism / Standard                                                                                                          |
-|---------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| Pricing             | `x-payment-config` — anchor `currency`, `amount`, human `name`, `acceptedCurrencies`, `interval`, optional `depositPct`        |
-| Payment             | Client signs rawTx → embeds in `x-payment` → **server broadcasts** only on success (*pay‑on‑success*)                          |
-| Discovery           | AgentCards are **1‑satoshi Ordinal inscriptions** with MAP tag `app=your‑app‑name type=a2b`                                    |
-| Ownership & Update  | Re‑inscribe that satoshi to update metadata; inscription (and reputation) is portable & tradeable                             |
-| Tooling (MCP)       | A2A servers may invoke **MCP tool servers** during execution; A2B covers only *client ↔ agent* settlement                      |
+* **Payment Protocol** – Extends A2A's JSON‑RPC schema by embedding **signed cryptocurrency transactions** directly within task requests, enabling agents to require and process payments seamlessly.
+* **Registry Protocol** – Utilizes **1Sat Ordinals** to inscribe agent metadata onto the blockchain, creating an immutable, decentralized registry that supports ownership transfer and updates.
 
-Currency‑agnostic — examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
+These components can function **independently or in tandem**, providing flexibility for diverse use‑cases ranging from one‑off micro‑payments to long‑term subscription services.
 
 ---
 
-## 2  Key Concepts<a id="key-concepts"></a>
+## 2  Motivation<a id="motivation"></a>
 
-| Concept                | Definition |
-|------------------------|------------|
-| **Pricing Config**     | One entry in `x-payment-config`; machine `id`, human `name`, price, currencies. |
-| **skillIds**           | Array of A2A Skill ID strings (`"watchChannels"`, `"getDexChart"`, …). |
-| **acceptedCurrencies** | Required tickers the agent accepts (must include anchor). |
-| **depositPct**         | 0–1 fraction enabling two‑stage payments (`deposit` + `final`). |
-| **interval**           | `null`, shorthand (`day | week | month | year`), or ISO 8601 duration like `"P18M"`. |
-| **priceFeedUrl**       | Optional oracle used by the service to determine price of accepted and anchor currencies returning `{ "rates": { "BTC": 0.000012 } }`. |
-| **Overlay**            | A2B discovery index (marketplace‑style fuzzy search). |
-| **MCP Server**         | Local Model‑Context‑Protocol tool host an agent may call. |
+AI agents are increasingly ubiquitous, yet two core requirements remain underserved:
+
+1. **Discovery** – Today, agent discovery relies on centralised registries or ad‑hoc web crawling. This both limits reach for smaller publishers and introduces single points of failure.
+2. **Monetisation** – Payment flows typically depend on proprietary API keys and external billing systems, resulting in fragmented, less secure implementations.
+
+A2B addresses these challenges by:
+
+* **Democratising Discovery** – By inscribing AgentCards as 1Sat Ordinals, any participant can run an indexer and surface agents without heavy infrastructure.
+* **Streamlining Monetisation** – Payment configurations (`x‑payment‑config`) live in the same AgentCard that advertises an agent's skills, while signed payment claims (`x‑payment`) travel with each request – eliminating external billing glue.
+* **Enabling Ownership & Transferability** – The inscription model confers on‑chain ownership. Registry entries can be transferred or sold, allowing a marketplace of agent reputations and services.
+
+Together, these features pave the way for a more **robust, decentralised, and monetisable** agent ecosystem that scales with the evolving needs of AI‑driven interactions.
 
 ---
 
@@ -342,7 +357,7 @@ export interface PaymentClaim {
 
 ## 5  Payment Flow<a id="payment-flow"></a>
 
-A2B’s payment logic has three variants — *full*, *deposit + final* and *subscription*. The client always signs a raw transaction but **only the server broadcasts** it once the task reaches the corresponding stage.
+A2B's payment logic has three variants — *full*, *deposit + final* and *subscription*. The client always signs a raw transaction but **only the server broadcasts** it once the task reaches the corresponding stage.
 
 <details>
 <summary>Mermaid · Deposit vs Full Path</summary>
@@ -370,10 +385,10 @@ flowchart TD
 
 ### 5.1  Two‑Stage Deposit Model<a id="two-stage-deposit-model"></a>
 
-| Stage   | RawTx ≥ (after FX) | Sender | Broadcast |
+| Stage   | RawTx ≥ (after FX) | Sender | Broadcast |
 |---------|--------------------|--------|-----------|
 | deposit | `amount × depositPct` | Client | Server |
-| final   | `amount − deposit`    | Client | Server |
+| final   | `amount − deposit`    | Client | Server |
 | full    | `amount`              | Client | Server |
 
 ---
@@ -386,9 +401,9 @@ flowchart TD
 ```mermaid
 flowchart LR
     A[anchor amount] --> B[spot rate]
-    B --> C[required = anchor×rate]
+    B --> C[required = anchor×rate]
     C --> D[apply slippage]
-    D --> E{UTXO ≥ required?}
+    D --> E{UTXO ≥ required?}
     E -- Yes --> F[valid]
     E -- No  --> G[402 AmountInsufficient]
 ```
@@ -454,20 +469,18 @@ sequenceDiagram
 
 ## 6  On‑Chain Registry<a id="on-chain-registry"></a>
 
-### 6.1  1Sat Ordinal + MAP Format<a id="1sat-ordinal--map-format"></a>
+### 6.1  Agent Card + A2B Metadata<a id="1sat-ordinal--map-format"></a>
 
 ```
-Output 0 (1 sat):
+Output 0 (1 sat):
   <P2PKH>
   OP_FALSE OP_IF
     "ord"
     OP_1 "application/json"
     OP_0 <AgentCard bytes>
   OP_ENDIF
-
-Output 1 (0 sat):
   OP_RETURN
-    1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5  SET
+    1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5 SET
     app your-app-name  type a2b
 ```
 
@@ -480,50 +493,46 @@ Spend the satoshi, attach a new envelope with updated card and identical MAP; ne
 * Fuzzy search over `name`, `description`, `tags`.  
 * Filters: `skillId`, `acceptedCurrency`, `interval`, `maxPrice`.  
 * Result card shows logo, summary, cheapest price, update height, rating.
-### 6.4  Cross‑Chain Registry Compatibility
+### 6.4  Cross‑Chain Registry Compatibility
 
 Full 1‑sat‑style inscriptions are effortless on **Bitcoin SV** (design target), but other ledgers impose tighter data caps or higher gas costs. The table ranks practicality for storing *the entire `agent.json`* versus a lightweight pointer.
 
 | Chain | Native data capacity (per tx / script) | Full JSON on‑chain | Pointer variant¹ | Notes |
 |-------|----------------------------------------|--------------------|------------------|-------|
-| **Bitcoin SV** | OP_FALSE+ord ≈ 100 kB | ✅ | — | Native design. |
-| **Bitcoin (Taproot)** | Witness pushes ≤ 520 B, unlimited chunks (Ordinals) | ⚠️ costly | ✅ | Same inscription flow; high fee/weight. |
+| **Bitcoin SV** | OP_FALSE+ord ≈ 100 kB | ✅ | — | Native design. |
+| **Bitcoin (Taproot)** | Witness pushes ≤ 520 B, unlimited chunks (Ordinals) | ⚠️ costly | ✅ | Same inscription flow; high fee/weight. |
 | **Litecoin (Taproot)** | BTC rules, cheaper fees | ⚠️ | ✅ | LTC‑20 shows viability. |
-| **Bitcoin Cash** | OP_RETURN total 223 B | ❌ | ✅ | Store hash + URL only. |
-| **Dogecoin** | OP_RETURN 80 B | ❌ | ✅ | Use multi‑output “Stamps” style. |
-| **Ethereum / EVM** | Calldata / storage; ~16 k gas / byte | ⚠️ very expensive | ✅ | Emit LOG event with hash + IPFS; full storage = $$$. |
-| **Solana** | Account data ≤ 10 MB | ✅ | — | Rent‑exempt account holds JSON. |
+| **Bitcoin Cash** | OP_RETURN total 223 B | ❌ | ✅ | Store hash + URL only. |
+| **Dogecoin** | OP_RETURN 80 B | ❌ | ✅ | Use multi‑output "Stamps" style. |
+| **Ethereum / EVM** | Calldata / storage; ~16 k gas / byte | ⚠️ very expensive | ✅ | Emit LOG event with hash + IPFS; full storage = $$. |
+| **Solana** | Account data ≤ 10 MB | ✅ | — | Rent‑exempt account holds JSON. |
 | **Avalanche / Polygon / BSC** | EVM rules, cheaper gas | ⚠️ | ✅ | Pointer is practical; full JSON still big. |
 
-**Legend**  ✅ feasible · ⚠️ feasible but high cost/complexity · ❌ impractical  
-¹ *Pointer variant* = small MAP record containing a SHA‑256 hash and URI of the card.
+**Legend**  ✅ feasible · ⚠️ feasible but high cost/complexity · ❌ impractical  
+¹ *Pointer variant* = small MAP record containing a SHA‑256 hash and URI of the card.
 
 #### Pointer Variant Specification
 
 ```text
-OP_RETURN
-  1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5  SET
-  app your-app-name  type a2b
-  hash <32‑byte‑hex>
-  uri  https://example.com/.well-known/agent.json
+OP_RETURN a2b <domain> <optional-32‑byte‑hex> 
 ```
 
 > **Overlay behaviour** – When the indexer encounters a `hash / uri` record, it **must**:  
 > 1. Download the referenced `.well-known/agent.json`.  
 > 2. Verify `SHA‑256(body) == hash`.  
-> 3. Parse and ingest the JSON exactly as if it were stored on‑chain, so the agent’s metadata remains fully searchable.
+> 3. Parse and ingest the JSON exactly as if it were stored on‑chain, so the agent's metadata remains fully searchable.
 
-Using pointers lets *any* UTXO or EVM chain participate in A2B discovery with only ~75 bytes on‑chain, while still providing strong integrity via hash verification.
+Using pointers lets *any* UTXO or EVM chain participate in A2B discovery with only ~75 bytes on‑chain, while still providing strong integrity via hash verification.
 
 ---
 
 #### Why BSV Comes First
 
 * Supports large ord‑style envelopes in‑script, no size kludges.  
-* Ultra‑low fees (< $0.001 for 10 kB) enable updates & rich metadata.  
-* Re‑inscription model = identical to BTC/LTC Taproot flow, easing future multichain parity.
+* Ultra‑low fees (< $0.001 for 10 kB) enable updates & rich metadata.  
+* Re‑inscription model = identical to BTC/LTC Taproot flow, easing future multichain parity.
 
-Other chains can join immediately via the pointer method, then migrate to full on‑chain JSON if/when their ecosystems adopt high‑capacity inscription tech (e.g., BTC ordinals, Ethereum blobs / proto‑danksharding  [oai_citation_attribution:9‡investopedia.com](https://www.investopedia.com/what-you-need-to-know-ahead-of-ethereum-dencun-update-wednesday-8607518?utm_source=chatgpt.com)).
+Other chains can join immediately via the pointer method, then migrate to full on‑chain JSON if/when their ecosystems adopt high‑capacity inscription tech (e.g., BTC ordinals, Ethereum blobs / proto‑danksharding  [oai_citation_attribution:9‡investopedia.com](https://www.investopedia.com/what-you-need-to-know-ahead-of-ethereum-dencun-update-wednesday-8607518?utm_source=chatgpt.com)).
 
 ---
 
@@ -534,7 +543,7 @@ Other chains can join immediately via the pointer method, then migrate to full o
 | Immediate        | `stage:"full"`; server broadcasts on success. |
 | Streaming        | Deposit then `final`; server withholds last chunk until paid. |
 | Interactive      | One payment per task; switch to subscription for heavy usage. |
-| Long‑Running     | Deposit ≥ 50 % or milestone split. |
+| Long‑Running     | Deposit ≥ 50 % or milestone split. |
 | Subscription     | One config per billing interval (`interval`). |
 | MCP Payments     | Agent may embed nested A2B hop for downstream tools. |
 
@@ -543,7 +552,7 @@ Other chains can join immediately via the pointer method, then migrate to full o
 ## 8  Security Considerations<a id="security-considerations"></a>
 
 <details>
-<summary>Mermaid · Threat Mitigation Flow</summary>
+<summary>Mermaid · Threat Mitigation Flow</summary>
 
 ```mermaid
 flowchart TD
@@ -557,7 +566,7 @@ flowchart TD
 ```
 </details>
 
-* Grace timeout 30 min for missing `final`.  
+* Grace timeout 30 min for missing `final`.  
 * Refund deposits on task expiry. 
 * Rate‑limit by satoshi/s & requests.  
 * Double‑spend detection before broadcast.  
@@ -602,6 +611,12 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 4. Broadcast rawTx; stream updates.  
 5. Re‑inscribe satoshi for updates.
 
+### Publisher
+1. Publish AgentCard to overlay.  
+2. Can be a local MCP tool like bsv-mcp
+3. Either user or platform can pay the  network fee. 
+4. Broadcast transactions.
+
 ---
 
 ## 11  Glossary<a id="glossary"></a>
@@ -611,10 +626,10 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 | **1Sat Ordinal**     | Single‑satoshi inscription registry entry. |
 | **MAP**              | Magic Attribute Protocol key‑value OP_RETURN. |
 | **Skill ID**         | Identifier in AgentCard `skills[].id`. |
-| **ISO 8601 Duration**| `"P18M"` = 18 months. |
+| **ISO 8601 Duration**| `"P18M"` = 18 months. |
 | **Overlay**          | A2B discovery marketplace. |
 | **MCP**              | Model‑Context Protocol tool host. |
 
 ---
 
-*Specification version 2025‑04‑18.*
+*Specification version 2025‑04‑19.*
