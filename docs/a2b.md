@@ -35,7 +35,7 @@ A2B overlays **crypto‑native payments** and a **permissionless registry** on t
 |--------------------|------------------------------------------------------------------------------------------------------------------------------|
 | Pricing            | `x-payment-config` block in AgentCard – anchor `currency`, `amount`, human `name`, `acceptedCurrencies`, intervals, deposits |
 | Payment            | Client signs rawTx → embeds in `x-payment` → **server broadcasts** only on task success (*pay‑on‑success*)                   |
-| Discovery          | AgentCards stored as **1‑satoshi Ordinal inscriptions** with MAP tag `app=bsv-mcp type=a2b`                                  |
+| Discovery          | AgentCards stored as **1‑satoshi Ordinal inscriptions** with MAP tag `app=your-app-name type=a2b`                            |
 | Ownership & Update | Re‑inscribe the satoshi to update pricing/metadata; inscription (and service reputation) can be bought/sold like an NFT      |
 
 Currency‑agnostic: examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
@@ -52,7 +52,7 @@ Currency‑agnostic: examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
 | **depositPct**          | Fraction (0–1) for two‑stage payments (`deposit` + `final`)                                           |
 | **interval**            | `null`, shorthand (`day|week|month|year`), or ISO 8601 duration (e.g. `"P18M"` for 18 months)         |
 | **priceFeedUrl**        | Optional oracle endpoint returning spot FX rates `{ "rates": { "BTC":0.000012 } }`                    |
-| **MCP Tool Server**     | Remote endpoint exposing Model‑Context‑Protocol tools; may be called by an A2A server during a task   |
+| **MCP Server**          | Local server exposing Model‑Context‑Protocol tools; may be called by an A2A server during a task      |
 
 ---
 
@@ -64,9 +64,9 @@ Currency‑agnostic: examples use **BSV**, **BTC**, **SOL**, and fiat **USD**.
 sequenceDiagram
     autonumber
     participant C as A2B Client
-    participant I as A2B Indexer
+    participant I as A2B Overlay
     participant S as A2B Agent (A2A Server)
-    participant T as MCP Tool Server
+    participant T as MCP Server
     participant B as Blockchain
 
     Note over I,B: On‑chain registry (1Sat + MAP)
@@ -76,7 +76,7 @@ sequenceDiagram
 
     C->>S: GET /.well-known/agent.json
     S-->>C: AgentCard (HTTPS)
-    C->>C: Verify on‑chain hash
+    C->>C: Compare to on‑chain version (optional)
 
     C->>C: Build rawTx (deposit or full)
     C->>S: tasks/send + x‑payment
@@ -221,7 +221,7 @@ sequenceDiagram
 
 ## 5  Payment Flow<a id="payment-flow"></a>
 
-1. **Discover** AgentCard (indexer → HTTPS) and verify on‑chain hash.  
+1. **Discover** AgentCard (overlay → HTTPS) and verify on‑chain hash.  
 2. **Prepare** rawTx paying `address` in any `acceptedCurrencies` value.  
 3. **Embed** `x-payment` DataPart with `stage:"deposit"` or `"full"`.  
 4. **Submit** via `tasks/send` or `tasks/sendSubscribe`.  
@@ -267,16 +267,12 @@ sequenceDiagram
 Output 0 (1 sat):
   <P2PKH>
   OP_FALSE OP_IF
-    6f7264
+    "ord"
     OP_1 "application/json"
-    OP_1 ".well-known/agent.json"
     OP_0 <AgentCard bytes>
-  OP_ENDIF
-
-Output 1 (0 sat):
-  OP_RETURN
-    1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5
-    SET app bsv-mcp type a2b
+  OP_ENDIF OP_RETURN
+    "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5"
+    "SET" "app" "your-app-name" "type" "a2b"
 ```
 
 ### 6.2  Updating via Re‑inscription<a id="updating-via-re-inscription"></a>
@@ -284,7 +280,7 @@ Output 1 (0 sat):
 * Spend the inscription satoshi to a new output you control.  
 * Attach a new ord envelope with updated AgentCard.  
 * Add identical MAP tag line.  
-* Indexers pick the newest inscription per satoshi.
+* Overlays pick the newest inscription per satoshi.
 
 ### 6.3  Discovery API Requirements<a id="discovery-api-requirements"></a>
 
@@ -312,10 +308,8 @@ Output 1 (0 sat):
 
 ---
 
-## 8  Security & Robustness<a id="security--robustness"></a>
+## 8  Security Considerations<a id="security--robustness"></a>
 
-* **Oracle Signing** – Sign FX JSON (HMAC or ECDSA) and verify signature.  
-* **Mempool Replay** – Reject duplicate txid before broadcast.  
 * **Grace Timeout** – Default 30 min for missing `final` stage.  
 * **Task Expiry** – Cancel tasks and refund deposits if no success within policy window.  
 * **RawTx Storage** – Encrypt pending rawTxs at rest.  
@@ -351,7 +345,7 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 
 ### Client Workflow
 
-1. **Discover** ‑ call indexer:  
+1. **Discover** ‑ call overlay:  
    `GET /agents?skillId=watchChannels&acceptedCurrency=BTC`.  
 2. **Verify** ‑ compare inscription hash ↔ HTTPS `agent.json`.  
 3. **Prepare** ‑ sign rawTx ≥ required value (after FX).  
@@ -375,10 +369,9 @@ verifyAndBroadcast(rawTx, stage, cfg, payTicker):
 | Term                 | Definition                                                     |
 |----------------------|----------------------------------------------------------------|
 | **1Sat Ordinal**     | An inscription controlling a single satoshi (Bitcoin SV model) |
-| **MAP**              | Minimal Address Protocol: `OP_RETURN 1PuQa7K… SET key val …`   |
+| **MAP**              | Magic Attribute Protocol: `OP_RETURN 1PuQa7K… SET key val …`   |
 | **ISO 8601 `P18M`**  | Duration literal “Period 18 Months”.                           |
 | **Skill ID**         | Canonical ID of an A2A skill (e.g. `watchChannels`).           |
-| **Slippage**         | Allowed % difference between expected and actual paid value.   |
 | **MCP**              | *Model‑Context Protocol* – tool‑invocation layer; orthogonal to A2B. |
 
 ---
