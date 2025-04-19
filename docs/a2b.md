@@ -356,8 +356,9 @@ flowchart TD
     H --> I[done]
 
     B -- Yes --> C[stage deposit]
-    C --> D[validate & broadcast]
+    C --> D[validate]
     D --> E[run task]
+    C --> D[broadcast]
     E --> J{needs final?}
     J -- Yes --> K[402 AmountInsufficient]
     K --> L[Client signs final rawTx]
