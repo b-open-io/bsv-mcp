@@ -2,12 +2,12 @@
 import { PrivateKey } from "@bsv/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { registerAllPrompts } from "./prompts";
-import { registerResources } from "./resources/resources";
-import { registerAllTools } from "./tools";
-import { registerMneeTools } from "./tools/mnee";
-import { registerWalletTools } from "./tools/wallet/tools";
-import { Wallet } from "./tools/wallet/wallet";
+import { registerAllPrompts } from "./prompts/index.ts";
+import { registerResources } from "./resources/resources.ts";
+import { registerAllTools } from "./tools/index.ts";
+import { registerMneeTools } from "./tools/mnee/index.ts";
+import { registerWalletTools } from "./tools/wallet/tools.ts";
+import { Wallet } from "./tools/wallet/wallet.ts";
 
 /**
  * Configuration options from environment variables
@@ -70,7 +70,7 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.27" },
+	{ name: "Bitcoin SV", version: "0.0.28" },
 	// {
 	// 	// Advertise only what you actually implement
 	// 	capabilities: {
