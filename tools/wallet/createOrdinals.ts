@@ -11,8 +11,10 @@ import type {
 	ChangeResult,
 	CreateOrdinalsCollectionItemMetadata,
 	CreateOrdinalsCollectionMetadata,
+	CreateOrdinalsConfig,
 	Destination,
 	Inscription,
+	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
@@ -101,8 +103,7 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 					},
 				];
 
-				// 6. Create and broadcast the transaction
-				const result = await createOrdinals({
+				const createOrdinalsConfig: CreateOrdinalsConfig = {
 					utxos: paymentUtxos,
 					destinations,
 					paymentPk,
@@ -111,41 +112,57 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 						| PreMAP
 						| CreateOrdinalsCollectionMetadata
 						| CreateOrdinalsCollectionItemMetadata,
-				});
+				};
+
+				if (identityPk) {
+					createOrdinalsConfig.signer = {
+						idKey: identityPk,
+					} as LocalSigner;
+				}
+
+				// 6. Create and broadcast the transaction
+				const result = await createOrdinals(createOrdinalsConfig);
 
 				const changeResult = result as ChangeResult;
 
 				// 7. Optionally sign with identity key and broadcast the transaction
-				let finalTx = changeResult.tx;
-				if (identityPk) {
-					const sigma = new Sigma(changeResult.tx);
-					const signResponse = sigma.sign(identityPk);
-					finalTx = signResponse.signedTx;
-				}
-				await finalTx.broadcast();
 
-				// 8. Refresh the wallet's UTXOs after spending
-				try {
-					await wallet.refreshUtxos();
-				} catch (refreshError) {
-					console.warn(
-						"Failed to refresh UTXOs after transaction:",
-						refreshError,
-					);
+				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
+				if (!disableBroadcasting) {
+					await changeResult.tx.broadcast();
+
+					// 8. Refresh the wallet's UTXOs after spending
+					try {
+						await wallet.refreshUtxos();
+					} catch (refreshError) {
+						console.warn(
+							"Failed to refresh UTXOs after transaction:",
+							refreshError,
+						);
+					}
+
+					// 9. Return transaction details
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									txid: changeResult.tx.id("hex"),
+									spentOutpoints: changeResult.spentOutpoints,
+									payChange: changeResult.payChange,
+									inscriptionAddress: args.destinationAddress || walletAddress,
+									contentType: args.contentType,
+								}),
+							},
+						],
+					};
 				}
 
-				// 9. Return transaction details
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({
-								txid: changeResult.tx.id("hex"),
-								spentOutpoints: changeResult.spentOutpoints,
-								payChange: changeResult.payChange,
-								inscriptionAddress: args.destinationAddress || walletAddress,
-								contentType: args.contentType,
-							}),
+							text: changeResult.tx.toHex(),
 						},
 					],
 				};

@@ -32,14 +32,14 @@ export function registerAllTools(
 		enableBsvTools: true,
 		enableOrdinalsTools: true,
 		enableUtilsTools: true,
-		enableA2bTools: true,
+		enableA2bTools: false,
 	},
 ): void {
 	const {
 		enableBsvTools = true,
 		enableOrdinalsTools = true,
 		enableUtilsTools = true,
-		enableA2bTools = true,
+		enableA2bTools = false,
 	} = config;
 
 	// Register BSV-related tools

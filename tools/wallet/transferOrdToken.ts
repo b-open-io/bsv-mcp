@@ -1,3 +1,4 @@
+import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -6,6 +7,7 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import {
 	type Distribution,
+	type LocalSigner,
 	type Payment,
 	type TokenChangeResult,
 	TokenInputMode,
@@ -106,26 +108,47 @@ export function registerTransferOrdTokenTool(
 					},
 				};
 
+				const identityPk = process.env.IDENTITY_KEY_WIF
+					? PrivateKey.fromWif(process.env.IDENTITY_KEY_WIF)
+					: undefined;
+
+				if (identityPk) {
+					config.signer = {
+						idKey: identityPk,
+					} as LocalSigner;
+				}
+
 				// execute transfer
 				const result: TokenChangeResult = await transferOrdTokens(config);
-				await result.tx.broadcast();
+				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
+				if (!disableBroadcasting) {
+					await result.tx.broadcast();
 
-				// refresh UTXOs
-				try {
-					await wallet.refreshUtxos();
-				} catch {}
+					// refresh UTXOs
+					try {
+						await wallet.refreshUtxos();
+					} catch {}
 
-				// respond
+					// respond
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									txid: result.tx.id("hex"),
+									spentOutpoints: result.spentOutpoints,
+									payChange: result.payChange,
+									tokenChange: result.tokenChange,
+								}),
+							},
+						],
+					};
+				}
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({
-								txid: result.tx.id("hex"),
-								spentOutpoints: result.spentOutpoints,
-								payChange: result.payChange,
-								tokenChange: result.tokenChange,
-							}),
+							text: result.tx.toHex(),
 						},
 					],
 				};

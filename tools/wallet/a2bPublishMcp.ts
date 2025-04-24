@@ -32,9 +32,16 @@ export const a2bPublishMcpArgsSchema = z.object({
 	command: z.string().describe("The command to execute the tool"),
 	args: z.array(z.string()).describe("Arguments to pass to the command"),
 	env: z
-		.record(z.string())
+		.array(
+			z.object({
+				key: z.string().describe("Environment variable name"),
+				description: z
+					.string()
+					.describe("Description of the environment variable"),
+			}),
+		)
 		.optional()
-		.describe("Optional environment variables"),
+		.describe("Optional environment variables with descriptions"),
 	description: z.string().optional().describe("Optional tool description"),
 	destinationAddress: z
 		.string()
@@ -47,7 +54,11 @@ export type A2bPublishMcpArgs = z.infer<typeof a2bPublishMcpArgsSchema>;
 /**
  * Registers the wallet_a2bPublishMcp for publishing an MCP tool configuration on-chain
  */
-export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
+export function registerA2bPublishMcpTool(
+	server: McpServer,
+	wallet: Wallet,
+	config: { disableBroadcasting: boolean },
+) {
 	server.tool(
 		"wallet_a2bPublishMcp",
 		"Publish an MCP tool configuration record on-chain via Ordinal inscription",
@@ -84,7 +95,15 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 				const toolConfig: McpConfig = {
 					command: args.command,
 					args: args.args,
-					env: args.env,
+					env: args.env
+						? args.env.reduce(
+								(acc, { key, description }) => {
+									acc[key] = description;
+									return acc;
+								},
+								{} as Record<string, string>,
+							)
+						: undefined,
 				};
 
 				// Validate compliance
@@ -94,7 +113,7 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 				const fullConfig = {
 					mcpServers: {
 						[args.toolName]: {
-							description: args.description || `MCP Tool: ${args.toolName}`,
+							description: args.description || "",
 							type: "mcp-tool",
 							...toolConfig,
 						},
@@ -137,42 +156,53 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 					finalTx = signResponse.signedTx;
 				}
 				// Broadcast the transaction
-				await finalTx.broadcast();
+				if (!config.disableBroadcasting) {
+					await finalTx.broadcast();
 
-				// Refresh UTXOs after spending
-				try {
-					await wallet.refreshUtxos();
-				} catch (refreshError) {
-					console.warn(
-						"Failed to refresh UTXOs after transaction:",
-						refreshError,
-					);
+					// Refresh UTXOs after spending
+					try {
+						await wallet.refreshUtxos();
+					} catch (refreshError) {
+						console.warn(
+							"Failed to refresh UTXOs after transaction:",
+							refreshError,
+						);
+					}
+
+					// Build a nicely formatted result
+					const outpointIndex = 0; // First output with the inscription
+					const outpoint = `${finalTx.id("hex")}_${outpointIndex}`;
+
+					// Tool URL for discovery is the outpoint
+					const onchainUrl = `ord://${outpoint}`;
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify(
+									{
+										status: "success",
+										txid: finalTx.id("hex"),
+										outpoint,
+										onchainUrl,
+										toolName: args.toolName,
+										description:
+											args.description || `MCP Tool: ${args.toolName}`,
+										address: targetAddress,
+									},
+									null,
+									2,
+								),
+							},
+						],
+					};
 				}
-
-				// Build a nicely formatted result
-				const outpointIndex = 0; // First output with the inscription
-				const outpoint = `${changeResult.tx.id("hex")}_${outpointIndex}`;
-
-				// Tool URL for discovery is the outpoint
-				const onchainUrl = `ord://${outpoint}`;
-
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify(
-								{
-									status: "success",
-									txid: changeResult.tx.id("hex"),
-									outpoint,
-									onchainUrl,
-									toolName: args.toolName,
-									description: args.description || `MCP Tool: ${args.toolName}`,
-									address: targetAddress,
-								},
-								null,
-								2,
-							),
+							text: finalTx.toHex(),
 						},
 					],
 				};

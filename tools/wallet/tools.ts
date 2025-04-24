@@ -99,6 +99,10 @@ type ToolHandlerMap = {
 export function registerWalletTools(
 	server: McpServer,
 	wallet: Wallet,
+	config: {
+		disableBroadcasting: boolean;
+		enableA2bTools: boolean;
+	},
 ): ToolHandlerMap {
 	const handlers = {} as ToolHandlerMap;
 
@@ -129,11 +133,16 @@ export function registerWalletTools(
 	// Register the wallet_transferOrdToken tool
 	registerTransferOrdTokenTool(server, wallet);
 
-	// Register the wallet_a2bPublishAgent tool
-	// registerA2bPublishAgentTool(server, wallet);
+	// A2B tools have to be explicitly enabled
+	if (config.enableA2bTools) {
+		// Register the wallet_a2bPublishAgent tool
+		// registerA2bPublishAgentTool(server, wallet);
 
-	// Register the wallet_a2bPublishMcp tool
-	registerA2bPublishMcpTool(server, wallet);
+		// Register the wallet_a2bPublishMcp tool
+		registerA2bPublishMcpTool(server, wallet, {
+			disableBroadcasting: config.disableBroadcasting,
+		});
+	}
 
 	// Register only the minimal public-facing tools
 	// wallet_createAction, wallet_signAction and wallet_getHeight have been removed

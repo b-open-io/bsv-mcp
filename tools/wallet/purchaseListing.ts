@@ -9,7 +9,9 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
 	type ChangeResult,
 	type ExistingListing,
+	type LocalSigner,
 	type Payment,
+	type PurchaseOrdListingConfig,
 	type Royalty,
 	TokenType,
 	type TokenUtxo,
@@ -252,7 +254,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						}
 					}
 
-					transaction = await purchaseOrdListing({
+					const purchaseOrdListingConfig: PurchaseOrdListingConfig = {
 						utxos: paymentUtxos,
 						paymentPk,
 						ordAddress: args.ordAddress,
@@ -260,7 +262,9 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						additionalPayments,
 						metaData,
 						royalties,
-					});
+					};
+
+					transaction = await purchaseOrdListing(purchaseOrdListingConfig);
 				}
 
 				// After successful transaction creation, refresh the wallet's UTXOs
@@ -272,47 +276,54 @@ Please fund this wallet address with enough BSV to cover the purchase price
 				}
 
 				// Optionally sign with identity key then broadcast the transaction
-				let finalTx = transaction.tx;
-				if (identityPk) {
-					const sigma = new Sigma(finalTx);
-					const signResponse = sigma.sign(identityPk);
-					finalTx = signResponse.signedTx;
+
+				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
+				if (!disableBroadcasting) {
+					const broadcastResult = await transaction.tx.broadcast(
+						oneSatBroadcaster(),
+					);
+					// Handle broadcast response
+					const resultStatus =
+						typeof broadcastResult === "object" && "status" in broadcastResult
+							? broadcastResult.status
+							: "unknown";
+
+					const resultMessage =
+						typeof broadcastResult === "object" && "error" in broadcastResult
+							? broadcastResult.error
+							: "Transaction broadcast successful";
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									status: resultStatus,
+									message: resultMessage,
+									txid: transaction.tx.id("hex"),
+									listingOutpoint: args.listingOutpoint,
+									destinationAddress: args.ordAddress,
+									listingType: args.listingType,
+									tokenProtocol: args.tokenID ? args.tokenProtocol : undefined,
+									tokenID: args.tokenID,
+									price: listingData.data.list.price,
+									marketFee,
+									marketFeeAddress: MARKET_WALLET_ADDRESS,
+									royaltiesPaid:
+										args.listingType === "nft" &&
+										listingData.origin?.data?.map?.royalties
+											? JSON.parse(listingData.origin.data.map.royalties)
+											: undefined,
+								}),
+							},
+						],
+					};
 				}
-				const broadcastResult = await finalTx.broadcast(oneSatBroadcaster());
-
-				// Handle broadcast response
-				const resultStatus =
-					typeof broadcastResult === "object" && "status" in broadcastResult
-						? broadcastResult.status
-						: "unknown";
-
-				const resultMessage =
-					typeof broadcastResult === "object" && "error" in broadcastResult
-						? broadcastResult.error
-						: "Transaction broadcast successful";
-
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({
-								status: resultStatus,
-								message: resultMessage,
-								txid: transaction.tx.id("hex"),
-								listingOutpoint: args.listingOutpoint,
-								destinationAddress: args.ordAddress,
-								listingType: args.listingType,
-								tokenProtocol: args.tokenID ? args.tokenProtocol : undefined,
-								tokenID: args.tokenID,
-								price: listingData.data.list.price,
-								marketFee,
-								marketFeeAddress: MARKET_WALLET_ADDRESS,
-								royaltiesPaid:
-									args.listingType === "nft" &&
-									listingData.origin?.data?.map?.royalties
-										? JSON.parse(listingData.origin.data.map.royalties)
-										: undefined,
-							}),
+							text: transaction.tx.toHex(),
 						},
 					],
 				};

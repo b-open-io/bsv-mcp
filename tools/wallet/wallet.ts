@@ -82,12 +82,20 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 			}
 
 			const address = privateKey.toAddress();
-
-			const utxos = await fetchPayUtxos(address);
-			const nftUtxos = await fetchNftUtxos(address);
-			this.paymentUtxos = utxos;
-			this.nftUtxos = nftUtxos;
 			this.lastUtxoFetch = Date.now();
+
+			try {
+				const utxos = await fetchPayUtxos(address);
+				this.paymentUtxos = utxos;
+			} catch (error) {
+				console.error("Error fetching payment UTXOs:", error);
+			}
+			try {
+				const nftUtxos = await fetchNftUtxos(address);
+				this.nftUtxos = nftUtxos;
+			} catch (error) {
+				console.error("Error fetching NFT UTXOs:", error);
+			}
 		} catch (error) {
 			console.error("Error refreshing UTXOs:", error);
 			throw error;

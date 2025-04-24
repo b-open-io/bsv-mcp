@@ -7,7 +7,12 @@ import type {
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { sendOrdinals } from "js-1sat-ord";
-import type { ChangeResult, SendOrdinalsConfig } from "js-1sat-ord";
+import type {
+	ChangeResult,
+	LocalSigner,
+	SendOrdinalsConfig,
+} from "js-1sat-ord";
+import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
 
@@ -92,17 +97,15 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 				};
 
 				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
-				let identityPk: PrivateKey | undefined;
-				if (identityKeyWif) {
-					try {
-						identityPk = PrivateKey.fromWif(identityKeyWif);
-					} catch (e) {
-						console.warn(
-							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
-							e,
-						);
-					}
+				const identityPk = identityKeyWif
+					? PrivateKey.fromWif(identityKeyWif)
+					: undefined;
+				if (identityPk) {
+					sendOrdinalsConfig.signer = {
+						idKey: identityPk,
+					} as LocalSigner;
 				}
+
 				// Add metadata if provided
 				if (args.metadata) {
 					sendOrdinalsConfig.metaData = args.metadata;
@@ -113,32 +116,45 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 
 				const result = await sendOrdinals(sendOrdinalsConfig);
 				const changeResult = result as ChangeResult;
+				// no signing when you send since we don't emit an inscription
 
 				// 7. Broadcast the transaction
-				await changeResult.tx.broadcast();
+				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
+				if (!disableBroadcasting) {
+					await changeResult.tx.broadcast();
 
-				// 8. Refresh the wallet's UTXOs after spending
-				try {
-					await wallet.refreshUtxos();
-				} catch (refreshError) {
-					console.warn(
-						"Failed to refresh UTXOs after transaction:",
-						refreshError,
-					);
+					// 8. Refresh the wallet's UTXOs after spending
+					try {
+						await wallet.refreshUtxos();
+					} catch (refreshError) {
+						console.warn(
+							"Failed to refresh UTXOs after transaction:",
+							refreshError,
+						);
+					}
+
+					// 9. Return transaction details
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									txid: changeResult.tx.id("hex"),
+									spentOutpoints: changeResult.spentOutpoints,
+									payChange: changeResult.payChange,
+									inscriptionOutpoint: args.inscriptionOutpoint,
+									destinationAddress: args.destinationAddress,
+								}),
+							},
+						],
+					};
 				}
 
-				// 9. Return transaction details
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({
-								txid: changeResult.tx.id("hex"),
-								spentOutpoints: changeResult.spentOutpoints,
-								payChange: changeResult.payChange,
-								inscriptionOutpoint: args.inscriptionOutpoint,
-								destinationAddress: args.destinationAddress,
-							}),
+							text: changeResult.tx.toHex(),
 						},
 					],
 				};

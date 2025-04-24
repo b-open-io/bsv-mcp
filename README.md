@@ -365,6 +365,7 @@ The BSV MCP server can be customized using environment variables to enable or di
 | `DISABLE_ORDINALS_TOOLS` | `false` | Set to `true` to disable Ordinals/NFT tools |
 | `DISABLE_UTILS_TOOLS` | `false` | Set to `true` to disable utility tools |
 | `IDENTITY_KEY_WIF`    | `not set` | Optional WIF for identity key; if set, ordinals inscriptions will be signed with sigma-protocol for authentication, curation, and web-of-trust. |
+| `DISABLE_BROADCASTING` | `false` | Set to `true` to disable transaction broadcasting; returns raw transaction hex instead - useful for testing and transaction review before broadcasting |
 
 ### Examples
 
@@ -384,6 +385,12 @@ Use all tools except wallet operations:
 
 ```bash
 DISABLE_WALLET_TOOLS=true bunx bsv-mcp@latest
+```
+
+Create transactions without broadcasting them (dry-run mode):
+
+```bash
+DISABLE_BROADCASTING=true bunx bsv-mcp@latest
 ```
 
 ## Troubleshooting
@@ -427,6 +434,7 @@ For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Conte
 
 ## Recent Updates
 
+- **Transaction Broadcast Control**: Added `DISABLE_BROADCASTING` environment variable to prevent transactions from being broadcast to the network
 - **Blockchain Explorer**: Added `bsv_explore` tool for WhatsOnChain API access with mainnet/testnet support
 - **Unified Tools**: Merged `wallet_encrypt`/`wallet_decrypt` into single `wallet_encryption` tool
 - **Enhanced Marketplace**: Support for NFTs, BSV-20/21 tokens in listings, sales and purchases

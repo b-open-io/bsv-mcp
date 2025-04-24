@@ -24,7 +24,10 @@ const CONFIG = {
 	loadBsvTools: process.env.DISABLE_BSV_TOOLS !== "true",
 	loadOrdinalsTools: process.env.DISABLE_ORDINALS_TOOLS !== "true",
 	loadUtilsTools: process.env.DISABLE_UTILS_TOOLS !== "true",
-	loadA2bTools: process.env.DISABLE_A2B_TOOLS !== "true",
+	loadA2bTools: process.env.ENABLE_A2B_TOOLS === "true",
+
+	// Transaction broadcasting control
+	disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
 };
 
 /**
@@ -70,7 +73,7 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.33" },
+	{ name: "Bitcoin SV", version: "0.0.34" },
 	// {
 	// 	// Advertise only what you actually implement
 	// 	capabilities: {
@@ -102,7 +105,10 @@ if (CONFIG.loadTools) {
 		// Initialize wallet with the private key if wallet tools are enabled
 		if (CONFIG.loadWalletTools) {
 			wallet = new Wallet(privKey);
-			registerWalletTools(server, wallet);
+			registerWalletTools(server, wallet, {
+				disableBroadcasting: CONFIG.disableBroadcasting,
+				enableA2bTools: CONFIG.loadA2bTools,
+			});
 		}
 	}
 

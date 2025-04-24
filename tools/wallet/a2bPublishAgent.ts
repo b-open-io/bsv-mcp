@@ -1,4 +1,4 @@
-import { Utils } from "@bsv/sdk";
+import { PrivateKey, Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -8,10 +8,13 @@ import type {
 import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
+	CreateOrdinalsConfig,
 	Destination,
 	Inscription,
+	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
+import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
 const { toArray, toBase64 } = Utils;
@@ -246,32 +249,57 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 				// Default MAP metadata: file path, content type, encoding
 				const metaData: PreMAP = { app: "bsv-mcp", type: "a2b" };
 
-				// Inscribe the ordinal on-chain via js-1sat-ord
-				const result = await createOrdinals({
+				const createOrdinalsConfig: CreateOrdinalsConfig = {
 					utxos: paymentUtxos,
 					destinations,
 					paymentPk,
 					changeAddress: walletAddress,
 					metaData,
-				});
+				};
+
+				const identityPk = process.env.IDENTITY_KEY_WIF
+					? PrivateKey.fromWif(process.env.IDENTITY_KEY_WIF)
+					: undefined;
+				if (identityPk) {
+					createOrdinalsConfig.signer = {
+						idKey: identityPk,
+					} as LocalSigner;
+				}
+
+				// Inscribe the ordinal on-chain via js-1sat-ord
+				const result = await createOrdinals(createOrdinalsConfig);
 				const changeResult = result as ChangeResult;
-				await changeResult.tx.broadcast();
-				// Refresh UTXOs
-				try {
-					await wallet.refreshUtxos();
-				} catch {}
-				// Return transaction details
+
+				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
+				if (!disableBroadcasting) {
+					await changeResult.tx.broadcast();
+
+					// Refresh UTXOs
+					try {
+						await wallet.refreshUtxos();
+					} catch {}
+					// Return transaction details
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									txid: changeResult.tx.id("hex"),
+									spentOutpoints: changeResult.spentOutpoints,
+									payChange: changeResult.payChange,
+									inscriptionAddress: targetAddress,
+									agentCard,
+								}),
+							},
+						],
+					};
+				}
+
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({
-								txid: changeResult.tx.id("hex"),
-								spentOutpoints: changeResult.spentOutpoints,
-								payChange: changeResult.payChange,
-								inscriptionAddress: targetAddress,
-								agentCard,
-							}),
+							text: changeResult.tx.toHex(),
 						},
 					],
 				};
