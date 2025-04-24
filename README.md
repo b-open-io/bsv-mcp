@@ -112,9 +112,9 @@ Open the Claude configuration json file in your favorite text editor. If you pre
    {
      "mcpServers": {
        "Bitcoin SV": {
-         "command": "bunx",
+         "command": "bun",
          "args": [
-           "bsv-mcp@latest"
+           "run", "bsv-mcp@latest"
          ],
          "env": {
            "PRIVATE_KEY_WIF": "<your_private_key_wif>"
