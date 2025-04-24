@@ -362,7 +362,6 @@ The BSV MCP server can be customized using environment variables to enable or di
 | `DISABLE_BSV_TOOLS` | `false` | Set to `true` to disable BSV blockchain tools |
 | `DISABLE_ORDINALS_TOOLS` | `false` | Set to `true` to disable Ordinals/NFT tools |
 | `DISABLE_UTILS_TOOLS` | `false` | Set to `true` to disable utility tools |
-| `DISABLE_A2B_TOOLS` | `false` | Set to `true` to disable agent-to-blockchain tools |
 
 ### Examples
 
