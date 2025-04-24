@@ -70,7 +70,7 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.28" },
+	{ name: "Bitcoin SV", version: "0.0.29" },
 	// {
 	// 	// Advertise only what you actually implement
 	// 	capabilities: {
@@ -96,20 +96,17 @@ if (CONFIG.loadTools) {
 	if (privKey) {
 		// Register MNEE tools if enabled
 		if (CONFIG.loadMneeTools) {
-			console.log("Registering MNEE tools");
 			registerMneeTools(server);
 		}
 
 		// Initialize wallet with the private key if wallet tools are enabled
 		if (CONFIG.loadWalletTools) {
-			console.log("Initializing wallet and registering wallet tools");
 			wallet = new Wallet(privKey);
 			registerWalletTools(server, wallet);
 		}
 	}
 
 	// Register all other tools based on configuration
-	console.log("Registering other tools");
 	registerAllTools(server, {
 		enableBsvTools: CONFIG.loadBsvTools,
 		enableOrdinalsTools: CONFIG.loadOrdinalsTools,
@@ -120,13 +117,11 @@ if (CONFIG.loadTools) {
 
 // Register resources if enabled
 if (CONFIG.loadResources) {
-	console.log("Registering resources");
 	registerResources(server);
 }
 
 // Register prompts if enabled
 if (CONFIG.loadPrompts) {
-	console.log("Registering prompts");
 	registerAllPrompts(server);
 }
 

@@ -10,11 +10,11 @@ A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) fram
 
 ## Installation and Setup
 
-### Prerequisites
+### Use Bun (Optional but recommended)
 
-This project is built using [Bun](https://bun.sh/), a fast JavaScript runtime and package manager. While Bun is recommended for best performance, the server can also run with Node.js and npm.
+This project is built using [Bun](https://bun.sh/), a fast JavaScript runtime and package manager. While Bun is recommended for best performance, the server can also run with Node.js and npm as Bun is designed to be backward compatible with node.
 
-#### Installing Bun (Recommended)
+#### Installing Bun
 
 **macOS (using Homebrew):**
 ```bash
@@ -65,7 +65,8 @@ To use the BSV MCP server with [Cursor](https://cursor.sh/):
 }
 ```
 
-5. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!)
+5. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!) If you dont have one you can leave this off for now but you wont be able to use tools that require a wallet.
+
 6. Click "Save"
 
 The BSV tools will now be available to Cursor's AI assistant under the "Bitcoin SV" namespace.
