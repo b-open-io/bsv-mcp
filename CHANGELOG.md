@@ -1,5 +1,15 @@
 # BSV MCP Server Changelog
 
+## v0.0.30 - Reliability Improvements
+
+### Bug Fixes
+- **Changelog Loading**: Improved changelog loading mechanism with multiple path resolution strategies
+  - Added detailed logging for debugging path resolution issues
+  - Better error reporting for troubleshooting in production environments
+- **Package Structure**: Enhanced package.json to include all necessary files in npm package 
+  - Added prompts, resources, and CHANGELOG.md to the published files list
+  - Fixed import issues when running from installed npm package
+
 ## v0.0.29 - Enhanced Server Configuration & Maintenance
 
 ### Major Changes
