@@ -5,17 +5,74 @@ startCommand:
   type: stdio
   configSchema:
     type: object
-    required:
-      - privateKeyWif
     properties:
       privateKeyWif:
         type: string
-        description: "The private key WIF (Wallet Import Format) for Bitcoin SV transactions. This key is used to sign transactions and is required for wallet operations."
+        title: "Private Key (WIF)"
+        description: "The private key WIF (Wallet Import Format) for Bitcoin SV transactions. Optional but required for wallet operations. Without this, the server runs in limited mode with only educational resources and non-wallet tools."
+      disablePrompts:
+        type: boolean
+        title: "Disable Prompts"
+        description: "Set to true to disable all educational prompts"
+        default: false
+      disableResources:
+        type: boolean
+        title: "Disable Resources"
+        description: "Set to true to disable all resources (BRCs, changelog)"
+        default: false
+      disableTools:
+        type: boolean
+        title: "Disable All Tools"
+        description: "Set to true to disable all tools"
+        default: false
+      disableWalletTools:
+        type: boolean
+        title: "Disable Wallet Tools"
+        description: "Set to true to disable Bitcoin wallet tools"
+        default: false
+      disableMneeTools:
+        type: boolean
+        title: "Disable MNEE Tools"
+        description: "Set to true to disable MNEE token tools"
+        default: false
+      disableBsvTools:
+        type: boolean
+        title: "Disable BSV Blockchain Tools"
+        description: "Set to true to disable BSV blockchain tools"
+        default: false
+      disableOrdinalsTools:
+        type: boolean
+        title: "Disable Ordinals Tools"
+        description: "Set to true to disable Ordinals/NFT tools"
+        default: false
+      disableUtilsTools:
+        type: boolean
+        title: "Disable Utility Tools"
+        description: "Set to true to disable utility tools"
+        default: false
+    additionalProperties: false
   commandFunction: |
-    (config) => ({ 
-      command: 'bun', 
-      args: ['run', 'index.ts'], 
-      env: { 
-        PRIVATE_KEY_WIF: config.privateKeyWif 
-      } 
-    })
+    (config) => {
+      const env = {};
+      
+      // Add private key if provided
+      if (config.privateKeyWif) {
+        env.PRIVATE_KEY_WIF = config.privateKeyWif;
+      }
+      
+      // Map boolean config options to environment variables
+      if (config.disablePrompts) env.DISABLE_PROMPTS = 'true';
+      if (config.disableResources) env.DISABLE_RESOURCES = 'true';
+      if (config.disableTools) env.DISABLE_TOOLS = 'true';
+      if (config.disableWalletTools) env.DISABLE_WALLET_TOOLS = 'true';
+      if (config.disableMneeTools) env.DISABLE_MNEE_TOOLS = 'true';
+      if (config.disableBsvTools) env.DISABLE_BSV_TOOLS = 'true';
+      if (config.disableOrdinalsTools) env.DISABLE_ORDINALS_TOOLS = 'true';
+      if (config.disableUtilsTools) env.DISABLE_UTILS_TOOLS = 'true';
+      
+      return { 
+        command: 'bun', 
+        args: ['run', 'index.ts'],
+        env
+      };
+    }
