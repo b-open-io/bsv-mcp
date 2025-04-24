@@ -31,7 +31,7 @@ import {
 	createSignatureArgsSchema,
 	type emptyArgsSchema,
 	type getAddressArgsSchema,
-	getPublicKeyArgsSchema,
+	type getPublicKeyArgsSchema,
 	type purchaseListingArgsSchema,
 	type sendToAddressArgsSchema,
 	verifySignatureArgsSchema,
@@ -42,9 +42,13 @@ import { Utils, type WalletProtocol } from "@bsv/sdk";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
 import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
+import { registerGetPublicKeyTool } from "./getPublicKey";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
+
+import type { a2bPublishArgsSchema } from "./a2bPublishAgent";
+import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
 import type { transferOrdTokenArgsSchema } from "./transferOrdToken";
 
 // Define mapping from tool names to argument schemas
@@ -77,6 +81,7 @@ type ToolArgSchemas = {
 	wallet_sendToAddress: typeof sendToAddressArgsSchema;
 	wallet_purchaseListing: typeof purchaseListingArgsSchema;
 	wallet_transferOrdToken: typeof transferOrdTokenArgsSchema;
+	wallet_a2bPublish: typeof a2bPublishArgsSchema;
 	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
 };
 
@@ -115,33 +120,23 @@ export function registerWalletTools(
 	// Register the wallet_getAddress tool
 	registerGetAddressTool(server);
 
+	// Register the wallet_getPublicKey tool
+	registerGetPublicKeyTool(server, wallet);
+
 	// Register the wallet_purchaseListing tool
 	registerPurchaseListingTool(server, wallet);
 
 	// Register the wallet_transferOrdToken tool
 	registerTransferOrdTokenTool(server, wallet);
 
+	// Register the wallet_a2bPublishAgent tool
+	// registerA2bPublishAgentTool(server, wallet);
+
+	// Register the wallet_a2bPublishMcp tool
+	registerA2bPublishMcpTool(server, wallet);
+
 	// Register only the minimal public-facing tools
 	// wallet_createAction, wallet_signAction and wallet_getHeight have been removed
-
-	// Register wallet_getPublicKey
-	registerTool(
-		"wallet_getPublicKey",
-		"Retrieves the current wallet's public key. This public key can be used for cryptographic operations like signature verification or encryption.",
-		{ args: getPublicKeyArgsSchema },
-		async (
-			{ args }: { args: z.infer<typeof getPublicKeyArgsSchema> },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
-			try {
-				const result = await wallet.getPublicKey(args);
-				return { content: [{ type: "text", text: JSON.stringify(result) }] };
-			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: msg }], isError: true };
-			}
-		},
-	);
 
 	// Register wallet_createSignature
 	registerTool(
