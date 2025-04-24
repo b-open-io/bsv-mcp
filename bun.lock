@@ -10,6 +10,7 @@
         "js-1sat-ord": "^0.1.81",
         "mnee": "^2.0.0",
         "satoshi-token": "^0.0.4",
+        "sigma-protocol": "^0.1.6",
         "zod": "^3.24.3",
       },
       "devDependencies": {

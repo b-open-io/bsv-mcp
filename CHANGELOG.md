@@ -1,5 +1,12 @@
 # BSV MCP Server Changelog
 
+## v0.0.33 - Identity Key Sigma Signing
+
+### Features
+- Added optional `IDENTITY_KEY_WIF` environment variable for sigma-protocol signing.
+- `wallet_a2bPublishMcp`, `wallet_createOrdinals`, and `wallet_purchaseListing` tools now support signing with an identity key.
+- Updated `README.md` to document `IDENTITY_KEY_WIF` usage and JSON configuration examples.
+
 ## v0.0.32 - Reliability Improvements
 
 ### Bug Fixes

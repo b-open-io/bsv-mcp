@@ -1,4 +1,4 @@
-import { Utils } from "@bsv/sdk";
+import { PrivateKey, Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -12,6 +12,7 @@ import type {
 	Inscription,
 	PreMAP,
 } from "js-1sat-ord";
+import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
 const { toArray, toBase64 } = Utils;
@@ -56,6 +57,20 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
+				// Load optional identity key for sigma signing
+				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
+				let identityPk: PrivateKey | undefined;
+				if (identityKeyWif) {
+					try {
+						identityPk = PrivateKey.fromWif(identityKeyWif);
+					} catch (e) {
+						console.warn(
+							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
+							e,
+						);
+					}
+				}
+
 				const paymentPk = wallet.getPrivateKey();
 				if (!paymentPk) throw new Error("No private key available");
 
@@ -77,10 +92,13 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 
 				// Prepare the full configuration with metadata
 				const fullConfig = {
-					name: args.toolName,
-					description: args.description || `MCP Tool: ${args.toolName}`,
-					config: toolConfig,
-					type: "mcp-tool",
+					mcpServers: {
+						[args.toolName]: {
+							description: args.description || `MCP Tool: ${args.toolName}`,
+							type: "mcp-tool",
+							...toolConfig,
+						},
+					},
 				};
 
 				const fileContent = JSON.stringify(fullConfig, null, 2);
@@ -112,8 +130,14 @@ export function registerA2bPublishMcpTool(server: McpServer, wallet: Wallet) {
 
 				const changeResult = result as ChangeResult;
 
+				let finalTx = changeResult.tx;
+				if (identityPk) {
+					const sigma = new Sigma(result.tx);
+					const signResponse = sigma.sign(identityPk);
+					finalTx = signResponse.signedTx;
+				}
 				// Broadcast the transaction
-				await changeResult.tx.broadcast();
+				await finalTx.broadcast();
 
 				// Refresh UTXOs after spending
 				try {

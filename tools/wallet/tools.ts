@@ -133,7 +133,7 @@ export function registerWalletTools(
 	// registerA2bPublishAgentTool(server, wallet);
 
 	// Register the wallet_a2bPublishMcp tool
-	// registerA2bPublishMcpTool(server, wallet);
+	registerA2bPublishMcpTool(server, wallet);
 
 	// Register only the minimal public-facing tools
 	// wallet_createAction, wallet_signAction and wallet_getHeight have been removed

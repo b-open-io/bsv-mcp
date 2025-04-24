@@ -1,6 +1,10 @@
-// import { PrivateKey } from "@bsv/sdk"; // not used here
+import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type {
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
 	type ChangeResult,
@@ -14,6 +18,7 @@ import {
 	purchaseOrdListing,
 	purchaseOrdTokenListing,
 } from "js-1sat-ord";
+import { Sigma } from "sigma-protocol";
 import type { z } from "zod";
 import {
 	MARKET_FEE_PERCENTAGE,
@@ -82,9 +87,23 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 		{ args: purchaseListingArgsSchema },
 		async (
 			{ args }: { args: z.infer<typeof purchaseListingArgsSchema> },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
+				// Load optional identity key for sigma signing
+				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
+				let identityPk: PrivateKey | undefined;
+				if (identityKeyWif) {
+					try {
+						identityPk = PrivateKey.fromWif(identityKeyWif);
+					} catch (e) {
+						console.warn(
+							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
+							e,
+						);
+					}
+				}
+
 				// Fetch the listing info directly from the API
 				const response = await fetch(
 					`https://ordinals.gorillapool.io/api/txos/${args.listingOutpoint}?script=true`,
@@ -252,10 +271,14 @@ Please fund this wallet address with enough BSV to cover the purchase price
 					// Remove console.warn
 				}
 
-				// Broadcast the transaction
-				const broadcastResult = await transaction.tx.broadcast(
-					oneSatBroadcaster(),
-				);
+				// Optionally sign with identity key then broadcast the transaction
+				let finalTx = transaction.tx;
+				if (identityPk) {
+					const sigma = new Sigma(finalTx);
+					const signResponse = sigma.sign(identityPk);
+					finalTx = signResponse.signedTx;
+				}
+				const broadcastResult = await finalTx.broadcast(oneSatBroadcaster());
 
 				// Handle broadcast response
 				const resultStatus =

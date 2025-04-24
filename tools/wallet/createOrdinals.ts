@@ -1,6 +1,11 @@
+import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	CallToolResult,
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
@@ -10,6 +15,7 @@ import type {
 	Inscription,
 	PreMAP,
 } from "js-1sat-ord";
+import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
 
@@ -47,9 +53,23 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 		{ args: createOrdinalsArgsSchema },
 		async (
 			{ args }: { args: CreateOrdinalsArgs },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
+				// Load optional identity key for sigma signing
+				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
+				let identityPk: PrivateKey | undefined;
+				if (identityKeyWif) {
+					try {
+						identityPk = PrivateKey.fromWif(identityKeyWif);
+					} catch (e) {
+						console.warn(
+							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
+							e,
+						);
+					}
+				}
+
 				// 1. Get private key from wallet
 				const paymentPk = wallet.getPrivateKey();
 				if (!paymentPk) {
@@ -95,8 +115,14 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 
 				const changeResult = result as ChangeResult;
 
-				// 7. Broadcast the transaction
-				await changeResult.tx.broadcast();
+				// 7. Optionally sign with identity key and broadcast the transaction
+				let finalTx = changeResult.tx;
+				if (identityPk) {
+					const sigma = new Sigma(changeResult.tx);
+					const signResponse = sigma.sign(identityPk);
+					finalTx = signResponse.signedTx;
+				}
+				await finalTx.broadcast();
 
 				// 8. Refresh the wallet's UTXOs after spending
 				try {

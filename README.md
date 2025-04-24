@@ -18,8 +18,7 @@ This project is built using [Bun](https://bun.sh/), a fast JavaScript runtime an
 
 **macOS (using Homebrew):**
 ```bash
-brew tap oven-sh/bun
-brew install bun
+brew install oven-sh/bun/bun
 ```
 
 **macOS/Linux/WSL (using installer script):**
@@ -38,7 +37,7 @@ This server implements the [Model Context Protocol](https://modelcontextprotocol
 
 ![MCP Configuration Example](docs/images/mcp-config-example.png)
 
-> **Note:** The PRIVATE_KEY_WIF environment variable is now optional. Without it, the server runs in limited mode with educational resources and non-wallet tools available. Wallet and MNEE token operations require a valid private key.
+> **Note:** The `PRIVATE_KEY_WIF` environment variable is now optional. Without it, the server runs in limited mode with educational resources and non-wallet tools available. Wallet and MNEE token operations require a valid private key. You can also set the `IDENTITY_KEY_WIF` environment variable to enable sigma-protocol signing of ordinals inscriptions for authentication, curation, and web-of-trust.
 
 ### Cursor
 
@@ -58,14 +57,15 @@ To use the BSV MCP server with [Cursor](https://cursor.sh/):
         "bsv-mcp@latest"
       ],
       "env": {
-        "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+        "PRIVATE_KEY_WIF": "<your_private_key_wif>",
+        "IDENTITY_KEY_WIF": "<your_identity_key_wif>"
       }
     }
   }
 }
 ```
 
-5. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!) If you dont have one you can leave this off for now but you wont be able to use tools that require a wallet.
+5. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!) If you dont have one you can leave this off for now but you wont be able to use tools that require a wallet. `<your_identity_key_wif>` is also optional. It will sign 1Sat Ordinals with Sigma protocol using the provided identity key.
 
 6. Click "Save"
 
@@ -84,7 +84,8 @@ If you prefer to use npm instead of Bun:
         "bsv-mcp@latest"
       ],
       "env": {
-        "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+        "PRIVATE_KEY_WIF": "<your_private_key_wif>",
+        "IDENTITY_KEY_WIF": "<your_identity_key_wif>"
       }
     }
   }
@@ -118,7 +119,8 @@ Open the Claude configuration json file in your favorite text editor. If you pre
            "run", "bsv-mcp@latest"
          ],
          "env": {
-           "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+           "PRIVATE_KEY_WIF": "<your_private_key_wif>",
+           "IDENTITY_KEY_WIF": "<your_identity_key_wif>"
          }
        }
      }
@@ -362,6 +364,7 @@ The BSV MCP server can be customized using environment variables to enable or di
 | `DISABLE_BSV_TOOLS` | `false` | Set to `true` to disable BSV blockchain tools |
 | `DISABLE_ORDINALS_TOOLS` | `false` | Set to `true` to disable Ordinals/NFT tools |
 | `DISABLE_UTILS_TOOLS` | `false` | Set to `true` to disable utility tools |
+| `IDENTITY_KEY_WIF`    | `not set` | Optional WIF for identity key; if set, ordinals inscriptions will be signed with sigma-protocol for authentication, curation, and web-of-trust. |
 
 ### Examples
 

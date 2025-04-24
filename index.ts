@@ -70,7 +70,7 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.32" },
+	{ name: "Bitcoin SV", version: "0.0.33" },
 	// {
 	// 	// Advertise only what you actually implement
 	// 	capabilities: {

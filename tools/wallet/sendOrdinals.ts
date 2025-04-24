@@ -1,6 +1,11 @@
+import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	CallToolResult,
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { sendOrdinals } from "js-1sat-ord";
 import type { ChangeResult, SendOrdinalsConfig } from "js-1sat-ord";
 import { z } from "zod";
@@ -37,7 +42,7 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 		{ args: sendOrdinalsArgsSchema },
 		async (
 			{ args }: { args: SendOrdinalsArgs },
-			extra: RequestHandlerExtra,
+			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
 				// 1. Get private key from wallet
@@ -86,6 +91,18 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 					changeAddress: walletAddress,
 				};
 
+				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
+				let identityPk: PrivateKey | undefined;
+				if (identityKeyWif) {
+					try {
+						identityPk = PrivateKey.fromWif(identityKeyWif);
+					} catch (e) {
+						console.warn(
+							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
+							e,
+						);
+					}
+				}
 				// Add metadata if provided
 				if (args.metadata) {
 					sendOrdinalsConfig.metaData = args.metadata;
