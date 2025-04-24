@@ -1,6 +1,6 @@
 # BSV MCP Server Changelog
 
-## v0.0.26 - Enhanced Server Configuration & Maintenance
+## v0.0.27 - Enhanced Server Configuration & Maintenance
 
 ### Major Changes
 - **Improved Changelog Management**: Added changelog as a MCP resource so you can just ask what has changed between versions
