@@ -5,9 +5,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerAllPrompts } from "./prompts";
 import { registerResources } from "./resources/resources";
 import { registerAllTools } from "./tools";
+import { registerMneeTools } from "./tools/mnee";
 import { registerWalletTools } from "./tools/wallet/tools";
 import { Wallet } from "./tools/wallet/wallet";
-import { registerMneeTools } from "./tools/mnee";
 
 /**
  * Configuration options from environment variables
@@ -17,7 +17,7 @@ const CONFIG = {
 	loadPrompts: process.env.DISABLE_PROMPTS !== "true",
 	loadResources: process.env.DISABLE_RESOURCES !== "true",
 	loadTools: process.env.DISABLE_TOOLS !== "true",
-	
+
 	// Fine-grained tool category control
 	loadWalletTools: process.env.DISABLE_WALLET_TOOLS !== "true",
 	loadMneeTools: process.env.DISABLE_MNEE_TOOLS !== "true",

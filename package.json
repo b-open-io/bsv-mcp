@@ -25,8 +25,13 @@
 		"*.ts",
 		"tools/*.ts",
 		"tools/**/*.ts",
+		"prompts/*.ts",
+		"prompts/**/*.ts",
+		"resources/*.ts",
+		"resources/**/*.ts",
 		"LICENSE",
 		"README.md",
+		"CHANGELOG.md",
 		"smithery.yaml"
 	],
 	"bin": {
@@ -51,7 +56,6 @@
 	},
 	"scripts": {
 		"lint": "biome check .",
-		"lint:fix": "biome check . --write",
-		"prepare": "chmod +x ./index.ts"
+		"lint:fix": "biome check . --write"
 	}
 }

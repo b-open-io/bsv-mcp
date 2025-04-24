@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
-  ServerNotification,
-  ServerRequest,
+	ServerNotification,
+	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
 /**
@@ -41,21 +41,21 @@ For complete API documentation and additional authentication features, refer to 
  * @param server The MCP server instance
  */
 export function registerAuthPrompt(server: McpServer): void {
-  server.prompt(
-    "bitcoin_sv_sdk_auth",
-    "Detailed information about the authentication functionality in the BSV SDK, including identity protocols, certificates, and session management.",
-    async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
-      return {
-        messages: [
-          {
-            role: "assistant",
-            content: {
-              type: "text",
-              text: BSV_SDK_AUTH_PROMPT,
-            },
-          },
-        ],
-      };
-    }
-  );
+	server.prompt(
+		"bitcoin_sv_sdk_auth",
+		"Detailed information about the authentication functionality in the BSV SDK, including identity protocols, certificates, and session management.",
+		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+			return {
+				messages: [
+					{
+						role: "assistant",
+						content: {
+							type: "text",
+							text: BSV_SDK_AUTH_PROMPT,
+						},
+					},
+				],
+			};
+		},
+	);
 }

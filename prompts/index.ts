@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerOrdinalsPrompt } from "./ordinals";
 import { registerAllBsvSdkPrompts } from "./bsvSdk";
+import { registerOrdinalsPrompt } from "./ordinals";
 
 /**
  * Register all prompts with the MCP server

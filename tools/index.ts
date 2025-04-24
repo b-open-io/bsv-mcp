@@ -7,7 +7,7 @@ import { registerUtilsTools } from "./utils";
 
 /**
  * Configuration options for tools
- * 
+ *
  * These options can be controlled through environment variables:
  * - enableBsvTools: controlled by DISABLE_BSV_TOOLS
  * - enableOrdinalsTools: controlled by DISABLE_ORDINALS_TOOLS
@@ -27,19 +27,19 @@ export interface ToolsConfig {
  * @param config Configuration options
  */
 export function registerAllTools(
-	server: McpServer, 
+	server: McpServer,
 	config: ToolsConfig = {
 		enableBsvTools: true,
 		enableOrdinalsTools: true,
 		enableUtilsTools: true,
-		enableA2bTools: true
-	}
+		enableA2bTools: true,
+	},
 ): void {
 	const {
 		enableBsvTools = true,
 		enableOrdinalsTools = true,
 		enableUtilsTools = true,
-		enableA2bTools = true
+		enableA2bTools = true,
 	} = config;
 
 	// Register BSV-related tools

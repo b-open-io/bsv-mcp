@@ -65,11 +65,16 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 						content: [
 							{
 								type: "text",
-								text: JSON.stringify({
-									success: false,
-									error: "No private key available",
-									message: "Please set PRIVATE_KEY_WIF environment variable with a valid Bitcoin SV private key in WIF format.",
-								}, null, 2),
+								text: JSON.stringify(
+									{
+										success: false,
+										error: "No private key available",
+										message:
+											"Please set PRIVATE_KEY_WIF environment variable with a valid Bitcoin SV private key in WIF format.",
+									},
+									null,
+									2,
+								),
 							},
 						],
 						isError: true,
