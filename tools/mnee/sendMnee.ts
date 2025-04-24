@@ -61,7 +61,19 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 				// Get WIF from environment
 				const wif = process.env.PRIVATE_KEY_WIF;
 				if (!wif) {
-					throw new Error("PRIVATE_KEY_WIF environment variable is not set");
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({
+									success: false,
+									error: "No private key available",
+									message: "Please set PRIVATE_KEY_WIF environment variable with a valid Bitcoin SV private key in WIF format.",
+								}, null, 2),
+							},
+						],
+						isError: true,
+					};
 				}
 
 				const result: TransferResponse = await mnee.transfer(

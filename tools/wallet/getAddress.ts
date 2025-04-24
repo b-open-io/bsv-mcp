@@ -21,7 +21,22 @@ export function registerGetAddressTool(server: McpServer): void {
 		async () => {
 			try {
 				const wif = process.env.PRIVATE_KEY_WIF;
-				if (!wif) throw new Error("PRIVATE_KEY_WIF env var not set");
+				if (!wif) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: JSON.stringify({ 
+									error: "No private key available", 
+									message: "Please set PRIVATE_KEY_WIF environment variable with a valid Bitcoin SV private key in WIF format.",
+									status: "error"
+								}),
+							},
+						],
+						isError: true,
+					};
+				}
+				
 				const privKey = PrivateKey.fromWif(wif);
 				const address = privKey.toAddress();
 				return {
@@ -35,7 +50,14 @@ export function registerGetAddressTool(server: McpServer): void {
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err);
 				return {
-					content: [{ type: "text", text: msg }],
+					content: [{ 
+						type: "text", 
+						text: JSON.stringify({ 
+							error: "Invalid private key", 
+							message: msg,
+							status: "error"
+						})
+					}],
 					isError: true,
 				};
 			}
