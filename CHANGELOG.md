@@ -1,6 +1,6 @@
 # BSV MCP Server Changelog
 
-## v0.0.31 - Reliability Improvements
+## v0.0.32 - Reliability Improvements
 
 ### Bug Fixes
 - **Changelog Loading**: Improved changelog loading mechanism with multiple path resolution strategies
