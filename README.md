@@ -8,6 +8,30 @@
 
 A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework. This library provides wallet, ordinals, and utility functions for BSV blockchain interaction.
 
+## Installation and Setup
+
+### Prerequisites
+
+This project is built using [Bun](https://bun.sh/), a fast JavaScript runtime and package manager. While Bun is recommended for best performance, the server can also run with Node.js and npm.
+
+#### Installing Bun (Recommended)
+
+**macOS (using Homebrew):**
+```bash
+brew tap oven-sh/bun
+brew install bun
+```
+
+**macOS/Linux/WSL (using installer script):**
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+**Windows:**
+Windows users should use WSL (Windows Subsystem for Linux) or Docker to run Bun.
+
+Node.js and npm will also work but may not offer the same performance benefits.
+
 ## Connecting to MCP Clients
 
 This server implements the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), allowing AI assistants to utilize Bitcoin SV functionalities. You can connect this server to various MCP-compatible clients.
@@ -19,39 +43,59 @@ This server implements the [Model Context Protocol](https://modelcontextprotocol
 To use the BSV MCP server with [Cursor](https://cursor.sh/):
 
 1. Install Cursor if you haven't already
-2. Clone this repository and run `bun install` in the project directory
-3. Open Cursor and navigate to Settings → Extensions → Model Context Protocol
-4. Click "Add a new global MCP server"
-5. Enter the following configuration in JSON format:
+2. Open Cursor and navigate to Settings → Extensions → Model Context Protocol
+3. Click "Add a new global MCP server"
+4. Enter the following configuration in JSON format:
 
 ```json
-  {
-    "mcpServers": {
-      "Bitcoin SV": {
-        "command": "bunx",
-        "args": [
-          "bsv-mcp@latest"
-        ],
-        "env": {
-          "PRIVATE_KEY_WIF": "<your_private_key_wif>"
-        }
+{
+  "mcpServers": {
+    "Bitcoin SV": {
+      "command": "bunx",
+      "args": [
+        "bsv-mcp@latest"
+      ],
+      "env": {
+        "PRIVATE_KEY_WIF": "<your_private_key_wif>"
       }
     }
   }
+}
 ```
 
-6. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!)
-7. Click "Save"
+5. Replace `<your_private_key_wif>` with your actual private key WIF (keep this secure!)
+6. Click "Save"
 
 The BSV tools will now be available to Cursor's AI assistant under the "Bitcoin SV" namespace.
+
+#### Alternative for npm users
+
+If you prefer to use npm instead of Bun:
+
+```json
+{
+  "mcpServers": {
+    "Bitcoin SV": {
+      "command": "npx",
+      "args": [
+        "bsv-mcp@latest"
+      ],
+      "env": {
+        "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+      }
+    }
+  }
+}
+```
 
 ### Claude for Desktop
 
 To connect this server to Claude for Desktop:
 
-1. Ensure you have [Claude for Desktop](https://claude.ai/desktop) installed and updated to the latest version
-2. Clone this repository and run `bun install` in the project directory
-3. Open your Claude for Desktop configuration file:
+1. Open [Claude for Desktop](https://claude.ai/desktop) and go to Claude > Settings > Developer
+2. Click "Edit Config". 
+
+Open the Claude configuration json file in your favorite text editor. If you prefer to do it from the cli:
 
    ```bash
    # macOS/Linux
@@ -61,25 +105,29 @@ To connect this server to Claude for Desktop:
    code %APPDATA%\Claude\claude_desktop_config.json
    ```
 
-4. Add the BSV MCP server to your configuration (create the file if it doesn't exist):
+3. Add the BSV MCP server to your configuration:
    ```json
-    {
-      "mcpServers": {
-        "Bitcoin SV": {
-          "command": "bunx",
-          "args": [
-            "bsv-mcp@latest"
-          ],
-          "env": {
-            "PRIVATE_KEY_WIF": "<your_private_key_wif>"
-          }
-        }
-      }
-    }
+   {
+     "mcpServers": {
+       "Bitcoin SV": {
+         "command": "bunx",
+         "args": [
+           "bsv-mcp@latest"
+         ],
+         "env": {
+           "PRIVATE_KEY_WIF": "<your_private_key_wif>"
+         }
+       }
+     }
+   }
    ```
-5. Replace `<your_private_key_wif>` with your actual private key WIF
-6. Save the file and restart Claude for Desktop
-7. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
+4. Replace `<your_private_key_wif>` with your actual private key WIF
+5. Save the file and restart Claude for Desktop
+6. The BSV tools will appear when you click the tools icon (hammer) in Claude for Desktop
+
+#### Alternative for npm users (Claude)
+
+If you prefer to use npm instead of Bun, replace the "command" field with "npx".
 
 ## Available Tools
 
@@ -179,6 +227,102 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 
 - "Convert 'Hello World' from UTF-8 to hex format"
 
+## MCP Prompts and Resources
+
+The BSV MCP server exposes specialized prompts and resources that provide detailed information and context about Bitcoin SV technologies. These can be accessed by AI models to enhance their understanding and capabilities.
+
+### Available Prompts
+
+The server provides the following educational prompts that can be accessed directly via the MCP protocol:
+
+#### Ordinals Prompt
+- **Identifier**: `bitcoin_sv_ordinals`
+- **Description**: Comprehensive information about Bitcoin SV ordinals, including what they are, how they work, and how to use them.
+- **Usage**: Ask the assistant about "Bitcoin SV ordinals" or "1Sat Ordinals" to access this information.
+
+#### BSV SDK Prompts
+A collection of prompts providing detailed information about the Bitcoin SV SDK:
+
+- **Overview**
+  - **Identifier**: `bitcoin_sv_sdk_overview`
+  - **Description**: General overview of the Bitcoin SV SDK, including its purpose and main components.
+  - **Usage**: "Tell me about the BSV SDK" or "What is the Bitcoin SV SDK?"
+
+- **Wallet Operations**
+  - **Identifier**: `bitcoin_sv_sdk_wallet`
+  - **Description**: Information about wallet operations in the BSV SDK.
+  - **Usage**: "How do wallet operations work in the BSV SDK?"
+
+- **Transaction Building**
+  - **Identifier**: `bitcoin_sv_sdk_transaction`
+  - **Description**: Details about transaction creation and manipulation.
+  - **Usage**: "Explain BSV SDK transaction building" or "How do I create transactions with BSV SDK?"
+
+- **Authentication**
+  - **Identifier**: `bitcoin_sv_sdk_auth`
+  - **Description**: Authentication and identity protocols in BSV SDK.
+  - **Usage**: "How does authentication work with BSV SDK?"
+
+- **Cryptography**
+  - **Identifier**: `bitcoin_sv_sdk_cryptography`
+  - **Description**: Signing, encryption, and verification functionality.
+  - **Usage**: "Explain BSV SDK cryptography features"
+
+- **Scripting**
+  - **Identifier**: `bitcoin_sv_sdk_script`
+  - **Description**: Bitcoin scripting and contract capabilities.
+  - **Usage**: "How do I work with Bitcoin scripts using the BSV SDK?"
+
+- **Primitives**
+  - **Identifier**: `bitcoin_sv_sdk_primitives`
+  - **Description**: Core data types and structures in the BSV SDK.
+  - **Usage**: "What primitives are available in the BSV SDK?"
+
+### Available Resources
+
+The server also provides access to Bitcoin Request for Comments (BRC) specifications and documentation:
+
+#### BRC Resources
+- **BRCs Overview**
+  - **Identifier**: `brcs_readme`
+  - **Description**: Overview of all Bitcoin SV protocol specifications in the BRCs repository.
+  - **Usage**: "Show me the Bitcoin SV BRCs overview"
+
+- **BRCs Summary**
+  - **Identifier**: `brcs_summary`
+  - **Description**: Table of contents for all Bitcoin SV BRCs.
+  - **Usage**: "Give me a summary of Bitcoin SV BRCs"
+
+- **Specific BRC Specifications**
+  - **Identifier**: `brc_spec`
+  - **Description**: Access specific BRC specifications by category and number.
+  - **Usage**: "Show me BRC 8 on Transaction Envelopes" or "What does BRC 1 specify?"
+
+#### BRC Categories
+The BRC specifications are organized into the following categories:
+- Wallet
+- Transactions
+- Scripts
+- Tokens
+- Overlays
+- Payments
+- Peer-to-Peer
+- Key Derivation
+- Outpoints
+- Opinions
+- State Machines
+- Apps
+
+### Using Prompts and Resources
+
+AI models can use these prompts and resources to provide more accurate and detailed responses about Bitcoin SV technologies. As a user, you can:
+
+1. **Ask about a specific topic**: "Tell me about Bitcoin SV ordinals" or "Explain BSV SDK transaction building"
+2. **Request specific BRC details**: "What does BRC 8 specify?" or "Show me the BRC on Transaction Creation"
+3. **Get general overviews**: "What is the BSV SDK?" or "Show me a summary of all BRCs"
+
+These prompts and resources enhance the AI's knowledge base, enabling more technical and accurate responses even for complex Bitcoin SV topics.
+
 ## How MCP Works
 
 When you interact with an MCP-enabled AI assistant:
@@ -191,17 +335,39 @@ When you interact with an MCP-enabled AI assistant:
 
 ## Troubleshooting
 
-If you're having issues connecting to the server:
+If you're having issues with the BSV MCP server:
 
-1. Ensure the package dependencies are properly installed: `bun install`
+### Connection Issues
+
+1. Make sure Bun or Node.js is installed on your system
 2. Verify your WIF private key is correctly set in the environment
 3. Check that your client supports MCP and is properly configured
 4. Look for error messages in the client's console output
 
+### Keeping Bun Up to Date
+
+It's important to keep Bun updated to the latest version to ensure compatibility:
+
+```bash
+# Update Bun to the latest version
+bun upgrade
+```
+
+To verify your current Bun version:
+```bash
+bun --version
+```
+
+### Logging and Debugging
+
 For Claude for Desktop, check the logs at:
 
 ```bash
+# macOS/Linux
 tail -n 20 -f ~/Library/Logs/Claude/mcp*.log
+
+# Windows
+type %APPDATA%\Claude\Logs\mcp*.log
 ```
 
 For Cursor, check the Cursor MCP logs in Settings → Extensions → Model Context Protocol.
@@ -314,16 +480,37 @@ The tool supports both mainnet and testnet:
 
 # Development
 
+## Project Setup
+
+If you want to contribute to the project or run it locally:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/b-open-io/bsv-mcp.git
+   cd bsv-mcp
+   ```
+
+2. Install dependencies:
+   ```bash
+   bun install
+   # or with npm
+   npm install
+   ```
+
 ## Running the Server
 
 ```bash
 bun run index.ts
+# or with npm
+npm run start
 ```
 
 ### Running Tests
 
 ```bash
 bun test
+# or with npm
+npm test
 ```
 
 ## License

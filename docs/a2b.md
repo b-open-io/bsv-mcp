@@ -480,7 +480,22 @@ Output 0 (1 sat):
   OP_ENDIF
   OP_RETURN
     1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5 SET
-    app your-app-name  type a2b
+    app your-app-name  type a2b-agent
+```
+
+### 6.1b MCP Tool Registration
+
+```
+Output 0 (1 sat):
+  <P2PKH>
+  OP_FALSE OP_IF
+    "ord"
+    OP_1 "application/json"
+    OP_0 <MCP Config bytes>
+  OP_ENDIF
+  OP_RETURN
+    1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5 SET
+    app your-app-name  type a2b-mcp
 ```
 
 ### 6.2  Updating via Re‑inscription<a id="updating-via-re-inscription"></a>

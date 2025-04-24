@@ -1,10 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerA2aCallTool } from "./a2b/call";
+import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
-import { registerA2bDiscoverTool } from "./a2b/discover";
-import { registerA2aCallTool } from "./a2b/call";
 
 /**
  * Register all tools with the MCP server
@@ -24,7 +24,8 @@ export function registerAllTools(server: McpServer): void {
 	registerA2bDiscoverTool(server);
 
 	// Register agent-to-agent call tool
-	registerA2aCallTool(server);
+	// registerA2aCallTool(server);
+
 	// Register MNEE tools
 	registerMneeTools(server);
 

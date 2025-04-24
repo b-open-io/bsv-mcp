@@ -145,7 +145,7 @@ export type A2bPublishArgs = z.infer<typeof a2bPublishArgsSchema>;
 /**
  * Registers the wallet_a2bPublish tool for publishing an agent record on-chain
  */
-export function registerA2bPublishTool(server: McpServer, wallet: Wallet) {
+export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_a2bPublish",
 		"Publish an agent.json record on-chain via Ordinal inscription",

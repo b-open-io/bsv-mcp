@@ -2,6 +2,8 @@
 import { PrivateKey } from "@bsv/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { registerAllPrompts } from "./prompts";
+import { registerResources } from "./resources/resources";
 import { registerAllTools } from "./tools";
 import { registerWalletTools } from "./tools/wallet/tools";
 import { Wallet } from "./tools/wallet/wallet";
@@ -43,10 +45,25 @@ function validatePrivateKey(): PrivateKey {
 // Validate private key early before starting the server
 const privKey = validatePrivateKey();
 
-const server = new McpServer({
-	name: "Bitcoin SV MCP Server",
-	version: "0.0.23",
-});
+const server = new McpServer(
+	{ name: "Bitcoin SV", version: "0.0.24" },
+	// {
+	// 	// Advertise only what you actually implement
+	// 	capabilities: {
+	// 		completions: {},
+	// 		experimental: {},
+	// 		logging: {},
+	// 		prompts: {},
+	// 		resources: {},
+	// 		tools: {},
+	// 	},
+	// 	// Optional instructions banner for clients
+	// 	instructions: `
+	// 		This server exposes Bitcoin SV helpers.
+	// 		Tools are idempotent unless marked destructive.
+	// 	`,
+	// },
+);
 
 // Initialize wallet with the validated private key
 const wallet = new Wallet(privKey);
@@ -56,6 +73,12 @@ registerWalletTools(server, wallet);
 
 // Register all other tools (BSV, Ordinals, Utils, etc.)
 registerAllTools(server);
+
+// Register resources
+registerResources(server);
+
+// Register prompts
+registerAllPrompts(server);
 
 // Connect to the transport
 const transport = new StdioServerTransport();
