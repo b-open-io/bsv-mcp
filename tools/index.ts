@@ -6,25 +6,65 @@ import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
 
 /**
- * Register all tools with the MCP server
- * @param server The MCP server instance
+ * Configuration options for tools
+ * 
+ * These options can be controlled through environment variables:
+ * - enableBsvTools: controlled by DISABLE_BSV_TOOLS
+ * - enableOrdinalsTools: controlled by DISABLE_ORDINALS_TOOLS
+ * - enableUtilsTools: controlled by DISABLE_UTILS_TOOLS
+ * - enableA2bTools: controlled by DISABLE_A2B_TOOLS
  */
-export function registerAllTools(server: McpServer): void {
+export interface ToolsConfig {
+	enableBsvTools?: boolean;
+	enableOrdinalsTools?: boolean;
+	enableUtilsTools?: boolean;
+	enableA2bTools?: boolean;
+}
+
+/**
+ * Register all tools with the MCP server based on configuration
+ * @param server The MCP server instance
+ * @param config Configuration options
+ */
+export function registerAllTools(
+	server: McpServer, 
+	config: ToolsConfig = {
+		enableBsvTools: true,
+		enableOrdinalsTools: true,
+		enableUtilsTools: true,
+		enableA2bTools: true
+	}
+): void {
+	const {
+		enableBsvTools = true,
+		enableOrdinalsTools = true,
+		enableUtilsTools = true,
+		enableA2bTools = true
+	} = config;
+
 	// Register BSV-related tools
-	registerBsvTools(server);
+	if (enableBsvTools) {
+		registerBsvTools(server);
+	}
 
 	// Register Ordinals-related tools
-	registerOrdinalsTools(server);
+	if (enableOrdinalsTools) {
+		registerOrdinalsTools(server);
+	}
 
 	// Register utility tools
-	registerUtilsTools(server);
+	if (enableUtilsTools) {
+		registerUtilsTools(server);
+	}
 
-	// Register agent-to-blockchain discovery tool
-	registerA2bDiscoverTool(server);
+	// Register agent-to-blockchain tools
+	if (enableA2bTools) {
+		// Register agent-to-blockchain discovery tool
+		registerA2bDiscoverTool(server);
 
-	// Register agent-to-agent call tool
-	// registerA2aCallTool(server);
-
+		// Register agent-to-agent call tool
+		// registerA2aCallTool(server);
+	}
 
 	// Add more tool categories as needed
 }

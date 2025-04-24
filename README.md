@@ -38,6 +38,8 @@ This server implements the [Model Context Protocol](https://modelcontextprotocol
 
 ![MCP Configuration Example](docs/images/mcp-config-example.png)
 
+> **Note:** The PRIVATE_KEY_WIF environment variable is now optional. Without it, the server runs in limited mode with educational resources and non-wallet tools available. Wallet and MNEE token operations require a valid private key.
+
 ### Cursor
 
 To use the BSV MCP server with [Cursor](https://cursor.sh/):
@@ -282,6 +284,11 @@ A collection of prompts providing detailed information about the Bitcoin SV SDK:
 
 The server also provides access to Bitcoin Request for Comments (BRC) specifications and documentation:
 
+#### Changelog Resource
+- **Identifier**: `bsv-mcp-changelog`
+- **Description**: Version history and changelog for the BSV MCP server.
+- **Usage**: "Show me the BSV MCP changelog" or "What's new in the latest version?"
+
 #### BRC Resources
 - **BRCs Overview**
   - **Identifier**: `brcs_readme`
@@ -332,6 +339,49 @@ When you interact with an MCP-enabled AI assistant:
 3. The server executes the requested operation on the Bitcoin SV blockchain
 4. The results are returned to the AI assistant
 5. The assistant presents the information in a natural, conversational way
+
+## Customization Options
+
+The BSV MCP server can be customized using environment variables to enable or disable specific components:
+
+### Component Configuration
+
+| Environment Variable | Default | Description |
+| -------------------- | ------- | ----------- |
+| `DISABLE_PROMPTS` | `false` | Set to `true` to disable all educational prompts |
+| `DISABLE_RESOURCES` | `false` | Set to `true` to disable all resources (BRCs, changelog) |
+| `DISABLE_TOOLS` | `false` | Set to `true` to disable all tools |
+
+### Tool-Specific Configuration
+
+| Environment Variable | Default | Description |
+| -------------------- | ------- | ----------- |
+| `DISABLE_WALLET_TOOLS` | `false` | Set to `true` to disable Bitcoin wallet tools |
+| `DISABLE_MNEE_TOOLS` | `false` | Set to `true` to disable MNEE token tools |
+| `DISABLE_BSV_TOOLS` | `false` | Set to `true` to disable BSV blockchain tools |
+| `DISABLE_ORDINALS_TOOLS` | `false` | Set to `true` to disable Ordinals/NFT tools |
+| `DISABLE_UTILS_TOOLS` | `false` | Set to `true` to disable utility tools |
+| `DISABLE_A2B_TOOLS` | `false` | Set to `true` to disable agent-to-blockchain tools |
+
+### Examples
+
+Run with only educational resources and prompts, no tools:
+
+```bash
+DISABLE_TOOLS=true bunx bsv-mcp@latest
+```
+
+Run with only BSV tools, no wallet or other functionality:
+
+```bash
+DISABLE_PROMPTS=true DISABLE_RESOURCES=true DISABLE_WALLET_TOOLS=true DISABLE_MNEE_TOOLS=true DISABLE_ORDINALS_TOOLS=true DISABLE_UTILS_TOOLS=true bunx bsv-mcp@latest
+```
+
+Use all tools except wallet operations:
+
+```bash
+DISABLE_WALLET_TOOLS=true bunx bsv-mcp@latest
+```
 
 ## Troubleshooting
 
@@ -392,7 +442,7 @@ The tool supports the following endpoint categories and specific endpoints:
 
 | Endpoint             | Description                                     | Required Parameters | Example Response                                                                      |
 | -------------------- | ----------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------- |
-| `chain_info`         | Network statistics, difficulty, and chain work  | None                | `{"chain":"main","blocks":826458,"headers":826458,"bestblockhash":"000000000000..."}` |
+| `chain_info`         | Network statistics, difficulty, and chain work  | None                | `{"chain":"main","blocks":826458,"headers":826458,"bestblockhash":"0000000000..."}` |
 | `chain_tips`         | Current chain tips including heights and states | None                | `[{"height":826458,"hash":"000000000000...","branchlen":0,"status":"active"}]`        |
 | `circulating_supply` | Current BSV circulating supply                  | None                | `{"bsv":21000000}`                                                                    |
 | `peer_info`          | Connected peer statistics                       | None                | `[{"addr":"1.2.3.4:8333","services":"000000000000...","lastsend":1621234567}]`        |

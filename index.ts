@@ -10,6 +10,24 @@ import { Wallet } from "./tools/wallet/wallet";
 import { registerMneeTools } from "./tools/mnee";
 
 /**
+ * Configuration options from environment variables
+ */
+const CONFIG = {
+	// Whether to load various components
+	loadPrompts: process.env.DISABLE_PROMPTS !== "true",
+	loadResources: process.env.DISABLE_RESOURCES !== "true",
+	loadTools: process.env.DISABLE_TOOLS !== "true",
+	
+	// Fine-grained tool category control
+	loadWalletTools: process.env.DISABLE_WALLET_TOOLS !== "true",
+	loadMneeTools: process.env.DISABLE_MNEE_TOOLS !== "true",
+	loadBsvTools: process.env.DISABLE_BSV_TOOLS !== "true",
+	loadOrdinalsTools: process.env.DISABLE_ORDINALS_TOOLS !== "true",
+	loadUtilsTools: process.env.DISABLE_UTILS_TOOLS !== "true",
+	loadA2bTools: process.env.DISABLE_A2B_TOOLS !== "true",
+};
+
+/**
  * Try to initialize the private key from environment variables
  * Returns the private key if valid, or undefined if not present or invalid
  */
@@ -52,7 +70,7 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.25" },
+	{ name: "Bitcoin SV", version: "0.0.26" },
 	// {
 	// 	// Advertise only what you actually implement
 	// 	capabilities: {
@@ -71,25 +89,46 @@ const server = new McpServer(
 	// },
 );
 
-// Initialize wallet with the validated private key only if available
+// Initialize wallet and register tools based on configuration
 let wallet: Wallet | null = null;
-if (privKey) {
-  	// Register MNEE tools
-	registerMneeTools(server);
-  // Initialize wallet with the private key
-	wallet = new Wallet(privKey);
-  // Register wallet tools
-  registerWalletTools(server, wallet);
+
+if (CONFIG.loadTools) {
+	if (privKey) {
+		// Register MNEE tools if enabled
+		if (CONFIG.loadMneeTools) {
+			console.log("Registering MNEE tools");
+			registerMneeTools(server);
+		}
+
+		// Initialize wallet with the private key if wallet tools are enabled
+		if (CONFIG.loadWalletTools) {
+			console.log("Initializing wallet and registering wallet tools");
+			wallet = new Wallet(privKey);
+			registerWalletTools(server, wallet);
+		}
+	}
+
+	// Register all other tools based on configuration
+	console.log("Registering other tools");
+	registerAllTools(server, {
+		enableBsvTools: CONFIG.loadBsvTools,
+		enableOrdinalsTools: CONFIG.loadOrdinalsTools,
+		enableUtilsTools: CONFIG.loadUtilsTools,
+		enableA2bTools: CONFIG.loadA2bTools,
+	});
 }
 
-// Register all other tools (BSV, Ordinals, Utils, etc.)
-registerAllTools(server);
+// Register resources if enabled
+if (CONFIG.loadResources) {
+	console.log("Registering resources");
+	registerResources(server);
+}
 
-// Register resources
-registerResources(server);
-
-// Register prompts
-registerAllPrompts(server);
+// Register prompts if enabled
+if (CONFIG.loadPrompts) {
+	console.log("Registering prompts");
+	registerAllPrompts(server);
+}
 
 // Connect to the transport
 const transport = new StdioServerTransport();
