@@ -44,6 +44,7 @@ import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerGetPublicKeyTool } from "./getPublicKey";
 import { registerPurchaseListingTool } from "./purchaseListing";
+import { registerRefreshUtxosTool } from "./refreshUtxos";
 import { registerSendToAddressTool } from "./sendToAddress";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
 
@@ -83,6 +84,7 @@ type ToolArgSchemas = {
 	wallet_transferOrdToken: typeof transferOrdTokenArgsSchema;
 	wallet_a2bPublish: typeof a2bPublishArgsSchema;
 	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
+	wallet_refreshUtxos: typeof emptyArgsSchema;
 };
 
 // Define a type for the handler function with proper argument types
@@ -132,6 +134,9 @@ export function registerWalletTools(
 
 	// Register the wallet_transferOrdToken tool
 	registerTransferOrdTokenTool(server, wallet);
+
+	// Register the wallet_refreshUtxos tool
+	registerRefreshUtxosTool(server, wallet);
 
 	// A2B tools have to be explicitly enabled
 	if (config.enableA2bTools) {

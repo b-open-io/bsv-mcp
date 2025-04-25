@@ -47,12 +47,8 @@ import type {
 	WalletCertificate,
 	WalletInterface,
 } from "@bsv/sdk";
-import {
-	type NftUtxo,
-	type Utxo,
-	fetchNftUtxos,
-	fetchPayUtxos,
-} from "js-1sat-ord";
+import { type NftUtxo, type Utxo, fetchNftUtxos } from "js-1sat-ord";
+import { fetchPaymentUtxos } from "./fetchPaymentUtxos";
 
 export class Wallet extends ProtoWallet implements WalletInterface {
 	private paymentUtxos: Utxo[] = [];
@@ -77,28 +73,37 @@ export class Wallet extends ProtoWallet implements WalletInterface {
 		try {
 			const privateKey = this.getPrivateKey();
 			if (!privateKey) {
-				console.warn("No private key available for fetching UTXOs");
-				return;
+				return; // Silent fail if no private key, keep existing UTXOs
 			}
 
-			const address = privateKey.toAddress();
+			const address = privateKey.toAddress().toString();
 			this.lastUtxoFetch = Date.now();
 
+			// Payment UTXOs
+			let newPaymentUtxos: Utxo[] | undefined = undefined;
 			try {
-				const utxos = await fetchPayUtxos(address);
-				this.paymentUtxos = utxos;
+				newPaymentUtxos = await fetchPaymentUtxos(address);
+				// Only update if we successfully got UTXOs
+				if (Array.isArray(newPaymentUtxos)) {
+					this.paymentUtxos = newPaymentUtxos;
+				}
 			} catch (error) {
-				console.error("Error fetching payment UTXOs:", error);
+				// Keep existing UTXOs, don't clear them on error
 			}
+
+			// NFT UTXOs - keep existing if fetch fails
+			let newNftUtxos: NftUtxo[] = [];
 			try {
-				const nftUtxos = await fetchNftUtxos(address);
-				this.nftUtxos = nftUtxos;
+				newNftUtxos = await fetchNftUtxos(address);
+				// Only update if we successfully got UTXOs
+				if (Array.isArray(newNftUtxos)) {
+					this.nftUtxos = newNftUtxos;
+				}
 			} catch (error) {
-				console.error("Error fetching NFT UTXOs:", error);
+				// Keep existing UTXOs, don't clear them on error
 			}
 		} catch (error) {
-			console.error("Error refreshing UTXOs:", error);
-			throw error;
+			// Silent global error, preserve existing UTXOs
 		}
 	}
 

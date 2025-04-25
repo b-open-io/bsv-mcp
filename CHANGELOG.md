@@ -1,5 +1,25 @@
 # BSV MCP Server Changelog
 
+## v0.0.35 - A2B Overlay Integration & Improved MCP Server Publishing
+
+### Features
+- **A2B Overlay Integration**: Implemented a robust connection to the A2B Overlay API
+  - Updated `a2b_discover` tool to search for on-chain MCP servers and agents
+  - Enhanced search capabilities with relevance-based result ranking
+  - User-friendly formatted output with command suggestions
+  - Support for filtering by type (agent/tool/all), block range, and free text search
+- **Improved MCP Server Publishing**: Enhanced the wallet_a2bPublishMcp tool
+  - Better identity key integration via LocalSigner
+  - More robust configuration for sigma signing
+  - Improved transaction handling and error reporting
+
+### Technical Improvements
+- Updated API endpoint to use production overlay service
+- Implemented enhanced search for better relevance scoring
+- Better error handling for API responses
+- Improved response formatting for readability
+- Updated type definitions for consistency
+
 ## v0.0.34 - Transaction Broadcast Control
 
 ### Features

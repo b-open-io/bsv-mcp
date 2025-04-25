@@ -6,25 +6,34 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-type OverlayRequest = {
+// API endpoint for the A2B Overlay service
+const OVERLAY_API_URL = "https://a2b-overlay-production.up.railway.app/v1";
+
+type A2BDiscoveryItem = {
+	txid: string;
+	outpoint: string;
 	type: "agent" | "tool";
-	query: string;
-	limit: number;
-	offset: number;
-	fromBlock?: number;
-	toBlock?: number;
+	app: string;
+	serverName: string;
+	command: string;
+	description: string;
+	keywords: string[];
+	args: Record<string, string>;
+	env: Record<string, string>;
+	blockHeight: number;
+	timestamp: string;
+	tools?: string[];
+	prompts?: string[];
+	resources?: string[];
 };
 
-type OverlayResponse = {
-	agents: {
-		name: string;
-		description: string;
-		capabilities: string[];
-	}[];
-	tools: {
-		name: string;
-		description: string;
-	}[];
+type OverlaySearchResponse = {
+	items: A2BDiscoveryItem[];
+	total: number;
+	limit: number;
+	offset: number;
+	queryType: "agent" | "tool" | "all";
+	query: string;
 };
 
 // Schema for agent discovery parameters
@@ -39,6 +48,73 @@ export const a2bDiscoverArgsSchema = z.object({
 export type A2bDiscoverArgs = z.infer<typeof a2bDiscoverArgsSchema>;
 
 /**
+ * Format the response in a user-friendly way
+ */
+function formatSearchResults(data: unknown, queryType: string): string {
+	// console.log(`Received data: ${JSON.stringify(data).substring(0, 200)}...`); // Debug log
+
+	// Check if data is an object with items property
+	if (!data) {
+		return `No ${queryType} results found.`;
+	}
+
+	// Handle the new API format where data is an object with 'items' array
+	const items = Array.isArray(data)
+		? data
+		: (data as { items?: A2BDiscoveryItem[] }).items;
+
+	// Ensure items is an array
+	if (!items || !Array.isArray(items) || items.length === 0) {
+		return `No ${queryType} results found.`;
+	}
+
+	let result = `Found ${items.length} ${queryType === "all" ? "items" : `${queryType}s`}:\n\n`;
+
+	items.forEach((item, index) => {
+		if (!item) return;
+
+		// Agent or MCP server name with description
+		result += `${index + 1}. **${item.serverName || "Unknown"}** - ${item.description || "No description"}\n`;
+
+		// Display command to run
+		if (item.command) {
+			const args = item.args ? Object.values(item.args).join(" ") : "";
+			result += `   Command: \`${item.command} ${args}\`\n`;
+		}
+
+		// Add tools count if available
+		if (item.tools && Array.isArray(item.tools)) {
+			result += `   Tools: ${item.tools.length} available\n`;
+		}
+
+		// Add keywords if available
+		if (
+			item.keywords &&
+			Array.isArray(item.keywords) &&
+			item.keywords.length > 0
+		) {
+			result += `   Keywords: ${item.keywords.join(", ")}\n`;
+		}
+
+		// Add blockchain details
+		if (item.outpoint) {
+			result += `   Outpoint: ${item.outpoint}\n`;
+		}
+
+		if (item.blockHeight !== undefined) {
+			const date = item.timestamp
+				? new Date(item.timestamp).toLocaleDateString()
+				: "Unknown date";
+			result += `   Block: ${item.blockHeight}, ${date}\n`;
+		}
+
+		result += "\n";
+	});
+
+	return result;
+}
+
+/**
  * Registers the a2b_discover tool for on-chain agent discovery
  */
 export function registerA2bDiscoverTool(server: McpServer) {
@@ -50,49 +126,113 @@ export function registerA2bDiscoverTool(server: McpServer) {
 			{ args }: { args: A2bDiscoverArgs },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
-			if (args.queryType === "agent") {
-				return {
-					content: [
-						{ type: "text", text: "Agent discovery is not supported yet" },
-					],
-					isError: true,
-				};
-			}
-
-			if (args.queryType !== "tool") {
-				return {
-					content: [
-						{
-							type: "text",
-							text: "Only tool discovery is supported currently",
-						},
-					],
-					isError: true,
-				};
-			}
-
 			try {
 				const params = new URLSearchParams();
+
+				// Set query type (agent, tool, or all)
 				params.set("type", args.queryType);
-				params.set("query", args.query);
-				params.set("limit", args.limit?.toString() ?? "5");
+
+				// Use enhanced search for better relevance scoring
+				let searchEndpoint = "/search/enhanced";
+
+				// For empty queries, use the regular search endpoint
+				if (!args.query || !args.query.trim()) {
+					searchEndpoint = "/search";
+				} else {
+					params.set("q", args.query); // enhanced search uses 'q' parameter
+				}
+
+				// Add pagination parameters
+				params.set("limit", args.limit?.toString() ?? "10");
 				params.set("offset", args.offset?.toString() ?? "0");
+
+				// Add block range if specified
 				if (args.fromBlock) {
 					params.set("fromBlock", args.fromBlock.toString());
 				}
 				if (args.toBlock) {
 					params.set("toBlock", args.toBlock.toString());
 				}
-				const OVERLAY_URL = `https://overlay.a2b.network/v1/search?${params.toString()}`;
-				const response = await fetch(OVERLAY_URL);
-				const data = (await response.json()) as OverlayResponse;
+
+				// Construct the full URL
+				const searchUrl = `${OVERLAY_API_URL}${searchEndpoint}?${params.toString()}`;
+				//console.log(`Searching URL: ${searchUrl}`);
+
+				// Make the request to the overlay API
+				const response = await fetch(searchUrl, {
+					method: "GET",
+					headers: {
+						Accept: "application/json",
+					},
+				});
+
+				if (!response.ok) {
+					throw new Error(
+						`API returned status ${response.status}: ${response.statusText}`,
+					);
+				}
+
+				const data = (await response.json()) as OverlaySearchResponse;
+
+				// Format the results for better readability
+				let result = "";
+
+				if (data?.items?.length > 0) {
+					result = `Found ${data.items.length} ${args.queryType}(s):\n\n`;
+
+					data.items.forEach((item: A2BDiscoveryItem, index: number) => {
+						// Server name and description
+						result += `${index + 1}. **${item.serverName || "Unknown"}** - ${item.description || "No description"}\n`;
+
+						// Command to run
+						if (item.command) {
+							const cmdArgs = item.args
+								? Object.values(item.args).join(" ")
+								: "";
+							result += `   Command: \`${item.command} ${cmdArgs}\`\n`;
+						}
+
+						// Tools available
+						if (item.tools?.length) {
+							result += `   Tools: ${item.tools.length} available\n`;
+						}
+
+						// Keywords
+						if (item.keywords?.length) {
+							result += `   Keywords: ${item.keywords.join(", ")}\n`;
+						}
+
+						// Blockchain details
+						if (item.outpoint) {
+							result += `   Outpoint: ${item.outpoint}\n`;
+						}
+
+						if (item.blockHeight !== undefined) {
+							const date = item.timestamp
+								? new Date(item.timestamp).toLocaleDateString()
+								: "Unknown date";
+							result += `   Block: ${item.blockHeight}, ${date}\n`;
+						}
+
+						result += "\n";
+					});
+				} else {
+					result = `No ${args.queryType} results found.`;
+				}
+
 				return {
-					content: [{ type: "text", text: JSON.stringify(data) }],
+					content: [{ type: "text", text: result }],
 					isError: false,
 				};
 			} catch (error) {
+				console.error("Search error:", error);
 				return {
-					content: [{ type: "text", text: `Error querying overlay: ${error}` }],
+					content: [
+						{
+							type: "text",
+							text: `Error querying A2B Overlay: ${error instanceof Error ? error.message : String(error)}`,
+						},
+					],
 					isError: true,
 				};
 			}
