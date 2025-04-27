@@ -39,18 +39,19 @@ function initializePrivateKey(): PrivateKey | undefined {
 
 	// Check if private key is set
 	if (!privateKeyWif) {
-		console.warn(
-			"\x1b[33mWarning: PRIVATE_KEY_WIF environment variable is not set\x1b[0m",
-		);
-		console.warn(
-			"The server will run, but wallet operations requiring a private key will return errors.",
-		);
-		console.warn(
-			"Set this variable with a valid Bitcoin SV private key in WIF format to enable all features:",
-		);
-		console.warn(
-			"Example: PRIVATE_KEY_WIF=your_private_key_wif bun run index.ts",
-		);
+		// stdio protocol you cant send anything to console!!
+		// console.warn(
+		// 	"\x1b[33mWarning: PRIVATE_KEY_WIF environment variable is not set\x1b[0m",
+		// );
+		// console.warn(
+		// 	"The server will run, but wallet operations requiring a private key will return errors.",
+		// );
+		// console.warn(
+		// 	"Set this variable with a valid Bitcoin SV private key in WIF format to enable all features:",
+		// );
+		// console.warn(
+		// 	"Example: PRIVATE_KEY_WIF=your_private_key_wif bun run index.ts",
+		// );
 		return undefined;
 	}
 
@@ -58,13 +59,13 @@ function initializePrivateKey(): PrivateKey | undefined {
 	try {
 		return PrivateKey.fromWif(privateKeyWif);
 	} catch (error) {
-		console.warn("\x1b[33mWarning: Invalid private key format\x1b[0m");
-		console.warn(
-			"The PRIVATE_KEY_WIF provided is not a valid Bitcoin SV private key in WIF format.",
-		);
-		console.warn(
-			"The server will run, but wallet operations requiring a private key will return errors.",
-		);
+		// console.warn("\x1b[33mWarning: Invalid private key format\x1b[0m");
+		// console.warn(
+		// 	"The PRIVATE_KEY_WIF provided is not a valid Bitcoin SV private key in WIF format.",
+		// );
+		// console.warn(
+		// 	"The server will run, but wallet operations requiring a private key will return errors.",
+		// );
 		return undefined;
 	}
 }
@@ -73,23 +74,18 @@ function initializePrivateKey(): PrivateKey | undefined {
 const privKey = initializePrivateKey();
 
 const server = new McpServer(
-	{ name: "Bitcoin SV", version: "0.0.35" },
-	// {
-	// 	// Advertise only what you actually implement
-	// 	capabilities: {
-	// 		completions: {},
-	// 		experimental: {},
-	// 		logging: {},
-	// 		prompts: {},
-	// 		resources: {},
-	// 		tools: {},
-	// 	},
-	// 	// Optional instructions banner for clients
-	// 	instructions: `
-	// 		This server exposes Bitcoin SV helpers.
-	// 		Tools are idempotent unless marked destructive.
-	// 	`,
-	// },
+	{ name: "Bitcoin SV", version: "0.0.36" },
+	{
+		capabilities: {
+			prompts: {},
+			resources: {},
+			tools: {},
+		},
+		instructions: `
+			This server exposes Bitcoin SV helpers.
+			Tools are idempotent unless marked destructive.
+		`,
+	},
 );
 
 // Initialize wallet and register tools based on configuration
@@ -134,3 +130,4 @@ if (CONFIG.loadPrompts) {
 // Connect to the transport
 const transport = new StdioServerTransport();
 await server.connect(transport);
+console.error("BSV MCP Server running on stdio");

@@ -1,6 +1,6 @@
 # BSV MCP Server Changelog
 
-## v0.0.35 - A2B Overlay Integration & Improved MCP Server Publishing
+## v0.0.36 - A2B Overlay Integration & Improved MCP Server Publishing
 
 ### Features
 - **A2B Overlay Integration**: Implemented a robust connection to the A2B Overlay API

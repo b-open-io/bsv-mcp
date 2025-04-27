@@ -1,8 +1,8 @@
 {
 	"name": "bsv-mcp",
-	"module": "index.ts",
+	"module": "dist/index.js",
 	"type": "module",
-	"version": "0.0.35",
+	"version": "0.0.36",
 	"license": "MIT",
 	"author": "satchmo",
 	"description": "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -22,6 +22,7 @@
 		"block explorer"
 	],
 	"files": [
+		"dist/**/*.js",
 		"package.json",
 		"*.ts",
 		"tools/*.ts",
@@ -36,7 +37,7 @@
 		"smithery.yaml"
 	],
 	"bin": {
-		"bsv-mcp": "./index.ts"
+		"bsv-mcp": "./dist/index.js"
 	},
 	"private": false,
 	"devDependencies": {
@@ -49,7 +50,8 @@
 	"dependencies": {
 		"@bsv/sdk": "^1.4.20",
 		"@modelcontextprotocol/sdk": "^1.10.2",
-		"@types/node": "^22.14.1",
+		"@types/node": "^22.15.2",
+		"bun": "^1.2.10",
 		"js-1sat-ord": "^0.1.81",
 		"mnee": "^2.0.0",
 		"satoshi-token": "^0.0.4",
@@ -57,6 +59,7 @@
 		"zod": "^3.24.3"
 	},
 	"scripts": {
+		"build": "bun build ./index.ts --outdir ./dist --target node",
 		"lint": "biome check .",
 		"lint:fix": "biome check . --write"
 	}

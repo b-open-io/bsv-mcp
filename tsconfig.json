@@ -24,5 +24,19 @@
 		"noUnusedLocals": false,
 		"noUnusedParameters": false,
 		"noPropertyAccessFromIndexSignature": false
-	}
+	},
+	"include": [
+		"package.json",
+		"*.ts",
+		"tools/*.ts",
+		"tools/**/*.ts",
+		"prompts/*.ts",
+		"prompts/**/*.ts",
+		"resources/*.ts",
+		"resources/**/*.ts",
+		"LICENSE",
+		"README.md",
+		"CHANGELOG.md",
+		"smithery.yaml"
+	]
 }
