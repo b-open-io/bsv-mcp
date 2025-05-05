@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerBRCsResources } from "./brcs";
-import { registerChangelogResource } from "./changelog";
-import { registerJungleBusResource } from "./junglebus";
+import { registerBitcomResource } from "./bitcom.js";
+import { registerBRCsResources } from "./brcs.js";
+import { registerChangelogResource } from "./changelog.js";
+import { registerJungleBusResource } from "./junglebus.js";
 
 /**
  * Register all resources with the MCP server
@@ -16,6 +17,9 @@ export function registerResources(server: McpServer): void {
 
 	// Register JungleBus API documentation resource
 	registerJungleBusResource(server);
+
+	// Register Bitcom resource
+	registerBitcomResource(server);
 
 	// Add more resource categories here as needed
 }

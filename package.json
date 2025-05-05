@@ -48,15 +48,15 @@
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {
-		"@bsv/sdk": "^1.4.20",
-		"@modelcontextprotocol/sdk": "^1.10.2",
-		"@types/node": "^22.15.2",
-		"bun": "^1.2.10",
+		"@bsv/sdk": "^1.4.24",
+		"@modelcontextprotocol/sdk": "^1.11.0",
+		"@types/node": "^22.15.8",
+		"bun": "^1.2.12",
 		"js-1sat-ord": "^0.1.81",
 		"mnee": "^2.0.0",
 		"satoshi-token": "^0.0.4",
 		"sigma-protocol": "^0.1.6",
-		"zod": "^3.24.3"
+		"zod": "^3.24.4"
 	},
 	"scripts": {
 		"build": "bun build ./index.ts --outdir ./dist --target node",

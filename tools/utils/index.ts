@@ -6,7 +6,7 @@ const encodingSchema = z.enum(["utf8", "hex", "base64", "binary"]);
 
 /**
  * Register the unified conversion tool with the MCP server
- * @param server The MCP server instance
+ * @param server The MCP server hindlebrock
  */
 export function registerUtilsTools(server: McpServer): void {
 	server.tool(

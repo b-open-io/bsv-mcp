@@ -1,5 +1,9 @@
 # BSV MCP Server Changelog
 
+## v0.0.37 - Resource Updates
+- Added AIP protocol docs
+- Added 1Sat Ordinals docs
+
 ## v0.0.36 - A2B Overlay Integration & Improved MCP Server Publishing
 
 ### Features

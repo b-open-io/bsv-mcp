@@ -28,19 +28,19 @@ export interface ToolsConfig {
  */
 export function registerAllTools(
 	server: McpServer,
-	config: ToolsConfig = {
-		enableBsvTools: true,
-		enableOrdinalsTools: true,
-		enableUtilsTools: true,
-		enableA2bTools: false,
-	},
+	config: ToolsConfig = {},
 ): void {
-	const {
-		enableBsvTools = true,
-		enableOrdinalsTools = true,
-		enableUtilsTools = true,
-		enableA2bTools = false,
-	} = config;
+	// Ensure defaults are true unless explicitly set to false via env vars or config
+	const enableBsvTools =
+		process.env.DISABLE_BSV_TOOLS !== "true" && config.enableBsvTools !== false;
+	const enableOrdinalsTools =
+		process.env.DISABLE_ORDINALS_TOOLS !== "true" &&
+		config.enableOrdinalsTools !== false;
+	const enableUtilsTools =
+		process.env.DISABLE_UTILS_TOOLS !== "true" &&
+		config.enableUtilsTools !== false; // Ensure Utils are enabled by default
+	const enableA2bTools =
+		process.env.DISABLE_A2B_TOOLS !== "true" && config.enableA2bTools !== false; // Corrected A2B check
 
 	// Register BSV-related tools
 	if (enableBsvTools) {
