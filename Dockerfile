@@ -1,20 +1,14 @@
-# Use the official Bun image
-FROM oven/bun:1
+FROM oven/bun:1.2.12
 
-# Set working directory
 WORKDIR /app
 
-# Copy all application code first
+COPY package.json bun.lock ./
+RUN --mount=type=cache,target=/root/.bun bun install --frozen-lockfile
+
 COPY . .
 
-# Install dependencies
-RUN bun install --frozen-lockfile
-
-# Set user for security
 USER bun
 
-# Expose port (if needed)
 EXPOSE 3000
 
-# Run the application
-CMD ["bun", "run", "index.ts"] 
+CMD ["bun", "run", "index.ts"]
