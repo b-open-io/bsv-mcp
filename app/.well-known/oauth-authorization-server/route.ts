@@ -5,13 +5,13 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-  // Match sigma-auth's actual metadata (no registration_endpoint)
-  // Bitcoin signatures ARE the client identity - no pre-registration needed
+  // OAuth 2.1 metadata pointing to Better Auth OIDC Provider
   const metadata = {
     issuer: authServer,
-    authorization_endpoint: `${authServer}/api/oauth/authorize`,
-    token_endpoint: `${authServer}/api/oauth/token`,
-    jwks_uri: `${authServer}/.well-known/jwks.json`,
+    authorization_endpoint: `${authServer}/api/auth/oauth2/authorize`,
+    token_endpoint: `${authServer}/api/auth/oauth2/token`,
+    registration_endpoint: `${authServer}/api/auth/oauth2/register`,
+    jwks_uri: `${authServer}/api/auth/jwks`,
     scopes_supported: [
       "openid",
       "profile",
@@ -23,8 +23,9 @@ export async function GET() {
       "bsv:tokens",
     ],
     response_types_supported: ["code"],
+    response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code", "refresh_token"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post", "none"],
     code_challenge_methods_supported: ["S256"],
   };
 
