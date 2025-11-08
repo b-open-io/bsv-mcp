@@ -1,10 +1,13 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { PrivateKey } from "@bsv/sdk";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { validateJwt } from "@/utils/jwtValidator";
+import { createMCPJWTValidator } from "@/utils/jwtValidator";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
 // Tools are registered dynamically based on available keys and config
+
+// Create JWT validator instance
+const jwtValidator = createMCPJWTValidator();
 
 // Token verification function for OAuth 2.1
 const verifyToken = async (
@@ -16,7 +19,7 @@ const verifyToken = async (
   }
 
   try {
-    const payload = await validateJwt(bearerToken);
+    const payload = await jwtValidator.validate(bearerToken);
 
     return {
       token: bearerToken,
