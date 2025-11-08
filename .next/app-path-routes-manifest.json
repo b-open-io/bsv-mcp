@@ -1,0 +1,10 @@
+{
+  "/.well-known/oauth-authorization-server/route": "/.well-known/oauth-authorization-server",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/challenge/route": "/api/auth/challenge",
+  "/api/create-session/route": "/api/create-session",
+  "/api/mcp/route": "/api/mcp",
+  "/auth/page": "/auth",
+  "/page": "/"
+}

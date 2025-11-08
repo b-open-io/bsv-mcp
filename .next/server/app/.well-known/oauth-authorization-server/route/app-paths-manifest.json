@@ -1,0 +1,3 @@
+{
+  "/.well-known/oauth-authorization-server/route": "app/.well-known/oauth-authorization-server/route.js"
+}

@@ -1,0 +1,10 @@
+{
+  "/.well-known/oauth-authorization-server/route": "app/.well-known/oauth-authorization-server/route.js",
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/challenge/route": "app/api/auth/challenge/route.js",
+  "/api/create-session/route": "app/api/create-session/route.js",
+  "/api/mcp/route": "app/api/mcp/route.js",
+  "/auth/page": "app/auth/page.js",
+  "/page": "app/page.js"
+}
