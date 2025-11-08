@@ -1,19 +1,11 @@
-import { NextResponse } from "next/server";
+import { protectedResourceHandler, metadataCorsOptionsRequestHandler } from "mcp-handler";
 
-export async function GET() {
-  const resourceUrl = process.env.RESOURCE_URL || "https://bsv-mcp.vercel.app";
-  const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+const authServerUrl = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-  const metadata = {
-    resource: resourceUrl,
-    authorization_servers: [authServer],
-  };
+const handler = protectedResourceHandler({
+  authServerUrls: [authServerUrl],
+});
 
-  return NextResponse.json(metadata, {
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=3600",
-    },
-  });
-}
+const corsHandler = metadataCorsOptionsRequestHandler();
+
+export { handler as GET, corsHandler as OPTIONS };
