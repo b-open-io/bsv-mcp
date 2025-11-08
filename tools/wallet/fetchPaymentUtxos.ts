@@ -1,6 +1,8 @@
 import { P2PKH, Transaction, Utils } from "@bsv/sdk";
 import type { Utxo } from "js-1sat-ord";
-const { toBase64 } = Utils;
+import { V5_API_URL } from "../constants";
+import { getBeefTransactionById, getTransactionById } from "./utxo";
+const { toBase64, toHex, toArray } = Utils;
 
 /**
  * Type definition for WhatsOnChain UTXO response
@@ -56,13 +58,10 @@ export async function fetchPaymentUtxos(
 		const utxos: (Utxo | null)[] = await Promise.all(
 			data.map(async (utxo: WhatsOnChainUtxo) => {
 				// Get the transaction hex to extract the correct script
-				const script = await getScriptFromTransaction(
-					utxo.tx_hash,
-					utxo.tx_pos,
-				);
-
+				const tx = await getBeefTransactionById(utxo.tx_hash);
+				const script = tx?.outputs[utxo.tx_pos]?.lockingScript.toHex();
 				if (!script) {
-					console.warn(
+					console.error(
 						`Could not get script for UTXO: ${utxo.tx_hash}:${utxo.tx_pos}`,
 					);
 					return null;
@@ -72,7 +71,7 @@ export async function fetchPaymentUtxos(
 					txid: utxo.tx_hash,
 					vout: utxo.tx_pos,
 					satoshis: utxo.value,
-					script: script,
+					script,
 				};
 			}),
 		);
@@ -87,44 +86,45 @@ export async function fetchPaymentUtxos(
 	}
 }
 
-/**
- * Gets the script from a transaction for a specific output index
- *
- * @param txid - The transaction ID
- * @param vout - The output index
- * @returns The script as hex string or undefined if an error occurs
- */
-async function getScriptFromTransaction(
-	txid: string,
-	vout: number,
-): Promise<string | undefined> {
+type V5Utxo = {
+	outpoint: string;
+	height: number;
+	idx: number;
+	satoshis: number;
+	script: string;
+	owners: string[];
+	data: Record<string, unknown>;
+};
+
+export async function fetchPaymentUtxosFromV5(
+	address: string,
+): Promise<Utxo[] | undefined> {
 	try {
-		const response = await fetch(
-			`https://api.whatsonchain.com/v1/bsv/main/tx/${txid}/hex`,
-		);
-
-		if (!response.ok) {
-			console.error(
-				`WhatsOnChain API error fetching tx hex: ${response.status} ${response.statusText}`,
-			);
-			return undefined;
+		const url = `${V5_API_URL}/own/${address}/utxos?refresh=true&txo=true&script=true&limit=250&tags=p2pkh`;
+		console.error(`Fetching UTXOs from V5: ${url}`);
+		const response = await fetch(url);
+		const data = (await response.json()) as V5Utxo[];
+		const utxos: Utxo[] = [];
+		for (const utxo of data) {
+			if (!utxo.data.p2pkh) {
+				// Skip if not a P2PKH
+				continue;
+			}
+			const [txid, vout] = utxo.outpoint.split("_");
+			if (!txid || !vout) {
+				console.error(`Invalid outpoint: ${utxo.outpoint}`);
+				continue;
+			}
+			utxos.push({
+				txid,
+				vout: Number.parseInt(vout),
+				satoshis: utxo.satoshis,
+				script: toHex(toArray(utxo.script, "base64")),
+			} as Utxo);
 		}
-
-		const txHex = await response.text();
-		const tx = Transaction.fromHex(txHex);
-		const output = tx.outputs[vout];
-
-		if (!output) {
-			console.error(`Output index ${vout} not found in transaction ${txid}`);
-			return undefined;
-		}
-
-		return toBase64(output.lockingScript.toBinary());
+		return utxos;
 	} catch (error) {
-		console.error(
-			`Error getting script for transaction ${txid}:${vout}:`,
-			error,
-		);
+		console.error("Error fetching payment UTXOs from V5:", error);
 		return undefined;
 	}
 }

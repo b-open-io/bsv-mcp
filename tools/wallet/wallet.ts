@@ -5,285 +5,289 @@
  *
  * See: https://github.com/bitcoin-sv/ts-sdk/blob/main/src/wallet/Wallet.interfaces.ts
  */
-import { LockingScript, PrivateKey, ProtoWallet, Transaction } from "@bsv/sdk";
-import type {
-	AbortActionArgs,
-	AbortActionResult,
-	AcquireCertificateArgs,
-	AuthenticatedResult,
-	CreateActionArgs,
-	CreateActionResult,
-	DiscoverByAttributesArgs,
-	DiscoverByIdentityKeyArgs,
-	DiscoverCertificatesResult,
-	GetHeaderArgs,
-	GetHeaderResult,
-	GetHeightResult,
-	GetNetworkResult,
-	GetPublicKeyArgs,
-	GetPublicKeyResult,
-	GetVersionResult,
-	InternalizeActionArgs,
-	InternalizeActionResult,
-	ListActionsArgs,
-	ListActionsResult,
-	ListCertificatesArgs,
-	ListCertificatesResult,
-	ListOutputsArgs,
-	ListOutputsResult,
-	ProveCertificateArgs,
-	ProveCertificateResult,
-	PubKeyHex,
-	RelinquishCertificateArgs,
-	RelinquishCertificateResult,
-	RelinquishOutputArgs,
-	RelinquishOutputResult,
-	RevealCounterpartyKeyLinkageArgs,
-	RevealCounterpartyKeyLinkageResult,
-	RevealSpecificKeyLinkageArgs,
-	RevealSpecificKeyLinkageResult,
-	SignActionArgs,
-	SignActionResult,
-	WalletCertificate,
-	WalletInterface,
+import {
+	Beef,
+	type BroadcastFailure,
+	type BroadcastResponse,
+	P2PKH,
+	PrivateKey,
+	type PublicKey,
+	SatoshisPerKilobyte,
+	Script,
+	Transaction,
+	Utils,
+	fromUtxo,
+	isBroadcastFailure,
+	isBroadcastResponse,
 } from "@bsv/sdk";
+import type { GetPublicKeyArgs, GetPublicKeyResult, PubKeyHex } from "@bsv/sdk";
 import { type NftUtxo, type Utxo, fetchNftUtxos } from "js-1sat-ord";
-import { fetchPaymentUtxos } from "./fetchPaymentUtxos";
+import { V5Broadcaster } from "../../utils/broadcaster";
+import { fetchPaymentUtxosFromV5 } from "./fetchPaymentUtxos";
 
-export class Wallet extends ProtoWallet implements WalletInterface {
+// Local interface for what encrypt/decrypt expect, will be mapped from Zod schema
+interface InternalEncryptionArgs {
+	data: Buffer;
+	recipientPublicKey?: PublicKey; // For encryption
+}
+
+interface InternalDecryptionArgs {
+	data: Buffer;
+}
+
+export class Wallet {
 	private paymentUtxos: Utxo[] = [];
 	private nftUtxos: NftUtxo[] = [];
 	private lastUtxoFetch = 0;
 	private readonly utxoRefreshIntervalMs = 5 * 60 * 1000; // 5 minutes
-	private privateKey?: PrivateKey;
+	private paymentKey?: PrivateKey;
+	private identityKey?: PrivateKey;
+	constructor(paymentKey?: PrivateKey, identityKey?: PrivateKey) {
+		this.paymentKey = paymentKey;
+		this.identityKey = identityKey;
 
-	constructor(privKey?: PrivateKey) {
-		super(privKey);
-		this.privateKey = privKey;
-		// Initialize UTXOs
-		this.refreshUtxos().catch((err) =>
-			console.error("Error initializing UTXOs:", err),
-		);
-	}
-
-	/**
-	 * Refresh UTXOs from the network
-	 */
-	async refreshUtxos(): Promise<void> {
-		try {
-			const privateKey = this.getPrivateKey();
-			if (!privateKey) {
-				return; // Silent fail if no private key, keep existing UTXOs
-			}
-
-			const address = privateKey.toAddress().toString();
-			this.lastUtxoFetch = Date.now();
-
-			// Payment UTXOs
-			let newPaymentUtxos: Utxo[] | undefined = undefined;
-			try {
-				newPaymentUtxos = await fetchPaymentUtxos(address);
-				// Only update if we successfully got UTXOs
-				if (Array.isArray(newPaymentUtxos)) {
-					this.paymentUtxos = newPaymentUtxos;
-				}
-			} catch (error) {
-				// Keep existing UTXOs, don't clear them on error
-			}
-
-			// NFT UTXOs - keep existing if fetch fails
-			let newNftUtxos: NftUtxo[] = [];
-			try {
-				newNftUtxos = await fetchNftUtxos(address);
-				// Only update if we successfully got UTXOs
-				if (Array.isArray(newNftUtxos)) {
-					this.nftUtxos = newNftUtxos;
-				}
-			} catch (error) {
-				// Keep existing UTXOs, don't clear them on error
-			}
-		} catch (error) {
-			// Silent global error, preserve existing UTXOs
+		if (this.paymentKey) {
+			this.refreshUtxos().catch((err) =>
+				console.error("Error initializing UTXOs:", err),
+			);
 		}
 	}
 
-	/**
-	 * Get payment and NFT UTXOs, refreshing if needed
-	 */
+	async refreshUtxos(): Promise<void> {
+		const currentPaymentKey = this.getPaymentKey();
+		if (!currentPaymentKey) {
+			console.error("Wallet: refreshUtxos called without a payment key.");
+			return;
+		}
+		const address = currentPaymentKey.toAddress();
+		this.lastUtxoFetch = Date.now();
+		console.error(`Wallet: Refreshing UTXOs for address ${address}...`);
+
+		try {
+			const newPaymentUtxos = await fetchPaymentUtxosFromV5(address);
+			if (Array.isArray(newPaymentUtxos)) {
+				this.paymentUtxos = newPaymentUtxos;
+				console.error(
+					`Wallet: Fetched ${this.paymentUtxos.length} payment UTXOs.`,
+				);
+			} else {
+				console.error(
+					"Wallet: fetchPaymentUtxos did not return an array. Keeping existing payment UTXOs.",
+				);
+			}
+		} catch (error) {
+			console.error("Wallet: Error fetching payment UTXOs:", error);
+			// Keep existing UTXOs on error
+		}
+
+		try {
+			const newNftUtxos = await fetchNftUtxos(address);
+			if (Array.isArray(newNftUtxos)) {
+				this.nftUtxos = newNftUtxos;
+				console.error(`Wallet: Fetched ${this.nftUtxos.length} NFT UTXOs.`);
+			} else {
+				console.error(
+					"Wallet: fetchNftUtxos did not return an array. Keeping existing NFT UTXOs.",
+				);
+			}
+		} catch (error) {
+			console.error("Wallet: Error fetching NFT UTXOs:", error);
+			// Keep existing UTXOs on error
+		}
+	}
+
 	async getUtxos(): Promise<{ paymentUtxos: Utxo[]; nftUtxos: NftUtxo[] }> {
 		const now = Date.now();
+		if (!this.paymentKey) {
+			// If there's no private key, UTXOs can't be fetched or belong to anyone.
+			return { paymentUtxos: [], nftUtxos: [] };
+		}
 		if (now - this.lastUtxoFetch > this.utxoRefreshIntervalMs) {
 			await this.refreshUtxos();
 		}
 		return { paymentUtxos: this.paymentUtxos, nftUtxos: this.nftUtxos };
 	}
 
-	/**
-	 * Get the private key if available
-	 */
-	getPrivateKey(): PrivateKey | undefined {
-		// Try to get private key from environment if not already set
-		if (!this.privateKey) {
-			const wif = process.env.PRIVATE_KEY_WIF;
-			if (wif) {
-				this.privateKey = PrivateKey.fromWif(wif);
+	getIdentityKey(): PrivateKey | undefined {
+		if (this.identityKey) {
+			return this.identityKey;
+		}
+		const wif = process.env.IDENTITY_KEY_WIF;
+		if (wif) {
+			try {
+				this.identityKey = PrivateKey.fromWif(wif);
+				return this.identityKey;
+			} catch (e) {
+				console.error(
+					"Wallet: Invalid Identity Key WIF from environment variable.",
+					e,
+				);
 			}
 		}
-		return this.privateKey;
+		return undefined;
 	}
 
-	async getPublicKey(args: GetPublicKeyArgs): Promise<GetPublicKeyResult> {
-		const privateKey = this.getPrivateKey();
-		if (!privateKey) {
-			throw new Error("No private key available");
+	getPaymentKey(): PrivateKey | undefined {
+		if (!this.paymentKey) {
+			const wif = process.env.PRIVATE_KEY_WIF;
+			if (wif) {
+				try {
+					this.paymentKey = PrivateKey.fromWif(wif);
+				} catch (e) {
+					console.error("Wallet: Invalid WIF from environment variable.", e);
+				}
+			}
 		}
+		return this.paymentKey;
+	}
 
-		const publicKey = privateKey.toPublicKey();
+	getAddress(): string | undefined {
+		return this.getPaymentKey()?.toAddress();
+	}
+
+	async getPublicKey(args?: GetPublicKeyArgs): Promise<GetPublicKeyResult> {
+		const currentPaymentKey = this.getPaymentKey();
+		if (!currentPaymentKey) {
+			throw new Error("No payment key available to derive public key.");
+		}
+		const publicKey = currentPaymentKey.toPublicKey();
 		return {
 			publicKey: publicKey.toDER("hex") as PubKeyHex,
 		};
 	}
-	async revealCounterpartyKeyLinkage(
-		args: RevealCounterpartyKeyLinkageArgs,
-	): Promise<RevealCounterpartyKeyLinkageResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async revealSpecificKeyLinkage(
-		args: RevealSpecificKeyLinkageArgs,
-	): Promise<RevealSpecificKeyLinkageResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	// Implemented by ProtoWallet
-	// async encrypt(args: WalletEncryptArgs): Promise<WalletEncryptResult> {
-	// 	return this.encrypt(args);
+
+	// async encrypt(args: {
+	// 	data: Buffer;
+	// 	recipientPublicKeyHex: string;
+	// }): Promise<Buffer> {
+	// 	const senderPaymentKey = this.getPaymentKey();
+	// 	if (!senderPaymentKey) {
+	// 		throw new Error("Cannot encrypt: Wallet payment key is not available.");
+	// 	}
+	// 	if (!args.recipientPublicKeyHex) {
+	// 		throw new Error(
+	// 			"Cannot encrypt: Recipient's public key hex is required.",
+	// 		);
+	// 	}
+	// 	let recipientPublicKey: PublicKey;
+	// 	try {
+	// 		recipientPublicKey = PublicKey.fromString(args.recipientPublicKeyHex);
+	// 	} catch (e) {
+	// 		throw new Error(
+	// 			`Invalid recipient public key hex: ${args.recipientPublicKeyHex}`,
+	// 		);
+	// 	}
+	// 	// TODO: Find the correct ECIES encryption method in @bsv/sdk
+	// 	// return senderPaymentKey.encrypt(args.data, recipientPublicKey);
+	// 	throw new Error("Encryption not implemented pending ECIES investigation.");
 	// }
-	// async decrypt(args: WalletDecryptArgs): Promise<WalletDecryptResult> {
-	// 	return this.decrypt(args);
+
+	// async decrypt(args: { data: Buffer }): Promise<Buffer> {
+	// 	const walletPaymentKey = this.getPaymentKey();
+	// 	if (!walletPaymentKey) {
+	// 		throw new Error("Cannot decrypt: Wallet payment key is not available.");
+	// 	}
+	// 	// TODO: Find the correct ECIES decryption method in @bsv/sdk
+	// 	// return walletPaymentKey.decrypt(args.data);
+	// 	throw new Error("Decryption not implemented pending ECIES investigation.");
 	// }
-	// async createHmac(args: CreateHmacArgs): Promise<CreateHmacResult> {
-	// 	return this.createHmac(args);
-	// }
-	// async verifyHmac(args: VerifyHmacArgs): Promise<VerifyHmacResult> {
-	// 	return this.verifyHmac(args);
-	// }
-	// async createSignature(
-	// 	args: CreateSignatureArgs,
-	// ): Promise<CreateSignatureResult> {
-	// 	return Promise.reject(new Error("Not implemented"));
-	// }
-	// async verifySignature(
-	// 	args: VerifySignatureArgs,
-	// ): Promise<VerifySignatureResult> {
-	// 	return Promise.reject(new Error("Not implemented"));
-	// }
-	async createAction(args: CreateActionArgs): Promise<CreateActionResult> {
+
+	async sendToAddress(
+		address: string,
+		amountSatoshis: number,
+	): Promise<{ txid: string; rawTx?: string }> {
+		const pk = this.getPaymentKey();
+		if (!pk) throw new Error("Payment key not available to send transaction.");
+
 		const tx = new Transaction();
+		tx.addOutput({
+			lockingScript: new P2PKH().lock(address),
+			satoshis: amountSatoshis,
+		});
 
-		// Add outputs
-		if (args.outputs) {
-			for (const output of args.outputs) {
-				const lockingScript = LockingScript.fromHex(output.lockingScript);
-				tx.addOutput({
-					lockingScript,
-					satoshis: output.satoshis,
-				});
-			}
+		const { paymentUtxos } = await this.getUtxos();
+		if (paymentUtxos.length === 0)
+			throw new Error("No UTXOs available to send.");
+
+		let totalInputSats = 0n;
+		const feeModel = new SatoshisPerKilobyte(10);
+		let estimatedFee = await feeModel.computeFee(tx);
+
+		for (const utxo of paymentUtxos) {
+			if (totalInputSats >= BigInt(amountSatoshis) + BigInt(estimatedFee))
+				break;
+
+			const unlockingScriptTemplate = new P2PKH().unlock(
+				pk,
+				"all",
+				false,
+				utxo.satoshis,
+				Script.fromBinary(Utils.toArray(utxo.script, "hex")),
+			);
+			const input = fromUtxo(utxo, unlockingScriptTemplate);
+			tx.addInput(input);
+			totalInputSats += BigInt(utxo.satoshis);
+			estimatedFee = await feeModel.computeFee(tx);
 		}
 
-		// Add inputs (if provided)
-		if (args.inputs) {
-			for (const input of args.inputs) {
-				const [txid, outputIndexStr] = input.outpoint.split(".");
-				tx.addInput({
-					sourceTXID: txid,
-					sourceOutputIndex: Number.parseInt(outputIndexStr || "0", 10),
-				});
-			}
+		if (totalInputSats < BigInt(amountSatoshis) + BigInt(estimatedFee)) {
+			throw new Error(
+				`Not enough funds. Required: ${BigInt(amountSatoshis) + BigInt(estimatedFee)}, Available: ${totalInputSats}`,
+			);
 		}
 
-		// Set lockTime and version if provided
-		if (args.lockTime !== undefined) tx.lockTime = args.lockTime;
-		if (args.version !== undefined) tx.version = args.version;
+		const change =
+			totalInputSats - (BigInt(amountSatoshis) + BigInt(estimatedFee));
+		if (change > 0) {
+			const changeAddress = this.getAddress();
+			if (!changeAddress)
+				throw new Error("Could not determine change address.");
+			tx.addOutput({
+				lockingScript: new P2PKH().lock(changeAddress),
+				satoshis: Number(change),
+				change: true,
+			});
+		}
 
-		// Serialize the transaction using Utils
-		const txid = tx.hash("hex") as string;
-		const txArray = tx.toBinary();
+		await tx.fee(feeModel);
+		await tx.sign();
 
-		return {
-			txid,
-			tx: txArray,
-			signableTransaction: undefined,
-		};
-	}
-	async signAction(args: SignActionArgs): Promise<SignActionResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async abortAction(args: AbortActionArgs): Promise<AbortActionResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async listActions(args: ListActionsArgs): Promise<ListActionsResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async internalizeAction(
-		args: InternalizeActionArgs,
-	): Promise<InternalizeActionResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async listOutputs(args: ListOutputsArgs): Promise<ListOutputsResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async relinquishOutput(
-		args: RelinquishOutputArgs,
-	): Promise<RelinquishOutputResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async acquireCertificate(
-		args: AcquireCertificateArgs,
-	): Promise<WalletCertificate> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async listCertificates(
-		args: ListCertificatesArgs,
-	): Promise<ListCertificatesResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async proveCertificate(
-		args: ProveCertificateArgs,
-	): Promise<ProveCertificateResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async relinquishCertificate(
-		args: RelinquishCertificateArgs,
-	): Promise<RelinquishCertificateResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async discoverByIdentityKey(
-		args: DiscoverByIdentityKeyArgs,
-	): Promise<DiscoverCertificatesResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async discoverByAttributes(
-		args: DiscoverByAttributesArgs,
-	): Promise<DiscoverCertificatesResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async isAuthenticated(args: object): Promise<AuthenticatedResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async waitForAuthentication(args: object): Promise<AuthenticatedResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async getHeight(args: object): Promise<GetHeightResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async getHeaderForHeight(args: GetHeaderArgs): Promise<GetHeaderResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async getNetwork(args: object): Promise<GetNetworkResult> {
-		return Promise.reject(new Error("Not implemented"));
-	}
-	async getVersion(args: object): Promise<GetVersionResult> {
-		return Promise.reject(new Error("Not implemented"));
+		const rawTx = tx.toHex();
+		const txidFromTxObject = tx.id("hex");
+
+		try {
+			const broadcaster = new V5Broadcaster();
+			const broadcastResult: BroadcastResponse | BroadcastFailure =
+				await tx.broadcast(broadcaster);
+
+			if (isBroadcastResponse(broadcastResult)) {
+				console.error(
+					`Transaction broadcasted successfully: ${broadcastResult.txid}. Message: ${broadcastResult.message}`,
+				);
+				return { txid: broadcastResult.txid, rawTx };
+			}
+			if (isBroadcastFailure(broadcastResult)) {
+				console.error(
+					`Transaction broadcast failed: ${broadcastResult.description} (Code: ${broadcastResult.code}). TXID from object (if available): ${broadcastResult.txid ?? txidFromTxObject}`,
+				);
+				throw new Error(
+					`Broadcast failed: ${broadcastResult.description} (Code: ${broadcastResult.code})`,
+				);
+			}
+			console.error(
+				`Transaction broadcast status uncertain. TXID from tx object: ${txidFromTxObject}. Unexpected broadcast result: `,
+				broadcastResult,
+			);
+			return { txid: txidFromTxObject, rawTx };
+		} catch (error) {
+			console.error(
+				"Failed to broadcast transaction (exception caught):",
+				error,
+			);
+			throw new Error(
+				`Failed to broadcast transaction ${txidFromTxObject}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 	}
 }
 

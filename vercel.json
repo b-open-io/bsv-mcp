@@ -1,0 +1,10 @@
+{
+  "buildCommand": "bun run build:next",
+  "devCommand": "bun run dev",
+  "installCommand": "bun install",
+  "framework": "nextjs",
+  "env": {
+    "ENABLE_OAUTH": "true",
+    "OAUTH_ISSUER": "https://auth.sigmaidentity.com"
+  }
+}

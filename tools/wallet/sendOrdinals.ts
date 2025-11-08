@@ -6,7 +6,7 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { sendOrdinals } from "js-1sat-ord";
+import { OneSatBroadcaster, sendOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	LocalSigner,
@@ -14,6 +14,7 @@ import type {
 } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
+import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 
 /**
@@ -121,7 +122,8 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 				// 7. Broadcast the transaction
 				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
 				if (!disableBroadcasting) {
-					await changeResult.tx.broadcast();
+					const broadcaster = new V5Broadcaster();
+					await changeResult.tx.broadcast(broadcaster);
 
 					// 8. Refresh the wallet's UTXOs after spending
 					try {

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bsv-mcp": {
+      "type": "http",
+      "url": "https://bsv-mcp.vercel.app"
+    }
+  }
+}

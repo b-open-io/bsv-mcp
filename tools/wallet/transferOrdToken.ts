@@ -8,6 +8,7 @@ import type {
 import {
 	type Distribution,
 	type LocalSigner,
+	OneSatBroadcaster,
 	type Payment,
 	type TokenChangeResult,
 	TokenInputMode,
@@ -20,6 +21,7 @@ import {
 	transferOrdTokens,
 } from "js-1sat-ord";
 import { z } from "zod";
+import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 
 // Schema for BSV-20/BSV-21 token transfer arguments
@@ -70,7 +72,7 @@ export function registerTransferOrdTokenTool(
 		) => {
 			try {
 				// fetch keys
-				const paymentPk = wallet.getPrivateKey();
+				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) throw new Error("No private key available");
 				const ordPk = paymentPk;
 				const changeAddress = paymentPk.toAddress().toString();
@@ -122,7 +124,8 @@ export function registerTransferOrdTokenTool(
 				const result: TokenChangeResult = await transferOrdTokens(config);
 				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
 				if (!disableBroadcasting) {
-					await result.tx.broadcast();
+					const broadcaster = new V5Broadcaster();
+					await result.tx.broadcast(broadcaster);
 
 					// refresh UTXOs
 					try {

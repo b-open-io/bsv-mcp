@@ -1,12 +1,16 @@
-import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import type { Wallet } from "./wallet";
 
 /**
  * Register the tool to get the wallet address
  * @param server The MCP server instance
+ * @param wallet The initialized custom Wallet instance
  */
-export function registerGetAddressTool(server: McpServer): void {
+export function registerGetAddressTool(
+	server: McpServer,
+	wallet: Wallet,
+): void {
 	server.tool(
 		"wallet_getAddress",
 		"Retrieves the current wallet's Bitcoin SV address. This address can be used to receive BSV, ordinals, or tokens, and is derived from the wallet's private key.",
@@ -20,26 +24,14 @@ export function registerGetAddressTool(server: McpServer): void {
 		},
 		async () => {
 			try {
-				const wif = process.env.PRIVATE_KEY_WIF;
-				if (!wif) {
-					return {
-						content: [
-							{
-								type: "text",
-								text: JSON.stringify({
-									error: "No private key available",
-									message:
-										"Please set PRIVATE_KEY_WIF environment variable with a valid Bitcoin SV private key in WIF format.",
-									status: "error",
-								}),
-							},
-						],
-						isError: true,
-					};
+				const address = wallet.getAddress();
+
+				if (!address) {
+					throw new Error(
+						"Could not retrieve address from wallet instance. Key might be missing or getAddress method failed.",
+					);
 				}
 
-				const privKey = PrivateKey.fromWif(wif);
-				const address = privKey.toAddress();
 				return {
 					content: [
 						{
@@ -55,7 +47,7 @@ export function registerGetAddressTool(server: McpServer): void {
 						{
 							type: "text",
 							text: JSON.stringify({
-								error: "Invalid private key",
+								error: "Failed to get wallet address",
 								message: msg,
 								status: "error",
 							}),

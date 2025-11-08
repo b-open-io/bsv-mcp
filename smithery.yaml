@@ -55,6 +55,9 @@ startCommand:
     (config) => {
       const env = {};
       
+      // Set stdio transport for MCP
+      env.TRANSPORT = 'stdio';
+      
       // Add private key if provided
       if (config.privateKeyWif) {
         env.PRIVATE_KEY_WIF = config.privateKeyWif;

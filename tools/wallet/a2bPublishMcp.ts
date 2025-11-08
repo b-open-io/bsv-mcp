@@ -1,4 +1,5 @@
-import { PrivateKey, Utils } from "@bsv/sdk";
+import { Utils } from "@bsv/sdk";
+import type { PrivateKey, WalletInterface } from "@bsv/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,7 +21,10 @@ import type {
 } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
+import packageJson from "../../package.json";
+import { BsocialBroadcaster, V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
+
 const { toArray, toBase64 } = Utils;
 
 // API endpoint for the A2B Overlay service
@@ -134,7 +138,7 @@ async function fetchMcpMetadata(
 		// Create and connect a client
 		client = new Client({
 			name: "metadata-fetcher",
-			version: "1.0.0",
+			version: packageJson.version,
 		});
 
 		await client.connect(transport);
@@ -186,6 +190,7 @@ async function fetchMcpMetadata(
 export function registerA2bPublishMcpTool(
 	server: McpServer,
 	wallet: Wallet,
+	identityPk: PrivateKey | undefined,
 	config: { disableBroadcasting: boolean },
 ) {
 	server.tool(
@@ -197,22 +202,14 @@ export function registerA2bPublishMcpTool(
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
-				// Load optional identity key for sigma signing
-				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
-				let identityPk: PrivateKey | undefined;
-				if (identityKeyWif) {
-					try {
-						identityPk = PrivateKey.fromWif(identityKeyWif);
-					} catch (e) {
-						console.warn(
-							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
-							e,
-						);
-					}
+				if (!identityPk) {
+					console.warn(
+						"Warning: No identity key provided; sigma signing disabled for A2B MCP publish",
+					);
 				}
 
-				const paymentPk = wallet.getPrivateKey();
-				if (!paymentPk) throw new Error("No private key available");
+				const paymentPk = wallet.getPaymentKey();
+				if (!paymentPk) throw new Error("No payment private key available");
 
 				const { paymentUtxos } = await wallet.getUtxos();
 				if (!paymentUtxos?.length)
@@ -284,20 +281,27 @@ export function registerA2bPublishMcpTool(
 					changeAddress: walletAddress,
 					metaData,
 				} as CreateOrdinalsConfig;
+
+				// Use the passed identityPk for signing if available
 				if (identityPk) {
 					createOrdinalsConfig.signer = {
 						idKey: identityPk,
 					} as LocalSigner;
 				}
-				// Inscribe the ordinal on-chain via js-1sat-ord
-				const result = await createOrdinals(createOrdinalsConfig);
 
-				const changeResult = result as ChangeResult;
+				// Inscribe the ordinal on-chain via js-1sat-ord
+				let result: ChangeResult | undefined;
+				if (!config.disableBroadcasting) {
+					result = await createOrdinals(createOrdinalsConfig);
+				} else {
+					console.warn("Broadcasting disabled. Transaction not created.");
+				}
 
 				// Broadcast the transaction
-				if (!config.disableBroadcasting) {
-					await changeResult.tx.broadcast();
-					const txid = changeResult.tx.id("hex");
+				if (!config.disableBroadcasting && result) {
+					const broadcaster = new V5Broadcaster();
+					await result.tx.broadcast(broadcaster);
+					const txid = result.tx.id("hex");
 
 					setTimeout(async () => {
 						// Call the ingest endpoint to process the transaction
@@ -350,7 +354,7 @@ export function registerA2bPublishMcpTool(
 					content: [
 						{
 							type: "text",
-							text: changeResult.tx.toHex(),
+							text: result?.tx.toHex() || "",
 						},
 					],
 				};

@@ -30,6 +30,30 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # IntelliJ based IDEs
 .idea
 
+# IDE directories
+.cursor/
+.vscode/
+
+# Internal notes and development files
+internal/
+docs/plan.md
+docs/ONBOARDING_REDESIGN.md
+docs/BITCOIN_BACKUP_INTEGRATION.md
+
+# Test and development configs
+test-*.json
+test-*.ts
+minimal-*.json
+minimal-*.ts
+node-mcp-config.json
+claude-mcp-demo.md
+
+# Example and development files
+examples/
+scripts/
+config/
+
 # Finder (MacOS) folder config
 .DS_Store
 todo.md
+.vercel

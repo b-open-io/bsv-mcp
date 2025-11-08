@@ -7,7 +7,21 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": ["./dist"]
+		"ignore": [
+			"./dist",
+			"node_modules/**",
+			"build/**",
+			".next/**",
+			".vercel/**",
+			".wrangler/**",
+			"cloudflare/frontend/.next/**",
+			"cloudflare/frontend/.vercel/**",
+			"cloudflare/frontend/.open-next/**",
+			"cloudflare/.wrangler/**",
+			"cloudflare/.cloudflare/**",
+			".vscode/**",
+			".claude/**"
+		]
 	},
 	"formatter": {
 		"enabled": true,

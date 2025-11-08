@@ -1,5 +1,102 @@
 # BSV MCP Server Changelog
 
+## [Unreleased]
+
+### Fixed
+- Fixed character encoding issues with emojis in console output
+  - Replaced emoji characters with ASCII alternatives to prevent encoding issues
+  - Added UTF-8 meta tag to HTML passphrase prompt
+
+### Added
+- Dynamic passphrase prompting system via web browser
+- Secure key encryption with bitcoin-backup integration
+- CloudFlare hosted frontend with enhanced onboarding
+  - Tabbed interface for different deployment modes
+  - Copy buttons for all configuration options
+- Agent Master CLI integration tool
+
+### Changed
+- Improved key management with automatic encryption prompts
+- Enhanced CloudFlare frontend UX
+
+## [0.1.0] - 2025-01-20
+
+### Security
+- **BREAKING**: Removed `BSV_MCP_PASSPHRASE` environment variable (major security fix)
+  - Passphrases are no longer stored in environment variables
+  - System now prompts for passphrases dynamically when needed
+  - Added web-based passphrase prompt for better UX
+  - Migration script updated to work with new system
+
+### Added
+- **Dynamic Passphrase Prompting**: Secure passphrase entry via temporary web interface
+  - Opens browser window for passphrase entry
+  - Automatically closes after submission
+  - Supports both new passphrase creation and unlocking
+  - Timeout protection (5 minutes default)
+  
+- **Agent Master CLI Integration**: New tool for installing Agent Master CLI
+  - `utils_installAgentMaster`: Installs the Agent Master CLI tool for managing MCP server configurations
+  - Supports installation via Go or provides manual installation instructions
+  - Helps users manage MCP servers across multiple platforms (Claude, VS Code, Cursor, etc.)
+  - Repository: github.com/b-open-io/agent-master-cli
+
+### Changed
+- Key encryption now happens automatically on first run if keys are unencrypted
+- Updated migration script to use dynamic prompting instead of env vars
+- Improved security warnings and user guidance throughout the system
+- Default `BSV_MCP_AUTO_MIGRATE` changed to `true`
+- **Social Posts**: Create and read social posts on the BSV blockchain
+  - `bsv_createPost`: Post text or markdown content using B:// and MAP protocols with AIP signing
+  - `bsv_readPosts`: Read posts from the blockchain with filtering by author, txid, or recent posts
+  - Permanent, uncensorable social content stored directly on-chain
+  - Support for plain text and markdown content types
+  - Integration with BSocial API for reading posts
+- **Collection Minter**: Two-step process for minting ordinal collections from folders
+  - `wallet_gatherCollectionInfo`: Analyzes folder contents, validates images, checks wallet balance, and estimates costs
+  - `wallet_mintCollection`: Creates collection inscription and mints all items with proper metadata
+  - Supports traits distribution, rarity labels, and automatic metadata generation
+  - Validates images and provides detailed cost estimates before minting
+  - Better error handling with pre-flight checks to minimize failures
+
+- **Encrypted Key Storage**: Integration with bitcoin-backup for secure key management
+  - AES-256-GCM encryption with 600,000 PBKDF2 iterations
+  - Automatic migration from unencrypted to encrypted format
+  - Backward compatibility with legacy JSON storage
+  - Secure key backup management
+  - New environment variable: `BSV_MCP_PASSPHRASE`
+  - Migration script: `scripts/migrate-keys.ts`
+
+### Changed
+- Server name and version now imported from package.json
+- Improved error handling with standardized error types
+- Better code organization with new utility modules
+
+## v0.1.0 - Droplet API Integration & Claude Code CLI Support
+
+### Major Features
+- **Droplet API Integration**: Added support for running without local keys using Droplet faucet API
+  - New `IntegratedWallet` class supports both local and remote wallet modes
+  - BSM (Bitcoin Signed Message) authentication for Droplet API communication
+  - Environment variable configuration: `USE_DROPLET_API`, `DROPLET_API_URL`, `DROPLET_FAUCET_NAME`
+  - Automatic faucet funding and transaction broadcasting through Droplet service
+- **Claude Code CLI Compatibility**: Fixed stdio transport configuration for seamless Claude Code integration
+  - Updated smithery.yaml configuration for proper MCP CLI operation
+  - Enhanced testing and debugging workflows with Claude CLI
+
+### Technical Improvements
+- Created `DropletClient` class for robust API communication with go-faucet-api
+- Added comprehensive error handling and validation for Droplet operations
+- Enhanced documentation with testing instructions and troubleshooting guides
+- Improved dual-mode wallet architecture maintaining backward compatibility
+- Updated development documentation with detailed testing workflows
+
+### Environment Variables
+- `USE_DROPLET_API`: Enable Droplet API mode (default: false)
+- `DROPLET_API_URL`: Droplet service endpoint (default: http://localhost:4000)
+- `DROPLET_FAUCET_NAME`: Faucet name for API operations (required in Droplet mode)
+- `TRANSPORT`: MCP transport mode (stdio/http) for Claude Code compatibility
+
 ## v0.0.37 - Resource Updates
 - Added AIP protocol docs
 - Added 1Sat Ordinals docs

@@ -16,6 +16,8 @@ import type {
 } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
+import packageJson from "../../package.json";
+import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 const { toArray, toBase64 } = Utils;
 
@@ -158,7 +160,7 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
-				const paymentPk = wallet.getPrivateKey();
+				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) throw new Error("No private key available");
 				const { paymentUtxos } = await wallet.getUtxos();
 				if (!paymentUtxos?.length)
@@ -219,7 +221,7 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 									url: args.providerUrl,
 								}
 							: null,
-					version: args.version ?? "1.0.0",
+					version: args.version ?? packageJson.version,
 					documentationUrl: args.documentationUrl ?? null,
 					capabilities: {
 						streaming: args.streaming,
@@ -272,7 +274,8 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 
 				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
 				if (!disableBroadcasting) {
-					await changeResult.tx.broadcast();
+					const broadcaster = new V5Broadcaster();
+					await changeResult.tx.broadcast(broadcaster);
 
 					// Refresh UTXOs
 					try {

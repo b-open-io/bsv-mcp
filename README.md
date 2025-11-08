@@ -8,9 +8,43 @@
 
 A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework. This library provides wallet, ordinals, and utility functions for BSV blockchain interaction.
 
-## Installation and Setup
+## Installation Options
 
-### Use Bun (Optional but recommended)
+### Option 1: Hosted Version (FREE - No BSV Required!)
+
+**The easiest way to get started!** Use our hosted version with OAuth 2.1 authentication:
+
+1. **Configure:** Add the MCP server configuration to your IDE
+2. **Authenticate:** Sign in with your Bitcoin wallet via sigma-auth
+3. **Use:** Start using BSV features immediately - no BSV needed!
+
+```json
+{
+  "mcpServers": {
+    "bsv-mcp-hosted": {
+      "url": "https://bsv-mcp.rohenaz.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_ACCESS_TOKEN"
+      }
+    }
+  }
+}
+```
+
+To get your access token, authenticate at https://auth.sigmaidentity.com
+
+**Benefits:**
+- ✅ No Bitcoin required - we pay for everything
+- ✅ Secure OAuth 2.1 authentication with Bitcoin signatures
+- ✅ Instant setup - no installation needed
+- ✅ Always up-to-date
+- ✅ Global availability via Cloudflare
+
+### Option 2: Self-Hosted Installation
+
+#### Prerequisites
+
+**Use Bun (Optional but recommended)
 
 This project is built using [Bun](https://bun.sh/), a fast JavaScript runtime and package manager. While Bun is recommended for best performance, the server can also run with Node.js and npm as Bun is designed to be backward compatible with node.
 
@@ -39,9 +73,37 @@ This server implements the [Model Context Protocol](https://modelcontextprotocol
 
 > **Note:** The `PRIVATE_KEY_WIF` environment variable is now optional. Without it, the server runs in limited mode with educational resources and non-wallet tools available. Wallet and MNEE token operations require a valid private key. You can also set the `IDENTITY_KEY_WIF` environment variable to enable sigma-protocol signing of ordinals inscriptions for authentication, curation, and web-of-trust.
 
+### Claude Code
+
+To use the BSV MCP server with [Claude Code](https://github.com/anthropics/claude-code):
+
+```bash
+# Using bunx (recommended)
+claude mcp add bsv-mcp "bunx bsv-mcp@latest"
+
+# Or using npx
+claude mcp add bsv-mcp "npx bsv-mcp@latest"
+```
+
+To add with environment variables:
+```bash
+claude mcp add bsv-mcp "bunx bsv-mcp@latest" -e PRIVATE_KEY_WIF=your_key -e IDENTITY_KEY_WIF=your_identity_key
+```
+
+For encrypted key storage (recommended):
+```bash
+claude mcp add bsv-mcp "bunx bsv-mcp@latest" -e BSV_MCP_PASSPHRASE="your-secure-passphrase"
+```
+
+**Note:** The server automatically runs in stdio mode when used with Claude Code CLI.
+
 ### Cursor
 
-To use the BSV MCP server with [Cursor](https://cursor.sh/):
+[![Add BSV MCP server to Cursor](https://img.shields.io/badge/Add%20to%20Cursor-000000?style=for-the-badge&logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=bsv-mcp&config=eyJjb21tYW5kIjoiYnVueCIsImFyZ3MiOlsiYnN2LW1jcEBsYXRlc3QiXX0=)
+
+**Quick Install:** Click the button above to automatically add the BSV MCP server to Cursor! This will install the server with the basic configuration using `bunx bsv-mcp@latest`.
+
+**Manual Setup:** To manually configure the BSV MCP server with [Cursor](https://cursor.sh/):
 
 1. Install Cursor if you haven't already
 2. Open Cursor and navigate to Settings → Extensions → Model Context Protocol
@@ -134,6 +196,28 @@ Open the Claude configuration json file in your favorite text editor. If you pre
 
 If you prefer to use npm instead of Bun, replace the "command" field with "npx".
 
+### VS Code (CLI Method)
+
+If you prefer using the command line, you can add the BSV MCP server to VS Code (which uses the same underlying settings as Cursor) directly:
+
+**Using Bun (Recommended):**
+
+```bash
+code --add-mcp '{"name":"Bitcoin SV","command":"bunx","args":["bsv-mcp@latest"],"env":{"PRIVATE_KEY_WIF":"<your_private_key_wif>","IDENTITY_KEY_WIF":"<your_identity_key_wif>"}}'
+```
+
+**Using Node.js/npm:**
+
+```bash
+code --add-mcp '{"name":"Bitcoin SV","command":"npx","args":["bsv-mcp@latest"],"env":{"PRIVATE_KEY_WIF":"<your_private_key_wif>","IDENTITY_KEY_WIF":"<your_identity_key_wif>"}}'
+```
+
+- Replace `<your_private_key_wif>` with your actual private key WIF (optional, required for wallet tools).
+- Replace `<your_identity_key_wif>` with your identity key WIF (optional, enables Sigma protocol signing).
+- Ensure the `code` command is in your system's PATH (it usually is if VS Code was installed normally).
+
+This command adds the server configuration to your VS Code `settings.json` file under the `mcp.servers` key.
+
 ## Available Tools
 
 The toolkit is organized into several categories:
@@ -163,6 +247,15 @@ Tools for interacting with the BSV blockchain and network:
 | `bsv_decodeTransaction` | Decodes a BSV transaction and returns detailed information                  | `{"txid":"a1b2c3d4e5f6...","version":1,"locktime":0,"size":225,"inputs":[...],"outputs":[...]}`    |
 | `bsv_explore`           | Comprehensive blockchain explorer tool accessing WhatsOnChain API endpoints | `{"chain_info":{"chain":"main","blocks":826458,"headers":826458,"bestblockhash":"0000000000..."}}` |
 
+### BSocial Tools
+
+Tools for social interactions on the BSV blockchain (requires wallet):
+
+| Tool Name               | Description                                                                 | Example Output                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `bsocial_createPost`    | Creates a social post on the BSV blockchain using B:// and MAP protocols    | `{"success":true,"txid":"a1b2c3d4e5f6...","rawTx":"0100000001..."}`                               |
+| `bsocial_readPosts`     | Reads social posts from the BSV blockchain with filtering options            | `Post 1:\n  TX ID: a1b2c3...\n  Content: Hello BSV!\n  Type: text/plain\n  Author: 1Example...`   |
+
 ### Ordinals Tools
 
 Tools for working with ordinals (NFTs) on BSV:
@@ -181,7 +274,32 @@ General-purpose utility functions:
 
 | Tool Name           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Example Output                                                 |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| `utils_convertData` | Converts data between different encoding formats (utf8, hex, base64, binary).<br><br>**Parameters:**<br>- `data` (required): The string to convert<br>- `from` (required): Source encoding format (utf8, hex, base64, or binary)<br>- `to` (required): Target encoding format (utf8, hex, base64, or binary)<br><br>**Examples:**<br>- UTF-8 to hex: `{"data": "hello world", "from": "utf8", "to": "hex"}` → `68656c6c6f20776f726c64`<br>- UTF-8 to base64: `{"data": "Hello World", "from": "utf8", "to": "base64"}` → `SGVsbG8gV29ybGQ=`<br>- base64 to UTF-8: `{"data": "SGVsbG8gV29ybGQ=", "from": "base64", "to": "utf8"}` → `Hello World`<br>- hex to base64: `{"data": "68656c6c6f20776f726c64", "from": "hex", "to": "base64"}` → `aGVsbG8gd29ybGQ=`<br><br>**Notes:**<br>- All parameters are required<br>- The tool returns the converted data as a string<br>- For binary conversion, data is represented as an array of byte values | `"SGVsbG8gV29ybGQ="` (UTF-8 "Hello World" converted to base64) |
+| `utils_convertData` | Converts data between different encodings (utf8, hex, base64, binary).
+- **Args**:
+  - `data` (string, required): The data string to be converted.
+  - `from` (string, required): Source encoding format (utf8, hex, base64, or binary).
+  - `to` (string, required): Target encoding format (utf8, hex, base64, or binary).
+- **Returns**: The converted data as a string.
+
+## BAP (Bitcoin Attestation Protocol) Tools
+
+Tools for interacting with BAP identities.
+
+### `bap_getId`
+Retrieves a Bitcoin Attestation Protocol (BAP) identity profile using an idKey.
+- **Args**:
+  - `idKey` (string, optional): The Identity Key (Paymail or public key string) to fetch the profile for. If not provided, the tool attempts to use the server's configured identity key (derived from `IDENTITY_KEY_WIF` or the key file `~/.bsv-mcp/keys.json`).
+- **Returns**: A JSON string containing the BAP identity data if found, or a message indicating that no identity was found for the given key. Returns an error if the API request fails or the key cannot be derived.
+
+### `bap_getCurrentAddress`
+Retrieves the current BAP identity's Bitcoin SV address. This address is derived from the server's configured identity key.
+- **Args**: None.
+- **Returns**: A JSON object containing the `address` string.
+
+### `bap_generate`
+Generates a new BAP HD master key (xprv) and saves it to `~/.bsv-mcp/keys.json`. This key can be used as a root for deriving multiple BAP identities.
+- **Args**: None.
+- **Returns**: A JSON object with the generated `xprv` string and a status message, or an error message if generation/saving fails.
 
 ### MNEE Tools
 
@@ -218,6 +336,26 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 - "Show me BSV-20 token listings for ticker PEPE"
 - "Get recent BSV-20 token sales"
 
+### Collection Minting
+
+The BSV MCP server provides a two-step process for minting ordinal collections from folders of images:
+
+1. **Gather Collection Info** (Pre-flight check)
+   - "Analyze the folder /path/to/my/nft-images for collection minting"
+   - "Check if I can mint a collection from ./my-art-folder"
+   
+   This step will:
+   - Validate all images in the folder
+   - Check your wallet balance
+   - Estimate total costs
+   - Suggest collection metadata
+   - Report any issues before minting
+
+2. **Mint Collection** (Create the collection)
+   - "Mint a collection called 'My Art Collection' from /path/to/images with description 'Amazing digital art'"
+   - "Create an NFT collection from ./my-art-folder with traits: background=[red,blue,green], style=[vintage,modern]"
+   - "Mint collection with rarity labels: common=60%, rare=30%, legendary=10%"
+
 ### Blockchain Operations
 
 - "What is the current BSV price?"
@@ -231,6 +369,15 @@ Once connected, you can use natural language to interact with Bitcoin SV through
 ### Data Conversion
 
 - "Convert 'Hello World' from UTF-8 to hex format"
+
+### Social Posts
+
+- "Create a post saying 'Hello BSV World!' on the blockchain"
+- "Post a markdown message: # My First On-Chain Post\n\nThis is **bold** and *italic* text"
+- "Read the latest social posts from the blockchain"
+- "Read posts by BAP identity 1SomeIdentityKey..."
+- "Get the post with transaction ID a1b2c3d4e5f6..."
+- "Show me replies to post txid a1b2c3d4e5f6..."
 
 ## MCP Prompts and Resources
 
@@ -343,6 +490,44 @@ When you interact with an MCP-enabled AI assistant:
 4. The results are returned to the AI assistant
 5. The assistant presents the information in a natural, conversational way
 
+## Key Management & Security
+
+### Encrypted Key Storage (Recommended)
+
+BSV MCP now supports encrypted key storage using [bitcoin-backup](https://github.com/b-open-io/bitcoin-backup) for enhanced security:
+
+1. **Set a passphrase** (minimum 8 characters):
+   ```bash
+   export BSV_MCP_PASSPHRASE="your-secure-passphrase"
+   ```
+
+2. **Automatic migration**: Keys will be automatically encrypted when a passphrase is provided
+   
+3. **Manual migration**: Use the migration script:
+   ```bash
+   BSV_MCP_PASSPHRASE="your-passphrase" bun run scripts/migrate-keys.ts
+   ```
+
+4. **File locations**:
+   - Encrypted keys: `~/.bsv-mcp/keys.bep`
+   - Legacy keys: `~/.bsv-mcp/keys.json` (deprecated)
+   - Automatic backup: `~/.bsv-mcp/keys.bep.backup`
+
+### Security Best Practices
+
+1. **Use encrypted storage**: Always set `BSV_MCP_PASSPHRASE` for production use
+2. **Strong passphrases**: Use 12+ characters with mixed case, numbers, and symbols
+3. **Backup your keys**: Keep secure backups of both keys and passphrase
+4. **File permissions**: Key files are automatically created with restricted permissions (0600)
+
+### Environment Variables for Key Management
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `BSV_MCP_PASSPHRASE` | Passphrase for encrypted key storage | None |
+| `BSV_MCP_AUTO_MIGRATE` | Automatically migrate legacy keys | `false` |
+| `BSV_MCP_KEEP_LEGACY` | Keep unencrypted keys after migration | `false` |
+
 ## Customization Options
 
 The BSV MCP server can be customized using environment variables to enable or disable specific components:
@@ -366,6 +551,43 @@ The BSV MCP server can be customized using environment variables to enable or di
 | `DISABLE_UTILS_TOOLS` | `false` | Set to `true` to disable utility tools |
 | `IDENTITY_KEY_WIF`    | `not set` | Optional WIF for identity key; if set, ordinals inscriptions will be signed with sigma-protocol for authentication, curation, and web-of-trust. |
 | `DISABLE_BROADCASTING` | `false` | Set to `true` to disable transaction broadcasting; returns raw transaction hex instead - useful for testing and transaction review before broadcasting |
+
+### Droplet API Configuration
+
+The BSV MCP server supports running in Droplet API mode, which allows operation without local private keys by using a remote faucet service:
+
+| Environment Variable | Default | Description |
+| -------------------- | ------- | ----------- |
+| `USE_DROPLET_API` | `false` | Set to `true` to enable Droplet API mode for remote wallet operations |
+| `DROPLET_API_URL` | `http://localhost:4000` | Base URL for the Droplet faucet API service |
+| `DROPLET_FAUCET_NAME` | `not set` | Name of the faucet to use (required when `USE_DROPLET_API` is true) |
+| `TRANSPORT` | `stdio` | MCP transport mode (stdio/http) - automatically set to stdio for Claude Code compatibility |
+
+#### Droplet API Mode
+
+When `USE_DROPLET_API=true` is set, the server operates in remote mode:
+
+- **No Local Keys Required**: The server doesn't need `PRIVATE_KEY_WIF` or local key files
+- **Remote Wallet Operations**: Transactions are funded and broadcast through the Droplet API
+- **BSM Authentication**: Uses Bitcoin Signed Message (BSM) authentication for secure API communication
+- **Automatic Funding**: The faucet automatically provides UTXOs for transactions
+- **Seamless Integration**: All existing wallet tools work transparently with the remote service
+
+#### Example Droplet Configuration
+
+```bash
+# Enable Droplet API mode
+USE_DROPLET_API=true
+DROPLET_API_URL=https://your-droplet-service.com
+DROPLET_FAUCET_NAME=your-faucet-name
+TRANSPORT=stdio
+```
+
+This mode is particularly useful for:
+- **Development and Testing**: No need to manage local private keys
+- **Educational Environments**: Safe experimentation without real funds
+- **Shared Environments**: Multiple users can use the same faucet service
+- **Simplified Deployment**: Reduced security concerns for demonstration purposes
 
 ### Examples
 
@@ -573,6 +795,13 @@ bun test
 # or with npm
 npm test
 ```
+
+
+## Troubleshooting
+
+- Make sure you're on the latest version of bun
+- Make sure the commands can be run directly from your cli
+- Make sure you're on node v22+
 
 ## License
 

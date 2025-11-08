@@ -1,14 +1,50 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { convertData } from "./conversion";
+import { installAgentMasterTool } from "./installAgentMaster";
 
 const encodingSchema = z.enum(["utf8", "hex", "base64", "binary"]);
 
 /**
- * Register the unified conversion tool with the MCP server
- * @param server The MCP server hindlebrock
+ * Register utility tools with the MCP server
+ * @param server The MCP server instance
  */
 export function registerUtilsTools(server: McpServer): void {
+	// Register install agent master tool
+	server.tool(
+		installAgentMasterTool.name,
+		installAgentMasterTool.description,
+		{ args: installAgentMasterTool.inputSchema },
+		async ({ args }) => {
+			try {
+				const result = await installAgentMasterTool.handler(args);
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								typeof result === "string"
+									? result
+									: JSON.stringify(result, null, 2),
+						},
+					],
+				};
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: ${msg}`,
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
+
+	// Register conversion tool
 	server.tool(
 		"utils_convertData",
 		"Converts data between different encodings (utf8, hex, base64, binary). Useful for transforming data formats when working with blockchain data, encryption, or file processing.\n\n" +
@@ -66,3 +102,11 @@ export function registerUtilsTools(server: McpServer): void {
 		},
 	);
 }
+
+// Export all utilities for use by other tools
+export * from "./errorHandler";
+export * from "./transactionBuilder";
+export * from "./toolRegistration";
+export * from "./toolConfig";
+export * from "./logger";
+export * from "./aip";
