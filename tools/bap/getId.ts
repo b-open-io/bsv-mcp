@@ -81,33 +81,46 @@ export function registerBapGetIdTool(
 			let targetIdKey = args.idKey;
 
 			if (!targetIdKey) {
-				// Attempt to get idKey from the passed identityPk or environment variable as a fallback
-				let pkToUse = identityPk;
+				// First priority: Use authenticated user's BAP ID from OAuth session
+				const authInfo = (extra as any).authInfo;
+				if (authInfo?.metadata?.bapId) {
+					targetIdKey = authInfo.metadata.bapId;
+					console.log(`Using authenticated user's BAP ID: ${targetIdKey}`);
+				}
+				// Second priority: Use authenticated user's pubkey
+				else if (authInfo?.metadata?.pubkey) {
+					targetIdKey = authInfo.metadata.pubkey;
+					console.log(`Using authenticated user's pubkey: ${targetIdKey}`);
+				}
+				// Fallback: Attempt to get idKey from the passed identityPk or environment variable
+				else {
+					let pkToUse = identityPk;
 
-				if (!pkToUse) {
-					const identityKeyWifEnv = process.env.IDENTITY_KEY_WIF;
-					if (identityKeyWifEnv) {
-						try {
-							pkToUse = PrivateKey.fromWif(identityKeyWifEnv);
-						} catch (e) {
-							// Don't error here, let it be handled by the final check
+					if (!pkToUse) {
+						const identityKeyWifEnv = process.env.IDENTITY_KEY_WIF;
+						if (identityKeyWifEnv) {
+							try {
+								pkToUse = PrivateKey.fromWif(identityKeyWifEnv);
+							} catch (e) {
+								// Don't error here, let it be handled by the final check
+							}
 						}
 					}
-				}
 
-				if (pkToUse) {
-					// Sigma typically uses the public key string as the idKey
-					targetIdKey = pkToUse.toPublicKey().toString();
-				} else {
-					return {
-						content: [
-							{
-								type: "text",
-								text: "idKey not provided and could not be derived from server configuration or environment.",
-							},
-						],
-						isError: true,
-					};
+					if (pkToUse) {
+						// Sigma typically uses the public key string as the idKey
+						targetIdKey = pkToUse.toPublicKey().toString();
+					} else {
+						return {
+							content: [
+								{
+									type: "text",
+									text: "idKey not provided and could not be derived from authenticated session or server configuration.",
+								},
+							],
+							isError: true,
+						};
+					}
 				}
 			}
 
