@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerA2aCallTool } from "./a2b/call";
 import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
-import { registerBigBlocksTools } from "./bigblocks";
+// import { registerBigBlocksTools } from "./bigblocks"; // Disabled - Turbopack module resolution issues
 import { registerBsocialTools } from "./bsocial";
 import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
@@ -118,9 +118,10 @@ export function registerAllTools(
 	}
 
 	// Register BigBlocks tools
-	if (enableBigBlocksTools) {
-		registerBigBlocksTools(server);
-	}
+	// Disabled - Turbopack module resolution issues
+	// if (enableBigBlocksTools) {
+	// 	registerBigBlocksTools(server);
+	// }
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
