@@ -5,13 +5,13 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
+  // Match sigma-auth's actual metadata (no registration_endpoint)
+  // Bitcoin signatures ARE the client identity - no pre-registration needed
   const metadata = {
     issuer: authServer,
     authorization_endpoint: `${authServer}/api/oauth/authorize`,
     token_endpoint: `${authServer}/api/oauth/token`,
-    userinfo_endpoint: `${authServer}/api/oauth/userinfo`,
     jwks_uri: `${authServer}/.well-known/jwks.json`,
-    registration_endpoint: `${authServer}/api/oauth/register`,
     scopes_supported: [
       "openid",
       "profile",
