@@ -5,6 +5,7 @@
   "framework": "nextjs",
   "env": {
     "ENABLE_OAUTH": "true",
-    "OAUTH_ISSUER": "https://auth.sigmaidentity.com"
+    "OAUTH_ISSUER": "https://auth.sigmaidentity.com",
+    "RESOURCE_URL": "https://bsv-mcp.vercel.app"
   }
 }

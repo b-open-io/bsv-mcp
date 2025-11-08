@@ -1,8 +1,33 @@
-import { createMcpHandler } from "mcp-handler";
+import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { PrivateKey } from "@bsv/sdk";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { validateJwt } from "@/utils/jwtValidator";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
 // Tools are registered dynamically based on available keys and config
+
+// Token verification function for OAuth 2.1
+const verifyToken = async (
+  req: Request,
+  bearerToken?: string
+): Promise<AuthInfo | undefined> => {
+  if (!bearerToken) {
+    return undefined;
+  }
+
+  try {
+    const payload = await validateJwt(bearerToken);
+
+    return {
+      token: bearerToken,
+      clientId: payload.sub || "unknown",
+      scopes: payload.scope?.split(" ") || [],
+    };
+  } catch (error) {
+    console.error("Token validation failed:", error);
+    return undefined;
+  }
+};
 
 const handler = createMcpHandler(
   async (server) => {
@@ -92,4 +117,11 @@ To enable full functionality, set environment variables:
   },
 );
 
-export { handler as GET, handler as POST, handler as DELETE };
+// Wrap handler with OAuth authentication
+const withAuth = withMcpAuth(handler, verifyToken, {
+  required: process.env.ENABLE_OAUTH !== "false",
+  requiredScopes: [],
+  resourceMetadataPath: "/.well-known/oauth-protected-resource",
+});
+
+export { withAuth as GET, withAuth as POST, withAuth as DELETE, withAuth as OPTIONS };
