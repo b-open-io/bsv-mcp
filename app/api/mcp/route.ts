@@ -1,15 +1,12 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { PrivateKey } from "@bsv/sdk";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { createMCPJWTValidator } from "@/utils/jwtValidator";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
 // Tools are registered dynamically based on available keys and config
 
-// Create JWT validator instance
-const jwtValidator = createMCPJWTValidator();
-
 // Token verification function for OAuth 2.1
+// Validates opaque tokens by calling Better Auth's session endpoint
 const verifyToken = async (
   req: Request,
   bearerToken?: string
@@ -19,15 +16,32 @@ const verifyToken = async (
   }
 
   try {
-    const payload = await jwtValidator.validate(bearerToken);
+    const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+
+    // Call Better Auth's get-session endpoint to validate the token
+    const response = await fetch(`${authServer}/api/auth/mcp/get-session`, {
+      headers: {
+        "Authorization": `Bearer ${bearerToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error("Token validation failed:", response.status, await response.text());
+      return undefined;
+    }
+
+    const session = await response.json();
+
+    // Extract scopes from the session
+    const scopes = session.scopes ? session.scopes.split(" ") : [];
 
     return {
       token: bearerToken,
-      clientId: payload.sub || "unknown",
-      scopes: payload.scope?.split(" ") || [],
+      clientId: session.clientId || "unknown",
+      scopes,
     };
   } catch (error) {
-    console.error("Token validation failed:", error);
+    console.error("Token validation error:", error);
     return undefined;
   }
 };
