@@ -80,7 +80,7 @@ const handler = createMcpHandler(
       enableBsocialTools: process.env.DISABLE_BSOCIAL_TOOLS !== "true",
       enableWalletTools: process.env.DISABLE_WALLET_TOOLS !== "true",
       enableMneeTools: process.env.DISABLE_MNEE_TOOLS !== "true",
-      enableBigBlocksTools: process.env.DISABLE_BIGBLOCKS_TOOLS !== "true",
+      enableBigBlocksTools: false, // Disabled - module resolution issues with Turbopack
       disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
     });
 
