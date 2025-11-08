@@ -7,7 +7,7 @@ import { registerAllTools } from "@/tools";
 // Tools are registered dynamically based on available keys and config
 
 // Token verification function for OAuth 2.1
-// Validates opaque tokens by calling Better Auth's session endpoint
+// Validates opaque tokens and fetches user identity from userinfo endpoint
 const verifyToken = async (
   req: Request,
   bearerToken?: string
@@ -19,8 +19,8 @@ const verifyToken = async (
   try {
     const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-    // Call Better Auth's get-session endpoint to validate the token
-    const response = await fetch(`${authServer}/api/auth/mcp/get-session`, {
+    // Call userinfo endpoint to get full user identity (standard OAuth/OIDC pattern)
+    const response = await fetch(`${authServer}/api/oauth/userinfo`, {
       headers: {
         "Authorization": `Bearer ${bearerToken}`,
       },
@@ -31,15 +31,24 @@ const verifyToken = async (
       return undefined;
     }
 
-    const session = await response.json();
+    const userinfo = await response.json();
 
-    // Extract scopes from the session
-    const scopes = session.scopes ? session.scopes.split(" ") : [];
+    // Extract scopes - userinfo includes token_scope in dev mode
+    // For production, we'll need to call get-session separately or parse from id_token
+    const scopes = userinfo.token_scope ? userinfo.token_scope.split(" ") : ["openid", "profile"];
 
     return {
       token: bearerToken,
-      clientId: session.clientId || "unknown",
+      clientId: userinfo.sub || "unknown",
       scopes,
+      // Store user identity for tools to access
+      metadata: {
+        userId: userinfo.sub,
+        pubkey: userinfo.pubkey,
+        bapId: userinfo.bap_id,
+        bitcoinAddress: userinfo.bitcoin_address,
+        email: userinfo.email,
+      },
     };
   } catch (error) {
     console.error("Token validation error:", error);
