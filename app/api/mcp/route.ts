@@ -1,6 +1,7 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { PrivateKey } from "@bsv/sdk";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { registerAllTools } from "@/tools";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
 // Tools are registered dynamically based on available keys and config
@@ -67,55 +68,21 @@ const handler = createMcpHandler(
       console.error("Invalid IDENTITY_KEY_WIF");
     }
 
-    // Import and register tool categories
-    // Note: This is a simplified version - full tool registration would import from ../../tools/
-    // For now, we'll add a basic set of tools to get started
-
-    server.tool(
-      "help",
-      "Show help information about BSV MCP Server",
-      {},
-      async () => ({
-        content: [{
-          type: "text",
-          text: `BSV MCP Server - Vercel Deployment
-
-Available tool categories will be registered based on environment configuration.
-
-Status:
-- Payment Key: ${payPk ? "✓ Configured" : "✗ Not configured"}
-- Identity Key: ${identityPk ? "✓ Configured" : "✗ Not configured"}
-
-To enable full functionality, set environment variables:
-- PRIVATE_KEY_WIF: Payment operations
-- IDENTITY_KEY_WIF: BAP identity operations
-- ENABLE_OAUTH: OAuth 2.1 authentication (default: true)
-- OAUTH_ISSUER: Authorization server URL`
-        }]
-      })
-    );
-
-    // Basic info tool
-    server.tool(
-      "server_info",
-      "Get server configuration and status",
-      {},
-      async () => ({
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            version: "0.2.0-alpha.1",
-            transport: "http",
-            oauth_enabled: process.env.ENABLE_OAUTH !== "false",
-            oauth_issuer: process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
-            capabilities: {
-              wallet: !!payPk,
-              identity: !!identityPk,
-            }
-          }, null, 2)
-        }]
-      })
-    );
+    // Register all tools based on environment configuration and available keys
+    registerAllTools(server, {
+      payPk,
+      identityPk,
+      enableBsvTools: process.env.DISABLE_BSV_TOOLS !== "true",
+      enableOrdinalsTools: process.env.DISABLE_ORDINALS_TOOLS !== "true",
+      enableUtilsTools: process.env.DISABLE_UTILS_TOOLS !== "true",
+      enableA2bTools: process.env.ENABLE_A2B_TOOLS === "true",
+      enableBapTools: process.env.DISABLE_BAP_TOOLS !== "true",
+      enableBsocialTools: process.env.DISABLE_BSOCIAL_TOOLS !== "true",
+      enableWalletTools: process.env.DISABLE_WALLET_TOOLS !== "true",
+      enableMneeTools: process.env.DISABLE_MNEE_TOOLS !== "true",
+      enableBigBlocksTools: process.env.DISABLE_BIGBLOCKS_TOOLS !== "true",
+      disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
+    });
 
     console.log("BSV MCP Server initialized for Vercel");
     console.log(`Payment key: ${payPk ? "present" : "missing"}`);
