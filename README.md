@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/b-open-io-bsv-mcp-badge.png)](https://mseep.ai/app/b-open-io-bsv-mcp)
+
 # Bitcoin SV MCP Server
 
 [![smithery badge](https://smithery.ai/badge/@b-open-io/bsv-mcp)](https://smithery.ai/server/@b-open-io/bsv-mcp)
