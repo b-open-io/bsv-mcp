@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { PrivateKey } from "@bsv/sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { getPublicKeyArgsSchema } from "./schemas";
+import type {
+	ServerNotification,
+	ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
+import { getPublicKeyArgsSchema, walletEncryptionArgsSchema } from "./schemas";
 import { registerWalletTools } from "./tools";
 import { Wallet } from "./wallet";
 
@@ -34,12 +38,12 @@ function getDummyArgs(tool: WalletToolName): Record<string, unknown> {
 				signature: "sig",
 				publicKey: "pubkey",
 			};
-		// TODO we merged encrypt and decrypt into encryption we need to update the test file
-		// case "wallet_encryption":
-		// 	if
-		// 	return { data: "test", publicKey: "pubkey" };
-		// case "wallet_decryption":
-		// 	return { encryptedData: "data" };
+		case "wallet_encryption":
+			return walletEncryptionArgsSchema.parse({
+				mode: "encrypt",
+				data: "hello",
+				encoding: "utf8",
+			});
 		default:
 			return {};
 	}
@@ -63,8 +67,10 @@ for (const tool of toolNames) {
 		}
 
 		// Create a mock RequestHandlerExtra with required properties
-		const mockExtra: RequestHandlerExtra = {
+		const mockExtra: RequestHandlerExtra<ServerRequest, ServerNotification> = {
 			signal: new AbortController().signal,
+			sendNotification: async () => {},
+			sendRequest: async () => ({ content: [] }),
 		};
 
 		// Call the handler with dummy arguments

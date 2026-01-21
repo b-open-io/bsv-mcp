@@ -326,6 +326,11 @@ bun run index.ts
 bun test
 ```
 
+## Related Projects
+
+- **[bsv-skills](https://github.com/b-open-io/bsv-skills)** - Claude Code plugin with 24 BSV skills for wallet development, identity, transactions, and protocol implementation. Install with `/plugin install bsv-skills@b-open-io`
+- **[1sat-skills](https://github.com/b-open-io/1sat-skills)** - Claude Code plugin for 1Sat Ordinals operations (NFT minting, media extraction, marketplace)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

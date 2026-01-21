@@ -44,6 +44,7 @@
 		"@bsv/sdk": "^1.4.19",
 		"@modelcontextprotocol/sdk": "^1.10.1",
 		"@types/node": "^22.14.1",
+		"cors": "^2.8.5",
 		"js-1sat-ord": "^0.1.81",
 		"mnee": "^2.0.0",
 		"satoshi-token": "^0.0.4",

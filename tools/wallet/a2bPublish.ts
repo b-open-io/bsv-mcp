@@ -55,17 +55,29 @@ const AgentAuthenticationSchema = z
 // Pricing plan schema
 export const PricingSchema = z.object({
 	id: z.string(),
+	name: z.string().optional(),
 	description: z.string().nullable().optional(),
 	currency: z.string(),
 	amount: z
 		.number()
 		.describe(
-			"Cost in standard units of currency (e.g., BSV, USD, not satoshis)",
+			"Cost in standard units of anchor currency (e.g., BSV, USD, not satoshis)",
 		),
 	address: z.string(),
 	acceptedCurrencies: z.array(z.string()).optional(),
-	skills: z.array(z.string()).optional(),
-	interval: z.enum(["day", "week", "month", "year"]).nullable().optional(),
+	skillIds: z.array(z.string()).optional(),
+	interval: z.union([
+		z.enum(["day", "week", "month", "year"]),
+		z.string().regex(/^P(\d+Y|\d+M|\d+W|\d+D)$/, "Must be an ISO 8601 duration (e.g., P18M)"),
+		z.null(),
+	]).optional(),
+	depositPct: z
+		.number()
+		.min(0)
+		.max(1)
+		.optional()
+		.describe("Fraction (0-1) paid up-front in two-stage pricing"),
+	priceFeedUrl: z.string().url().optional(),
 	includedCalls: z.record(z.number()).optional(),
 });
 
@@ -83,7 +95,7 @@ export const AgentCardSchema = z.object({
 	defaultInputModes: z.array(z.string()).default(["text"]),
 	defaultOutputModes: z.array(z.string()).default(["text"]),
 	skills: z.array(AgentSkillSchema),
-	"x-payment": z.array(PricingSchema).optional().default([]),
+	"x-payment-config": z.array(PricingSchema).optional().default([]),
 });
 
 // Schema for on-chain agent publish parameters
@@ -166,42 +178,15 @@ export function registerA2bPublishTool(server: McpServer, wallet: Wallet) {
 
 				// Create pricing plans using the new schema
 				const pricingConfig: PricingConfig[] = [
-					// {
-					//   id: "subscription-premium",
-					//   description: "Premium subscription with all features",
-					//   currency: "USD",
-					//   amount: 10,
-					//   address: walletAddress,
-					//   interval: "month",
-					//   skills: ["wallet_a2bPublish", "wallet_a2bCall"],
-					// },
-					// {
-					//   id: "subscription-free",
-					//   description: "Free tier with limited features",
-					//   currency: "USD",
-					//   amount: 0,
-					//   address: walletAddress,
-					//   interval: "month",
-					//   skills: ["wallet_a2bCall"],
-					// },
 					{
 						id: "pay-per-call-default",
 						description: "Pay-per-call for publish operations",
 						currency: "USD",
 						amount: 1,
 						address: walletAddress,
-						skills: ["wallet_a2bPublish"],
+						skillIds: ["wallet_a2bPublish"],
 						interval: null,
 					},
-					// {
-					//   id: "pay-per-call-royalty",
-					//   description: "Royalty payment for agent",
-					//   currency: "USD",
-					//   amount: 1,
-					//   address: "1JOExxxxxxxxxxxx",
-					//   skills: ["wallet_a2bPublish"],
-					//   interval: null,
-					// }
 				];
 
 				// Assemble AgentCard with defaults and user overrides

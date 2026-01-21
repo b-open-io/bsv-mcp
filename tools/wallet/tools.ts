@@ -39,15 +39,15 @@ import {
 } from "./schemas";
 
 import { Utils, type WalletProtocol } from "@bsv/sdk";
+import { registerA2bPublishTool } from "./a2bPublish";
+import type { a2bPublishArgsSchema } from "./a2bPublish";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
 import type { createOrdinalsArgsSchema } from "./createOrdinals";
 import { registerGetAddressTool } from "./getAddress";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerSendToAddressTool } from "./sendToAddress";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
-import { registerA2bPublishTool } from "./a2bPublish";
 import type { transferOrdTokenArgsSchema } from "./transferOrdToken";
-import type { a2bPublishArgsSchema } from "./a2bPublish";
 
 // Define mapping from tool names to argument schemas
 type ToolArgSchemas = {
