@@ -38,5 +38,5 @@ export const YOURS_INSTALL_URL =
 // 	process.env.PUBLIC_BSOCIAL_API_URL ||
 // 	"https://bsocial-overlay-production.up.railway.app/api/v1";
 
-export const BSOCIAL_API_URL = "https://api.sigmaidentity.com/api/v1";
+export const BSOCIAL_API_URL = "https://api.sigmaidentity.com/v1";
 export const V5_API_URL = "https://ordinals.1sat.app/v5";
