@@ -72,7 +72,7 @@
 		"bitcoin-auth": "^0.0.5",
 		"bitcoin-backup": "0.0.5",
 		"bmap-api-types": "0.0.9",
-		"bsv-bap": "0.1.18",
+		"bsv-bap": "0.1.21",
 		"bun": "^1.3.4",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
