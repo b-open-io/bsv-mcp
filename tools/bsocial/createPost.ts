@@ -25,9 +25,9 @@ const createPostArgsSchema = z.object({
 		.default("bsv-mcp")
 		.describe("Application name creating the post"),
 	additionalMapData: z
-		.record(z.string())
+		.string()
 		.optional()
-		.describe("Additional MAP protocol key-value pairs"),
+		.describe("Additional MAP protocol key-value pairs as a JSON object string, e.g. '{\"key\": \"value\"}'"),
 });
 
 type CreatePostArgs = z.infer<typeof createPostArgsSchema>;
@@ -80,9 +80,10 @@ export async function createSocialPost(
 			toArray("post", "utf8"),
 		];
 
-		// Add any additional MAP data
+		// Add any additional MAP data (parse JSON string if provided)
 		if (additionalMapData) {
-			for (const [key, value] of Object.entries(additionalMapData)) {
+			const parsedMapData: Record<string, string> = JSON.parse(additionalMapData);
+			for (const [key, value] of Object.entries(parsedMapData)) {
 				mapData.push(toArray(key, "utf8"), toArray(value, "utf8"));
 			}
 		}

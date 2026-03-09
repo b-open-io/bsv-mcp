@@ -17,7 +17,7 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toSatoshi",
 		{
-			bitcoin: z.union([z.number(), z.string()]),
+			bitcoin: z.string().describe("Bitcoin amount (accepts numeric strings like '1.5')"),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
 		async ({ bitcoin, returnType }) => {
@@ -46,7 +46,7 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toBitcoin",
 		{
-			satoshis: z.union([z.number(), z.string(), z.bigint()]),
+			satoshis: z.string().describe("Satoshi amount (accepts numeric strings like '100000000')"),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
 		async ({ satoshis, returnType }) => {
@@ -87,7 +87,7 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toTokenSatoshi",
 		{
-			token: z.union([z.number(), z.string(), z.bigint()]),
+			token: z.string().describe("Token amount (accepts numeric strings like '1.5')"),
 			decimals: z.number().int().min(0),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
@@ -117,7 +117,7 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toToken",
 		{
-			tokenSatoshi: z.union([z.number(), z.string(), z.bigint()]),
+			tokenSatoshi: z.string().describe("Token satoshi amount (accepts numeric strings)"),
 			decimals: z.number().int().min(0),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
