@@ -86229,7 +86229,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.2",
+  version: "0.2.3",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -86322,7 +86322,7 @@ var package_default = {
     zod: "^4.3.6"
   },
   scripts: {
-    build: "bun build ./index.ts --outdir ./dist --target node",
+    build: "bun build ./index.ts --target=node --outfile=build/server.js",
     "build:view": "vite build",
     "build:all": "bun run build:view && bun run build",
     dev: "next dev",
@@ -123747,7 +123747,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.2",
+  version: "0.2.3",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -123840,7 +123840,7 @@ var package_default2 = {
     zod: "^4.3.6"
   },
   scripts: {
-    build: "bun build ./index.ts --outdir ./dist --target node",
+    build: "bun build ./index.ts --target=node --outfile=build/server.js",
     "build:view": "vite build",
     "build:all": "bun run build:view && bun run build",
     dev: "next dev",
