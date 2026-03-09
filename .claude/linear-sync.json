@@ -1,10 +1,7 @@
 {
   "workspace": "claude_ai_Linear",
-  "team_id": "d7a8e5a8-67a8-4325-915a-5ec21357c5ca",
-  "team_name": "OPL",
-  "project_id": "6154f1dc-e8d1-4448-973a-48b3b9c5380f",
-  "project_name": "BSV MCP",
-  "label_id": "ce388c09-93f3-4b81-b146-fc1065413579",
-  "label_name": "repo:bsv-mcp",
+  "team": "OPL",
+  "project": "BSV MCP",
+  "label": "repo:bsv-mcp",
   "github_org": "b-open-io"
 }
