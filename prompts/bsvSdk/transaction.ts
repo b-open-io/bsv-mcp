@@ -69,7 +69,7 @@ tx.addOutput({
 });
 
 // Add a data (OP_RETURN) output
-const dataScript = LockingScript.fromData(Buffer.from("Hello, Bitcoin!"));
+const dataScript = LockingScript.fromData(Utils.toArray("Hello, Bitcoin!", "utf8"));
 tx.addOutput({
   lockingScript: dataScript,
   satoshis: 0 // OP_RETURN outputs typically have 0 value
@@ -205,7 +205,7 @@ import { Script, OpCodes } from "@bsv/sdk";
 const customScript = new Script();
 customScript.add(OpCodes.OP_DUP);
 customScript.add(OpCodes.OP_HASH160);
-customScript.add(Buffer.from("public_key_hash", "hex"));
+customScript.add(Utils.toArray("public_key_hash", "hex"));
 customScript.add(OpCodes.OP_EQUALVERIFY);
 customScript.add(OpCodes.OP_CHECKSIG);
 

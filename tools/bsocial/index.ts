@@ -21,24 +21,24 @@ export function registerBsocialTools(
 ): void {
 	// Register tools that don't require wallet
 	registerReadPostsTool(server);
-	console.log("✅ Registered bsocial_readPosts tool");
+	console.error("✅ Registered bsocial_readPosts tool");
 
 	// Register BMAP API query tools (read layer)
 	registerBmapReadPostsTool(server);
-	console.log("✅ Registered bmap_readPosts tool");
+	console.error("✅ Registered bmap_readPosts tool");
 
 	registerBmapReadLikesTool(server);
-	console.log("✅ Registered bmap_readLikes tool");
+	console.error("✅ Registered bmap_readLikes tool");
 
 	registerBmapReadFollowsTool(server);
-	console.log("✅ Registered bmap_readFollows tool");
+	console.error("✅ Registered bmap_readFollows tool");
 
 	// Register tools that require wallet
 	if (config.wallet) {
 		registerCreatePostTool(server, config.wallet);
-		console.log("✅ Registered bsocial_createPost tool");
+		console.error("✅ Registered bsocial_createPost tool");
 	} else {
-		console.log(
+		console.error(
 			"⚠️ bsocial_createPost tool not registered (no wallet available)",
 		);
 	}

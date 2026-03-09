@@ -1,14 +1,15 @@
 import os from "node:os";
 import path from "node:path";
 import {
+	Utils as BSVUtils,
+	fromUtxo,
+	HD,
+	isBroadcastFailure,
 	P2PKH,
 	PrivateKey,
 	Script,
 	Transaction,
-	fromUtxo,
-	isBroadcastFailure,
 } from "@bsv/sdk";
-import { Utils as BSVUtils, HD } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { BAP } from "bsv-bap";

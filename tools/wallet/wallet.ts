@@ -5,10 +5,15 @@
  *
  * See: https://github.com/bitcoin-sv/ts-sdk/blob/main/src/wallet/Wallet.interfaces.ts
  */
+
+import type { GetPublicKeyArgs, GetPublicKeyResult, PubKeyHex } from "@bsv/sdk";
 import {
 	Beef,
 	type BroadcastFailure,
 	type BroadcastResponse,
+	fromUtxo,
+	isBroadcastFailure,
+	isBroadcastResponse,
 	P2PKH,
 	PrivateKey,
 	type PublicKey,
@@ -16,23 +21,19 @@ import {
 	Script,
 	Transaction,
 	Utils,
-	fromUtxo,
-	isBroadcastFailure,
-	isBroadcastResponse,
 } from "@bsv/sdk";
-import type { GetPublicKeyArgs, GetPublicKeyResult, PubKeyHex } from "@bsv/sdk";
-import { type NftUtxo, type Utxo, fetchNftUtxos } from "js-1sat-ord";
+import { fetchNftUtxos, type NftUtxo, type Utxo } from "js-1sat-ord";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import { fetchPaymentUtxosFromV5 } from "./fetchPaymentUtxos";
 
 // Local interface for what encrypt/decrypt expect, will be mapped from Zod schema
 interface InternalEncryptionArgs {
-	data: Buffer;
+	data: number[];
 	recipientPublicKey?: PublicKey; // For encryption
 }
 
 interface InternalDecryptionArgs {
-	data: Buffer;
+	data: number[];
 }
 
 export class Wallet {
@@ -290,5 +291,3 @@ export class Wallet {
 		}
 	}
 }
-
-export default Wallet;

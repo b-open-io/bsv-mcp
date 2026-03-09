@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
 	"vcs": {
 		"enabled": false,
 		"clientKind": "git",
@@ -7,33 +7,42 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": [
-			"./dist",
-			"node_modules/**",
-			"build/**",
-			".next/**",
-			".vercel/**",
-			".wrangler/**",
-			"cloudflare/frontend/.next/**",
-			"cloudflare/frontend/.vercel/**",
-			"cloudflare/frontend/.open-next/**",
-			"cloudflare/.wrangler/**",
-			"cloudflare/.cloudflare/**",
-			".vscode/**",
-			".claude/**"
+		"includes": [
+			"**",
+			"!**/*.css",
+			"!dist",
+			"!**/node_modules",
+			"!**/build",
+			"!**/.next",
+			"!**/.vercel",
+			"!**/.wrangler",
+			"!**/cloudflare/frontend/.next",
+			"!**/cloudflare/frontend/.vercel",
+			"!**/cloudflare/frontend/.open-next",
+			"!**/cloudflare/.wrangler",
+			"!**/cloudflare/.cloudflare",
+			"!**/.vscode",
+			"!**/.claude"
 		]
 	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab"
 	},
-	"organizeImports": {
-		"enabled": true
-	},
+	"assist": { "actions": { "source": { "organizeImports": "on" } } },
 	"linter": {
 		"enabled": true,
 		"rules": {
 			"recommended": true
+		}
+	},
+	"css": {
+		"parser": {
+			"cssModules": true,
+			"allowWrongLineComments": true
+		},
+		"linter": {
+			"enabled": false
 		}
 	},
 	"javascript": {

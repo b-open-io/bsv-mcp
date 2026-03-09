@@ -5,7 +5,7 @@
  * according to MCP 2025 specification and OAuth 2.1 standards.
  */
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, type JWTPayload, jwtVerify } from "jose";
 
 /**
  * Extended JWT payload with BSV-specific claims
@@ -47,8 +47,7 @@ export class JWTValidator {
 	constructor(options: JWTValidationOptions) {
 		this.issuer = options.issuer;
 		this.audience = options.audience;
-		this.jwksUrl =
-			options.jwksUrl || `${options.issuer}/.well-known/jwks.json`;
+		this.jwksUrl = options.jwksUrl || `${options.issuer}/.well-known/jwks.json`;
 
 		// Create JWKS fetcher with caching
 		this.jwks = createRemoteJWKSet(new URL(this.jwksUrl), {
@@ -107,7 +106,7 @@ export class JWTValidator {
 	 * @throws Error if token is present but invalid
 	 */
 	async validateFromHeader(
-		authHeader: string | null
+		authHeader: string | null,
 	): Promise<BSVJWTPayload | null> {
 		if (!authHeader) {
 			return null;
@@ -115,7 +114,7 @@ export class JWTValidator {
 
 		// Check for Bearer token format
 		if (!authHeader.startsWith("Bearer ")) {
-			throw new Error('Authorization header must use Bearer scheme');
+			throw new Error("Authorization header must use Bearer scheme");
 		}
 
 		// Extract token
@@ -135,9 +134,7 @@ export class JWTValidator {
 	 * @returns The validated JWT payload, or null if no token
 	 * @throws Error if token is present but invalid
 	 */
-	async validateFromRequest(
-		request: Request
-	): Promise<BSVJWTPayload | null> {
+	async validateFromRequest(request: Request): Promise<BSVJWTPayload | null> {
 		const authHeader = request.headers.get("Authorization");
 		return await this.validateFromHeader(authHeader);
 	}
@@ -150,9 +147,9 @@ export class JWTValidator {
  * @returns JWT validator instance
  */
 export function createMCPJWTValidator(resourceUrl?: string): JWTValidator {
-	const issuer =
-		process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
-	const audience = resourceUrl || process.env.RESOURCE_URL || "http://localhost:3000";
+	const issuer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+	const audience =
+		resourceUrl || process.env.RESOURCE_URL || "http://localhost:3000";
 
 	return new JWTValidator({
 		issuer,
@@ -174,7 +171,7 @@ export function createMCPJWTValidator(resourceUrl?: string): JWTValidator {
 export function generateWWWAuthenticate(
 	resourceUrl: string,
 	error?: string,
-	errorDescription?: string
+	errorDescription?: string,
 ): string {
 	let header = `Bearer realm="BSV-MCP", resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource"`;
 

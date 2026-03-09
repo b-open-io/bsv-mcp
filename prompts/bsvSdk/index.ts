@@ -24,11 +24,11 @@ export function registerAllBsvSdkPrompts(server: McpServer): void {
 	registerPrimitivesPrompt(server);
 }
 
-// Export all prompts
-export { registerOverviewPrompt } from "./overview";
-export { registerWalletPrompt } from "./wallet";
-export { registerTransactionPrompt } from "./transaction";
 export { registerAuthPrompt } from "./auth";
 export { registerCryptographyPrompt } from "./cryptography";
-export { registerScriptPrompt } from "./script";
+// Export all prompts
+export { registerOverviewPrompt } from "./overview";
 export { registerPrimitivesPrompt } from "./primitives";
+export { registerScriptPrompt } from "./script";
+export { registerTransactionPrompt } from "./transaction";
+export { registerWalletPrompt } from "./wallet";

@@ -1,5 +1,5 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { readFileSync } from "node:fs";
+import { basename, extname, resolve } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -21,10 +21,10 @@ interface BigBlocksRegistry {
 // Load BigBlocks registry data
 function loadBigBlocksRegistry(): BigBlocksRegistry | null {
 	try {
-		const registryPath = path.resolve(
+		const registryPath = resolve(
 			"node_modules/bigblocks/registry/registry.json",
 		);
-		const registryData = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+		const registryData = JSON.parse(readFileSync(registryPath, "utf-8"));
 		return registryData as BigBlocksRegistry;
 	} catch (error) {
 		console.error("Failed to load BigBlocks registry:", error);
@@ -410,7 +410,7 @@ export function registerBigBlocksGeneratorTool(server: McpServer): void {
 					// Determine the actual component name from files
 					const mainFile = comp.files?.[0];
 					const componentName = mainFile
-						? path.basename(mainFile, path.extname(mainFile))
+						? basename(mainFile, extname(mainFile))
 						: component;
 
 					let result = `# ${componentName} Integration\n\n`;

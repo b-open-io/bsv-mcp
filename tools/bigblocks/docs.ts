@@ -450,7 +450,7 @@ export function registerBigBlocksDocsTool(server: McpServer): void {
 					)) {
 						result += `## ${conceptData.title}\n`;
 						result += `${conceptData.description}\n`;
-						result += `**Learn more:** Use {\"concept\": \"${conceptKey}\"}\n\n`;
+						result += `**Learn more:** Use {"concept": "${conceptKey}"}\n\n`;
 					}
 
 					return { content: [{ type: "text", text: result }] };

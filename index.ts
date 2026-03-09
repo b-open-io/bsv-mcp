@@ -7,18 +7,18 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
-import { type ToolsConfig, registerAllTools } from "./tools/index.ts";
+import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { registerMneeTools } from "./tools/mnee/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { BunSSEServerTransport } from "./transports/sse.ts";
-import { SecureKeyManager } from "./utils/keyManager.ts";
-import { setServerInstance } from "./utils/passphrasePrompt.ts";
 import {
+	type BSVJWTPayload,
 	createMCPJWTValidator,
 	generateWWWAuthenticate,
-	type BSVJWTPayload,
 } from "./utils/jwtValidator.ts";
+import { SecureKeyManager } from "./utils/keyManager.ts";
+import { setServerInstance } from "./utils/passphrasePrompt.ts";
 
 // Initialize server variable
 let server: McpServer | undefined;
@@ -57,8 +57,7 @@ const CONFIG = {
 
 	// --- OAuth Configuration ---
 	enableOAuth: process.env.ENABLE_OAUTH !== "false", // Enabled by default
-	oauthIssuer:
-		process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
+	oauthIssuer: process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
 	resourceUrl: process.env.RESOURCE_URL || "", // Will be set based on port
 };
 
@@ -281,15 +280,7 @@ Authentication:
 		!!xprv &&
 		(keySource === "file" || keySource === "env" || keySource === "encrypted");
 
-	const effectiveConfig = {
-		...CONFIG,
-		loadWalletTools: CONFIG.loadWalletTools,
-		loadMneeTools: CONFIG.loadMneeTools,
-		loadA2bTools: CONFIG.loadA2bTools,
-		loadBapTools: CONFIG.loadBapTools,
-		loadBsocialTools: CONFIG.loadBsocialTools,
-		loadBigBlocksTools: CONFIG.loadBigBlocksTools,
-	};
+	const effectiveConfig = { ...CONFIG };
 
 	// --- Configuration Logging ---
 	logFunc("\n--- BSV MCP Server Configuration ---");
@@ -645,23 +636,25 @@ Authentication:
 										"WWW-Authenticate": generateWWWAuthenticate(
 											resourceUrl,
 											"invalid_token",
-											"Authentication required"
+											"Authentication required",
 										),
 										"Access-Control-Expose-Headers": "WWW-Authenticate",
 										"Access-Control-Allow-Origin": "*",
 									},
-								}
+								},
 							);
 						}
 
 						// Token validated successfully
 						logFunc(
-							`Authenticated request from user: ${userContext.sub} (pubkey: ${userContext.pubkey?.substring(0, 20)}...)`
+							`Authenticated request from user: ${userContext.sub} (pubkey: ${userContext.pubkey?.substring(0, 20)}...)`,
 						);
 					} catch (error) {
 						// Token provided but invalid
 						const errorMessage =
-							error instanceof Error ? error.message : "Token validation failed";
+							error instanceof Error
+								? error.message
+								: "Token validation failed";
 
 						logFunc(`JWT validation error: ${errorMessage}`);
 
@@ -677,12 +670,12 @@ Authentication:
 									"WWW-Authenticate": generateWWWAuthenticate(
 										resourceUrl,
 										"invalid_token",
-										errorMessage
+										errorMessage,
 									),
 									"Access-Control-Expose-Headers": "WWW-Authenticate",
 									"Access-Control-Allow-Origin": "*",
 								},
-							}
+							},
 						);
 					}
 				}
@@ -733,74 +726,101 @@ Authentication:
 
 				// Handle OAuth 2.1 Authorization Server Metadata (MCP spec requirement)
 				// MCP clients will request this to discover sigma-auth endpoints
-				if (req.method === "GET" && url.pathname === "/.well-known/oauth-authorization-server") {
-					const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+				if (
+					req.method === "GET" &&
+					url.pathname === "/.well-known/oauth-authorization-server"
+				) {
+					const authServer =
+						process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-					return new Response(JSON.stringify({
-						issuer: authServer,
-						authorization_endpoint: `${authServer}/api/oauth/authorize`,
-						token_endpoint: `${authServer}/api/oauth/token`,
-						userinfo_endpoint: `${authServer}/api/oauth/userinfo`,
-						jwks_uri: `${authServer}/.well-known/jwks.json`,
-						registration_endpoint: `${authServer}/api/oauth/register`,
-						scopes_supported: [
-							"openid",
-							"profile",
-							"email",
-							"offline_access",
-							"bsv:tools",
-							"bsv:wallet",
-							"bsv:ordinals",
-							"bsv:tokens",
-						],
-						response_types_supported: ["code"],
-						grant_types_supported: ["authorization_code", "refresh_token"],
-						token_endpoint_auth_methods_supported: ["none"],
-						code_challenge_methods_supported: ["S256"],
-					}, null, 2), {
-						status: 200,
-						headers: {
-							"Content-Type": "application/json",
-							"Access-Control-Allow-Origin": "*",
-							"Cache-Control": "public, max-age=3600",
+					return new Response(
+						JSON.stringify(
+							{
+								issuer: authServer,
+								authorization_endpoint: `${authServer}/api/oauth/authorize`,
+								token_endpoint: `${authServer}/api/oauth/token`,
+								userinfo_endpoint: `${authServer}/api/oauth/userinfo`,
+								jwks_uri: `${authServer}/.well-known/jwks.json`,
+								registration_endpoint: `${authServer}/api/oauth/register`,
+								scopes_supported: [
+									"openid",
+									"profile",
+									"email",
+									"offline_access",
+									"bsv:tools",
+									"bsv:wallet",
+									"bsv:ordinals",
+									"bsv:tokens",
+								],
+								response_types_supported: ["code"],
+								grant_types_supported: ["authorization_code", "refresh_token"],
+								token_endpoint_auth_methods_supported: ["none"],
+								code_challenge_methods_supported: ["S256"],
+							},
+							null,
+							2,
+						),
+						{
+							status: 200,
+							headers: {
+								"Content-Type": "application/json",
+								"Access-Control-Allow-Origin": "*",
+								"Cache-Control": "public, max-age=3600",
+							},
 						},
-					});
+					);
 				}
 
 				// Handle OAuth 2.1 Protected Resource Metadata (RFC 9728)
-				if (req.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
-					const resourceUrl = process.env.RESOURCE_URL || `http://localhost:${port}`;
-					const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+				if (
+					req.method === "GET" &&
+					url.pathname === "/.well-known/oauth-protected-resource"
+				) {
+					const resourceUrl =
+						process.env.RESOURCE_URL || `http://localhost:${port}`;
+					const authServer =
+						process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-					return new Response(JSON.stringify({
-						resource: resourceUrl,
-						authorization_servers: [authServer],
-						scopes_supported: [
-							"openid",
-							"profile",
-							"email",
-							"bsv:tools",
-							"bsv:wallet",
-							"bsv:ordinals",
-							"bsv:tokens",
-						],
-						bearer_methods_supported: ["header"],
-						resource_signing_alg_values_supported: ["RS256", "ES256"],
-					}, null, 2), {
-						status: 200,
-						headers: {
-							"Content-Type": "application/json",
-							"Access-Control-Allow-Origin": "*",
-							"Access-Control-Allow-Methods": "GET",
-							"Access-Control-Allow-Headers": "Content-Type, Authorization",
-							"Access-Control-Expose-Headers": "WWW-Authenticate",
-							"Cache-Control": "public, max-age=3600",
+					return new Response(
+						JSON.stringify(
+							{
+								resource: resourceUrl,
+								authorization_servers: [authServer],
+								scopes_supported: [
+									"openid",
+									"profile",
+									"email",
+									"bsv:tools",
+									"bsv:wallet",
+									"bsv:ordinals",
+									"bsv:tokens",
+								],
+								bearer_methods_supported: ["header"],
+								resource_signing_alg_values_supported: ["RS256", "ES256"],
+							},
+							null,
+							2,
+						),
+						{
+							status: 200,
+							headers: {
+								"Content-Type": "application/json",
+								"Access-Control-Allow-Origin": "*",
+								"Access-Control-Allow-Methods": "GET",
+								"Access-Control-Allow-Headers": "Content-Type, Authorization",
+								"Access-Control-Expose-Headers": "WWW-Authenticate",
+								"Cache-Control": "public, max-age=3600",
+							},
 						},
-					});
+					);
 				}
 
 				// Handle CORS preflight for OAuth discovery
-				if (req.method === "OPTIONS" && (url.pathname === "/.well-known/oauth-protected-resource" || url.pathname === "/.well-known/oauth-authorization-server")) {
+				if (
+					req.method === "OPTIONS" &&
+					(url.pathname === "/.well-known/oauth-protected-resource" ||
+						url.pathname === "/.well-known/oauth-authorization-server")
+				) {
 					return new Response(null, {
 						status: 204,
 						headers: {
@@ -837,4 +857,4 @@ main().catch((error) => {
 	process.exit(1);
 });
 
-export default server as McpServer;
+export { server };

@@ -1,6 +1,5 @@
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerA2aCallTool } from "./a2b/call";
 import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
 // import { registerBigBlocksTools } from "./bigblocks"; // Disabled - Turbopack module resolution issues
@@ -9,7 +8,9 @@ import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
+import { registerWalletGetBalanceDropletTool } from "./wallet/getBalanceDroplet";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
+import { registerSetupDropletTool } from "./wallet/setupDroplet";
 import { registerWalletTools } from "./wallet/tools";
 import type { Wallet } from "./wallet/wallet";
 
@@ -98,7 +99,6 @@ export function registerAllTools(
 	// Register agent-to-blockchain tools
 	if (enableA2bTools) {
 		registerA2bDiscoverTool(server);
-		// registerA2aCallTool(server);
 	}
 
 	// Register BAP tools
@@ -130,16 +130,10 @@ export function registerAllTools(
 			const dropletClient = config.integratedWallet.getDropletClient();
 			if (dropletClient) {
 				// Register Droplet-specific tools
-				import("./wallet/getBalanceDroplet").then(
-					({ registerWalletGetBalanceDropletTool }) => {
-						registerWalletGetBalanceDropletTool(server, dropletClient);
-					},
-				);
-				import("./wallet/setupDroplet").then(({ registerSetupDropletTool }) => {
-					if (config.integratedWallet) {
-						registerSetupDropletTool(server, config.integratedWallet);
-					}
-				});
+				registerWalletGetBalanceDropletTool(server, dropletClient);
+				if (config.integratedWallet) {
+					registerSetupDropletTool(server, config.integratedWallet);
+				}
 				console.error("Registered Droplet mode wallet tools");
 			}
 		} else if (config.wallet) {

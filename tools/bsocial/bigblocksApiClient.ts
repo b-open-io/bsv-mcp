@@ -12,9 +12,9 @@ import type {
 	LikesResponse,
 	PostMeta,
 	PostResponse,
-	PostTransaction,
 	PostsParams,
 	PostsResponse,
+	PostTransaction,
 	SearchParams,
 } from "bmap-api-types";
 import { BMAP_URL } from "../constants";

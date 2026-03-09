@@ -6,7 +6,6 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { OneSatBroadcaster, createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	CreateOrdinalsCollectionItemMetadata,
@@ -17,6 +16,7 @@ import type {
 	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
+import { createOrdinals, OneSatBroadcaster } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import { BsocialBroadcaster, V5Broadcaster } from "../../utils/broadcaster";

@@ -1,9 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	mock,
+	spyOn,
+} from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { PrivateKey, Transaction } from "@bsv/sdk";
-import HD from "@bsv/sdk/compat/HD";
+import { HD, PrivateKey, Transaction } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -11,6 +18,7 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
+import * as passphrasePromptModule from "../../utils/passphrasePrompt";
 import * as utxoUtils from "../wallet/fetchPaymentUtxos";
 import { type BapGenerateArgs, registerBapGenerateTool } from "./generate";
 
@@ -52,6 +60,12 @@ describe("BAP Generate Tool", () => {
 	let transactionBroadcastSpy: ReturnType<
 		typeof spyOn<Transaction.prototype, "broadcast">
 	>;
+	let passphrasePromptSpy: ReturnType<
+		typeof spyOn<
+			typeof passphrasePromptModule,
+			"promptForPassphraseWithFallback"
+		>
+	>;
 
 	beforeEach(() => {
 		mockServerToolSpy = spyOn(mockMcpServerInstance, "tool");
@@ -63,8 +77,21 @@ describe("BAP Generate Tool", () => {
 		mkdirSyncSpy = spyOn(fs, "mkdirSync");
 		fetchPaymentUtxosSpy = spyOn(utxoUtils, "fetchPaymentUtxos");
 		transactionBroadcastSpy = spyOn(Transaction.prototype, "broadcast");
+		passphrasePromptSpy = spyOn(
+			passphrasePromptModule,
+			"promptForPassphraseWithFallback",
+		);
 
-		existsSyncSpy.mockReturnValue(true);
+		// Make existsSync path-aware: .bep files return false (skip encrypted path),
+		// .json files return true (use legacy path)
+		existsSyncSpy.mockImplementation((filePath: fs.PathLike) => {
+			const p = String(filePath);
+			if (p.endsWith(".bep") || p.endsWith(".bep.backup")) return false;
+			return true;
+		});
+		// Reject passphrase prompts immediately so SecureKeyManager falls through
+		// to legacy/unencrypted code paths (simulates user cancelling the prompt)
+		passphrasePromptSpy.mockRejectedValue(new Error("cancelled by test"));
 		readFileSyncSpy.mockReturnValue(JSON.stringify(MOCK_KEYS_WITH_PAYPK));
 		mkdirSyncSpy.mockImplementation(() => undefined);
 		writeFileSyncSpy.mockImplementation(() => undefined);
@@ -82,6 +109,7 @@ describe("BAP Generate Tool", () => {
 		mkdirSyncSpy.mockRestore();
 		fetchPaymentUtxosSpy.mockRestore();
 		transactionBroadcastSpy.mockRestore();
+		passphrasePromptSpy.mockRestore();
 	});
 
 	it("should register bap_generate tool with the MCP server", () => {
@@ -104,7 +132,6 @@ describe("BAP Generate Tool", () => {
 
 	it("should generate keys and TX if payPk exists and no BAP keys, and save all to keys.json", async () => {
 		const initialKeys = { payPk: MOCK_PAY_PK_WIF };
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(initialKeys));
 		fetchPaymentUtxosSpy.mockResolvedValue([MOCK_UTXO]);
 
@@ -157,7 +184,6 @@ describe("BAP Generate Tool", () => {
 	});
 
 	it("should return error if payPk is missing from keys.json", async () => {
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify({ someOtherKey: "value" }));
 
 		registerBapGenerateTool(mockMcpServerInstance as unknown as McpServer);
@@ -180,7 +206,6 @@ describe("BAP Generate Tool", () => {
 			payPk: MOCK_PAY_PK_WIF,
 			xprv: "already_exists_xprv",
 		};
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(existingKeys));
 
 		registerBapGenerateTool(mockMcpServerInstance as unknown as McpServer);
@@ -203,7 +228,6 @@ describe("BAP Generate Tool", () => {
 			payPk: MOCK_PAY_PK_WIF,
 			identityPk: "L5BBNhvVgvpdV1AkMJMNGy89MHEUnyiKhrs11GNAUxWjXvhxgcAg",
 		};
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(existingKeys));
 
 		registerBapGenerateTool(mockMcpServerInstance as unknown as McpServer);
@@ -226,7 +250,6 @@ describe("BAP Generate Tool", () => {
 		HD.fromRandom = () => {
 			throw new Error("Test HD generation error");
 		};
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(MOCK_KEYS_WITH_PAYPK));
 
 		const mockExtra = {} as RequestHandlerExtra<
@@ -250,7 +273,6 @@ describe("BAP Generate Tool", () => {
 	});
 
 	it("should handle error if keys.json is corrupt", async () => {
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockImplementation(() => {
 			throw new Error("JSON Parse error: Unexpected identifier 'this'.");
 		});
@@ -271,7 +293,6 @@ describe("BAP Generate Tool", () => {
 	});
 
 	it("should handle error if no UTXOs are found for payPk", async () => {
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(MOCK_KEYS_WITH_PAYPK));
 		fetchPaymentUtxosSpy.mockResolvedValue([]);
 
@@ -300,7 +321,6 @@ describe("BAP Generate Tool", () => {
 	});
 
 	it("should handle error if transaction broadcast fails", async () => {
-		existsSyncSpy.mockReturnValue(true);
 		readFileSyncSpy.mockReturnValue(JSON.stringify(MOCK_KEYS_WITH_PAYPK));
 		fetchPaymentUtxosSpy.mockResolvedValue([MOCK_UTXO]);
 		transactionBroadcastSpy.mockRejectedValue(

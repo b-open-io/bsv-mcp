@@ -1,5 +1,5 @@
-import { HD, Hash, Utils } from "@bsv/sdk";
 import type { PrivateKey, PublicKey } from "@bsv/sdk";
+import { Hash, HD, Utils } from "@bsv/sdk";
 
 /**
  * Get a signing path from a hex number

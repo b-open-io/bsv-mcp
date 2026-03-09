@@ -3,10 +3,9 @@
 import { Theme } from "@radix-ui/themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+	BigBlocksQueryProvider,
 	type BitcoinAuthConfig,
 	BitcoinAuthProvider,
-	BitcoinQueryProvider,
-	BitcoinThemeProvider,
 } from "bigblocks";
 import "@radix-ui/themes/styles.css";
 
@@ -87,13 +86,11 @@ export function BigblocksAuthProvider({
 				radius="medium"
 				scaling="100%"
 			>
-				<BitcoinThemeProvider>
-					<BitcoinQueryProvider>
-						<BitcoinAuthProvider config={authConfig}>
-							{children}
-						</BitcoinAuthProvider>
-					</BitcoinQueryProvider>
-				</BitcoinThemeProvider>
+				<BigBlocksQueryProvider>
+					<BitcoinAuthProvider config={authConfig}>
+						{children}
+					</BitcoinAuthProvider>
+				</BigBlocksQueryProvider>
 			</Theme>
 		</QueryClientProvider>
 	);

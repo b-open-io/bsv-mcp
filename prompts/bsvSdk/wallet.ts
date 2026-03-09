@@ -54,7 +54,7 @@ const privateKey = PrivateKey.fromRandom();
 const importedKey = PrivateKey.fromWif("your-wif-string");
 
 // Generate from a seed
-const seedKey = PrivateKey.fromSeed(Buffer.from("your-seed-data"));
+const seedKey = PrivateKey.fromSeed(Utils.toArray("your-seed-data", "utf8"));
 
 // Get the corresponding public key
 const publicKey = privateKey.toPublicKey();
