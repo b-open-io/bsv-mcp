@@ -43,14 +43,17 @@ export function registerGetTokenByIdOrTickerTool(server: McpServer): void {
 		"ordinals_getTokenByIdOrTicker",
 		"Retrieves detailed information about a specific BSV-20 token by its ID or ticker symbol. Returns complete token data including ticker symbol, supply information, decimals, and current status. This tool is useful for verifying token authenticity or checking supply metrics.",
 		{
-			args: getTokenByIdOrTickerArgsSchema,
+			id: z
+				.string()
+				.optional()
+				.describe("BSV20 token ID in outpoint format (txid_vout)"),
+			tick: z.string().optional().describe("BSV20 token ticker symbol"),
 		},
 		async (
-			{ args }: { args: GetTokenByIdOrTickerArgs },
+			{ id, tick },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const { id, tick } = args;
 
 				// Validate that at least one of id or tick is provided
 				if (!id && !tick) {

@@ -133,15 +133,11 @@ export function registerGatherCollectionInfoTool(
 	server.tool(
 		"wallet_gatherCollectionInfo",
 		"Analyzes a folder of images and gathers all necessary information for minting an ordinals collection. This includes validating images, checking wallet balance, estimating costs, and suggesting metadata. Use this before minting to ensure everything is ready.",
-		{ args: gatherCollectionInfoArgsSchema },
-		async ({
-			args,
-		}: {
-			args: GatherCollectionInfoArgs;
-		}): Promise<CallToolResult> => {
+		{ ...gatherCollectionInfoArgsSchema.shape },
+		async ({ folderPath }): Promise<CallToolResult> => {
 			try {
 				const analysis: CollectionAnalysis = {
-					folderPath: args.folderPath,
+					folderPath,
 					totalImages: 0,
 					validImages: 0,
 					invalidImages: 0,
@@ -172,13 +168,13 @@ export function registerGatherCollectionInfoTool(
 
 				// Check if folder exists
 				try {
-					const folderStat = await fs.stat(args.folderPath);
+					const folderStat = await fs.stat(folderPath);
 					if (!folderStat.isDirectory()) {
-						throw new Error(`Path is not a directory: ${args.folderPath}`);
+						throw new Error(`Path is not a directory: ${folderPath}`);
 					}
 				} catch (error) {
 					analysis.errors.push(
-						`Folder not found or inaccessible: ${args.folderPath}`,
+						`Folder not found or inaccessible: ${folderPath}`,
 					);
 					return {
 						content: [
@@ -222,7 +218,7 @@ export function registerGatherCollectionInfoTool(
 				}
 
 				// Scan folder for images
-				const files = await fs.readdir(args.folderPath);
+				const files = await fs.readdir(folderPath);
 				const imageExtensions = [
 					".jpg",
 					".jpeg",
@@ -233,7 +229,7 @@ export function registerGatherCollectionInfoTool(
 				];
 
 				for (const file of files) {
-					const filePath = path.join(args.folderPath, file);
+					const filePath = path.join(folderPath, file);
 					const stat = await fs.stat(filePath);
 
 					if (stat.isFile()) {
@@ -280,7 +276,7 @@ export function registerGatherCollectionInfoTool(
 				}
 
 				// Suggest metadata based on folder name
-				const folderName = path.basename(args.folderPath);
+				const folderName = path.basename(folderPath);
 				analysis.suggestedMetadata = {
 					collectionName: folderName
 						.replace(/[-_]/g, " ")

@@ -1,10 +1,5 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import {
 	type Distribution,
 	type LocalSigner,
@@ -65,11 +60,8 @@ export function registerTransferOrdTokenTool(
 	server.tool(
 		"wallet_transferOrdToken",
 		"Transfers BSV-20 or BSV-21 tokens from your wallet via js-1sat-ord transferOrdTokens.",
-		{ args: transferOrdTokenArgsSchema },
-		async (
-			{ args }: { args: TransferOrdTokenArgs },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{ ...transferOrdTokenArgsSchema.shape },
+		async ({ protocol, tokenID, sendAmount, paymentUtxos, tokenUtxos, distributions, decimals, additionalPayments }) => {
 			try {
 				// fetch keys
 				const paymentPk = wallet.getPaymentKey();
@@ -80,9 +72,9 @@ export function registerTransferOrdTokenTool(
 
 				// select token UTXOs
 				const { selectedUtxos: inputTokens } = selectTokenUtxos(
-					args.tokenUtxos as TokenUtxo[],
-					args.sendAmount,
-					args.decimals,
+					tokenUtxos as TokenUtxo[],
+					sendAmount,
+					decimals,
 					{
 						inputStrategy: TokenSelectionStrategy.SmallestFirst,
 						outputStrategy: TokenSelectionStrategy.LargestFirst,
@@ -92,21 +84,21 @@ export function registerTransferOrdTokenTool(
 				// build config
 				const config: TransferOrdTokensConfig = {
 					protocol:
-						args.protocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21,
-					tokenID: args.tokenID,
-					utxos: args.paymentUtxos as Utxo[],
+						protocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21,
+					tokenID,
+					utxos: paymentUtxos as Utxo[],
 					inputTokens,
-					distributions: args.distributions as Distribution[],
+					distributions: distributions as Distribution[],
 					tokenChangeAddress: ordAddress,
 					changeAddress,
 					paymentPk,
 					ordPk,
-					additionalPayments: (args.additionalPayments as Payment[]) || [],
-					decimals: args.decimals,
+					additionalPayments: (additionalPayments as Payment[]) || [],
+					decimals,
 					inputMode: TokenInputMode.Needed,
 					splitConfig: {
 						outputs: inputTokens.length === 1 ? 2 : 1,
-						threshold: args.sendAmount,
+						threshold: sendAmount,
 					},
 				};
 

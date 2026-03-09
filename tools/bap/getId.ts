@@ -73,12 +73,12 @@ export function registerBapGetIdTool(
 	server.tool(
 		"bap_getId",
 		"Retrieves a Bitcoin Attestation Protocol (BAP) identity profile using an idKey (Paymail or public key). If no idKey is provided, it attempts to use the server's configured identity key.",
-		{ args: bapGetIdArgsSchema },
+		{ ...bapGetIdArgsSchema.shape },
 		async (
-			{ args }: { args: BapGetIdArgs },
+			{ idKey },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
-			let targetIdKey = args.idKey;
+			let targetIdKey = idKey;
 
 			if (!targetIdKey) {
 				// First priority: Use authenticated user's BAP ID from OAuth session

@@ -198,10 +198,10 @@ export function registerReadPostsTool(server: McpServer) {
 	server.tool(
 		"bsocial_readPosts",
 		"Read social posts from the BSV blockchain using BMAP API. Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-		{ args: readPostsArgsSchema },
-		async ({ args }: { args: ReadPostsArgs }): Promise<CallToolResult> => {
+		{ ...readPostsArgsSchema.shape },
+		async ({ bapId, txid, limit, page, feed }): Promise<CallToolResult> => {
 			try {
-				const result = await readSocialPosts(args);
+				const result = await readSocialPosts({ bapId, txid, limit, page, feed });
 
 				if (result.success && result.posts) {
 					// Format posts for display

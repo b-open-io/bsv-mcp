@@ -73,10 +73,10 @@ export function registerBmapReadLikesTool(server: McpServer) {
 	server.tool(
 		"bmap_readLikes",
 		"Read likes and reactions for a specific post from the BMAP API. Shows who liked the post and what emoji reactions were used.",
-		{ args: bmapReadLikesArgsSchema },
-		async ({ args }: { args: BmapReadLikesArgs }): Promise<CallToolResult> => {
+		{ ...bmapReadLikesArgsSchema.shape },
+		async ({ txid, limit, page }): Promise<CallToolResult> => {
 			try {
-				const result = await readBmapLikes(args);
+				const result = await readBmapLikes({ txid, limit, page });
 
 				if (result.success) {
 					return {

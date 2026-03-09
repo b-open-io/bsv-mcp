@@ -121,37 +121,37 @@ export function registerA2bDiscoverTool(server: McpServer) {
 	server.tool(
 		"a2b_discover",
 		"Search on-chain agent and MCP tool records. Use 'agent' to search for agents, 'tool' to search for MCP tools.",
-		{ args: a2bDiscoverArgsSchema },
+		{ ...a2bDiscoverArgsSchema.shape },
 		async (
-			{ args }: { args: A2bDiscoverArgs },
+			{ queryType, query, limit, offset, fromBlock, toBlock },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const params = new URLSearchParams();
 
 				// Set query type (agent, tool, or all)
-				params.set("type", args.queryType);
+				params.set("type", queryType);
 
 				// Use enhanced search for better relevance scoring
 				let searchEndpoint = "/search/enhanced";
 
 				// For empty queries, use the regular search endpoint
-				if (!args.query || !args.query.trim()) {
+				if (!query || !query.trim()) {
 					searchEndpoint = "/search";
 				} else {
-					params.set("q", args.query); // enhanced search uses 'q' parameter
+					params.set("q", query); // enhanced search uses 'q' parameter
 				}
 
 				// Add pagination parameters
-				params.set("limit", args.limit?.toString() ?? "10");
-				params.set("offset", args.offset?.toString() ?? "0");
+				params.set("limit", limit?.toString() ?? "10");
+				params.set("offset", offset?.toString() ?? "0");
 
 				// Add block range if specified
-				if (args.fromBlock) {
-					params.set("fromBlock", args.fromBlock.toString());
+				if (fromBlock) {
+					params.set("fromBlock", fromBlock.toString());
 				}
-				if (args.toBlock) {
-					params.set("toBlock", args.toBlock.toString());
+				if (toBlock) {
+					params.set("toBlock", toBlock.toString());
 				}
 
 				// Construct the full URL
@@ -178,7 +178,7 @@ export function registerA2bDiscoverTool(server: McpServer) {
 				let result = "";
 
 				if (data?.items?.length > 0) {
-					result = `Found ${data.items.length} ${args.queryType}(s):\n\n`;
+					result = `Found ${data.items.length} ${queryType}(s):\n\n`;
 
 					data.items.forEach((item: A2BDiscoveryItem, index: number) => {
 						// Server name and description
@@ -217,7 +217,7 @@ export function registerA2bDiscoverTool(server: McpServer) {
 						result += "\n";
 					});
 				} else {
-					result = `No ${args.queryType} results found.`;
+					result = `No ${queryType} results found.`;
 				}
 
 				return {

@@ -83,14 +83,10 @@ export function registerBmapReadFollowsTool(server: McpServer) {
 	server.tool(
 		"bmap_readFollows",
 		"Read follow relationships from the BMAP API. Shows who a user is following or who follows them.",
-		{ args: bmapReadFollowsArgsSchema },
-		async ({
-			args,
-		}: {
-			args: BmapReadFollowsArgs;
-		}): Promise<CallToolResult> => {
+		{ ...bmapReadFollowsArgsSchema.shape },
+		async ({ bapId, type, limit, page }): Promise<CallToolResult> => {
 			try {
-				const result = await readBmapFollows(args);
+				const result = await readBmapFollows({ bapId, type, limit, page });
 
 				if (result.success) {
 					return {

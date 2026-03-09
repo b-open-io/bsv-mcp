@@ -26,11 +26,9 @@ export function registerSetupDropletTool(
 	server.tool(
 		"wallet_setupDroplet",
 		"Setup and manage Droplet API integration. Actions: register_key (registers your public key), create_faucet (creates a new faucet), check_status (checks faucet status)",
-		{
-			args: setupDropletArgsSchema,
-		},
+		setupDropletArgsSchema.shape,
 		async (
-			{ args }: { args: SetupDropletArgs },
+			{ action, faucetName, fixedDropSats },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
@@ -43,7 +41,7 @@ export function registerSetupDropletTool(
 				const apiUrl = config.apiUrl;
 				const authKey = config.authKey;
 
-				switch (args.action) {
+				switch (action) {
 					case "register_key": {
 						if (!authKey) {
 							throw new Error("No auth key configured");
@@ -80,7 +78,7 @@ export function registerSetupDropletTool(
 					}
 
 					case "create_faucet": {
-						if (!args.faucetName) {
+						if (!faucetName) {
 							throw new Error(
 								"faucetName is required for create_faucet action",
 							);
@@ -100,8 +98,8 @@ export function registerSetupDropletTool(
 
 						// Create the faucet
 						const body = {
-							name: args.faucetName,
-							fixed_drop_sats: args.fixedDropSats || 1000,
+							name: faucetName,
+							fixed_drop_sats: fixedDropSats || 1000,
 							max_consolidation_inputs: 20,
 						};
 
@@ -154,7 +152,7 @@ export function registerSetupDropletTool(
 					}
 
 					default:
-						throw new Error(`Unknown action: ${args.action}`);
+						throw new Error(`Unknown action: ${action}`);
 				}
 			} catch (error) {
 				return {

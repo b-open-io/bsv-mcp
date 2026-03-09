@@ -1,18 +1,12 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
 	ChangeResult,
 	LocalSigner,
 	SendOrdinalsConfig,
 } from "js-1sat-ord";
-import { OneSatBroadcaster, sendOrdinals } from "js-1sat-ord";
-import { Sigma } from "sigma-protocol";
+import { sendOrdinals } from "js-1sat-ord";
 import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
@@ -45,11 +39,8 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_sendOrdinals",
 		"Transfers ordinals (NFTs) from your wallet to another address on the Bitcoin SV blockchain. This tool enables sending inscriptions you own to any valid BSV address. The transaction is created, signed, and broadcast automatically, with appropriate fee calculation and change handling.",
-		{ args: sendOrdinalsArgsSchema },
-		async (
-			{ args }: { args: SendOrdinalsArgs },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{ ...sendOrdinalsArgsSchema.shape },
+		async ({ inscriptionOutpoint, destinationAddress, metadata }): Promise<CallToolResult> => {
 			try {
 				// 1. Get private key from wallet
 				const paymentPk = wallet.getPrivateKey();
@@ -69,7 +60,7 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 				const walletAddress = paymentPk.toAddress().toString();
 
 				// 4. Parse the inscription outpoint
-				const [txid, voutStr] = args.inscriptionOutpoint.split("_");
+				const [txid, voutStr] = inscriptionOutpoint.split("_");
 				if (!txid || !voutStr) {
 					throw new Error(
 						"Invalid inscription outpoint format. Expected txid_vout",
@@ -84,7 +75,7 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 
 				if (!inscription) {
 					throw new Error(
-						`Inscription ${args.inscriptionOutpoint} not found in your wallet`,
+						`Inscription ${inscriptionOutpoint} not found in your wallet`,
 					);
 				}
 
@@ -93,7 +84,7 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 					paymentPk,
 					paymentUtxos,
 					ordinals: [inscription],
-					destinations: [{ address: args.destinationAddress }],
+					destinations: [{ address: destinationAddress }],
 					changeAddress: walletAddress,
 				};
 
@@ -108,8 +99,8 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 				}
 
 				// Add metadata if provided
-				if (args.metadata) {
-					sendOrdinalsConfig.metaData = args.metadata;
+				if (metadata) {
+					sendOrdinalsConfig.metaData = metadata;
 				}
 
 				// Using the wallet's key for both payment and ordinals
@@ -144,8 +135,8 @@ export function registerSendOrdinalsTool(server: McpServer, wallet: Wallet) {
 									txid: changeResult.tx.id("hex"),
 									spentOutpoints: changeResult.spentOutpoints,
 									payChange: changeResult.payChange,
-									inscriptionOutpoint: args.inscriptionOutpoint,
-									destinationAddress: args.destinationAddress,
+									inscriptionOutpoint: inscriptionOutpoint,
+									destinationAddress: destinationAddress,
 								}),
 							},
 						],

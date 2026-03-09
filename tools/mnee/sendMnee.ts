@@ -42,18 +42,18 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 	server.tool(
 		"mnee_sendMnee",
 		"Send MNEE tokens to a specified address",
-		{ args: sendMneeArgsSchema },
+		{ ...sendMneeArgsSchema.shape },
 		async (
-			{ args }: { args: SendMneeArgs },
+			{ address, amount, currency },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
 				// Since 1 MNEE = $1, the amount is the same in both currencies
-				const mneeAmount = args.amount;
+				const mneeAmount = amount;
 
 				const transferRequest: SendMNEE[] = [
 					{
-						address: args.address,
+						address,
 						amount: mneeAmount,
 					},
 				];
@@ -101,7 +101,7 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 									rawtx: result.rawtx,
 									mneeAmount: mneeAmount,
 									usdAmount: formatUSD(mneeAmount),
-									recipient: args.address,
+									recipient: address,
 								},
 								null,
 								2,

@@ -1,5 +1,4 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import type { Wallet } from "./wallet";
 
 /**
@@ -14,14 +13,7 @@ export function registerGetAddressTool(
 	server.tool(
 		"wallet_getAddress",
 		"Retrieves the current wallet's Bitcoin SV address. This address can be used to receive BSV, ordinals, or tokens, and is derived from the wallet's private key.",
-		{
-			args: z
-				.object({})
-				.optional()
-				.describe(
-					"No parameters required - simply returns the current wallet address",
-				),
-		},
+		{},
 		async () => {
 			try {
 				const address = wallet.getAddress();

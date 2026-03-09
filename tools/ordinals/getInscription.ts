@@ -42,14 +42,13 @@ export function registerGetInscriptionTool(server: McpServer): void {
 		"ordinals_getInscription",
 		"Retrieves detailed information about a specific ordinal inscription by its outpoint. Returns complete inscription data including content type, file information, inscription origin, and current status. Useful for verifying NFT authenticity or retrieving metadata about digital artifacts.",
 		{
-			args: getInscriptionArgsSchema,
+			...getInscriptionArgsSchema.shape,
 		},
 		async (
-			{ args }: { args: GetInscriptionArgs },
+			{ outpoint },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const { outpoint } = args;
 
 				// Validate outpoint format
 				if (!/^[0-9a-f]{64}_\d+$/i.test(outpoint)) {

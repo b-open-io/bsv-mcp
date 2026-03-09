@@ -25,12 +25,10 @@ const { toArray } = BSVUtils;
 const KEY_DIR = path.join(os.homedir(), ".bsv-mcp");
 const KEY_FILE_PATH = path.join(KEY_DIR, "keys.json");
 
-const bapGenerateArgsSchema = z
-	.object({
-		alternateName: z.string().optional(),
-		description: z.string().optional(),
-	})
-	.optional();
+const bapGenerateArgsSchema = z.object({
+	alternateName: z.string().optional().describe("Alternate name for the BAP identity profile"),
+	description: z.string().optional().describe("Description for the BAP identity profile"),
+});
 
 export type BapGenerateArgs = z.infer<typeof bapGenerateArgsSchema>;
 
@@ -415,10 +413,10 @@ export function registerBapGenerateTool(server: McpServer) {
 	server.tool(
 		"bap_generate",
 		"Generates a BAP HD master key AND derives the first identity key if no BAP keys (xprv or identityPk) exist. Saves keys to secure storage. Attempts on-chain registration using payPk (honors DISABLE_BROADCASTING). Optionally takes alternateName and description for the profile.",
-		{ args: bapGenerateArgsSchema },
-		async ({ args }: { args?: BapGenerateArgs }): Promise<CallToolResult> => {
+		{ ...bapGenerateArgsSchema.shape },
+		async ({ alternateName, description }): Promise<CallToolResult> => {
 			try {
-				const result = await generateBapKeys(args);
+				const result = await generateBapKeys({ alternateName, description });
 				// Format result as JSON
 				return {
 					content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

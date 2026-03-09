@@ -15,14 +15,7 @@ export function registerBapGetCurrentAddressTool(
 	server.tool(
 		"bap_getCurrentAddress",
 		"Retrieves the current BAP identity's Bitcoin SV address. This address is derived from the server's configured identity key.",
-		{
-			args: z
-				.object({}) // No arguments needed
-				.optional()
-				.describe(
-					"No parameters required - simply returns the current BAP identity address",
-				),
-		},
+		{},
 		async () => {
 			try {
 				let pkToUse = identityPk;

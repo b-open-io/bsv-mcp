@@ -110,10 +110,10 @@ export function registerBmapReadPostsTool(server: McpServer) {
 	server.tool(
 		"bmap_readPosts",
 		"Read social posts from the BMAP API (query layer). Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-		{ args: bmapReadPostsArgsSchema },
-		async ({ args }: { args: BmapReadPostsArgs }): Promise<CallToolResult> => {
+		{ ...bmapReadPostsArgsSchema.shape },
+		async ({ bapId, txid, limit, page, feed, address }): Promise<CallToolResult> => {
 			try {
-				const result = await readBmapPosts(args);
+				const result = await readBmapPosts({ bapId, txid, limit, page, feed, address });
 
 				if (result.success) {
 					return {

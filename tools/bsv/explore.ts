@@ -131,10 +131,9 @@ export function registerExploreTool(server: McpServer): void {
 			"NETWORK:\n" +
 			"- health: API health check\n\n" +
 			"Use the appropriate parameters for each endpoint type and specify 'main' or 'test' network.",
-		{ args: exploreArgsSchema },
-		async ({ args }) => {
+		exploreArgsSchema.shape,
+		async (params) => {
 			try {
-				const params = exploreArgsSchema.parse(args);
 
 				// Validate required parameters for specific endpoints
 				if (

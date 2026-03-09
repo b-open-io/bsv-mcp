@@ -2,12 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
 	ChangeResult,
 	CollectionItemSubTypeData,
@@ -125,8 +120,8 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_mintCollection",
 		"Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.",
-		{ args: mintCollectionArgsSchema },
-		async ({ args }: { args: MintCollectionArgs }): Promise<CallToolResult> => {
+		{ ...mintCollectionArgsSchema.shape },
+		async ({ folderPath, collectionName, description, rarityLabels, traits, skipBroadcast }): Promise<CallToolResult> => {
 			try {
 				// Get keys from wallet
 				const paymentPk = wallet.getPaymentKey();
@@ -136,7 +131,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 				const identityPk = wallet.getIdentityKey();
 
 				// Get image files
-				const imageFiles = await getImageFiles(args.folderPath);
+				const imageFiles = await getImageFiles(folderPath);
 				if (imageFiles.length === 0) {
 					throw new Error("No image files found in the specified folder");
 				}
@@ -145,14 +140,14 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 
 				// Prepare collection metadata
 				const collectionSubTypeData: CollectionSubTypeData = {
-					description: args.description,
+					description: description,
 					quantity: imageFiles.length,
 					// Transform rarity labels to correct format
 					rarityLabels:
-						args.rarityLabels?.map((r) => ({ label: r.label })) || [],
+						rarityLabels?.map((r) => ({ label: r.label })) || [],
 					// Transform traits - need to match the CollectionTraits type
-					traits: args.traits
-						? Object.entries(args.traits).reduce((acc, [key, values]) => {
+					traits: traits
+						? Object.entries(traits).reduce((acc, [key, values]) => {
 								acc[key] = {
 									values,
 									occurancePercentages: values.map(() =>
@@ -168,14 +163,14 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					app: "ord",
 					type: "ord",
 					subType: "collection",
-					name: args.collectionName,
+					name: collectionName,
 					subTypeData: collectionSubTypeData,
 				};
 
 				// Create collection icon
 				const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
             <rect width="100" height="100" fill="#f0f0f0"/>
-            <text x="50" y="55" text-anchor="middle" font-family="Arial" font-size="16">${args.collectionName}</text>
+            <text x="50" y="55" text-anchor="middle" font-family="Arial" font-size="16">${collectionName}</text>
           </svg>`;
 				const collectionIconData = Utils.toBase64(
 					Utils.toArray(svgString, "utf8"),
@@ -217,7 +212,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 
 				let collectionTxid = "";
 				const disableBroadcasting =
-					args.skipBroadcast || process.env.DISABLE_BROADCASTING === "true";
+					skipBroadcast || process.env.DISABLE_BROADCASTING === "true";
 
 				if (!disableBroadcasting) {
 					const broadcaster = new V5Broadcaster();
@@ -251,7 +246,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					);
 
 					try {
-						const itemTraits = generateItemTraits(i, args.traits);
+						const itemTraits = generateItemTraits(i, traits);
 
 						const itemSubTypeData: CollectionItemSubTypeData = {
 							collectionId: collectionTxid,
@@ -260,13 +255,13 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 						};
 
 						// Assign rarity if labels provided
-						if (args.rarityLabels && args.rarityLabels.length > 0) {
+						if (rarityLabels && rarityLabels.length > 0) {
 							const rarityIndex = Math.floor(
-								(i / imageFiles.length) * args.rarityLabels.length,
+								(i / imageFiles.length) * rarityLabels.length,
 							);
 							const rarityItem =
-								args.rarityLabels[
-									Math.min(rarityIndex, args.rarityLabels.length - 1)
+								rarityLabels[
+									Math.min(rarityIndex, rarityLabels.length - 1)
 								];
 							if (rarityItem) {
 								itemSubTypeData.rarityLabel = [
@@ -352,7 +347,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 									totalItems: imageFiles.length,
 									errors: results.errors,
 									totalCost: results.totalCost,
-									summary: `Collection "${args.collectionName}" created with ${results.itemTxids.length}/${imageFiles.length} items successfully minted.${results.errors.length > 0 ? ` ${results.errors.length} items failed.` : ""}`,
+									summary: `Collection "${collectionName}" created with ${results.itemTxids.length}/${imageFiles.length} items successfully minted.${results.errors.length > 0 ? ` ${results.errors.length} items failed.` : ""}`,
 								},
 								null,
 								2,

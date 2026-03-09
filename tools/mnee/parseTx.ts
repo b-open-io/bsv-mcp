@@ -24,13 +24,13 @@ export function registerParseTxTool(
 	server.tool(
 		"mnee_parseTx",
 		"Parse an MNEE transaction to get detailed information about its operations and amounts. All amounts are in atomic units with 5 decimal precision (e.g. 1000 atomic units = 0.01 MNEE).",
-		{ args: parseTxArgsSchema },
+		{ ...parseTxArgsSchema.shape },
 		async (
-			{ args }: { args: ParseTxArgs },
+			{ txid },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
-				const result: ParseTxResponse = await mnee.parseTx(args.txid);
+				const result: ParseTxResponse = await mnee.parseTx(txid);
 
 				return {
 					content: [

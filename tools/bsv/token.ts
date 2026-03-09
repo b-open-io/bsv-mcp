@@ -17,14 +17,11 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toSatoshi",
 		{
-			args: z.object({
-				bitcoin: z.union([z.number(), z.string()]),
-				returnType: z.enum(["number", "string", "bigint"]).optional(),
-			}),
+			bitcoin: z.union([z.number(), z.string()]),
+			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
-		async ({ args }) => {
+		async ({ bitcoin, returnType }) => {
 			try {
-				const { bitcoin, returnType } = args;
 				let result: number | string | bigint;
 
 				switch (returnType) {
@@ -49,14 +46,11 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toBitcoin",
 		{
-			args: z.object({
-				satoshis: z.union([z.number(), z.string(), z.bigint()]),
-				returnType: z.enum(["number", "string", "bigint"]).optional(),
-			}),
+			satoshis: z.union([z.number(), z.string(), z.bigint()]),
+			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
-		async ({ args }) => {
+		async ({ satoshis, returnType }) => {
 			try {
-				const { satoshis, returnType } = args;
 				let result: number | string | bigint;
 
 				switch (returnType) {
@@ -93,15 +87,12 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toTokenSatoshi",
 		{
-			args: z.object({
-				token: z.union([z.number(), z.string(), z.bigint()]),
-				decimals: z.number().int().min(0),
-				returnType: z.enum(["number", "string", "bigint"]).optional(),
-			}),
+			token: z.union([z.number(), z.string(), z.bigint()]),
+			decimals: z.number().int().min(0),
+			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
-		async ({ args }) => {
+		async ({ token, decimals, returnType }) => {
 			try {
-				const { token, decimals, returnType } = args;
 				let result: number | string | bigint;
 
 				switch (returnType) {
@@ -126,15 +117,12 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toToken",
 		{
-			args: z.object({
-				tokenSatoshi: z.union([z.number(), z.string(), z.bigint()]),
-				decimals: z.number().int().min(0),
-				returnType: z.enum(["number", "string", "bigint"]).optional(),
-			}),
+			tokenSatoshi: z.union([z.number(), z.string(), z.bigint()]),
+			decimals: z.number().int().min(0),
+			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
-		async ({ args }) => {
+		async ({ tokenSatoshi, decimals, returnType }) => {
 			try {
-				const { tokenSatoshi, decimals, returnType } = args;
 				let result: number | string | bigint;
 
 				switch (returnType) {

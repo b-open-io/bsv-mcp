@@ -1,11 +1,6 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type {
 	ChangeResult,
 	CreateOrdinalsCollectionItemMetadata,
@@ -16,10 +11,9 @@ import type {
 	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
-import { createOrdinals, OneSatBroadcaster } from "js-1sat-ord";
-import { Sigma } from "sigma-protocol";
+import { createOrdinals } from "js-1sat-ord";
 import { z } from "zod";
-import { BsocialBroadcaster, V5Broadcaster } from "../../utils/broadcaster";
+import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 
 /**
@@ -53,11 +47,8 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_createOrdinals",
 		"Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
-		{ args: createOrdinalsArgsSchema },
-		async (
-			{ args }: { args: CreateOrdinalsArgs },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{ ...createOrdinalsArgsSchema.shape },
+		async ({ dataB64, contentType, destinationAddress, metadata }): Promise<CallToolResult> => {
 			try {
 				// Load optional identity key for sigma signing
 				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
@@ -92,14 +83,14 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 
 				// 4. Create the inscription object
 				const inscription: Inscription = {
-					dataB64: args.dataB64,
-					contentType: args.contentType,
+					dataB64: dataB64,
+					contentType: contentType,
 				};
 
 				// 5. Create the destination
 				const destinations: Destination[] = [
 					{
-						address: args.destinationAddress || walletAddress,
+						address: destinationAddress || walletAddress,
 						inscription,
 					},
 				];
@@ -109,7 +100,7 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 					destinations,
 					paymentPk,
 					changeAddress: walletAddress,
-					metaData: args.metadata as
+					metaData: metadata as
 						| PreMAP
 						| CreateOrdinalsCollectionMetadata
 						| CreateOrdinalsCollectionItemMetadata,
@@ -152,8 +143,8 @@ export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
 									txid: changeResult.tx.id("hex"),
 									spentOutpoints: changeResult.spentOutpoints,
 									payChange: changeResult.payChange,
-									inscriptionAddress: args.destinationAddress || walletAddress,
-									contentType: args.contentType,
+									inscriptionAddress: destinationAddress || walletAddress,
+									contentType: contentType,
 								}),
 							},
 						],

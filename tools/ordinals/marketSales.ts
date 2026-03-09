@@ -73,12 +73,10 @@ export function registerMarketSalesTool(server: McpServer): void {
 		"ordinals_marketSales",
 		"Retrieves recent sales data for BSV-20 and BSV-21 tokens on the ordinals marketplace. This tool provides insights into market activity, including sale prices, transaction details, and token information. Supports filtering by token ID, ticker symbol, or seller address to help analyze market trends and track specific token sales.",
 		{
-			args: marketSalesArgsSchema,
+			...marketSalesArgsSchema.shape,
 		},
-		async ({ args }: { args: MarketSalesArgs }, extra: RequestHandlerExtra) => {
+		async ({ limit, offset, dir, tokenType, id, tick, pending, address }, extra: RequestHandlerExtra) => {
 			try {
-				const { limit, offset, dir, tokenType, id, tick, pending, address } =
-					args;
 
 				// Determine the API endpoint based on tokenType
 				let baseUrl = "https://ordinals.gorillapool.io/api";

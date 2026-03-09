@@ -95,29 +95,13 @@ export function registerMarketListingsTool(server: McpServer): void {
 		"ordinals_marketListings",
 		"Retrieves current marketplace listings for Bitcoin SV ordinals with flexible filtering. Supports multiple asset types (NFTs, BSV-20 tokens, BSV-21 tokens) through a unified interface. Results include listing prices, details about the assets, and seller information.",
 		{
-			args: marketListingsArgsSchema,
+			...marketListingsArgsSchema.shape,
 		},
 		async (
-			{ args }: { args: MarketListingsArgs },
+			{ limit, offset, sort, dir, address, origin, mime, num, minPrice, maxPrice, tokenType, id, tick, pending },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const {
-					limit,
-					offset,
-					sort,
-					dir,
-					address,
-					origin,
-					mime,
-					num,
-					minPrice,
-					maxPrice,
-					tokenType,
-					id,
-					tick,
-					pending,
-				} = args;
 
 				// Determine the API endpoint based on tokenType
 				let baseUrl = "https://ordinals.gorillapool.io/api";

@@ -127,9 +127,9 @@ export function registerCreatePostTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"bsocial_createPost",
 		"Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
-		{ args: createPostArgsSchema },
-		async ({ args }: { args: CreatePostArgs }): Promise<CallToolResult> => {
-			const result = await createSocialPost(args, wallet);
+		{ ...createPostArgsSchema.shape },
+		async ({ content, contentType, app, additionalMapData }): Promise<CallToolResult> => {
+			const result = await createSocialPost({ content, contentType, app, additionalMapData }, wallet);
 			return createResponse(result);
 		},
 	);

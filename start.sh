@@ -12,11 +12,9 @@ fi
 
 export TRANSPORT=stdio
 
-# Prefer source with node_modules (local dev), fall back to pre-built bundle
-if command -v bun >/dev/null 2>&1 && [[ -d "$SCRIPT_DIR/node_modules" ]]; then
-  exec bun run "$SCRIPT_DIR/index.ts"
-elif command -v bun >/dev/null 2>&1; then
-  exec bun run "$SCRIPT_DIR/build/server.js"
-else
-  exec node "$SCRIPT_DIR/build/server.js"
+# Install deps if missing (plugin cache won't have them)
+if [[ ! -d "$SCRIPT_DIR/node_modules" ]]; then
+  cd "$SCRIPT_DIR" && bun install --frozen-lockfile 2>/dev/null || bun install
 fi
+
+exec bun run "$SCRIPT_DIR/index.ts"

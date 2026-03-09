@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 BSV MCP is a Model Context Protocol server that exposes Bitcoin SV (BSV) blockchain functionality to AI assistants. It provides tools for wallet operations, ordinals (NFTs), tokens, identity management, and social features through a modular architecture.
 
-**Current Version: 0.2.0-alpha.1**
+**Current Version: 0.2.4**
 
 The project supports three deployment modes:
 1. **Local MCP Server** - Runs via stdio transport with OAuth 2.1 authentication

@@ -19,11 +19,9 @@ export function registerGetBalanceTool(
 	server.tool(
 		"mnee_getBalance",
 		"Retrieves the current MNEE token balance for the wallet. Returns the balance in MNEE tokens.",
-		{
-			args: getBalanceArgsSchema,
-		},
+		{},
 		async (
-			{ args }: { args: GetBalanceArgs },
+			_params,
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {

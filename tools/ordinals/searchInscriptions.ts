@@ -59,15 +59,13 @@ export function registerSearchInscriptionsTool(server: McpServer): void {
 		"ordinals_searchInscriptions",
 		"Searches for Bitcoin SV ordinal inscriptions using flexible criteria. This powerful search tool supports filtering by address, inscription content, MIME type, MAP fields, and other parameters. Results include detailed information about each matched inscription. Ideal for discovering NFTs and exploring the ordinals ecosystem.",
 		{
-			args: searchInscriptionsArgsSchema,
+			...searchInscriptionsArgsSchema.shape,
 		},
 		async (
-			{ args }: { args: SearchInscriptionsArgs },
+			{ limit, offset, dir, num, origin, address, map, terms, mime },
 			extra: RequestHandlerExtra,
 		) => {
 			try {
-				const { limit, offset, dir, num, origin, address, map, terms, mime } =
-					args;
 
 				// Build the URL with query parameters
 				const url = new URL(

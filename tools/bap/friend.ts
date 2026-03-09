@@ -55,12 +55,11 @@ export function registerBapFriendTool(
 	server.tool(
 		"bap_friend",
 		"Initiates a friend request to another BAP ID by broadcasting an on-chain MAP transaction.",
-		{ args: bapFriendArgsSchema },
+		{ ...bapFriendArgsSchema.shape },
 		async (
-			{ args }: { args: BapFriendArgs },
+			{ targetBapId },
 			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
-			const { targetBapId } = args;
 			const logFunc = console.error;
 
 			try {

@@ -14,10 +14,10 @@ export function registerUtilsTools(server: McpServer): void {
 	server.tool(
 		installAgentMasterTool.name,
 		installAgentMasterTool.description,
-		{ args: installAgentMasterTool.inputSchema },
-		async ({ args }) => {
+		{ ...installAgentMasterTool.inputSchema.shape },
+		async (params) => {
 			try {
-				const result = await installAgentMasterTool.handler(args);
+				const result = await installAgentMasterTool.handler(params);
 				return {
 					content: [
 						{
@@ -62,22 +62,20 @@ export function registerUtilsTools(server: McpServer): void {
 			"- The tool returns the converted data as a string\n" +
 			"- For binary conversion, data is represented as an array of byte values",
 		{
-			args: z.object({
-				data: z.string().describe("The data string to be converted"),
-				from: encodingSchema.describe(
-					"Source encoding format (utf8, hex, base64, or binary)",
-				),
-				to: encodingSchema.describe(
-					"Target encoding format to convert to (utf8, hex, base64, or binary)",
-				),
-			}),
+			data: z.string().describe("The data string to be converted"),
+			from: encodingSchema.describe(
+				"Source encoding format (utf8, hex, base64, or binary)",
+			),
+			to: encodingSchema.describe(
+				"Target encoding format to convert to (utf8, hex, base64, or binary)",
+			),
 		},
-		async ({ args }) => {
+		async ({ data, from, to }) => {
 			try {
 				const result = convertData({
-					data: args.data,
-					from: args.from,
-					to: args.to,
+					data,
+					from,
+					to,
 				});
 				return {
 					content: [

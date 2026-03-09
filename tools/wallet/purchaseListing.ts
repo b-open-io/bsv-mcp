@@ -1,11 +1,6 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
 	type ChangeResult,
 	type ExistingListing,
@@ -20,7 +15,6 @@ import {
 	type TokenUtxo,
 	type Utxo,
 } from "js-1sat-ord";
-import { Sigma } from "sigma-protocol";
 import type { z } from "zod";
 import {
 	MARKET_FEE_PERCENTAGE,
@@ -86,11 +80,8 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_purchaseListing",
 		"Purchases a listing from the Bitcoin SV ordinals marketplace. Supports both NFT purchases (with royalty payments to original creators) and BSV-20/BSV-21 token purchases. The tool handles all aspects of the transaction - from fetching listing details, calculating fees, creating and broadcasting the transaction.",
-		{ args: purchaseListingArgsSchema },
-		async (
-			{ args }: { args: z.infer<typeof purchaseListingArgsSchema> },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{ ...purchaseListingArgsSchema.shape },
+		async ({ listingOutpoint, ordAddress, listingType, tokenProtocol, tokenID, description }): Promise<CallToolResult> => {
 			try {
 				// Load optional identity key for sigma signing
 				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
@@ -108,7 +99,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 
 				// Fetch the listing info directly from the API
 				const response = await fetch(
-					`https://ordinals.gorillapool.io/api/txos/${args.listingOutpoint}?script=true`,
+					`https://ordinals.gorillapool.io/api/txos/${listingOutpoint}?script=true`,
 				);
 				if (!response.ok) {
 					throw new Error(
@@ -138,7 +129,7 @@ export function registerPurchaseListingTool(server: McpServer, wallet: Wallet) {
 				}
 
 				// Parse the listing outpoint to get txid and vout
-				const [txid, voutStr] = args.listingOutpoint.split("_");
+				const [txid, voutStr] = listingOutpoint.split("_");
 				if (!txid) {
 					throw new Error("Invalid outpoint format. Expected txid_vout");
 				}
@@ -182,12 +173,12 @@ Please fund this wallet address with enough BSV to cover the purchase price
 				// Create the purchase transaction based on listing type
 				let transaction: ChangeResult;
 
-				if (args.listingType === "token") {
-					if (!args.tokenProtocol) {
+				if (listingType === "token") {
+					if (!tokenProtocol) {
 						throw new Error("tokenProtocol is required for token listings");
 					}
 
-					if (!args.tokenID) {
+					if (!tokenID) {
 						throw new Error("tokenID is required for token listings");
 					}
 
@@ -203,7 +194,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 
 					// Convert the token protocol to the enum type expected by js-1sat-ord
 					const protocol =
-						args.tokenProtocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21;
+						tokenProtocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21;
 
 					// Create a TokenUtxo with the required fields
 					const listingUtxo: TokenUtxo = {
@@ -212,17 +203,17 @@ Please fund this wallet address with enough BSV to cover the purchase price
 						script: listingData.script,
 						satoshis: 1, // TokenUtxo's satoshis must be exactly 1
 						amt: listingData.data.bsv20.amt,
-						id: args.tokenID,
+						id: tokenID,
 						payout: listingData.data.list.payout,
 					};
 
 					transaction = await purchaseOrdTokenListing({
 						protocol,
-						tokenID: args.tokenID,
+						tokenID: tokenID,
 						utxos: paymentUtxos,
 						paymentPk,
 						listingUtxo,
-						ordAddress: args.ordAddress,
+						ordAddress: ordAddress,
 						additionalPayments,
 						metaData,
 					});
@@ -257,7 +248,7 @@ Please fund this wallet address with enough BSV to cover the purchase price
 					const purchaseOrdListingConfig: PurchaseOrdListingConfig = {
 						utxos: paymentUtxos,
 						paymentPk,
-						ordAddress: args.ordAddress,
+						ordAddress: ordAddress,
 						listing,
 						additionalPayments,
 						metaData,
@@ -301,16 +292,16 @@ Please fund this wallet address with enough BSV to cover the purchase price
 									status: resultStatus,
 									message: resultMessage,
 									txid: transaction.tx.id("hex"),
-									listingOutpoint: args.listingOutpoint,
-									destinationAddress: args.ordAddress,
-									listingType: args.listingType,
-									tokenProtocol: args.tokenID ? args.tokenProtocol : undefined,
-									tokenID: args.tokenID,
+									listingOutpoint: listingOutpoint,
+									destinationAddress: ordAddress,
+									listingType: listingType,
+									tokenProtocol: tokenID ? tokenProtocol : undefined,
+									tokenID: tokenID,
 									price: listingData.data.list.price,
 									marketFee,
 									marketFeeAddress: MARKET_WALLET_ADDRESS,
 									royaltiesPaid:
-										args.listingType === "nft" &&
+										listingType === "nft" &&
 										listingData.origin?.data?.map?.royalties
 											? JSON.parse(listingData.origin.data.map.royalties)
 											: undefined,

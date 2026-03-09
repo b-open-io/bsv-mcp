@@ -1,5 +1,4 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
 // Define cache duration (5 minutes in milliseconds)
 const PRICE_CACHE_DURATION = 5 * 60 * 1000;
@@ -53,14 +52,7 @@ export function registerGetPriceTool(server: McpServer): void {
 	server.tool(
 		"bsv_getPrice",
 		"Retrieves the current price of Bitcoin SV (BSV) in USD from a reliable exchange API. This tool provides real-time market data that can be used for calculating transaction values, monitoring market conditions, or converting between BSV and fiat currencies.",
-		{
-			args: z
-				.object({})
-				.optional()
-				.describe(
-					"No parameters required - simply returns the current BSV price in USD",
-				),
-		},
+		{},
 		async () => {
 			try {
 				const price = await getBsvPriceWithCache();
