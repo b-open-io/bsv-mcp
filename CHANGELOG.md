@@ -1,23 +1,33 @@
 # BSV MCP Server Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-03-09
 
-### Fixed
-- Fixed character encoding issues with emojis in console output
-  - Replaced emoji characters with ASCII alternatives to prevent encoding issues
-  - Added UTF-8 meta tag to HTML passphrase prompt
-
-### Added
-- Dynamic passphrase prompting system via web browser
-- Secure key encryption with bitcoin-backup integration
-- CloudFlare hosted frontend with enhanced onboarding
-  - Tabbed interface for different deployment modes
-  - Copy buttons for all configuration options
-- Agent Master CLI integration tool
+### Breaking Changes
+- **@bsv/sdk upgraded from v1 to v2** - All Buffer usage replaced with SDK Utils
+- **SecureKeyManager no longer auto-prompts** - No browser popups on server startup
+  - `loadKeys(passphrase?)` accepts optional passphrase; skips .bep silently without one
+  - `saveKeys(keys, opts?)` saves unencrypted by default; encryption is opt-in
+  - Removed `autoMigrate` and `keepLegacy` config options
 
 ### Changed
-- Improved key management with automatic encryption prompts
-- Enhanced CloudFlare frontend UX
+- Updated 27+ dependencies (biome v2, zod 4.x, MCP SDK 1.27, next 16.1)
+- All `Buffer.from()`/`.toString()` replaced with `Utils.toArray()`/`toBase64()`/`toHex()`
+- All `console.log` replaced with `console.error` for MCP stdio transport safety
+- Dynamic imports replaced with static imports
+- tsconfig target ES2017 to ES2022
+- Biome migrated to v2 schema with CSS exclusions
+- `@types/node` and `bun` moved to devDependencies
+- `export default` replaced with named exports
+
+### Removed
+- Dead code: `tools/a2b/call.ts`, unused HD import, redundant default exports
+- `.next` directory removed from git tracking
+- `promptForPassphraseWithFallback` removed from keyManager (kept in passphrasePrompt.ts for future CLI use)
+
+### Fixed
+- 3 failing BAP generate tests (proper SecureKeyManager mocking)
+- BigblocksAuthProvider updated for renamed bigblocks exports
+- Encrypted key storage preserved but no longer blocks server startup
 
 ## [0.1.0] - 2025-01-20
 
