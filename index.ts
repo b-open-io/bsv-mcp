@@ -18,7 +18,6 @@ import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
 import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
-import { registerMneeTools } from "./tools/mnee/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { BunSSEServerTransport } from "./transports/sse.ts";
@@ -915,14 +914,8 @@ Authentication:
 				}
 			}
 
-			// Register MNEE tools if enabled and wallet is available
-			if (effectiveConfig.loadMneeTools && wallet) {
-				registerMneeTools(server);
-			} else if (
-				effectiveConfig.loadMneeTools &&
-				!wallet &&
-				CONFIG.loadWalletTools
-			) {
+			// Disable MNEE tools if wallet is not available
+			if (effectiveConfig.loadMneeTools && !wallet && CONFIG.loadWalletTools) {
 				logFunc(
 					"\x1b[33mWARN: MNEE tools require a wallet but wallet initialization failed. MNEE tools disabled.\x1b[0m",
 				);

@@ -1,12 +1,19 @@
 {
-	"mcpServers": {
-		"bsv-mcp": {
-			"type": "http",
-			"url": "https://bsv-mcp.vercel.app/api/mcp"
-		},
-		"supabase": {
-			"type": "http",
-			"url": "https://mcp.supabase.com/mcp?project_ref=lwmigicvessothwtblad"
-		}
-	}
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=lwmigicvessothwtblad"
+    },
+    "bsv-mcp": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [
+        "index.ts"
+      ],
+      "env": {
+        "TRANSPORT": "stdio"
+      },
+      "cwd": "/Users/satchmo/code/bsv-mcp"
+    }
+  }
 }
