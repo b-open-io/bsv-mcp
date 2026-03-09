@@ -1,12 +1,22 @@
 #!/usr/bin/env bun
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrivateKey } from "@bsv/sdk";
+import {
+	RESOURCE_MIME_TYPE,
+	registerAppResource,
+	registerAppTool,
+} from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
+import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { registerMneeTools } from "./tools/mnee/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
@@ -207,6 +217,380 @@ async function initializeKeys(): Promise<{
 	}
 
 	return { payPk, identityPk: undefined, xprv: undefined, source: "generated" };
+}
+
+// --- MCP App Tools & Resource ---
+const APP_RESOURCE_URI = "ui://bsv-mcp/app.html";
+const __appDirname = dirname(fileURLToPath(import.meta.url));
+
+function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
+	// Primary dashboard tool — model calls this to open the UI
+	registerAppTool(
+		server,
+		"bsv_dashboard",
+		{
+			title: "BSV Dashboard",
+			description:
+				"Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs. Use this for any BSV-related query that benefits from visual display.",
+			inputSchema: {},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI },
+			},
+		},
+		async () => {
+			return {
+				content: [{ type: "text" as const, text: "BSV Dashboard opened" }],
+				structuredContent: { view: "dashboard", ready: true },
+			};
+		},
+	);
+
+	// App-only: fetch explorer data (price, chain info, tx decode, address lookup)
+	registerAppTool(
+		server,
+		"app_explorer_data",
+		{
+			title: "Explorer Data",
+			description:
+				"App-only: fetches BSV price, chain info, decodes transactions, and looks up addresses.",
+			inputSchema: {
+				txid: z.string().optional().describe("Transaction ID to decode"),
+				address: z
+					.string()
+					.optional()
+					.describe("Address to look up balance/history"),
+			},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async (args) => {
+			const { txid, address } = args as {
+				txid?: string;
+				address?: string;
+			};
+
+			// If txid provided, decode transaction
+			if (txid) {
+				try {
+					const res = await fetch(
+						`https://junglebus.gorillapool.io/v1/transaction/get/${txid}`,
+					);
+					if (!res.ok)
+						throw new Error(`Transaction not found: ${res.status}`);
+					const jbData = (await res.json()) as Record<string, unknown>;
+
+					const { Transaction, Utils } = await import("@bsv/sdk");
+					const rawTx = jbData.transaction as string;
+					const isBase64 = /^[A-Za-z0-9+/=]+$/.test(rawTx);
+					const txBytes = isBase64
+						? Utils.toArray(rawTx, "base64")
+						: Utils.toArray(rawTx, "hex");
+					const tx = Transaction.fromBinary(txBytes);
+
+					return {
+						content: [
+							{ type: "text" as const, text: `Decoded transaction ${txid}` },
+						],
+						structuredContent: {
+							transaction: {
+								txid,
+								version: tx.version,
+								lockTime: tx.lockTime,
+								size: tx.toBinary().length,
+								inputs: tx.inputs.map((inp) => ({
+									txid: inp.sourceTXID,
+									vout: inp.sourceOutputIndex,
+									script: inp.unlockingScript?.toHex() || "",
+								})),
+								outputs: tx.outputs.map((out, i) => ({
+									n: i,
+									value: out.satoshis,
+									scriptPubKey: {
+										hex: out.lockingScript.toHex(),
+										asm: out.lockingScript.toASM(),
+									},
+								})),
+								confirmations: jbData.block_height ? 1 : 0,
+								block: jbData.block_hash
+									? {
+											hash: jbData.block_hash,
+											height: jbData.block_height,
+										}
+									: null,
+							},
+						},
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			}
+
+			// If address provided, look up balance and history
+			if (address) {
+				try {
+					const [balRes, histRes] = await Promise.all([
+						fetch(
+							`https://api.whatsonchain.com/v1/bsv/main/address/${address}/balance`,
+						),
+						fetch(
+							`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`,
+						),
+					]);
+					const balance = balRes.ok
+						? ((await balRes.json()) as Record<string, unknown>)
+						: null;
+					const history = histRes.ok
+						? ((await histRes.json()) as Array<Record<string, unknown>>)
+						: [];
+
+					return {
+						content: [
+							{ type: "text" as const, text: `Address info for ${address}` },
+						],
+						structuredContent: {
+							addressInfo: { balance, history },
+						},
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			}
+
+			// Default: return price + chain info
+			try {
+				const [price, chainRes] = await Promise.all([
+					getBsvPriceWithCache(),
+					fetch("https://api.whatsonchain.com/v1/bsv/main/chain/info"),
+				]);
+				const chainInfo = chainRes.ok
+					? ((await chainRes.json()) as Record<string, unknown>)
+					: null;
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `BSV price: $${price.toFixed(2)}`,
+						},
+					],
+					structuredContent: { price, chainInfo },
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+				};
+			}
+		},
+	);
+
+	// App-only: fetch wallet data
+	registerAppTool(
+		server,
+		"app_wallet_data",
+		{
+			title: "Wallet Data",
+			description: "App-only: fetches wallet balance, UTXOs, and address.",
+			inputSchema: {},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async () => {
+			if (!wallet) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "No wallet configured",
+						},
+					],
+					structuredContent: {
+						error: "No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
+					},
+				};
+			}
+
+			try {
+				const { paymentUtxos } = await wallet.getUtxos();
+				const address = wallet.getAddress();
+				let totalSatoshis = 0;
+				for (const utxo of paymentUtxos) {
+					totalSatoshis += utxo.satoshis || 0;
+				}
+
+				let price: number | undefined;
+				try {
+					price = await getBsvPriceWithCache();
+				} catch {
+					/* price fetch optional */
+				}
+
+				const { toBitcoin } = await import("satoshi-token");
+				const bsvAmount = toBitcoin(totalSatoshis);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Wallet balance: ${bsvAmount} BSV`,
+						},
+					],
+					structuredContent: {
+						balance: {
+							satoshis: totalSatoshis,
+							bsv: bsvAmount,
+							utxoCount: paymentUtxos.length,
+						},
+						address,
+						utxos: paymentUtxos.slice(0, 50).map((u) => ({
+							txid: u.txid,
+							vout: u.vout,
+							satoshis: u.satoshis,
+						})),
+						price,
+					},
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+				};
+			}
+		},
+	);
+
+	// App-only: fetch ordinals data
+	registerAppTool(
+		server,
+		"app_ordinals_data",
+		{
+			title: "Ordinals Data",
+			description:
+				"App-only: fetches ordinals/NFT marketplace listings and search results.",
+			inputSchema: {
+				query: z.string().optional().describe("Search query"),
+			},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async (args) => {
+			const { query } = args as { query?: string };
+
+			try {
+				if (query) {
+					// Search inscriptions
+					const url = new URL(
+						"https://ordinals.gorillapool.io/api/inscriptions/search",
+					);
+					url.searchParams.set("limit", "20");
+					url.searchParams.set("offset", "0");
+					url.searchParams.set("dir", "desc");
+					url.searchParams.set("terms", query);
+
+					const res = await fetch(url.toString());
+					if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+					const data = (await res.json()) as Record<string, unknown>;
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Found results for "${query}"`,
+							},
+						],
+						structuredContent: {
+							results: data.results || [],
+							total: data.total || 0,
+						},
+					};
+				}
+
+				// Default: fetch marketplace listings
+				const res = await fetch(
+					"https://ordinals.gorillapool.io/api/market?limit=20&offset=0&sort=recent&dir=desc",
+				);
+				if (!res.ok) throw new Error(`Market fetch failed: ${res.status}`);
+				const data = (await res.json()) as Record<string, unknown>;
+
+				return {
+					content: [
+						{ type: "text" as const, text: "Marketplace listings loaded" },
+					],
+					structuredContent: {
+						listings: data.results || [],
+						total: data.total || 0,
+					},
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+				};
+			}
+		},
+	);
+
+	// Register the HTML resource
+	registerAppResource(
+		server,
+		"BSV Dashboard",
+		APP_RESOURCE_URI,
+		{ description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs" },
+		async () => {
+			const distPath = join(__appDirname, "dist", "app.html");
+			let html: string;
+			try {
+				html = await readFile(distPath, "utf-8");
+			} catch {
+				throw new Error(
+					`Bundled view not found at ${distPath}. Run 'bun run build:view' first.`,
+				);
+			}
+			return {
+				contents: [
+					{
+						uri: APP_RESOURCE_URI,
+						mimeType: RESOURCE_MIME_TYPE,
+						text: html,
+					},
+				],
+			};
+		},
+	);
 }
 
 // --- Main Server Setup ---
@@ -437,6 +821,9 @@ Authentication:
 				prompts: {},
 				resources: {},
 				tools: {},
+				experimental: {
+					"io.modelcontextprotocol/ui": { version: "0.1" },
+				},
 			},
 			instructions: `
 				This server exposes Bitcoin SV helpers.
@@ -564,6 +951,9 @@ Authentication:
 
 		registerAllTools(server, toolsConfig);
 	}
+
+	// Register MCP App tools and resource (interactive UI)
+	registerMcpAppTools(server, wallet);
 
 	// Register prompts if enabled
 	if (CONFIG.loadPrompts) {
