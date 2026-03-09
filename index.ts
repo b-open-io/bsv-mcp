@@ -256,6 +256,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 			return {
 				content: [{ type: "text" as const, text: "BSV Dashboard opened" }],
 				structuredContent: { view: "dashboard", ready: true },
+				_meta: { viewUUID: crypto.randomUUID() },
 			};
 		},
 	);
@@ -335,6 +336,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 									: null,
 							},
 						},
+						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				} catch (err) {
 					return {
@@ -345,6 +347,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 							},
 						],
 						structuredContent: { error: String(err) },
+						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				}
 			}
@@ -374,6 +377,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						structuredContent: {
 							addressInfo: { balance, history },
 						},
+						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				} catch (err) {
 					return {
@@ -384,6 +388,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 							},
 						],
 						structuredContent: { error: String(err) },
+						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				}
 			}
@@ -406,6 +411,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						},
 					],
 					structuredContent: { price, chainInfo },
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -416,6 +422,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						},
 					],
 					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -445,6 +452,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 					structuredContent: {
 						error: "No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
 					},
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 
@@ -487,6 +495,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						})),
 						price,
 					},
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -497,6 +506,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						},
 					],
 					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -546,6 +556,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 							results: data.results || [],
 							total: data.total || 0,
 						},
+						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				}
 
@@ -564,6 +575,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						listings: data.results || [],
 						total: data.total || 0,
 					},
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -574,6 +586,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						},
 					],
 					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
