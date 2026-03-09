@@ -54,7 +54,10 @@ const CONFIG = {
 	disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
 
 	// --- Transport Mode ---
-	transportMode: process.env.TRANSPORT?.toLowerCase() || "http", // 'stdio' or 'http'/default
+	// --stdio CLI flag takes precedence over TRANSPORT env var (matches neighborhood plugin pattern)
+	transportMode: process.argv.includes("--stdio")
+		? "stdio"
+		: (process.env.TRANSPORT?.toLowerCase() || "http"), // 'stdio' or 'http'/default
 	port: Number.parseInt(process.env.PORT || "3000", 10),
 
 	// --- Droplet API Configuration ---
