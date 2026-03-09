@@ -1,5 +1,4 @@
 import type { PrivateKey } from "@bsv/sdk";
-import HD from "@bsv/sdk/compat/HD";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Wallet } from "../wallet/wallet";
 import { registerBapFriendTool } from "./friend";

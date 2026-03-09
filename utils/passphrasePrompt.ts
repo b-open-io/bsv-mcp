@@ -4,16 +4,22 @@
  */
 
 import { spawn } from "node:child_process";
-import * as fs from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { platform } from "node:os";
-import * as path from "node:path";
+import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 // Global lock to prevent multiple simultaneous prompts
-const LOCK_DIR = path.join(process.env.HOME || "", ".bsv-mcp");
-const LOCK_FILE = path.join(LOCK_DIR, "prompt.lock");
+const LOCK_DIR = join(process.env.HOME || "", ".bsv-mcp");
+const LOCK_FILE = join(LOCK_DIR, "prompt.lock");
 
 // Server instance to check transport type
 let serverInstance: McpServer | null = null;
@@ -49,8 +55,8 @@ function isStdioMode(): boolean {
  */
 function isPromptLocked(): boolean {
 	try {
-		if (fs.existsSync(LOCK_FILE)) {
-			const lockContent = fs.readFileSync(LOCK_FILE, "utf8");
+		if (existsSync(LOCK_FILE)) {
+			const lockContent = readFileSync(LOCK_FILE, "utf8");
 			const { pid, timestamp } = JSON.parse(lockContent);
 
 			// Check if the process is still running
@@ -61,13 +67,13 @@ function isPromptLocked(): boolean {
 				const lockAge = Date.now() - timestamp;
 				if (lockAge > 300000) {
 					// Lock is stale, remove it
-					fs.unlinkSync(LOCK_FILE);
+					unlinkSync(LOCK_FILE);
 					return false;
 				}
 				return true;
 			} catch {
 				// Process doesn't exist, remove stale lock
-				fs.unlinkSync(LOCK_FILE);
+				unlinkSync(LOCK_FILE);
 				return false;
 			}
 		}
@@ -82,12 +88,12 @@ function isPromptLocked(): boolean {
  */
 function createPromptLock(): void {
 	try {
-		fs.mkdirSync(LOCK_DIR, { recursive: true, mode: 0o700 });
+		mkdirSync(LOCK_DIR, { recursive: true, mode: 0o700 });
 		const lockData = {
 			pid: process.pid,
 			timestamp: Date.now(),
 		};
-		fs.writeFileSync(LOCK_FILE, JSON.stringify(lockData), { mode: 0o600 });
+		writeFileSync(LOCK_FILE, JSON.stringify(lockData), { mode: 0o600 });
 	} catch (error) {
 		console.error("Warning: Could not create prompt lock:", error);
 	}
@@ -98,8 +104,8 @@ function createPromptLock(): void {
  */
 function removePromptLock(): void {
 	try {
-		if (fs.existsSync(LOCK_FILE)) {
-			fs.unlinkSync(LOCK_FILE);
+		if (existsSync(LOCK_FILE)) {
+			unlinkSync(LOCK_FILE);
 		}
 	} catch (error) {
 		console.error("Warning: Could not remove prompt lock:", error);
@@ -435,7 +441,7 @@ export async function promptForPassphrase(
 
 		server.listen(port, () => {
 			// Use stderr in stdio mode to avoid interfering with JSON-RPC messages
-			const logOutput = isStdioMode() ? console.error : console.log;
+			const logOutput = console.error;
 			logOutput(`\n[Lock] Passphrase required: ${reason}`);
 			logOutput(`[Browser] Opening browser at: http://localhost:${port}`);
 			logOutput(`[Timer] Timeout: ${timeout / 1000} seconds\n`);

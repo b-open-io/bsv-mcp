@@ -71,7 +71,7 @@ export function registerToolCategories(
 			// Register the category
 			try {
 				category.register(server, config);
-				console.log(`✅ Registered ${category.name} tools`);
+				console.error(`✅ Registered ${category.name} tools`);
 			} catch (error) {
 				console.error(`❌ Failed to register ${category.name} tools:`, error);
 			}

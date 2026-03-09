@@ -5,8 +5,8 @@ import type {
 	BapIdentity,
 	PostMeta,
 	PostResponse,
-	PostTransaction,
 	PostsResponse,
+	PostTransaction,
 } from "bmap-api-types";
 import { z } from "zod";
 import { BMAP_URL } from "../constants";

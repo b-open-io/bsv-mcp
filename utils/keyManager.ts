@@ -10,9 +10,9 @@ import { PrivateKey } from "@bsv/sdk";
 import {
 	type BapMasterBackup,
 	type DecryptedBackup,
-	type OneSatBackup,
 	decryptBackup,
 	encryptBackup,
+	type OneSatBackup,
 } from "bitcoin-backup";
 import { promptForPassphraseWithFallback } from "./passphrasePrompt";
 
@@ -98,7 +98,7 @@ export class SecureKeyManager {
 					(error.message.includes("cancelled") ||
 						error.message.includes("timeout"))
 				) {
-					console.log(
+					console.error(
 						"⚠️ Passphrase prompt cancelled, checking for legacy keys...",
 					);
 				} else {
@@ -113,10 +113,10 @@ export class SecureKeyManager {
 
 			// Offer to migrate if auto-migrate is enabled
 			if (this.config.autoMigrate !== false) {
-				console.log(
+				console.error(
 					"\n[Clipboard] Found unencrypted keys. Would you like to encrypt them?",
 				);
-				console.log(
+				console.error(
 					"   (You can skip this by pressing Ctrl+C in the browser)\n",
 				);
 
@@ -126,9 +126,9 @@ export class SecureKeyManager {
 						{ isNewPassphrase: true },
 					);
 
-					console.log("🔄 Migrating keys to encrypted format...");
+					console.error("🔄 Migrating keys to encrypted format...");
 					await this.saveEncryptedKeys(keys, passphrase);
-					console.log("✅ Keys migrated to encrypted format");
+					console.error("✅ Keys migrated to encrypted format");
 
 					// Remove legacy file unless configured to keep
 					if (!this.config.keepLegacy) {
@@ -137,7 +137,7 @@ export class SecureKeyManager {
 
 					return { keys, source: "encrypted" };
 				} catch (error) {
-					console.log("ℹ️  Continuing with unencrypted keys...");
+					console.error("ℹ️  Continuing with unencrypted keys...");
 				}
 			}
 
@@ -155,7 +155,7 @@ export class SecureKeyManager {
 		// If forcing unencrypted (for initial generation), save as legacy
 		if (forceUnencrypted) {
 			this.saveLegacyKeys(keys);
-			console.log(
+			console.error(
 				"💾 Saved unencrypted keys (you can encrypt them on next run)",
 			);
 			return;
@@ -177,8 +177,8 @@ export class SecureKeyManager {
 
 		// For new keys, ask if user wants to encrypt
 		try {
-			console.log("\n[Lock] Would you like to encrypt your new wallet keys?");
-			console.log("   (Recommended for security)\n");
+			console.error("\n[Lock] Would you like to encrypt your new wallet keys?");
+			console.error("   (Recommended for security)\n");
 
 			const passphrase = await promptForPassphraseWithFallback(
 				"Create a passphrase to encrypt your wallet keys",
@@ -187,7 +187,7 @@ export class SecureKeyManager {
 			await this.saveEncryptedKeys(keys, passphrase);
 		} catch (error) {
 			// User cancelled or error - save unencrypted
-			console.log("ℹ️  Saving keys unencrypted (you can encrypt them later)");
+			console.error("ℹ️  Saving keys unencrypted (you can encrypt them later)");
 			this.saveLegacyKeys(keys);
 		}
 	}
@@ -330,7 +330,7 @@ export class SecureKeyManager {
 	private removeLegacyKeys(): void {
 		try {
 			fs.unlinkSync(this.legacyFile);
-			console.log("🗑️ Removed legacy unencrypted keys file");
+			console.error("🗑️ Removed legacy unencrypted keys file");
 		} catch (error) {
 			console.error("Failed to remove legacy keys:", error);
 		}
@@ -383,7 +383,7 @@ export async function initializeSecureKeys(): Promise<{
 	if (privateKeyWifEnv) {
 		try {
 			const payPk = PrivateKey.fromWif(privateKeyWifEnv);
-			console.log("✅ Using PRIVATE_KEY_WIF from environment");
+			console.error("✅ Using PRIVATE_KEY_WIF from environment");
 			return {
 				payPk,
 				source: "env",

@@ -1,4 +1,4 @@
-import { BSM, type PrivateKey } from "@bsv/sdk";
+import { BSM, type PrivateKey, Utils } from "@bsv/sdk";
 
 export interface DropletConfig {
 	apiUrl: string;
@@ -118,14 +118,14 @@ export class DropletClient {
 
 		// Sign the message using BSM
 		const signature = BSM.sign(
-			Buffer.from(message, "utf8"),
+			Utils.toArray(message, "utf8"),
 			this.config.authKey,
 		);
 
 		// Create the auth token in the format expected by go-bitcoin-auth
 		// Format: "BSM <pubkey> <signature> <timestamp> <path>"
 		const pubkey = this.config.authKey.toPublicKey().toString();
-		const authToken = `BSM ${pubkey} ${signature.toString("base64")} ${timestamp} ${path}`;
+		const authToken = `BSM ${pubkey} ${Utils.toBase64(signature)} ${timestamp} ${path}`;
 
 		return {
 			"X-Auth-Token": authToken,

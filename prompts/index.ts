@@ -16,8 +16,8 @@ export function registerAllPrompts(server: McpServer): void {
 	// Add more prompts registration here as needed
 }
 
+export * from "./bsvSdk";
 /**
  * Export all prompt constants
  */
 export * from "./ordinals";
-export * from "./bsvSdk";

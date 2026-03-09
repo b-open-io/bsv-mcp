@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -7,7 +8,6 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	CollectionItemSubTypeData,
@@ -19,6 +19,7 @@ import type {
 	LocalSigner,
 	RarityLabels,
 } from "js-1sat-ord";
+import { createOrdinals } from "js-1sat-ord";
 import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
@@ -55,7 +56,7 @@ type MintCollectionArgs = z.infer<typeof mintCollectionArgsSchema>;
 interface ImageFile {
 	path: string;
 	name: string;
-	data: Buffer;
+	data: Uint8Array;
 	contentType: string;
 }
 
@@ -140,7 +141,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					throw new Error("No image files found in the specified folder");
 				}
 
-				console.log(`Found ${imageFiles.length} images to mint`);
+				console.error(`Found ${imageFiles.length} images to mint`);
 
 				// Prepare collection metadata
 				const collectionSubTypeData: CollectionSubTypeData = {
@@ -172,12 +173,13 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 				};
 
 				// Create collection icon
-				const collectionIconData = Buffer.from(
-					`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+				const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
             <rect width="100" height="100" fill="#f0f0f0"/>
             <text x="50" y="55" text-anchor="middle" font-family="Arial" font-size="16">${args.collectionName}</text>
-          </svg>`,
-				).toString("base64");
+          </svg>`;
+				const collectionIconData = Utils.toBase64(
+					Utils.toArray(svgString, "utf8"),
+				);
 
 				const walletAddress = paymentPk.toAddress().toString();
 
@@ -208,7 +210,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					collectionConfig.signer = { idKey: identityPk } as LocalSigner;
 				}
 
-				console.log("Creating collection inscription...");
+				console.error("Creating collection inscription...");
 				const collectionResult = (await createOrdinals(
 					collectionConfig,
 				)) as ChangeResult;
@@ -221,13 +223,13 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					const broadcaster = new V5Broadcaster();
 					await collectionResult.tx.broadcast(broadcaster);
 					collectionTxid = collectionResult.tx.id("hex");
-					console.log(`✅ Collection created: ${collectionTxid}`);
+					console.error(`✅ Collection created: ${collectionTxid}`);
 
 					// Refresh UTXOs after spending
 					await wallet.refreshUtxos();
 				} else {
 					collectionTxid = collectionResult.tx.id("hex");
-					console.log(
+					console.error(
 						`🔸 Collection created (not broadcast): ${collectionTxid}`,
 					);
 				}
@@ -244,7 +246,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					const imageFile = imageFiles[i];
 					if (!imageFile) continue;
 
-					console.log(
+					console.error(
 						`Minting item ${i + 1}/${imageFiles.length}: ${imageFile.name}`,
 					);
 
@@ -293,7 +295,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 								{
 									address: walletAddress,
 									inscription: {
-										dataB64: imageFile.data.toString("base64"),
+										dataB64: Utils.toBase64(Array.from(imageFile.data)),
 										contentType: imageFile.contentType,
 									},
 								},
@@ -316,14 +318,14 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 							await itemResult.tx.broadcast(broadcaster);
 							const itemTxid = itemResult.tx.id("hex");
 							results.itemTxids.push(itemTxid);
-							console.log(`  ✅ Item minted: ${itemTxid}`);
+							console.error(`  ✅ Item minted: ${itemTxid}`);
 
 							// Refresh UTXOs after each item
 							await wallet.refreshUtxos();
 						} else {
 							const itemTxid = itemResult.tx.id("hex");
 							results.itemTxids.push(itemTxid);
-							console.log(`  🔸 Item minted (not broadcast): ${itemTxid}`);
+							console.error(`  🔸 Item minted (not broadcast): ${itemTxid}`);
 						}
 
 						results.totalCost += itemResult.tx.getFee();

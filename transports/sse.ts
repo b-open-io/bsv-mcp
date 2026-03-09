@@ -200,5 +200,3 @@ export class BunSSEServerTransport {
 		}, this._keepAliveMs) as unknown as number;
 	}
 }
-
-export default BunSSEServerTransport;

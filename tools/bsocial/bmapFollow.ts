@@ -86,7 +86,9 @@ export function registerBmapReadFollowsTool(server: McpServer) {
 		{ args: bmapReadFollowsArgsSchema },
 		async ({
 			args,
-		}: { args: BmapReadFollowsArgs }): Promise<CallToolResult> => {
+		}: {
+			args: BmapReadFollowsArgs;
+		}): Promise<CallToolResult> => {
 			try {
 				const result = await readBmapFollows(args);
 

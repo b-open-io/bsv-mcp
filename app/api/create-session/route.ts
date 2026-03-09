@@ -1,6 +1,6 @@
-import { getCloudflareEnv } from "@/lib/cloudflare";
 import { parseAuthToken, verifyAuthToken } from "bitcoin-auth";
 import { type NextRequest, NextResponse } from "next/server";
+import { getCloudflareEnv } from "@/lib/cloudflare";
 
 export async function POST(request: NextRequest) {
 	try {

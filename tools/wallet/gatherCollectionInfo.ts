@@ -136,7 +136,9 @@ export function registerGatherCollectionInfoTool(
 		{ args: gatherCollectionInfoArgsSchema },
 		async ({
 			args,
-		}: { args: GatherCollectionInfoArgs }): Promise<CallToolResult> => {
+		}: {
+			args: GatherCollectionInfoArgs;
+		}): Promise<CallToolResult> => {
 			try {
 				const analysis: CollectionAnalysis = {
 					folderPath: args.folderPath,

@@ -6,12 +6,12 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { OneSatBroadcaster, sendOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	LocalSigner,
 	SendOrdinalsConfig,
 } from "js-1sat-ord";
+import { OneSatBroadcaster, sendOrdinals } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";

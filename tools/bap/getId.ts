@@ -85,12 +85,12 @@ export function registerBapGetIdTool(
 				const authInfo = (extra as any).authInfo;
 				if (authInfo?.metadata?.bapId) {
 					targetIdKey = authInfo.metadata.bapId;
-					console.log(`Using authenticated user's BAP ID: ${targetIdKey}`);
+					console.error(`Using authenticated user's BAP ID: ${targetIdKey}`);
 				}
 				// Second priority: Use authenticated user's pubkey
 				else if (authInfo?.metadata?.pubkey) {
 					targetIdKey = authInfo.metadata.pubkey;
-					console.log(`Using authenticated user's pubkey: ${targetIdKey}`);
+					console.error(`Using authenticated user's pubkey: ${targetIdKey}`);
 				}
 				// Fallback: Attempt to get idKey from the passed identityPk or environment variable
 				else {

@@ -1,5 +1,5 @@
-import { Utils } from "@bsv/sdk";
 import type { PrivateKey, WalletInterface } from "@bsv/sdk";
+import { Utils } from "@bsv/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -10,7 +10,6 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	CreateOrdinalsConfig,
@@ -19,6 +18,7 @@ import type {
 	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
+import { createOrdinals } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import packageJson from "../../package.json";

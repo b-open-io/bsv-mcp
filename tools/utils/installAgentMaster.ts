@@ -35,7 +35,7 @@ export async function installAgentMaster(
 			return;
 		}
 
-		console.log(`🔧 Installing Agent Master CLI using ${method} method...`);
+		console.error(`🔧 Installing Agent Master CLI using ${method} method...`);
 
 		const install = spawn(command, commandArgs, {
 			stdio: "inherit",

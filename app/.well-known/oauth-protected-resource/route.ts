@@ -1,9 +1,13 @@
-import { protectedResourceHandler, metadataCorsOptionsRequestHandler } from "mcp-handler";
+import {
+	metadataCorsOptionsRequestHandler,
+	protectedResourceHandler,
+} from "mcp-handler";
 
-const authServerUrl = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+const authServerUrl =
+	process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
 const handler = protectedResourceHandler({
-  authServerUrls: [authServerUrl],
+	authServerUrls: [authServerUrl],
 });
 
 const corsHandler = metadataCorsOptionsRequestHandler();

@@ -10,15 +10,15 @@ import {
 	type LocalSigner,
 	OneSatBroadcaster,
 	type Payment,
+	selectTokenUtxos,
 	type TokenChangeResult,
 	TokenInputMode,
 	TokenSelectionStrategy,
 	TokenType,
 	type TokenUtxo,
 	type TransferOrdTokensConfig,
-	type Utxo,
-	selectTokenUtxos,
 	transferOrdTokens,
+	type Utxo,
 } from "js-1sat-ord";
 import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";

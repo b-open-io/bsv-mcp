@@ -5,7 +5,6 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { createOrdinals } from "js-1sat-ord";
 import type {
 	ChangeResult,
 	CreateOrdinalsConfig,
@@ -14,11 +13,13 @@ import type {
 	LocalSigner,
 	PreMAP,
 } from "js-1sat-ord";
+import { createOrdinals } from "js-1sat-ord";
 import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import packageJson from "../../package.json";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
+
 const { toArray, toBase64 } = Utils;
 
 // https://raw.githubusercontent.com/google/A2A/refs/heads/main/specification/json/a2a.json

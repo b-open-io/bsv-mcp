@@ -1,6 +1,8 @@
-import type { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { type PrivateKey, Utils } from "@bsv/sdk";
+import type {
+	McpServer,
+	ToolCallback,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
@@ -145,11 +147,11 @@ export function registerWalletTools(
 			try {
 				const { mode, data, encoding, recipientPublicKeyHex } = args;
 
-				let inputBuffer: Buffer;
+				let inputData: number[];
 				if (typeof data === "string") {
-					inputBuffer = Buffer.from(data, encoding || "utf8");
+					inputData = Utils.toArray(data, encoding || "utf8");
 				} else {
-					inputBuffer = Buffer.from(Uint8Array.from(data));
+					inputData = Array.from(data);
 				}
 
 				// let resultBuffer: Buffer;
