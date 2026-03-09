@@ -9,12 +9,10 @@ import path from "node:path";
 import { PrivateKey } from "@bsv/sdk";
 import {
 	type BapMasterBackup,
-	type DecryptedBackup,
 	decryptBackup,
 	encryptBackup,
 	type OneSatBackup,
 } from "bitcoin-backup";
-import { promptForPassphraseWithFallback } from "./passphrasePrompt";
 
 /**
  * Key storage interface
@@ -30,28 +28,31 @@ export interface KeyStore {
  */
 export interface KeyManagerConfig {
 	keyDir?: string;
-	autoMigrate?: boolean;
-	keepLegacy?: boolean;
+}
+
+/**
+ * Options for saveKeys
+ */
+export interface SaveKeysOptions {
+	passphrase?: string;
+	forceUnencrypted?: boolean;
 }
 
 /**
  * Secure key manager with encryption support
  *
  * Features:
- * - Encrypted key storage using bitcoin-backup
+ * - Encrypted key storage using bitcoin-backup (opt-in, requires explicit passphrase)
  * - Backward compatibility with legacy JSON format
- * - Automatic migration from unencrypted to encrypted
- * - Backup management
+ * - Never auto-prompts for passphrases
  */
 export class SecureKeyManager {
 	private readonly keyDir: string;
 	private readonly legacyFile: string;
 	private readonly encryptedFile: string;
 	private readonly backupFile: string;
-	private readonly config: KeyManagerConfig;
 
 	constructor(config: KeyManagerConfig = {}) {
-		this.config = config;
 		this.keyDir = config.keyDir || path.join(os.homedir(), ".bsv-mcp");
 		this.legacyFile = path.join(this.keyDir, "keys.json");
 		this.encryptedFile = path.join(this.keyDir, "keys.bep");
@@ -59,88 +60,33 @@ export class SecureKeyManager {
 	}
 
 	/**
-	 * Check if user has legacy passphrase environment variable set
+	 * Load keys without prompting for a passphrase.
+	 *
+	 * - If passphrase is provided AND keys.bep exists → decrypt with it
+	 * - If no passphrase AND keys.bep exists → log and fall through to legacy
+	 * - If keys.json exists → load silently
+	 * - Otherwise → return empty KeyStore
 	 */
-	hasLegacyPassphrase(): boolean {
-		return !!process.env.BSV_MCP_PASSPHRASE;
-	}
-
-	/**
-	 * Load keys with automatic format detection and migration
-	 */
-	async loadKeys(): Promise<{
+	async loadKeys(passphrase?: string): Promise<{
 		keys: KeyStore;
 		source: "encrypted" | "legacy" | "none";
 	}> {
-		// Warn about legacy passphrase usage
-		if (this.hasLegacyPassphrase()) {
-			console.warn(
-				"\n⚠️  WARNING: BSV_MCP_PASSPHRASE environment variable is deprecated!\n" +
-					"   This is insecure as it stores your passphrase in plain text.\n" +
-					"   Please remove it from your environment.\n" +
-					"   The system will now prompt for passphrases when needed.\n",
-			);
+		// Try encrypted format if passphrase provided
+		if (passphrase && this.hasEncryptedBackup()) {
+			const keys = await this.loadEncryptedKeys(passphrase);
+			return { keys, source: "encrypted" };
 		}
 
-		// Try encrypted format first
-		if (this.hasEncryptedBackup()) {
-			try {
-				// Prompt for passphrase to decrypt
-				const passphrase = await promptForPassphraseWithFallback(
-					"Enter passphrase to decrypt your wallet keys",
-				);
-				const keys = await this.loadEncryptedKeys(passphrase);
-				return { keys, source: "encrypted" };
-			} catch (error) {
-				// If user cancels or timeout, try legacy format
-				if (
-					error instanceof Error &&
-					(error.message.includes("cancelled") ||
-						error.message.includes("timeout"))
-				) {
-					console.error(
-						"⚠️ Passphrase prompt cancelled, checking for legacy keys...",
-					);
-				} else {
-					console.error("❌ Failed to decrypt keys.bep:", error);
-				}
-			}
+		// Encrypted file exists but no passphrase — skip silently with a log
+		if (this.hasEncryptedBackup() && !passphrase) {
+			console.error(
+				"Encrypted keys found (keys.bep). Provide a passphrase via loadKeys(passphrase) to decrypt, or use keys.json / PRIVATE_KEY_WIF instead.",
+			);
 		}
 
 		// Try legacy format
 		if (this.hasLegacyKeys()) {
 			const keys = this.loadLegacyKeys();
-
-			// Offer to migrate if auto-migrate is enabled
-			if (this.config.autoMigrate !== false) {
-				console.error(
-					"\n[Clipboard] Found unencrypted keys. Would you like to encrypt them?",
-				);
-				console.error(
-					"   (You can skip this by pressing Ctrl+C in the browser)\n",
-				);
-
-				try {
-					const passphrase = await promptForPassphraseWithFallback(
-						"Create a passphrase to encrypt your wallet keys (recommended)",
-						{ isNewPassphrase: true },
-					);
-
-					console.error("🔄 Migrating keys to encrypted format...");
-					await this.saveEncryptedKeys(keys, passphrase);
-					console.error("✅ Keys migrated to encrypted format");
-
-					// Remove legacy file unless configured to keep
-					if (!this.config.keepLegacy) {
-						this.removeLegacyKeys();
-					}
-
-					return { keys, source: "encrypted" };
-				} catch (error) {
-					console.error("ℹ️  Continuing with unencrypted keys...");
-				}
-			}
-
 			return { keys, source: "legacy" };
 		}
 
@@ -149,53 +95,24 @@ export class SecureKeyManager {
 	}
 
 	/**
-	 * Save keys in the appropriate format
+	 * Save keys.
+	 *
+	 * - If options.passphrase provided → encrypt and save to keys.bep
+	 * - Otherwise → save plaintext to keys.json
 	 */
-	async saveKeys(keys: KeyStore, forceUnencrypted = false): Promise<void> {
-		// If forcing unencrypted (for initial generation), save as legacy
-		if (forceUnencrypted) {
-			this.saveLegacyKeys(keys);
-			console.error(
-				"💾 Saved unencrypted keys (you can encrypt them on next run)",
-			);
+	async saveKeys(keys: KeyStore, options: SaveKeysOptions = {}): Promise<void> {
+		if (options.passphrase) {
+			await this.saveEncryptedKeys(keys, options.passphrase);
 			return;
 		}
 
-		// If we already have encrypted keys, prompt for passphrase
-		if (this.hasEncryptedBackup()) {
-			try {
-				const passphrase = await promptForPassphraseWithFallback(
-					"Enter passphrase to update your encrypted wallet",
-				);
-				await this.saveEncryptedKeys(keys, passphrase);
-				return;
-			} catch (error) {
-				console.error("⚠️ Failed to encrypt keys:", error);
-				throw error;
-			}
-		}
-
-		// For new keys, ask if user wants to encrypt
-		try {
-			console.error("\n[Lock] Would you like to encrypt your new wallet keys?");
-			console.error("   (Recommended for security)\n");
-
-			const passphrase = await promptForPassphraseWithFallback(
-				"Create a passphrase to encrypt your wallet keys",
-				{ isNewPassphrase: true },
-			);
-			await this.saveEncryptedKeys(keys, passphrase);
-		} catch (error) {
-			// User cancelled or error - save unencrypted
-			console.error("ℹ️  Saving keys unencrypted (you can encrypt them later)");
-			this.saveLegacyKeys(keys);
-		}
+		this.saveLegacyKeys(keys);
 	}
 
 	/**
 	 * Load keys from legacy JSON format
 	 */
-	private loadLegacyKeys(): KeyStore {
+	loadLegacyKeys(): KeyStore {
 		try {
 			const content = fs.readFileSync(this.legacyFile, "utf8");
 			const data = JSON.parse(content);
@@ -215,7 +132,7 @@ export class SecureKeyManager {
 	/**
 	 * Save keys in legacy JSON format
 	 */
-	private saveLegacyKeys(keys: KeyStore): void {
+	saveLegacyKeys(keys: KeyStore): void {
 		const data = {
 			payPk: keys.payPk?.toWif(),
 			identityPk: keys.identityPk?.toWif(),
@@ -231,7 +148,7 @@ export class SecureKeyManager {
 	/**
 	 * Load keys from encrypted backup
 	 */
-	private async loadEncryptedKeys(passphrase: string): Promise<KeyStore> {
+	async loadEncryptedKeys(passphrase: string): Promise<KeyStore> {
 		const encrypted = fs.readFileSync(this.encryptedFile, "utf8");
 		const decrypted = await decryptBackup(encrypted, passphrase);
 
@@ -246,7 +163,7 @@ export class SecureKeyManager {
 						fs.readFileSync(this.legacyFile, "utf8"),
 					);
 					xprv = legacyData.xprv;
-				} catch (e) {
+				} catch (_e) {
 					// Ignore legacy file errors
 				}
 			}
@@ -263,8 +180,8 @@ export class SecureKeyManager {
 		if ("xprv" in decrypted) {
 			const backup = decrypted as BapMasterBackup;
 			return {
-				payPk: undefined, // BapMasterBackup doesn't include payment key
-				identityPk: undefined, // BapMasterBackup doesn't include identity key
+				payPk: undefined,
+				identityPk: undefined,
 				xprv: backup.xprv,
 			};
 		}
@@ -285,11 +202,9 @@ export class SecureKeyManager {
 			createdAt: new Date().toISOString(),
 		};
 
-		// If we have xprv, we need to store it separately in the legacy format for now
+		// If we have xprv, store it separately in the legacy JSON alongside encrypted keys
 		// since OneSatBackup doesn't support xprv
 		if (keys.xprv) {
-			// Store xprv in the legacy JSON alongside encrypted keys
-			// This is a temporary solution until we have a better format
 			const legacyData = {
 				xprv: keys.xprv,
 			};
@@ -325,34 +240,19 @@ export class SecureKeyManager {
 	}
 
 	/**
-	 * Remove legacy keys file
-	 */
-	private removeLegacyKeys(): void {
-		try {
-			fs.unlinkSync(this.legacyFile);
-			console.error("🗑️ Removed legacy unencrypted keys file");
-		} catch (error) {
-			console.error("Failed to remove legacy keys:", error);
-		}
-	}
-
-	/**
 	 * Get status of key storage
 	 */
 	getStatus(): {
 		hasEncrypted: boolean;
 		hasLegacy: boolean;
-		hasLegacyPassphrase: boolean;
 		isSecure: boolean;
 	} {
 		const hasEncrypted = this.hasEncryptedBackup();
 		const hasLegacy = this.hasLegacyKeys();
-		const hasLegacyPassphrase = this.hasLegacyPassphrase();
 
 		return {
 			hasEncrypted,
 			hasLegacy,
-			hasLegacyPassphrase,
 			isSecure: hasEncrypted && !hasLegacy,
 		};
 	}
@@ -361,10 +261,7 @@ export class SecureKeyManager {
 /**
  * Default key manager instance
  */
-export const keyManager = new SecureKeyManager({
-	autoMigrate: process.env.BSV_MCP_AUTO_MIGRATE === "true",
-	keepLegacy: process.env.BSV_MCP_KEEP_LEGACY === "true",
-});
+export const keyManager = new SecureKeyManager();
 
 /**
  * Initialize keys with secure storage support
@@ -383,13 +280,13 @@ export async function initializeSecureKeys(): Promise<{
 	if (privateKeyWifEnv) {
 		try {
 			const payPk = PrivateKey.fromWif(privateKeyWifEnv);
-			console.error("✅ Using PRIVATE_KEY_WIF from environment");
+			console.error("Using PRIVATE_KEY_WIF from environment");
 			return {
 				payPk,
 				source: "env",
 			};
-		} catch (error) {
-			console.error("⚠️ Invalid PRIVATE_KEY_WIF format");
+		} catch (_error) {
+			console.error("Invalid PRIVATE_KEY_WIF format");
 		}
 	}
 

@@ -79,11 +79,7 @@ async function initializeKeys(): Promise<{
 	xprv?: string;
 	source: "env" | "file" | "encrypted" | "generated" | "none";
 }> {
-	const keyManager = new SecureKeyManager({
-		keyDir: KEY_DIR,
-		autoMigrate: process.env.BSV_MCP_AUTO_MIGRATE !== "false",
-		keepLegacy: process.env.BSV_MCP_KEEP_LEGACY === "true",
-	});
+	const keyManager = new SecureKeyManager({ keyDir: KEY_DIR });
 
 	const privateKeyWifEnv = process.env.PRIVATE_KEY_WIF;
 
@@ -105,7 +101,7 @@ async function initializeKeys(): Promise<{
 						"\x1b[32mINFO: Loaded BAP HD Master Key (xprv) from secure storage alongside ENV payPk.\x1b[0m",
 					);
 				}
-			} catch (e) {
+			} catch (_e) {
 				/* Ignore file read errors here */
 			}
 
@@ -121,7 +117,7 @@ async function initializeKeys(): Promise<{
 				xprv: xprvFromFile,
 				source: "env",
 			};
-		} catch (error) {
+		} catch (_error) {
 			console.error(
 				"\x1b[33mWARN: Invalid PRIVATE_KEY_WIF format in environment variable. Checking secure storage next.\x1b[0m",
 			);
@@ -133,8 +129,6 @@ async function initializeKeys(): Promise<{
 		const { keys, source } = await keyManager.loadKeys();
 
 		if (keys.payPk) {
-			const status = keyManager.getStatus();
-
 			if (source === "encrypted") {
 				console.error(
 					`\x1b[32mINFO: Using encrypted keys from: ${KEY_DIR}/keys.bep\x1b[0m`,
@@ -185,7 +179,7 @@ async function initializeKeys(): Promise<{
 
 	try {
 		// Save unencrypted for now - user can encrypt on next run
-		await keyManager.saveKeys(keyStore, true);
+		await keyManager.saveKeys(keyStore, { forceUnencrypted: true });
 		const status = keyManager.getStatus();
 
 		if (status.hasEncrypted) {
