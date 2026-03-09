@@ -104,7 +104,15 @@ export async function fetchPaymentUtxosFromV5(
 		const url = `${V5_API_URL}/own/${address}/utxos?refresh=true&txo=true&script=true&limit=250&tags=p2pkh`;
 		console.error(`Fetching UTXOs from V5: ${url}`);
 		const response = await fetch(url);
-		const data = (await response.json()) as V5Utxo[];
+		if (!response.ok) {
+			console.error(`V5 UTXO fetch failed: ${response.status} ${response.statusText}`);
+			return undefined;
+		}
+		const data = (await response.json()) as V5Utxo[] | null;
+		if (!Array.isArray(data)) {
+			console.error(`V5 UTXO response was not an array: ${typeof data}`);
+			return undefined;
+		}
 		const utxos: Utxo[] = [];
 		for (const utxo of data) {
 			if (!utxo.data.p2pkh) {

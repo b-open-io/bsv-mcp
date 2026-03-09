@@ -2,7 +2,6 @@ import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
-// import { registerBigBlocksTools } from "./bigblocks"; // Disabled - Turbopack module resolution issues
 import { registerBsocialTools } from "./bsocial";
 import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
@@ -26,7 +25,6 @@ import type { Wallet } from "./wallet/wallet";
  * - enableBsocialTools: controlled by DISABLE_BSOCIAL_TOOLS
  * - enableWalletTools: controlled by DISABLE_WALLET_TOOLS
  * - enableMneeTools: controlled by DISABLE_MNEE_TOOLS
- * - enableBigBlocksTools: controlled by DISABLE_BIGBLOCKS_TOOLS
  */
 export interface ToolsConfig {
 	enableBsvTools?: boolean;
@@ -37,7 +35,6 @@ export interface ToolsConfig {
 	enableBsocialTools?: boolean;
 	enableWalletTools?: boolean;
 	enableMneeTools?: boolean;
-	enableBigBlocksTools?: boolean;
 	identityPk?: PrivateKey;
 	payPk?: PrivateKey;
 	xprv?: string;
@@ -77,10 +74,6 @@ export function registerAllTools(
 	const enableBsocialTools =
 		process.env.DISABLE_BSOCIAL_TOOLS !== "true" &&
 		config.enableBsocialTools !== false;
-	const enableBigBlocksTools =
-		process.env.DISABLE_BIGBLOCKS_TOOLS !== "true" &&
-		config.enableBigBlocksTools !== false;
-
 	// Register BSV-related tools
 	if (enableBsvTools) {
 		registerBsvTools(server);
@@ -116,12 +109,6 @@ export function registerAllTools(
 	if (enableBsocialTools && config.wallet) {
 		registerBsocialTools(server, { wallet: config.wallet });
 	}
-
-	// Register BigBlocks tools
-	// Disabled - Turbopack module resolution issues
-	// if (enableBigBlocksTools) {
-	// 	registerBigBlocksTools(server);
-	// }
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {

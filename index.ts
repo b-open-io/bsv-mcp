@@ -50,8 +50,6 @@ const CONFIG = {
 	loadA2bTools: process.env.ENABLE_A2B_TOOLS === "true",
 	loadBapTools: process.env.DISABLE_BAP_TOOLS !== "true",
 	loadBsocialTools: process.env.DISABLE_BSOCIAL_TOOLS !== "true",
-	loadBigBlocksTools: process.env.DISABLE_BIGBLOCKS_TOOLS !== "true",
-
 	// Transaction broadcasting control
 	disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
 
@@ -575,9 +573,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 			try {
 				html = await readFile(distPath, "utf-8");
 			} catch {
-				throw new Error(
-					`Bundled view not found at ${distPath}. Run 'bun run build:view' first.`,
-				);
+				html = "<html><body><p>Dashboard not built. Run <code>bun run build:view</code> to enable it.</p></body></html>";
 			}
 			return {
 				contents: [
@@ -617,7 +613,6 @@ Environment Variables:
   DISABLE_UTILS_TOOLS    Disable utility tools (default: false)
   DISABLE_BAP_TOOLS      Disable BAP tools (default: false)  
   DISABLE_BSOCIAL_TOOLS  Disable BSocial tools (default: false)
-  DISABLE_BIGBLOCKS_TOOLS Disable BigBlocks tools (default: false)
   ENABLE_A2B_TOOLS       Enable A2B tools (default: false)
   DISABLE_BROADCASTING   Disable transaction broadcasting (default: false)
   USE_DROPLET_API        Use Droplet API for transactions (default: false)
@@ -629,7 +624,6 @@ Tool Categories:
   Utils Tools:    General utilities, conversions
   BAP Tools:      Identity management (requires identity key)
   BSocial Tools:  Social posts, likes, follows
-  BigBlocks Tools: React component registry, code generation, examples
   A2B Tools:      Advanced BSV operations (requires identity key)
 
 Authentication:
@@ -710,9 +704,6 @@ Authentication:
 	);
 	logFunc(
 		`  DISABLE_BAP_TOOLS:    ${process.env.DISABLE_BAP_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
-	);
-	logFunc(
-		`  DISABLE_BIGBLOCKS_TOOLS: ${process.env.DISABLE_BIGBLOCKS_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
 	);
 	logFunc(
 		`  DISABLE_BROADCASTING: ${process.env.DISABLE_BROADCASTING === "true" ? "Set (true)" : "Not Set/false"}`,
@@ -800,10 +791,6 @@ Authentication:
 		logFunc(
 			`    BSocial:      ${effectiveConfig.loadBsocialTools ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
 		);
-		logFunc(
-			`    BigBlocks:    ${effectiveConfig.loadBigBlocksTools ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
-		);
-
 		if (effectiveConfig.loadWalletTools) {
 			logFunc(
 				`      Broadcasting: ${!effectiveConfig.disableBroadcasting ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
@@ -931,7 +918,6 @@ Authentication:
 			enableA2bTools: effectiveConfig.loadA2bTools,
 			enableBapTools: effectiveConfig.loadBapTools,
 			enableBsocialTools: effectiveConfig.loadBsocialTools,
-			enableBigBlocksTools: effectiveConfig.loadBigBlocksTools,
 			enableWalletTools: effectiveConfig.loadWalletTools,
 			enableMneeTools: effectiveConfig.loadMneeTools,
 			identityPk,

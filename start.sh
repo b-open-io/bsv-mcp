@@ -14,12 +14,7 @@ export TRANSPORT=stdio
 
 # Install deps if missing (first run from plugin cache)
 if [[ ! -d "$SCRIPT_DIR/node_modules" ]]; then
-  (cd "$SCRIPT_DIR" && bun install --frozen-lockfile) >&2
-fi
-
-# Build view if missing
-if [[ ! -f "$SCRIPT_DIR/dist/app.html" ]]; then
-  (cd "$SCRIPT_DIR" && bunx vite build) >&2
+  (cd "$SCRIPT_DIR" && bun install) >&2
 fi
 
 exec bun run "$SCRIPT_DIR/index.ts"
