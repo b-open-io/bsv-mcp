@@ -58,3 +58,4 @@ config/
 .DS_Store
 todo.md
 .vercel
+.worktrees
