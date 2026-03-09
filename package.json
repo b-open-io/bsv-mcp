@@ -2,7 +2,7 @@
 	"name": "bsv-mcp",
 	"module": "dist/index.js",
 	"type": "module",
-	"version": "0.2.5",
+	"version": "0.2.6",
 	"license": "MIT",
 	"author": "satchmo",
 	"description": "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -95,7 +95,7 @@
 		"zod": "^4.3.6"
 	},
 	"scripts": {
-		"build": "bun build ./index.ts --target=node --outfile=build/server.js",
+		"build": "bun run ./scripts/build.ts",
 		"build:view": "vite build",
 		"build:all": "bun run build:view && bun run build",
 		"dev": "next dev",

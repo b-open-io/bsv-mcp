@@ -47,6 +47,25 @@ var __export = (target, all) => {
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = /* @__PURE__ */ createRequire(import.meta.url);
+// --- stdio guard: redirect console.log/warn/info/debug to stderr in stdio mode ---
+// Must run before any dependency module is initialized so no stdout pollution
+// corrupts the JSON-RPC protocol used by the MCP stdio transport.
+(function() {
+  var isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT || "").toLowerCase() === "stdio";
+  if (isStdio) {
+    function fmtArgs(args) {
+      return Array.prototype.slice.call(args).map(function(a) {
+        return typeof a === "string" ? a : JSON.stringify(a);
+      }).join(" ");
+    }
+    console.log = function() { process.stderr.write("[log] " + fmtArgs(arguments) + "\n"); };
+    console.warn = function() { process.stderr.write("[warn] " + fmtArgs(arguments) + "\n"); };
+    console.info = function() { process.stderr.write("[info] " + fmtArgs(arguments) + "\n"); };
+    console.debug = function() { process.stderr.write("[debug] " + fmtArgs(arguments) + "\n"); };
+  }
+})();
+// --- end stdio guard ---
+
 
 // node_modules/@bsv/sdk/dist/esm/src/primitives/BigNumber.js
 var BufferCtor, CAN_USE_BUFFER, HEX_CHAR_TO_VALUE, BigNumber;
@@ -86247,7 +86266,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.4",
+  version: "0.2.6",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -86340,7 +86359,7 @@ var package_default = {
     zod: "^4.3.6"
   },
   scripts: {
-    build: "bun build ./index.ts --target=node --outfile=build/server.js",
+    build: "bun run ./scripts/build.ts",
     "build:view": "vite build",
     "build:all": "bun run build:view && bun run build",
     dev: "next dev",
@@ -123691,7 +123710,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.4",
+  version: "0.2.6",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -123784,7 +123803,7 @@ var package_default2 = {
     zod: "^4.3.6"
   },
   scripts: {
-    build: "bun build ./index.ts --target=node --outfile=build/server.js",
+    build: "bun run ./scripts/build.ts",
     "build:view": "vite build",
     "build:all": "bun run build:view && bun run build",
     dev: "next dev",

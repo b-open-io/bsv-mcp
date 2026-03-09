@@ -19,9 +19,11 @@ elif [[ -f "$HOME/.config/bsv-mcp/.env" ]]; then
 fi
 
 # Use bun + source TS if node_modules are present (local dev).
-# Otherwise use the pre-built Node.js bundle (plugin cache has no node_modules).
+# --preload ensures the stdio guard patches console before any dependency runs.
+# Otherwise use the pre-built bundle (plugin cache has no node_modules).
+# The bundle has the stdio guard baked in at the top.
 if command -v bun >/dev/null 2>&1 && [[ -d "$SCRIPT_DIR/node_modules" ]]; then
-  exec bun run "$SCRIPT_DIR/index.ts" --stdio
+  exec bun run --preload "$SCRIPT_DIR/utils/stdioGuard.ts" "$SCRIPT_DIR/index.ts" --stdio
 elif command -v bun >/dev/null 2>&1; then
   exec bun run "$SCRIPT_DIR/build/server.js" --stdio
 else
