@@ -599,7 +599,11 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 		APP_RESOURCE_URI,
 		{ description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs" },
 		async () => {
-			const distPath = join(__appDirname, "dist", "app.html");
+			// When running from bundle (dist/index.js), app.html is a sibling.
+			// When running from source (index.ts), it's in dist/.
+			const distPath = __appDirname.endsWith("dist")
+				? join(__appDirname, "app.html")
+				: join(__appDirname, "dist", "app.html");
 			let html: string;
 			try {
 				html = await readFile(distPath, "utf-8");

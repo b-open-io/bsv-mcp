@@ -86276,6 +86276,7 @@ var package_default = {
   ],
   files: [
     "dist/**/*.js",
+    "dist/**/*.html",
     "package.json",
     "*.ts",
     "tools/*.ts",
@@ -123721,6 +123722,7 @@ var package_default2 = {
   ],
   files: [
     "dist/**/*.js",
+    "dist/**/*.html",
     "package.json",
     "*.ts",
     "tools/*.ts",
@@ -127877,7 +127879,7 @@ function registerMcpAppTools(server2, wallet4) {
     }
   });
   cD(server2, "BSV Dashboard", APP_RESOURCE_URI, { description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs" }, async () => {
-    const distPath = join2(__appDirname, "dist", "app.html");
+    const distPath = __appDirname.endsWith("dist") ? join2(__appDirname, "app.html") : join2(__appDirname, "dist", "app.html");
     let html;
     try {
       html = await readFile(distPath, "utf-8");

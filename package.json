@@ -23,6 +23,7 @@
 	],
 	"files": [
 		"dist/**/*.js",
+		"dist/**/*.html",
 		"package.json",
 		"*.ts",
 		"tools/*.ts",
