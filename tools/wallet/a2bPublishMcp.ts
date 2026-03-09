@@ -1,9 +1,8 @@
-import type { PrivateKey, WalletInterface } from "@bsv/sdk";
+import type { PrivateKey } from "@bsv/sdk";
 import { Utils } from "@bsv/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	ClientNotification,
 	ClientRequest,
@@ -19,10 +18,9 @@ import type {
 	PreMAP,
 } from "js-1sat-ord";
 import { createOrdinals } from "js-1sat-ord";
-import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import packageJson from "../../package.json";
-import { BsocialBroadcaster, V5Broadcaster } from "../../utils/broadcaster";
+import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 
 const { toArray, toBase64 } = Utils;
@@ -196,11 +194,8 @@ export function registerA2bPublishMcpTool(
 	server.tool(
 		"wallet_a2bPublishMcp",
 		"Publish an MCP tool configuration record on-chain via Ordinal inscription. This creates a permanent, immutable, and discoverable tool definition that can be accessed by other MCP servers. The tool is published as a JSON inscription with metadata and optional digital signatures for authenticity verification.",
-		{ args: a2bPublishMcpArgsSchema },
-		async (
-			{ args }: { args: A2bPublishMcpArgs },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{ ...a2bPublishMcpArgsSchema.shape },
+		async ({ toolName, command, args, keywords, env, description, destinationAddress }) => {
 			try {
 				if (!identityPk) {
 					console.warn(
@@ -218,20 +213,20 @@ export function registerA2bPublishMcpTool(
 				const walletAddress = paymentPk.toAddress().toString();
 
 				// Fetch MCP metadata (tools, prompts, resources)
-				const metadata = await fetchMcpMetadata(args.command, args.args);
+				const metadata = await fetchMcpMetadata(command, args);
 				// console.log(`Discovered ${metadata.tools.length} tools, ${metadata.prompts.length} prompts, and ${metadata.resources.length} resources`);
 
 				// Assemble tool configuration
 				const toolConfig: McpConfig = {
-					command: args.command,
-					args: args.args,
+					command,
+					args,
 					tools: metadata.tools,
 					prompts: metadata.prompts,
 					resources: metadata.resources,
-					env: args.env
-						? args.env.reduce(
-								(acc, { key, description }) => {
-									acc[key] = description;
+					env: env
+						? env.reduce(
+								(acc, { key, description: desc }) => {
+									acc[key] = desc;
 									return acc;
 								},
 								{} as Record<string, string>,
@@ -245,9 +240,9 @@ export function registerA2bPublishMcpTool(
 				// Prepare the full configuration with metadata
 				const fullConfig = {
 					mcpServers: {
-						[args.toolName]: {
-							description: args.description || "",
-							keywords: args.keywords || [],
+						[toolName]: {
+							description: description || "",
+							keywords: keywords || [],
 							tools: metadata.tools || [],
 							prompts: metadata.prompts || [],
 							resources: metadata.resources || [],
@@ -266,7 +261,7 @@ export function registerA2bPublishMcpTool(
 				};
 
 				// Destination for the ordinal
-				const targetAddress = args.destinationAddress ?? walletAddress;
+				const targetAddress = destinationAddress ?? walletAddress;
 				const destinations: Destination[] = [
 					{ address: targetAddress, inscription },
 				];
@@ -335,12 +330,12 @@ export function registerA2bPublishMcpTool(
 										txid,
 										outpoint,
 										onchainUrl,
-										toolName: args.toolName,
+										toolName,
 										toolCount: metadata.tools.length,
 										promptCount: metadata.prompts.length,
 										resourceCount: metadata.resources.length,
 										description:
-											args.description || `MCP Tool: ${args.toolName}`,
+											description || `MCP Tool: ${toolName}`,
 										address: targetAddress,
 									},
 									null,

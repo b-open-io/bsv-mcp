@@ -1,23 +1,7 @@
 import { type PrivateKey, Utils } from "@bsv/sdk";
-import type {
-	McpServer,
-	ToolCallback,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-import type { z } from "zod";
-import {
-	type a2bPublishMcpArgsSchema,
-	registerA2bPublishMcpTool,
-} from "./a2bPublishMcp";
-import {
-	type createOrdinalsArgsSchema,
-	registerCreateOrdinalsTool,
-} from "./createOrdinals";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
+import { registerCreateOrdinalsTool } from "./createOrdinals";
 import { registerGatherCollectionInfoTool } from "./gatherCollectionInfo";
 import { registerGetAddressTool } from "./getAddress";
 import { registerWalletGetBalanceTool } from "./getBalance";
@@ -25,45 +9,10 @@ import { registerGetPublicKeyTool } from "./getPublicKey";
 import { registerMintCollectionTool } from "./mintCollection";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerRefreshUtxosTool } from "./refreshUtxos";
-import {
-	type emptyArgsSchema,
-	type getAddressArgsSchema,
-	type getPublicKeyArgsSchema,
-	type purchaseListingArgsSchema,
-	type sendToAddressArgsSchema,
-	walletEncryptionArgsSchema,
-} from "./schemas";
+import { walletEncryptionArgsSchema } from "./schemas";
 import { registerSendToAddressTool } from "./sendToAddress";
-import {
-	registerTransferOrdTokenTool,
-	type transferOrdTokenArgsSchema,
-} from "./transferOrdToken";
+import { registerTransferOrdTokenTool } from "./transferOrdToken";
 import type { Wallet } from "./wallet";
-
-// Define mapping from tool names to argument schemas
-type ToolArgSchemas = {
-	wallet_getPublicKey: typeof getPublicKeyArgsSchema;
-	wallet_encryption: typeof walletEncryptionArgsSchema;
-	wallet_getAddress: typeof getAddressArgsSchema;
-	wallet_sendToAddress: typeof sendToAddressArgsSchema;
-	wallet_purchaseListing: typeof purchaseListingArgsSchema;
-	wallet_transferOrdToken: typeof transferOrdTokenArgsSchema;
-	wallet_a2bPublish: typeof a2bPublishMcpArgsSchema;
-	wallet_createOrdinals: typeof createOrdinalsArgsSchema;
-	wallet_refreshUtxos: typeof emptyArgsSchema;
-	wallet_getBalance: typeof emptyArgsSchema;
-};
-
-// Define a type for the handler function with proper argument types
-type ToolHandler = (
-	params: { args: unknown },
-	extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-) => Promise<CallToolResult>;
-
-// Define a map type for tool name to handler functions
-type ToolHandlerMap = {
-	[K in keyof ToolArgSchemas]: ToolHandler;
-};
 
 export function registerWalletTools(
 	server: McpServer,
@@ -73,21 +22,7 @@ export function registerWalletTools(
 		enableA2bTools: boolean;
 		identityPk?: PrivateKey;
 	},
-): ToolHandlerMap {
-	const handlers = {} as ToolHandlerMap;
-
-	// Handle tools registration with properly typed parameters
-	function registerTool<T extends z.ZodType>(
-		name: keyof ToolArgSchemas,
-		description: string,
-		schema: { args: T },
-		handler: ToolCallback<{ args: T }>,
-	): void {
-		// Register all tools normally
-		server.tool(name, description, schema, handler);
-		handlers[name] = handler as ToolHandler;
-	}
-
+): void {
 	// Register the wallet_sendToAddress tool
 	registerSendToAddressTool(server, wallet);
 
@@ -118,7 +53,7 @@ export function registerWalletTools(
 	}
 
 	// Register combined wallet_encryption tool
-	registerTool(
+	server.tool(
 		"wallet_encryption",
 		"Combined tool for encrypting and decrypting data using the wallet's cryptographic keys.\n\n" +
 			"PARAMETERS:\n" +
@@ -139,13 +74,9 @@ export function registerWalletTools(
 			'     "mode": "decrypt",\n' +
 			'     "data": [encrypted bytes from previous response]\n' +
 			"   }",
-		{ args: walletEncryptionArgsSchema },
-		async (
-			{ args }: { args: z.infer<typeof walletEncryptionArgsSchema> },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{ ...walletEncryptionArgsSchema.shape },
+		async ({ mode, data, encoding, recipientPublicKeyHex }) => {
 			try {
-				const { mode, data, encoding, recipientPublicKeyHex } = args;
 
 				let inputData: number[];
 				if (typeof data === "string") {
@@ -187,7 +118,7 @@ export function registerWalletTools(
 					content: [
 						{
 							type: "text",
-							text: `Error during ${args.mode}: ${errorMessage}`,
+							text: `Error during ${mode}: ${errorMessage}`,
 						},
 					],
 					isError: true,
@@ -203,5 +134,4 @@ export function registerWalletTools(
 	registerGatherCollectionInfoTool(server, wallet);
 	registerMintCollectionTool(server, wallet);
 
-	return handlers;
 }

@@ -1,10 +1,5 @@
 import { PrivateKey, Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import type {
 	ChangeResult,
 	CreateOrdinalsConfig,
@@ -14,7 +9,6 @@ import type {
 	PreMAP,
 } from "js-1sat-ord";
 import { createOrdinals } from "js-1sat-ord";
-import { Sigma } from "sigma-protocol";
 import { z } from "zod";
 import packageJson from "../../package.json";
 import { V5Broadcaster } from "../../utils/broadcaster";
@@ -155,11 +149,8 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 	server.tool(
 		"wallet_a2bPublish",
 		"Publish an agent.json record on-chain via Ordinal inscription",
-		{ args: a2bPublishArgsSchema },
-		async (
-			{ args }: { args: A2bPublishArgs },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{ ...a2bPublishArgsSchema.shape },
+		async ({ agentUrl, agentName, description, providerOrganization, providerUrl, version, documentationUrl, streaming, pushNotifications, stateTransitionHistory, defaultInputModes, defaultOutputModes, skills, destinationAddress }) => {
 			try {
 				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) throw new Error("No private key available");
@@ -167,7 +158,7 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 				if (!paymentUtxos?.length)
 					throw new Error("No payment UTXOs available to fund inscription");
 
-				// TODO: Get the skills from actually running the MCP instead of trusting the agent args for args.skills
+				// TODO: Get the skills from actually running the MCP instead of trusting the agent args for skills
 				const walletAddress = paymentPk.toAddress().toString();
 
 				// Create pricing plans using the new schema
@@ -212,27 +203,27 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 
 				// Assemble AgentCard with defaults and user overrides
 				const agentCard = {
-					name: args.agentName,
-					description: args.description ?? null,
-					url: args.agentUrl,
+					name: agentName,
+					description: description ?? null,
+					url: agentUrl,
 					provider:
-						args.providerOrganization && args.providerUrl
+						providerOrganization && providerUrl
 							? {
-									organization: args.providerOrganization,
-									url: args.providerUrl,
+									organization: providerOrganization,
+									url: providerUrl,
 								}
 							: null,
-					version: args.version ?? packageJson.version,
-					documentationUrl: args.documentationUrl ?? null,
+					version: version ?? packageJson.version,
+					documentationUrl: documentationUrl ?? null,
 					capabilities: {
-						streaming: args.streaming,
-						pushNotifications: args.pushNotifications,
-						stateTransitionHistory: args.stateTransitionHistory,
+						streaming,
+						pushNotifications,
+						stateTransitionHistory,
 					},
 					authentication: null,
-					defaultInputModes: args.defaultInputModes,
-					defaultOutputModes: args.defaultOutputModes,
-					skills: args.skills,
+					defaultInputModes,
+					defaultOutputModes,
+					skills,
 					"x-payment-config": pricingConfig,
 				};
 				// Validate compliance
@@ -245,7 +236,7 @@ export function registerA2bPublishAgentTool(server: McpServer, wallet: Wallet) {
 					contentType: "application/json",
 				};
 				// Destination for the ordinal
-				const targetAddress = args.destinationAddress ?? walletAddress;
+				const targetAddress = destinationAddress ?? walletAddress;
 				const destinations: Destination[] = [
 					{ address: targetAddress, inscription },
 				];

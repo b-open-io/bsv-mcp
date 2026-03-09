@@ -1,7 +1,6 @@
 import { P2PKH } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { toSatoshi } from "satoshi-token";
-import { z } from "zod";
 import { getBsvPriceWithCache } from "../bsv/getPrice";
 import { sendToAddressArgsSchema } from "./schemas";
 import type { Wallet } from "./wallet";

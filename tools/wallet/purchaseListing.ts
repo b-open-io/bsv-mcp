@@ -15,7 +15,6 @@ import {
 	type TokenUtxo,
 	type Utxo,
 } from "js-1sat-ord";
-import type { z } from "zod";
 import {
 	MARKET_FEE_PERCENTAGE,
 	MARKET_WALLET_ADDRESS,
