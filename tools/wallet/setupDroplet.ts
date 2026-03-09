@@ -1,11 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { DropletClient } from "../../utils/droplet";
 import type { IntegratedWallet } from "./integratedWallet";
 
 const setupDropletArgsSchema = z.object({
@@ -26,11 +20,8 @@ export function registerSetupDropletTool(
 	server.tool(
 		"wallet_setupDroplet",
 		"Setup and manage Droplet API integration. Actions: register_key (registers your public key), create_faucet (creates a new faucet), check_status (checks faucet status)",
-		setupDropletArgsSchema.shape,
-		async (
-			{ action, faucetName, fixedDropSats },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{ ...setupDropletArgsSchema.shape },
+		async ({ action, faucetName, fixedDropSats }) => {
 			try {
 				const dropletClient = integratedWallet.getDropletClient();
 				if (!dropletClient) {
