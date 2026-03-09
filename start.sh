@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Wrapper script to launch the BSV MCP server.
-# The server inherits env vars from your shell (export PRIVATE_KEY_WIF=... in ~/.zshrc).
-# Optionally, place a .env file next to this script or at ~/.config/bsv-mcp/.env.
+# Launch the BSV MCP server via stdio transport.
+# Env vars inherited from shell; optionally source .env files.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source .env if present (local dev or user-created)
+# Source .env if present
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set -a
   source "$SCRIPT_DIR/.env"
@@ -18,14 +17,12 @@ elif [[ -f "$HOME/.config/bsv-mcp/.env" ]]; then
   set +a
 fi
 
-# Use bun + source TS if node_modules are present (local dev).
-# --preload ensures the stdio guard patches console before any dependency runs.
-# Otherwise use the pre-built bundle (plugin cache has no node_modules).
-# The bundle has the stdio guard baked in at the top.
+# Use bun + source TS if node_modules present (local dev).
+# Otherwise use the pre-built bundle (npm install / plugin cache).
 if command -v bun >/dev/null 2>&1 && [[ -d "$SCRIPT_DIR/node_modules" ]]; then
-  exec bun run --preload "$SCRIPT_DIR/utils/stdioGuard.ts" "$SCRIPT_DIR/index.ts" --stdio
+  exec bun run "$SCRIPT_DIR/index.ts" --stdio
 elif command -v bun >/dev/null 2>&1; then
-  exec bun run "$SCRIPT_DIR/build/server.js" --stdio
+  exec bun run "$SCRIPT_DIR/dist/index.js" --stdio
 else
-  exec node "$SCRIPT_DIR/build/server.js" --stdio
+  exec node "$SCRIPT_DIR/dist/index.js" --stdio
 fi

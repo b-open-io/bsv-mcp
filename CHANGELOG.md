@@ -1,5 +1,18 @@
 # BSV MCP Server Changelog
 
+## [0.2.7] - 2026-03-09
+
+### Changed
+- Inline stdio guard in index.ts — no more `--preload` flag needed
+- Simplified build script — uses `--banner` instead of post-build injection
+- Consolidated bundle output to `dist/index.js` (removed `build/server.js`)
+- Clean `start.sh` — just `bun run index.ts --stdio` for local dev
+
+### Fixed
+- Flattened tool schemas for Claude Desktop compatibility
+- Fixed stdio transport stdout pollution via console redirect guard
+- Fixed transport mode detection
+
 ## [0.2.0] - 2026-03-09
 
 ### Breaking Changes

@@ -1,4 +1,19 @@
 #!/usr/bin/env bun
+
+// Redirect console.log/warn/info/debug to stderr in stdio mode.
+// MCP stdio transport uses stdout exclusively for JSON-RPC messages —
+// any stray stdout output corrupts the protocol. Must run before any import.
+const _isStdio =
+	process.argv.includes("--stdio") ||
+	process.env.TRANSPORT?.toLowerCase() === "stdio";
+if (_isStdio) {
+	const _err = console.error.bind(console);
+	console.log = (...a: unknown[]) => _err("[log]", ...a);
+	console.warn = (...a: unknown[]) => _err("[warn]", ...a);
+	console.info = (...a: unknown[]) => _err("[info]", ...a);
+	console.debug = (...a: unknown[]) => _err("[debug]", ...a);
+}
+
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
