@@ -1,3 +1,5 @@
+import type { OneSatContext } from "@1sat/actions";
+import type { OneSatServices } from "@1sat/wallet-remote";
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerA2bDiscoverTool } from "./a2b/discover";
@@ -41,6 +43,8 @@ export interface ToolsConfig {
 	wallet?: Wallet;
 	integratedWallet?: IntegratedWallet;
 	disableBroadcasting?: boolean; // For wallet tools
+	ctx?: OneSatContext;
+	services?: OneSatServices;
 }
 
 /**
@@ -126,9 +130,10 @@ export function registerAllTools(
 		} else if (config.wallet) {
 			// Register normal wallet tools
 			const walletToolOptions = {
-				disableBroadcasting: config.disableBroadcasting === true, // Default to false if undefined
-				enableA2bTools: enableA2bTools, // Use the already determined enableA2bTools value
+				disableBroadcasting: config.disableBroadcasting === true,
+				enableA2bTools: enableA2bTools,
 				identityPk: config.identityPk,
+				ctx: config.ctx,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);
 		}

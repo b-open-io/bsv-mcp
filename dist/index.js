@@ -86255,7 +86255,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.7",
+  version: "0.2.8",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -86276,6 +86276,7 @@ var package_default = {
   ],
   files: [
     "dist/**/*.js",
+    "dist/**/*.html",
     "package.json",
     "*.ts",
     "tools/*.ts",
@@ -90657,7 +90658,7 @@ var createPostArgsSchema = exports_external.object({
   content: exports_external.string().describe("The content of the post"),
   contentType: exports_external.enum(["text/plain", "text/markdown"]).default("text/plain").describe("Content type of the post"),
   app: exports_external.string().default("bsv-mcp").describe("Application name creating the post"),
-  additionalMapData: exports_external.record(exports_external.string()).optional().describe("Additional MAP protocol key-value pairs")
+  additionalMapData: exports_external.string().optional().describe(`Additional MAP protocol key-value pairs as a JSON object string, e.g. '{"key": "value"}'`)
 });
 async function createSocialPost(args, wallet3) {
   try {
@@ -90688,7 +90689,8 @@ async function createSocialPost(args, wallet3) {
       toArray8("post", "utf8")
     ];
     if (additionalMapData) {
-      for (const [key, value] of Object.entries(additionalMapData)) {
+      const parsedMapData = JSON.parse(additionalMapData);
+      for (const [key, value] of Object.entries(parsedMapData)) {
         mapData.push(toArray8(key, "utf8"), toArray8(value, "utf8"));
       }
     }
@@ -123699,7 +123701,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.7",
+  version: "0.2.8",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -123720,6 +123722,7 @@ var package_default2 = {
   ],
   files: [
     "dist/**/*.js",
+    "dist/**/*.html",
     "package.json",
     "*.ts",
     "tools/*.ts",
@@ -124432,7 +124435,7 @@ var mintCollectionArgsSchema = exports_external.object({
     label: exports_external.string(),
     percentage: exports_external.number().min(0).max(100)
   })).optional().describe("Rarity labels and their percentages"),
-  traits: exports_external.record(exports_external.array(exports_external.string())).optional().describe("Collection traits as key-value pairs where values are arrays of possible trait values"),
+  traits: exports_external.string().optional().describe(`Collection traits as JSON string of key-value pairs where values are arrays, e.g. '{"Background": ["Blue", "Red"], "Eyes": ["Big", "Small"]}'`),
   skipBroadcast: exports_external.boolean().optional().describe("Skip broadcasting transactions (for testing)")
 });
 async function getImageFiles(folderPath) {
@@ -124481,8 +124484,9 @@ function generateItemTraits(itemIndex, collectionTraits) {
   return traits;
 }
 function registerMintCollectionTool(server, wallet4) {
-  server.tool("wallet_mintCollection", "Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.", { ...mintCollectionArgsSchema.shape }, async ({ folderPath, collectionName, description, rarityLabels, traits, skipBroadcast }) => {
+  server.tool("wallet_mintCollection", "Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.", { ...mintCollectionArgsSchema.shape }, async ({ folderPath, collectionName, description, rarityLabels, traits: traitsJson, skipBroadcast }) => {
     try {
+      const traits = traitsJson ? JSON.parse(traitsJson) : undefined;
       const paymentPk = wallet4.getPaymentKey();
       if (!paymentPk) {
         throw new Error("No payment key available in wallet");
@@ -127875,7 +127879,7 @@ function registerMcpAppTools(server2, wallet4) {
     }
   });
   cD(server2, "BSV Dashboard", APP_RESOURCE_URI, { description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs" }, async () => {
-    const distPath = join2(__appDirname, "dist", "app.html");
+    const distPath = __appDirname.endsWith("dist") ? join2(__appDirname, "app.html") : join2(__appDirname, "dist", "app.html");
     let html;
     try {
       html = await readFile(distPath, "utf-8");

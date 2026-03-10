@@ -64,27 +64,23 @@ export const purchaseListingArgsSchema = z
 		listingOutpoint: z
 			.string()
 			.describe("The outpoint of the listing to purchase (txid_vout format)"),
-		ordAddress: z
-			.string()
-			.describe("The ordinal address to receive the purchased item"),
 		listingType: z
 			.enum(["nft", "token"])
 			.default("nft")
 			.describe(
-				"Type of listing: 'nft' for ordinal NFTs, 'token' for BSV-20 tokens",
-			),
-		tokenProtocol: z
-			.enum(["bsv-20", "bsv-21"])
-			.optional()
-			.default("bsv-21")
-			.describe(
-				"Token protocol for token listings (required when listingType is 'token')",
+				"Type of listing: 'nft' for ordinal NFTs, 'token' for BSV21 tokens",
 			),
 		tokenID: z
 			.string()
 			.optional()
 			.describe(
-				"Token ID for BSV-21 tokens or ticker for BSV-20 tokens (required when listingType is 'token')",
+				"Token ID (txid_vout of deploy transaction) — required when listingType is 'token'",
+			),
+		tokenAmount: z
+			.string()
+			.optional()
+			.describe(
+				"Amount of tokens in the listing (as string) — required when listingType is 'token'",
 			),
 		description: z
 			.string()
@@ -92,7 +88,7 @@ export const purchaseListingArgsSchema = z
 			.describe("Optional description for the transaction"),
 	})
 	.describe(
-		"Schema for the wallet_purchaseListing tool arguments (purchase NFTs or tokens), with detailed field descriptions.",
+		"Schema for the wallet_purchaseListing tool arguments (purchase NFTs or BSV21 tokens).",
 	);
 
 // Export types

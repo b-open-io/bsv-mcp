@@ -35,10 +35,10 @@ const mintCollectionArgsSchema = z.object({
 		.optional()
 		.describe("Rarity labels and their percentages"),
 	traits: z
-		.record(z.array(z.string()))
+		.string()
 		.optional()
 		.describe(
-			"Collection traits as key-value pairs where values are arrays of possible trait values",
+			'Collection traits as JSON string of key-value pairs where values are arrays, e.g. \'{"Background": ["Blue", "Red"], "Eyes": ["Big", "Small"]}\'',
 		),
 	skipBroadcast: z
 		.boolean()
@@ -121,8 +121,10 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 		"wallet_mintCollection",
 		"Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.",
 		{ ...mintCollectionArgsSchema.shape },
-		async ({ folderPath, collectionName, description, rarityLabels, traits, skipBroadcast }): Promise<CallToolResult> => {
+		async ({ folderPath, collectionName, description, rarityLabels, traits: traitsJson, skipBroadcast }): Promise<CallToolResult> => {
 			try {
+				// Parse traits JSON string if provided
+				const traits: Record<string, string[]> | undefined = traitsJson ? JSON.parse(traitsJson) : undefined;
 				// Get keys from wallet
 				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) {
