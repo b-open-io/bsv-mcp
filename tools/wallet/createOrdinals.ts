@@ -1,168 +1,82 @@
-import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type {
-	ChangeResult,
-	CreateOrdinalsCollectionItemMetadata,
-	CreateOrdinalsCollectionMetadata,
-	CreateOrdinalsConfig,
-	Destination,
-	Inscription,
-	LocalSigner,
-	PreMAP,
-} from "js-1sat-ord";
-import { createOrdinals } from "js-1sat-ord";
-import { z } from "zod";
-import { V5Broadcaster } from "../../utils/broadcaster";
-import type { Wallet } from "./wallet";
+import type { OneSatContext } from '@1sat/actions'
+import { inscribe } from '@1sat/actions'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { z } from 'zod'
 
-/**
- * Schema for the createOrdinals tool arguments.
- * This is a simplified interface compared to the full CreateOrdinalsConfig
- * in js-1sat-ord. The wallet will provide UTXOs, private key, etc.
- */
 export const createOrdinalsArgsSchema = z.object({
-	// Base64-encoded data to inscribe
-	dataB64: z.string().describe("Base64-encoded content to inscribe"),
-	// Content type (e.g., "image/jpeg", "text/plain", etc.)
-	contentType: z.string().describe("MIME type of the content"),
-	// Optional destination address (if not provided, uses the wallet's address)
+	dataB64: z.string().describe('Base64-encoded content to inscribe'),
+	contentType: z.string().describe('MIME type of the content'),
 	destinationAddress: z
 		.string()
 		.optional()
-		.describe("Optional destination address for the ordinal"),
-	// Optional metadata for the inscription
+		.describe('Optional destination address for the ordinal'),
 	metadata: z
-		.any()
+		.record(z.string(), z.string())
 		.optional()
-		.describe("Optional MAP metadata for the inscription"),
-});
+		.describe('Optional MAP metadata for the inscription'),
+})
 
-export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>;
+export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>
 
-/**
- * Registers the wallet_createOrdinals tool for minting ordinals/inscriptions
- */
-export function registerCreateOrdinalsTool(server: McpServer, wallet: Wallet) {
+export function registerCreateOrdinalsTool(
+	server: McpServer,
+	ctx: OneSatContext | undefined,
+) {
 	server.tool(
-		"wallet_createOrdinals",
-		"Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
+		'wallet_createOrdinals',
+		'Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.',
 		{ ...createOrdinalsArgsSchema.shape },
 		async ({ dataB64, contentType, destinationAddress, metadata }): Promise<CallToolResult> => {
+			if (!ctx) {
+				return {
+					content: [
+						{
+							type: 'text',
+							text: 'Wallet not initialized. Please configure a wallet before creating ordinals.',
+						},
+					],
+					isError: true,
+				}
+			}
+
 			try {
-				// Load optional identity key for sigma signing
-				const identityKeyWif = process.env.IDENTITY_KEY_WIF;
-				let identityPk: PrivateKey | undefined;
-				if (identityKeyWif) {
-					try {
-						identityPk = PrivateKey.fromWif(identityKeyWif);
-					} catch (e) {
-						console.warn(
-							"Warning: Invalid IDENTITY_KEY_WIF environment variable; sigma signing disabled",
-							e,
-						);
-					}
-				}
+				const result = await inscribe.execute(ctx, {
+					base64Content: dataB64,
+					contentType,
+					map: metadata,
+				})
 
-				// 1. Get private key from wallet
-				const paymentPk = wallet.getPrivateKey();
-				if (!paymentPk) {
-					throw new Error("No private key available in wallet");
-				}
-
-				// 2. Get payment UTXOs from wallet
-				const { paymentUtxos } = await wallet.getUtxos();
-				if (!paymentUtxos || paymentUtxos.length === 0) {
-					throw new Error(
-						"No payment UTXOs available to fund this inscription",
-					);
-				}
-
-				// 3. Get the wallet address for change/destination if not provided
-				const walletAddress = paymentPk.toAddress().toString();
-
-				// 4. Create the inscription object
-				const inscription: Inscription = {
-					dataB64: dataB64,
-					contentType: contentType,
-				};
-
-				// 5. Create the destination
-				const destinations: Destination[] = [
-					{
-						address: destinationAddress || walletAddress,
-						inscription,
-					},
-				];
-
-				const createOrdinalsConfig: CreateOrdinalsConfig = {
-					utxos: paymentUtxos,
-					destinations,
-					paymentPk,
-					changeAddress: walletAddress,
-					metaData: metadata as
-						| PreMAP
-						| CreateOrdinalsCollectionMetadata
-						| CreateOrdinalsCollectionItemMetadata,
-				};
-
-				if (identityPk) {
-					createOrdinalsConfig.signer = {
-						idKey: identityPk,
-					} as LocalSigner;
-				}
-
-				// 6. Create and broadcast the transaction
-				const result = await createOrdinals(createOrdinalsConfig);
-
-				const changeResult = result as ChangeResult;
-
-				// 7. Optionally sign with identity key and broadcast the transaction
-
-				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
-				if (!disableBroadcasting) {
-					const broadcaster = new V5Broadcaster();
-					await changeResult.tx.broadcast(broadcaster);
-
-					// 8. Refresh the wallet's UTXOs after spending
-					try {
-						await wallet.refreshUtxos();
-					} catch (refreshError) {
-						console.warn(
-							"Failed to refresh UTXOs after transaction:",
-							refreshError,
-						);
-					}
-
-					// 9. Return transaction details
+				if (result.error) {
 					return {
-						content: [
-							{
-								type: "text",
-								text: JSON.stringify({
-									txid: changeResult.tx.id("hex"),
-									spentOutpoints: changeResult.spentOutpoints,
-									payChange: changeResult.payChange,
-									inscriptionAddress: destinationAddress || walletAddress,
-									contentType: contentType,
-								}),
-							},
-						],
-					};
+						content: [{ type: 'text', text: result.error }],
+						isError: true,
+					}
 				}
 
 				return {
 					content: [
 						{
-							type: "text",
-							text: changeResult.tx.toHex(),
+							type: 'text',
+							text: JSON.stringify({
+								txid: result.txid,
+								rawtx: result.rawtx,
+								contentType,
+							}),
 						},
 					],
-				};
+				}
 			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: msg }], isError: true };
+				return {
+					content: [
+						{
+							type: 'text',
+							text: err instanceof Error ? err.message : String(err),
+						},
+					],
+					isError: true,
+				}
 			}
 		},
-	);
+	)
 }

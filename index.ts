@@ -35,6 +35,7 @@ import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
+import { initWallet, destroyWallet } from "./utils/walletInit.ts";
 import { BunSSEServerTransport } from "./transports/sse.ts";
 import {
 	type BSVJWTPayload,
@@ -858,6 +859,8 @@ Authentication:
 
 	let wallet: Wallet | undefined;
 	let integratedWallet: IntegratedWallet | undefined;
+	let remoteCtx: import("@1sat/actions").OneSatContext | undefined;
+	let remoteServices: import("@1sat/wallet-remote").OneSatServices | undefined;
 
 	if (CONFIG.loadTools) {
 		// Check if we should use Droplet API mode
@@ -934,6 +937,21 @@ Authentication:
 					effectiveConfig.loadMneeTools = false;
 					effectiveConfig.loadBapTools = false;
 				}
+
+				// Initialize remote BRC-100 wallet alongside the local wallet
+				try {
+					const chain = (process.env.BSV_CHAIN as "main" | "test") ?? "main";
+					const remoteResult = await initWallet(payPk.toWif(), chain);
+					remoteCtx = remoteResult.ctx;
+					remoteServices = remoteResult.services;
+					logFunc(
+						`\x1b[32mINFO: Remote BRC-100 wallet initialized. Deposit address: ${remoteResult.depositAddress}\x1b[0m`,
+					);
+				} catch (e) {
+					logFunc(
+						`\x1b[33mWARN: Remote BRC-100 wallet initialization failed: ${e instanceof Error ? e.message : String(e)}. Falling back to local wallet only.\x1b[0m`,
+					);
+				}
 			}
 
 			// Disable MNEE tools if wallet is not available
@@ -961,6 +979,8 @@ Authentication:
 			wallet,
 			integratedWallet,
 			disableBroadcasting: effectiveConfig.disableBroadcasting,
+			ctx: remoteCtx,
+			services: remoteServices,
 		};
 
 		registerAllTools(server, toolsConfig);
@@ -977,6 +997,13 @@ Authentication:
 	// Register resources if enabled
 	if (CONFIG.loadResources) {
 		registerResources(server);
+	}
+
+	// Clean up remote wallet on shutdown
+	for (const sig of ["SIGINT", "SIGTERM"] as const) {
+		process.once(sig, () => {
+			destroyWallet().catch(() => {});
+		});
 	}
 
 	// Start the server based on transport mode

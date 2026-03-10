@@ -1,156 +1,164 @@
-import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-	type Distribution,
-	type LocalSigner,
-	OneSatBroadcaster,
-	type Payment,
-	selectTokenUtxos,
-	type TokenChangeResult,
-	TokenInputMode,
-	TokenSelectionStrategy,
-	TokenType,
-	type TokenUtxo,
-	type TransferOrdTokensConfig,
-	transferOrdTokens,
-	type Utxo,
-} from "js-1sat-ord";
-import { z } from "zod";
-import { V5Broadcaster } from "../../utils/broadcaster";
-import type { Wallet } from "./wallet";
+import type { OneSatContext } from '@1sat/actions'
+import { sendBsv21, transferOrdinals } from '@1sat/actions'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { z } from 'zod'
 
-// Schema for BSV-20/BSV-21 token transfer arguments
+const walletOutputSchema = z.object({
+	outpoint: z.string(),
+	satoshis: z.number().optional(),
+	tags: z.array(z.string()).optional(),
+	customInstructions: z.string().optional(),
+	lockingScript: z.string().optional(),
+})
+
 export const transferOrdTokenArgsSchema = z.object({
-	protocol: z.enum(["bsv-20", "bsv-21"]),
-	tokenID: z.string(),
-	sendAmount: z.number(),
-	paymentUtxos: z.array(
-		z.object({
-			txid: z.string(),
-			vout: z.number(),
-			satoshis: z.number(),
-			script: z.string(),
-		}),
+	type: z.enum(['ordinal', 'bsv21']).describe(
+		"'ordinal' to transfer an inscription/NFT, 'bsv21' to send fungible BSV21 tokens",
 	),
-	tokenUtxos: z.array(
-		z.object({
-			txid: z.string(),
-			vout: z.number(),
-			satoshis: z.literal(1),
-			script: z.string(),
-			amt: z.string(),
-			id: z.string(),
-		}),
-	),
-	distributions: z.array(z.object({ address: z.string(), tokens: z.number() })),
-	decimals: z.number(),
-	additionalPayments: z
-		.array(z.object({ to: z.string(), amount: z.number() }))
-		.optional(),
-});
-export type TransferOrdTokenArgs = z.infer<typeof transferOrdTokenArgsSchema>;
+	// ordinal fields
+	ordinal: walletOutputSchema
+		.optional()
+		.describe(
+			"WalletOutput of the ordinal to transfer (from wallet_getOrdinals). Required when type='ordinal'",
+		),
+	inputBEEF: z
+		.array(z.number())
+		.optional()
+		.describe(
+			"BEEF bytes from listOutputs (include: 'entire transactions'). Required when type='ordinal'",
+		),
+	// bsv21 fields
+	tokenId: z
+		.string()
+		.optional()
+		.describe("Token ID (txid_vout format). Required when type='bsv21'"),
+	amount: z
+		.string()
+		.optional()
+		.describe("Amount of tokens to send as a string integer. Required when type='bsv21'"),
+	// shared destination fields
+	address: z.string().optional().describe('Recipient P2PKH address'),
+	counterparty: z
+		.string()
+		.optional()
+		.describe('Recipient identity public key (hex)'),
+})
 
-/**
- * Register the wallet_transferOrdToken tool for transferring BSV tokens.
- */
+export type TransferOrdTokenArgs = z.infer<typeof transferOrdTokenArgsSchema>
+
 export function registerTransferOrdTokenTool(
 	server: McpServer,
-	wallet: Wallet,
+	ctx: OneSatContext | undefined,
 ) {
 	server.tool(
-		"wallet_transferOrdToken",
-		"Transfers BSV-20 or BSV-21 tokens from your wallet via js-1sat-ord transferOrdTokens.",
+		'wallet_transferOrdToken',
+		"Transfer an ordinal inscription or send BSV21 fungible tokens. Use type='ordinal' to transfer an NFT/inscription (requires the WalletOutput from wallet_getOrdinals and the BEEF). Use type='bsv21' to send fungible tokens by token ID and amount.",
 		{ ...transferOrdTokenArgsSchema.shape },
-		async ({ protocol, tokenID, sendAmount, paymentUtxos, tokenUtxos, distributions, decimals, additionalPayments }) => {
-			try {
-				// fetch keys
-				const paymentPk = wallet.getPaymentKey();
-				if (!paymentPk) throw new Error("No private key available");
-				const ordPk = paymentPk;
-				const changeAddress = paymentPk.toAddress().toString();
-				const ordAddress = changeAddress;
-
-				// select token UTXOs
-				const { selectedUtxos: inputTokens } = selectTokenUtxos(
-					tokenUtxos as TokenUtxo[],
-					sendAmount,
-					decimals,
-					{
-						inputStrategy: TokenSelectionStrategy.SmallestFirst,
-						outputStrategy: TokenSelectionStrategy.LargestFirst,
-					},
-				);
-
-				// build config
-				const config: TransferOrdTokensConfig = {
-					protocol:
-						protocol === "bsv-20" ? TokenType.BSV20 : TokenType.BSV21,
-					tokenID,
-					utxos: paymentUtxos as Utxo[],
-					inputTokens,
-					distributions: distributions as Distribution[],
-					tokenChangeAddress: ordAddress,
-					changeAddress,
-					paymentPk,
-					ordPk,
-					additionalPayments: (additionalPayments as Payment[]) || [],
-					decimals,
-					inputMode: TokenInputMode.Needed,
-					splitConfig: {
-						outputs: inputTokens.length === 1 ? 2 : 1,
-						threshold: sendAmount,
-					},
-				};
-
-				const identityPk = process.env.IDENTITY_KEY_WIF
-					? PrivateKey.fromWif(process.env.IDENTITY_KEY_WIF)
-					: undefined;
-
-				if (identityPk) {
-					config.signer = {
-						idKey: identityPk,
-					} as LocalSigner;
-				}
-
-				// execute transfer
-				const result: TokenChangeResult = await transferOrdTokens(config);
-				const disableBroadcasting = process.env.DISABLE_BROADCASTING === "true";
-				if (!disableBroadcasting) {
-					const broadcaster = new V5Broadcaster();
-					await result.tx.broadcast(broadcaster);
-
-					// refresh UTXOs
-					try {
-						await wallet.refreshUtxos();
-					} catch {}
-
-					// respond
-					return {
-						content: [
-							{
-								type: "text",
-								text: JSON.stringify({
-									txid: result.tx.id("hex"),
-									spentOutpoints: result.spentOutpoints,
-									payChange: result.payChange,
-									tokenChange: result.tokenChange,
-								}),
-							},
-						],
-					};
-				}
+		async ({ type, ordinal, inputBEEF, tokenId, amount, address, counterparty }) => {
+			if (!ctx) {
 				return {
 					content: [
 						{
-							type: "text",
-							text: result.tx.toHex(),
+							type: 'text',
+							text: 'Wallet not initialized. Please configure a wallet before transferring.',
 						},
 					],
-				};
+					isError: true,
+				}
+			}
+
+			try {
+				if (type === 'ordinal') {
+					if (!ordinal) {
+						return {
+							content: [{ type: 'text', text: "ordinal is required when type='ordinal'" }],
+							isError: true,
+						}
+					}
+					if (!inputBEEF) {
+						return {
+							content: [{ type: 'text', text: "inputBEEF is required when type='ordinal'" }],
+							isError: true,
+						}
+					}
+					if (!address && !counterparty) {
+						return {
+							content: [{ type: 'text', text: 'address or counterparty is required' }],
+							isError: true,
+						}
+					}
+
+					const result = await transferOrdinals.execute(ctx, {
+						transfers: [
+							{
+								ordinal: ordinal as Parameters<typeof transferOrdinals.execute>[1]['transfers'][0]['ordinal'],
+								address,
+								counterparty,
+							},
+						],
+						inputBEEF,
+					})
+
+					if (result.error) {
+						return {
+							content: [{ type: 'text', text: result.error }],
+							isError: true,
+						}
+					}
+
+					return {
+						content: [{ type: 'text', text: JSON.stringify({ txid: result.txid }) }],
+					}
+				}
+
+				// bsv21
+				if (!tokenId) {
+					return {
+						content: [{ type: 'text', text: "tokenId is required when type='bsv21'" }],
+						isError: true,
+					}
+				}
+				if (!amount) {
+					return {
+						content: [{ type: 'text', text: "amount is required when type='bsv21'" }],
+						isError: true,
+					}
+				}
+				if (!address && !counterparty) {
+					return {
+						content: [{ type: 'text', text: 'address or counterparty is required' }],
+						isError: true,
+					}
+				}
+
+				const result = await sendBsv21.execute(ctx, {
+					tokenId,
+					amount,
+					address,
+					counterparty,
+				})
+
+				if (result.error) {
+					return {
+						content: [{ type: 'text', text: result.error }],
+						isError: true,
+					}
+				}
+
+				return {
+					content: [{ type: 'text', text: JSON.stringify({ txid: result.txid }) }],
+				}
 			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : String(err);
-				return { content: [{ type: "text", text: msg }], isError: true };
+				return {
+					content: [
+						{
+							type: 'text',
+							text: err instanceof Error ? err.message : String(err),
+						},
+					],
+					isError: true,
+				}
 			}
 		},
-	);
+	)
 }

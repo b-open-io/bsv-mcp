@@ -1,3 +1,4 @@
+import type { OneSatContext } from "@1sat/actions";
 import { type PrivateKey, Utils } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
@@ -21,10 +22,11 @@ export function registerWalletTools(
 		disableBroadcasting: boolean;
 		enableA2bTools: boolean;
 		identityPk?: PrivateKey;
+		ctx?: OneSatContext;
 	},
 ): void {
 	// Register the wallet_sendToAddress tool
-	registerSendToAddressTool(server, wallet);
+	registerSendToAddressTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
 	registerGetAddressTool(server, wallet);
@@ -33,16 +35,16 @@ export function registerWalletTools(
 	registerGetPublicKeyTool(server, wallet);
 
 	// Register the wallet_purchaseListing tool
-	registerPurchaseListingTool(server, wallet);
+	registerPurchaseListingTool(server, config.ctx);
 
 	// Register the wallet_transferOrdToken tool
-	registerTransferOrdTokenTool(server, wallet);
+	registerTransferOrdTokenTool(server, config.ctx);
 
 	// Register the wallet_refreshUtxos tool
 	registerRefreshUtxosTool(server, wallet);
 
 	// Register the wallet_getBalance tool
-	registerWalletGetBalanceTool(server, wallet);
+	registerWalletGetBalanceTool(server, config.ctx);
 
 	// A2B tools have to be explicitly enabled
 	if (config.enableA2bTools) {
@@ -128,7 +130,7 @@ export function registerWalletTools(
 	);
 
 	// Register createOrdinals tool
-	registerCreateOrdinalsTool(server, wallet);
+	registerCreateOrdinalsTool(server, config.ctx);
 
 	// Register collection tools
 	registerGatherCollectionInfoTool(server, wallet);
