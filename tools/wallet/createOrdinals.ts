@@ -15,6 +15,10 @@ export const createOrdinalsArgsSchema = z.object({
 		.record(z.string(), z.string())
 		.optional()
 		.describe('Optional MAP metadata for the inscription'),
+	signWithBAP: z
+		.boolean()
+		.optional()
+		.describe('Sign with BAP identity (Sigma protocol). Uses anchor+inscription two-step flow.'),
 })
 
 export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>
@@ -27,7 +31,7 @@ export function registerCreateOrdinalsTool(
 		'wallet_createOrdinals',
 		'Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.',
 		{ ...createOrdinalsArgsSchema.shape },
-		async ({ dataB64, contentType, destinationAddress, metadata }): Promise<CallToolResult> => {
+		async ({ dataB64, contentType, destinationAddress, metadata, signWithBAP }): Promise<CallToolResult> => {
 			if (!ctx) {
 				return {
 					content: [
@@ -45,6 +49,7 @@ export function registerCreateOrdinalsTool(
 					base64Content: dataB64,
 					contentType,
 					map: metadata,
+					signWithBAP,
 				})
 
 				if (result.error) {
