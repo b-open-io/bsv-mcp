@@ -1,5 +1,20 @@
 # BSV MCP Server Changelog
 
+## [0.2.11] - 2026-03-10
+
+### Added
+- Cloudflare Worker deployment (`cloudflare/`) with Droplit API integration and OAuth 2.1 via sigma-auth
+- `createConfiguredServer()` factory for per-session McpServer instances
+
+### Changed
+- Replaced `BunSSEServerTransport` with `WebStandardStreamableHTTPServerTransport` (MCP 2025-03-26 Streamable HTTP spec)
+- Single `/mcp` endpoint replaces old `/sse` + `/messages` pattern
+- Migrated ordinals tools from GorillaPool to 1sat-stack
+
+### Fixed
+- Per-session server bug where `server.connect(transport)` replaced previous transport (only latest session worked)
+- `bap_generate` test assertion to match current `server.tool()` API shape
+
 ## [0.2.7] - 2026-03-09
 
 ### Added
