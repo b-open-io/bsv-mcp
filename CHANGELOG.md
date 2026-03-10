@@ -1,5 +1,12 @@
 # BSV MCP Server Changelog
 
+## [0.2.15] - 2026-03-10
+
+### Fixed
+- Dashboard wallet tab now uses BRC-100 context (same as direct tools) for address and balance
+- `app_wallet_data` was returning raw P2PKH address instead of BRC-29 derived deposit address
+- Client-side error handling: wallet errors now display properly instead of rendering empty/zero data
+
 ## [0.2.12] - 2026-03-10
 
 ### Changed
