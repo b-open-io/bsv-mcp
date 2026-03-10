@@ -21,7 +21,7 @@ if (__isStdio) {
 
 console.log("Building bundle...");
 const result = Bun.spawnSync(
-	["bun", "build", "./index.ts", "--target=node", `--outfile=${OUTFILE}`, `--banner=${STDIO_GUARD}`],
+	["bun", "build", "./index.ts", "--target=node", `--outfile=${OUTFILE}`, `--banner=${STDIO_GUARD}`, "--packages=external"],
 	{ stdout: "inherit", stderr: "inherit" },
 );
 if (result.exitCode !== 0) {

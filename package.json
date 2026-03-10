@@ -106,7 +106,6 @@
 		"start:next": "next start",
 		"lint": "biome check .",
 		"lint:fix": "biome check . --write",
-		"deploy": "vercel --prod",
-		"deploy:preview": "vercel"
+		"prepack": "bun run build:all"
 	}
 }
