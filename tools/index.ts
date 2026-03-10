@@ -85,7 +85,7 @@ export function registerAllTools(
 
 	// Register Ordinals-related tools
 	if (enableOrdinalsTools) {
-		registerOrdinalsTools(server);
+		registerOrdinalsTools(server, config.ctx);
 	}
 
 	// Register utility tools
