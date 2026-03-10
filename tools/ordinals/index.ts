@@ -12,9 +12,9 @@ import { registerSearchInscriptionsTool } from "./searchInscriptions";
  * @param ctx OneSat context for SDK service access
  */
 export function registerOrdinalsTools(server: McpServer, ctx?: OneSatContext): void {
-	registerGetInscriptionTool(server);
-	registerSearchInscriptionsTool(server);
-	registerMarketListingsTool(server);
-	registerMarketSalesTool(server);
+	registerGetInscriptionTool(server, ctx);
+	registerSearchInscriptionsTool(server, ctx);
+	registerMarketListingsTool(server, ctx);
+	registerMarketSalesTool(server, ctx);
 	registerGetTokenByIdOrTickerTool(server, ctx);
 }
