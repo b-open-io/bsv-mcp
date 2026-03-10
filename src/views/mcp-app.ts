@@ -59,7 +59,7 @@ app.ontoolresult = (result) => {
 	}
 };
 
-app.onhostcontext = (ctx) => {
+app.onhostcontextchanged = (ctx) => {
 	if (ctx.theme === "light") {
 		document.documentElement.setAttribute("data-theme", "light");
 	}
@@ -80,7 +80,7 @@ function renderDashboard(data: Record<string, unknown>) {
 async function loadExplorerData() {
 	panels.explorer.innerHTML = '<div class="loading-text">Loading explorer data...</div>';
 	try {
-		const result = await app.callTool("app_explorer_data", {});
+		const result = await app.callServerTool({ name: "app_explorer_data", arguments: {} });
 		if (result?.structuredContent) {
 			renderExplorer(result.structuredContent as Record<string, unknown>);
 		}
@@ -140,7 +140,7 @@ function renderExplorer(data: Record<string, unknown>) {
 		const resultsEl = document.getElementById("tx-results")!;
 		resultsEl.innerHTML = '<div class="loading-text">Decoding...</div>';
 		try {
-			const res = await app.callTool("app_explorer_data", { txid: input });
+			const res = await app.callServerTool({ name: "app_explorer_data", arguments: { txid: input } });
 			if (res?.structuredContent) {
 				const txData = (res.structuredContent as Record<string, unknown>).transaction as Record<string, unknown> | undefined;
 				if (txData) {
@@ -161,7 +161,7 @@ function renderExplorer(data: Record<string, unknown>) {
 		const resultsEl = document.getElementById("address-results")!;
 		resultsEl.innerHTML = '<div class="loading-text">Looking up...</div>';
 		try {
-			const res = await app.callTool("app_explorer_data", { address: input });
+			const res = await app.callServerTool({ name: "app_explorer_data", arguments: { address: input } });
 			if (res?.structuredContent) {
 				const addrData = (res.structuredContent as Record<string, unknown>).addressInfo as Record<string, unknown> | undefined;
 				if (addrData) {
@@ -256,7 +256,7 @@ function renderAddressResult(el: HTMLElement, addr: Record<string, unknown>) {
 async function loadWalletData() {
 	panels.wallet.innerHTML = '<div class="loading-text">Loading wallet data...</div>';
 	try {
-		const result = await app.callTool("app_wallet_data", {});
+		const result = await app.callServerTool({ name: "app_wallet_data", arguments: {} });
 		if (result?.structuredContent) {
 			walletLoaded = true;
 			renderWallet(result.structuredContent as Record<string, unknown>);
@@ -332,7 +332,7 @@ function renderWallet(data: Record<string, unknown>) {
 async function loadOrdinalsData() {
 	panels.ordinals.innerHTML = '<div class="loading-text">Loading ordinals data...</div>';
 	try {
-		const result = await app.callTool("app_ordinals_data", {});
+		const result = await app.callServerTool({ name: "app_ordinals_data", arguments: {} });
 		if (result?.structuredContent) {
 			ordinalsLoaded = true;
 			renderOrdinals(result.structuredContent as Record<string, unknown>);
@@ -373,7 +373,7 @@ function renderOrdinals(data: Record<string, unknown>) {
 		const resultsEl = document.getElementById("ordinals-results")!;
 		resultsEl.innerHTML = '<div class="loading-text">Searching...</div>';
 		try {
-			const res = await app.callTool("app_ordinals_data", { query });
+			const res = await app.callServerTool({ name: "app_ordinals_data", arguments: { query } });
 			if (res?.structuredContent) {
 				const searchResults = res.structuredContent as Record<string, unknown>;
 				const results = searchResults.results as Array<Record<string, unknown>> || [];
