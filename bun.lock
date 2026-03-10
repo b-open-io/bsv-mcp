@@ -1,11 +1,10 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "bsv-mcp",
       "dependencies": {
-        "@1sat/actions": "0.0.26",
+        "@1sat/actions": "0.0.27",
         "@1sat/wallet-remote": "0.0.7",
         "@bsv/sdk": "^2.0.6",
         "@modelcontextprotocol/ext-apps": "^1.2.0",
@@ -63,7 +62,7 @@
     },
   },
   "packages": {
-    "@1sat/actions": ["@1sat/actions@0.0.26", "", { "dependencies": { "@1sat/client": "^0.0.9", "@1sat/types": "^0.0.10", "@1sat/utils": "^0.0.8", "@1sat/wallet": "^0.0.20", "@bopen-io/templates": "^1.1.9" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-QuIeyG1m3TwvQE9pR0UoMYru70g02Ck7WWC4yE2HZP4GNPIV4ghGIL/dYVm2MYru2HPgZRPrI6gYe198n+JfUQ=="],
+    "@1sat/actions": ["@1sat/actions@0.0.27", "", { "dependencies": { "@1sat/client": "^0.0.9", "@1sat/types": "^0.0.10", "@1sat/utils": "^0.0.8", "@1sat/wallet": "^0.0.20", "@bopen-io/templates": "^1.1.9" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-L5wzHUg9tSBp3wYBmUHCKspmr0YnjzzQ+tQEKQ9XB7rURDHSkzyCcUYtP8Weo+6TDUh6c/Jst6lEi3bDqFPqZA=="],
 
     "@1sat/client": ["@1sat/client@0.0.9", "", { "dependencies": { "@1sat/types": "^0.0.6", "@bsv/wallet-toolbox": "^2.0.20" }, "peerDependencies": { "@bsv/sdk": "^2.0.4" } }, "sha512-J23v+Gi3HvlQVUizLnvSAEIstJS5UYZVO67FaA0Waq9IH92x2Q6BhTDmQtoaKu4Tr5CRCvOwN1rykXmc6t2ehg=="],
 
