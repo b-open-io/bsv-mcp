@@ -52,6 +52,7 @@ let server: McpServer | undefined;
 interface ServerFactoryOptions {
 	toolsConfig: ToolsConfig;
 	wallet?: Wallet;
+	ctx?: import("@1sat/actions").OneSatContext;
 	loadPrompts: boolean;
 	loadResources: boolean;
 }
@@ -80,7 +81,7 @@ function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 	);
 
 	registerAllTools(srv, opts.toolsConfig);
-	registerMcpAppTools(srv, opts.wallet);
+	registerMcpAppTools(srv, opts.wallet, opts.ctx);
 	if (opts.loadPrompts) registerAllPrompts(srv);
 	if (opts.loadResources) registerResources(srv);
 
@@ -278,7 +279,7 @@ async function initializeKeys(): Promise<{
 const APP_RESOURCE_URI = "ui://bsv-mcp/app.html";
 const __appDirname = dirname(fileURLToPath(import.meta.url));
 
-function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
+function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@1sat/actions").OneSatContext) {
 	// Primary dashboard tool — model calls this to open the UI
 	registerAppTool(
 		server,
@@ -468,7 +469,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 		},
 	);
 
-	// App-only: fetch wallet data
+	// App-only: fetch wallet data (uses BRC-100 context to match direct tools)
 	registerAppTool(
 		server,
 		"app_wallet_data",
@@ -481,7 +482,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 			},
 		},
 		async () => {
-			if (!wallet) {
+			if (!ctx && !wallet) {
 				return {
 					content: [
 						{
@@ -497,11 +498,42 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 			}
 
 			try {
-				const { paymentUtxos } = await wallet.getUtxos();
-				const address = wallet.getAddress();
+				let address: string | undefined;
 				let totalSatoshis = 0;
-				for (const utxo of paymentUtxos) {
-					totalSatoshis += utxo.satoshis || 0;
+				let utxoCount = 0;
+				let utxos: Array<{ txid: string; vout: number; satoshis: number }> = [];
+
+				// Use BRC-100 context (same source as wallet_getAddress / wallet_getBalance)
+				if (ctx) {
+					const { deriveDepositAddresses } = await import("@1sat/actions");
+					const { derivations } = await deriveDepositAddresses.execute(ctx, {
+						prefix: "mcp",
+					});
+					address = derivations[0]?.address;
+
+					const result = await ctx.wallet.listOutputs({ basket: "default" });
+					totalSatoshis = result.outputs.reduce(
+						(sum, output) => sum + output.satoshis,
+						0,
+					);
+					utxoCount = result.totalOutputs;
+					utxos = result.outputs.slice(0, 50).map((o) => {
+						const [txid = "", voutStr = "0"] = (o.outpoint ?? "").split(".");
+						return { txid, vout: Number(voutStr), satoshis: o.satoshis };
+					});
+				} else if (wallet) {
+					// Fallback to local wallet if no BRC-100 context
+					address = wallet.getAddress();
+					const { paymentUtxos } = await wallet.getUtxos();
+					for (const utxo of paymentUtxos) {
+						totalSatoshis += utxo.satoshis || 0;
+					}
+					utxoCount = paymentUtxos.length;
+					utxos = paymentUtxos.slice(0, 50).map((u) => ({
+						txid: u.txid,
+						vout: u.vout,
+						satoshis: u.satoshis,
+					}));
 				}
 
 				let price: number | undefined;
@@ -525,14 +557,10 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet) {
 						balance: {
 							satoshis: totalSatoshis,
 							bsv: bsvAmount,
-							utxoCount: paymentUtxos.length,
+							utxoCount,
 						},
 						address,
-						utxos: paymentUtxos.slice(0, 50).map((u) => ({
-							txid: u.txid,
-							vout: u.vout,
-							satoshis: u.satoshis,
-						})),
+						utxos,
 						price,
 					},
 					_meta: { viewUUID: crypto.randomUUID() },
@@ -1013,6 +1041,7 @@ Authentication:
 	const serverFactoryOpts: ServerFactoryOptions = {
 		toolsConfig,
 		wallet,
+		ctx: remoteCtx,
 		loadPrompts: effectiveConfig.loadPrompts,
 		loadResources: effectiveConfig.loadResources,
 	};

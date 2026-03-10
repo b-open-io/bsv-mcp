@@ -257,8 +257,14 @@ async function loadWalletData() {
 	try {
 		const result = await app.callServerTool({ name: "app_wallet_data", arguments: {} });
 		if (result?.structuredContent) {
+			const data = result.structuredContent as Record<string, unknown>;
+			if (data.error) {
+				document.getElementById("balance-value")!.textContent = "—";
+				document.getElementById("utxo-list")!.innerHTML = `<div class="error-box">${esc(String(data.error))}</div>`;
+				return;
+			}
 			walletLoaded = true;
-			renderWallet(result.structuredContent as Record<string, unknown>);
+			renderWallet(data);
 		}
 	} catch (err) {
 		document.getElementById("balance-value")!.textContent = "error";
