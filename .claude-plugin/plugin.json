@@ -1,6 +1,6 @@
 {
   "name": "bsv-mcp",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "description": "Bitcoin SV MCP server with interactive dashboard — Explorer, Wallet, and Ordinals tabs via MCP Apps. Tools for price lookup, transaction decoding, address lookup, wallet management, NFT marketplace, and identity.",
   "author": {
     "name": "rohenaz",

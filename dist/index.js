@@ -31,7 +31,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.12",
+  version: "0.2.13",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -101,6 +101,7 @@ var package_default = {
     "tailwind-merge": "^3.5.0",
     tailwindcss: "^4.2.1",
     "tailwindcss-animate": "^1.0.7",
+    "@1sat/wallet-remote": "0.0.7",
     vite: "^7.3.1",
     "vite-plugin-singlefile": "^2.3.0"
   },
@@ -109,7 +110,6 @@ var package_default = {
   },
   dependencies: {
     "@1sat/actions": "0.0.27",
-    "@1sat/wallet-remote": "0.0.7",
     "@bsv/sdk": "^2.0.6",
     "@modelcontextprotocol/ext-apps": "^1.2.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -4724,7 +4724,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.2.12",
+  version: "0.2.13",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -4794,6 +4794,7 @@ var package_default2 = {
     "tailwind-merge": "^3.5.0",
     tailwindcss: "^4.2.1",
     "tailwindcss-animate": "^1.0.7",
+    "@1sat/wallet-remote": "0.0.7",
     vite: "^7.3.1",
     "vite-plugin-singlefile": "^2.3.0"
   },
@@ -4802,7 +4803,6 @@ var package_default2 = {
   },
   dependencies: {
     "@1sat/actions": "0.0.27",
-    "@1sat/wallet-remote": "0.0.7",
     "@bsv/sdk": "^2.0.6",
     "@modelcontextprotocol/ext-apps": "^1.2.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
