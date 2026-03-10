@@ -1,5 +1,13 @@
 # BSV MCP Server Changelog
 
+## [0.2.12] - 2026-03-10
+
+### Changed
+- Redesigned MCP App dashboard with new dark theme, segmented pill tabs, wallet/explorer/ordinals views
+- Explorer view: search bar, stat cards (block height, price, difficulty, best block), recent blocks table
+- Wallet view: large monospace balance, info pill with sats/USD/UTXOs, address row, UTXO table
+- Ordinals view: collection grid with image previews, listed badges, mint button
+
 ## [0.2.11] - 2026-03-10
 
 ### Added
