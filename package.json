@@ -2,7 +2,7 @@
 	"name": "bsv-mcp",
 	"module": "dist/index.js",
 	"type": "module",
-	"version": "0.2.13",
+	"version": "0.2.14",
 	"license": "MIT",
 	"author": "satchmo",
 	"description": "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -72,15 +72,8 @@
 		"tailwind-merge": "^3.5.0",
 		"tailwindcss": "^4.2.1",
 		"tailwindcss-animate": "^1.0.7",
-		"@1sat/wallet-remote": "0.0.7",
-		"vite": "^7.3.1",
-		"vite-plugin-singlefile": "^2.3.0"
-	},
-	"peerDependencies": {
-		"typescript": "^5.9.3"
-	},
-	"dependencies": {
 		"@1sat/actions": "0.0.27",
+		"@1sat/wallet-remote": "0.0.7",
 		"@bsv/sdk": "^2.0.6",
 		"@modelcontextprotocol/ext-apps": "^1.2.0",
 		"@modelcontextprotocol/sdk": "^1.27.1",
@@ -95,8 +88,13 @@
 		"satoshi-token": "^0.0.7",
 		"schema-dts": "^1.1.5",
 		"sigma-protocol": "^0.1.9",
-		"zod": "^4.3.6"
+		"vite": "^7.3.1",
+		"vite-plugin-singlefile": "^2.3.0"
 	},
+	"peerDependencies": {
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
 		"build:view": "vite build",
