@@ -7,11 +7,26 @@ import { registerCreateOrdinalsTool } from "./createOrdinals";
 import { registerGatherCollectionInfoTool } from "./gatherCollectionInfo";
 import { registerGetAddressTool } from "./getAddress";
 import { registerWalletGetBalanceTool } from "./getBalance";
+import { registerGetBsv21BalancesTool } from "./getBsv21Balances";
+import { registerGetLockDataTool } from "./getLockData";
+import { registerGetOrdinalsTool } from "./getOrdinals";
+import { registerListTokensTool } from "./listTokens";
 import { registerMintCollectionTool } from "./mintCollection";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerRefreshUtxosTool } from "./refreshUtxos";
 import { registerSendToAddressTool } from "./sendToAddress";
+import { registerSignBsmTool } from "./signBsm";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
+import { registerListOrdinalTool } from "./listOrdinal";
+import { registerCancelListingTool } from "./cancelListing";
+import { registerSendAllBsvTool } from "./sendAllBsv";
+import { registerLockBsvTool } from "./lockBsv";
+import { registerUnlockBsvTool } from "./unlockBsv";
+import { registerOpnsRegisterTool } from "./opnsRegister";
+import { registerOpnsDeregisterTool } from "./opnsDeregister";
+import { registerSweepBsvTool } from "./sweepBsv";
+import { registerSweepOrdinalsTool } from "./sweepOrdinals";
+import { registerSweepBsv21Tool } from "./sweepBsv21";
 import type { Wallet } from "./wallet";
 
 export function registerWalletTools(
@@ -28,7 +43,7 @@ export function registerWalletTools(
 	registerSendToAddressTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
-	registerGetAddressTool(server, wallet);
+	registerGetAddressTool(server, config.ctx);
 
 	// Register the wallet_purchaseListing tool
 	registerPurchaseListingTool(server, config.ctx);
@@ -37,7 +52,7 @@ export function registerWalletTools(
 	registerTransferOrdTokenTool(server, config.ctx);
 
 	// Register the wallet_refreshUtxos tool
-	registerRefreshUtxosTool(server, wallet);
+	registerRefreshUtxosTool(server, config.ctx);
 
 	// Register the wallet_getBalance tool
 	registerWalletGetBalanceTool(server, config.ctx);
@@ -59,5 +74,26 @@ export function registerWalletTools(
 	// Register collection tools
 	registerGatherCollectionInfoTool(server, wallet);
 	registerMintCollectionTool(server, wallet);
+
+	// Register read-only wallet tools
+	registerGetOrdinalsTool(server, config.ctx);
+	registerListTokensTool(server, config.ctx);
+	registerGetBsv21BalancesTool(server, config.ctx);
+	registerGetLockDataTool(server, config.ctx);
+	registerSignBsmTool(server, config.ctx);
+
+	// Register state-changing action tools
+	registerListOrdinalTool(server, config.ctx);
+	registerCancelListingTool(server, config.ctx);
+	registerSendAllBsvTool(server, config.ctx);
+	registerLockBsvTool(server, config.ctx);
+	registerUnlockBsvTool(server, config.ctx);
+	registerOpnsRegisterTool(server, config.ctx);
+	registerOpnsDeregisterTool(server, config.ctx);
+
+	// Register sweep tools
+	registerSweepBsvTool(server, config.ctx);
+	registerSweepOrdinalsTool(server, config.ctx);
+	registerSweepBsv21Tool(server, config.ctx);
 
 }

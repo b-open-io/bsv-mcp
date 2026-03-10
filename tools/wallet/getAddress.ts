@@ -1,34 +1,40 @@
+import {
+	deriveDepositAddresses,
+	type OneSatContext,
+} from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { Wallet } from "./wallet";
+
+const MCP_ADDRESS_PREFIX = "mcp";
 
 /**
- * Register the tool to get the wallet address
- * @param server The MCP server instance
- * @param wallet The initialized custom Wallet instance
+ * Register the tool to get the wallet's BRC-29 deposit address
  */
 export function registerGetAddressTool(
 	server: McpServer,
-	wallet: Wallet,
+	ctx?: OneSatContext,
 ): void {
 	server.tool(
 		"wallet_getAddress",
-		"Retrieves the current wallet's Bitcoin SV address. This address can be used to receive BSV, ordinals, or tokens, and is derived from the wallet's private key.",
+		"Retrieves the wallet's BRC-29 deposit address derived for MCP. This address can receive BSV, ordinals, or tokens via external payments.",
 		{},
 		async () => {
 			try {
-				const address = wallet.getAddress();
-
-				if (!address) {
-					throw new Error(
-						"Could not retrieve address from wallet instance. Key might be missing or getAddress method failed.",
-					);
+				if (!ctx) {
+					throw new Error("BRC-100 wallet context not available");
 				}
+
+				const { derivations } = await deriveDepositAddresses.execute(ctx, {
+					prefix: MCP_ADDRESS_PREFIX,
+				});
 
 				return {
 					content: [
 						{
 							type: "text",
-							text: JSON.stringify({ address, status: "ok" }),
+							text: JSON.stringify({
+								address: derivations[0].address,
+								status: "ok",
+							}),
 						},
 					],
 				};

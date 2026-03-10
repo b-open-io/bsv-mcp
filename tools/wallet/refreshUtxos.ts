@@ -1,30 +1,31 @@
+import { syncAddresses, type OneSatContext } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { toBitcoin } from "satoshi-token";
-import type { Wallet } from "./wallet";
+
+const MCP_ADDRESS_PREFIX = "mcp";
 
 /**
- * Registers the wallet_refreshUtxos tool that refreshes and returns the UTXOs for the wallet
+ * Registers the wallet_refreshUtxos tool that syncs external payments
+ * to BRC-29 deposit addresses into the BRC-100 wallet.
  */
-export function registerRefreshUtxosTool(server: McpServer, wallet: Wallet) {
+export function registerRefreshUtxosTool(
+	server: McpServer,
+	ctx?: OneSatContext,
+) {
 	server.tool(
 		"wallet_refreshUtxos",
-		"Refreshes and returns the wallet's UTXOs. This is useful for debugging UTXO issues, ensuring the wallet has the latest transaction outputs, and for verifying available funds before making transactions.",
+		"Syncs external payments sent to BRC-29 deposit addresses into the wallet. Triggers lazy indexing on the server, classifies outputs (funding, ordinals, tokens), and internalizes them.",
 		{},
 		async () => {
 			try {
-				// Force refresh the UTXOs
-				await wallet.refreshUtxos();
+				if (!ctx) {
+					throw new Error("BRC-100 wallet context not available");
+				}
 
-				// Get the refreshed UTXOs
-				const { paymentUtxos, nftUtxos } = await wallet.getUtxos();
+				const result = await syncAddresses.execute(ctx, {
+					prefix: MCP_ADDRESS_PREFIX,
+					count: 1,
+				});
 
-				// Calculate total satoshis in payment UTXOs
-				const totalSatoshis = paymentUtxos.reduce(
-					(sum, utxo) => sum + utxo.satoshis,
-					0,
-				);
-
-				// Format the response
 				return {
 					content: [
 						{
@@ -32,22 +33,10 @@ export function registerRefreshUtxosTool(server: McpServer, wallet: Wallet) {
 							text: JSON.stringify(
 								{
 									status: "success",
-									paymentUtxos: paymentUtxos.map((utxo) => ({
-										txid: utxo.txid,
-										vout: utxo.vout,
-										satoshis: utxo.satoshis,
-										outpoint: `${utxo.txid}_${utxo.vout}`,
-									})),
-									nftUtxos: nftUtxos.map((utxo) => ({
-										txid: utxo.txid,
-										vout: utxo.vout,
-										origin: utxo.origin,
-										outpoint: `${utxo.txid}_${utxo.vout}`,
-									})),
-									totalPaymentUtxos: paymentUtxos.length,
-									totalNftUtxos: nftUtxos.length,
-									totalSatoshis: totalSatoshis,
-									totalBsv: toBitcoin(totalSatoshis),
+									processed: result.processed,
+									failed: result.failed,
+									lastScore: result.lastScore,
+									addresses: result.addresses,
 								},
 								null,
 								2,

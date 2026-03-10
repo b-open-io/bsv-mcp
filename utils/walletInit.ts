@@ -1,12 +1,17 @@
-import { createContext, type OneSatContext } from "@1sat/actions";
 import {
-	BRC29_PROTOCOL_ID,
+	createContext,
+	deriveDepositAddresses,
+	type OneSatContext,
+} from "@1sat/actions";
+import {
 	createRemoteWallet,
 	type OneSatServices,
 	type RemoteWalletResult,
 } from "@1sat/wallet-remote";
-import { PrivateKey, PublicKey, Utils } from "@bsv/sdk";
+import { PrivateKey } from "@bsv/sdk";
 import type { Wallet } from "@bsv/wallet-toolbox/out/src/index.client.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 const DEFAULT_REMOTE_STORAGE_URL = "https://1sat.shruggr.cloud/1sat/wallet";
 const MCP_ADDRESS_PREFIX = "mcp";
@@ -22,35 +27,6 @@ export interface WalletInitResult {
 let activeResult:
 	| (RemoteWalletResult & { ctx: OneSatContext; depositAddress: string })
 	| null = null;
-
-function toBase64Prefix(prefix: string): string {
-	const encoded = new TextEncoder().encode(prefix);
-	return Utils.toBase64(Array.from(encoded));
-}
-
-function toBase64Suffix(index: number): string {
-	const bytes = [
-		(index >>> 24) & 0xff,
-		(index >>> 16) & 0xff,
-		(index >>> 8) & 0xff,
-		index & 0xff,
-	];
-	return Utils.toBase64(bytes);
-}
-
-async function deriveDepositAddress(wallet: Wallet): Promise<string> {
-	const derivationPrefix = toBase64Prefix(MCP_ADDRESS_PREFIX);
-	const derivationSuffix = toBase64Suffix(0);
-	const keyID = `${derivationPrefix} ${derivationSuffix}`;
-
-	const result = await wallet.getPublicKey({
-		protocolID: BRC29_PROTOCOL_ID,
-		keyID,
-		forSelf: true,
-	});
-
-	return PublicKey.fromString(result.publicKey).toAddress().toString();
-}
 
 /**
  * Initialize the BRC-100 remote wallet.
@@ -71,12 +47,18 @@ export async function initWallet(
 		remoteStorageUrl,
 	});
 
-	const depositAddress = await deriveDepositAddress(result.wallet);
+	const dataDir = join(homedir(), ".bsv-mcp");
 
 	const ctx = createContext(result.wallet, {
 		services: result.services,
 		chain,
+		dataDir,
 	});
+
+	const { derivations } = await deriveDepositAddresses.execute(ctx, {
+		prefix: MCP_ADDRESS_PREFIX,
+	});
+	const depositAddress = derivations[0].address;
 
 	activeResult = { ...result, ctx, depositAddress };
 

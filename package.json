@@ -79,8 +79,8 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"@1sat/actions": "0.0.25",
-		"@1sat/wallet-remote": "0.0.5",
+		"@1sat/actions": "0.0.26",
+		"@1sat/wallet-remote": "0.0.7",
 		"@bsv/sdk": "^2.0.6",
 		"@modelcontextprotocol/ext-apps": "^1.2.0",
 		"@modelcontextprotocol/sdk": "^1.27.1",
