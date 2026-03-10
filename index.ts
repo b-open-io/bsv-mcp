@@ -36,7 +36,7 @@ import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { initWallet, destroyWallet } from "./utils/walletInit.ts";
-import { BunSSEServerTransport } from "./transports/sse.ts";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
 	type BSVJWTPayload,
 	createMCPJWTValidator,
@@ -45,8 +45,47 @@ import {
 import { SecureKeyManager } from "./utils/keyManager.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
 
-// Initialize server variable
+// Initialize server variable (used for stdio mode and passphrase detection)
 let server: McpServer | undefined;
+
+/** Options for createConfiguredServer */
+interface ServerFactoryOptions {
+	toolsConfig: ToolsConfig;
+	wallet?: Wallet;
+	loadPrompts: boolean;
+	loadResources: boolean;
+}
+
+/**
+ * Creates a fully configured McpServer with all tools, prompts, and resources registered.
+ * Used to create per-session server instances for HTTP mode and the single instance for stdio.
+ */
+function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
+	const srv = new McpServer(
+		{ name: packageJson.name, version: packageJson.version },
+		{
+			capabilities: {
+				prompts: {},
+				resources: {},
+				tools: {},
+				experimental: {
+					"io.modelcontextprotocol/ui": { version: "0.1" },
+				},
+			},
+			instructions: `
+				This server exposes Bitcoin SV helpers.
+				Tools are idempotent unless marked destructive.
+			`,
+		},
+	);
+
+	registerAllTools(srv, opts.toolsConfig);
+	registerMcpAppTools(srv, opts.wallet);
+	if (opts.loadPrompts) registerAllPrompts(srv);
+	if (opts.loadResources) registerResources(srv);
+
+	return srv;
+}
 
 /**
  * Configuration options from environment variables
@@ -836,27 +875,7 @@ Authentication:
 	logFunc("------------------------------------\n");
 	// --- End of Logging Block ---
 
-	server = new McpServer(
-		{ name: packageJson.name, version: packageJson.version },
-		{
-			capabilities: {
-				prompts: {},
-				resources: {},
-				tools: {},
-				experimental: {
-					"io.modelcontextprotocol/ui": { version: "0.1" },
-				},
-			},
-			instructions: `
-				This server exposes Bitcoin SV helpers.
-				Tools are idempotent unless marked destructive.
-			`,
-		},
-	);
-
-	// Set server instance for transport detection
-	setServerInstance(server);
-
+	// --- Initialize Wallet & Tools Config ---
 	let wallet: Wallet | undefined;
 	let integratedWallet: IntegratedWallet | undefined;
 	let remoteCtx: import("@1sat/actions").OneSatContext | undefined;
@@ -873,9 +892,8 @@ Authentication:
 						dropletConfig: {
 							apiUrl: CONFIG.dropletApiUrl,
 							faucetName: CONFIG.dropletFaucetName,
-							// Note: authKey will be set by IntegratedWallet if paymentKey is provided
 						},
-						paymentKey: payPk, // Pass payment key for auth
+						paymentKey: payPk,
 						identityKey: identityPk,
 					});
 					logFunc(
@@ -887,14 +905,12 @@ Authentication:
 					logFunc(
 						"\x1b[33mNOTE: Local keys are ignored in Droplet API mode\x1b[0m",
 					);
-					// Create a compatibility wrapper for existing code
-					wallet = integratedWallet.getLocalWallet(); // This will be undefined in Droplet mode
+					wallet = integratedWallet.getLocalWallet();
 
-					// In Droplet mode, we need to disable tools that require local keys
-					effectiveConfig.loadMneeTools = false; // MNEE requires local wallet
-					effectiveConfig.loadBapTools = false; // BAP requires identity key
-					effectiveConfig.loadA2bTools = false; // A2B requires identity key
-					effectiveConfig.loadBsocialTools = false; // BSocial requires local wallet
+					effectiveConfig.loadMneeTools = false;
+					effectiveConfig.loadBapTools = false;
+					effectiveConfig.loadA2bTools = false;
+					effectiveConfig.loadBsocialTools = false;
 				} catch (e) {
 					logFunc(
 						`\x1b[31mERROR: Failed to initialize Droplet API mode: ${e instanceof Error ? e.message : String(e)}. Wallet-dependent tools will be unavailable.\x1b[0m`,
@@ -906,7 +922,6 @@ Authentication:
 				}
 			}
 		} else if (payPk) {
-			// Initialize wallet with the payPk if wallet tools are enabled
 			if (CONFIG.loadWalletTools) {
 				try {
 					wallet = new Wallet(payPk, identityPk);
@@ -954,7 +969,6 @@ Authentication:
 				}
 			}
 
-			// Disable MNEE tools if wallet is not available
 			if (effectiveConfig.loadMneeTools && !wallet && CONFIG.loadWalletTools) {
 				logFunc(
 					"\x1b[33mWARN: MNEE tools require a wallet but wallet initialization failed. MNEE tools disabled.\x1b[0m",
@@ -962,42 +976,46 @@ Authentication:
 				effectiveConfig.loadMneeTools = false;
 			}
 		}
-
-		// Register all other tools based on configuration
-		const toolsConfig: ToolsConfig = {
-			enableBsvTools: effectiveConfig.loadBsvTools,
-			enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
-			enableUtilsTools: effectiveConfig.loadUtilsTools,
-			enableA2bTools: effectiveConfig.loadA2bTools,
-			enableBapTools: effectiveConfig.loadBapTools,
-			enableBsocialTools: effectiveConfig.loadBsocialTools,
-			enableWalletTools: effectiveConfig.loadWalletTools,
-			enableMneeTools: effectiveConfig.loadMneeTools,
-			identityPk,
-			payPk,
-			xprv,
-			wallet,
-			integratedWallet,
-			disableBroadcasting: effectiveConfig.disableBroadcasting,
-			ctx: remoteCtx,
-			services: remoteServices,
-		};
-
-		registerAllTools(server, toolsConfig);
 	}
 
-	// Register MCP App tools and resource (interactive UI)
-	registerMcpAppTools(server, wallet);
+	// Build the shared tools config (used by server factory for each session)
+	const toolsConfig: ToolsConfig = CONFIG.loadTools
+		? {
+				enableBsvTools: effectiveConfig.loadBsvTools,
+				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
+				enableUtilsTools: effectiveConfig.loadUtilsTools,
+				enableA2bTools: effectiveConfig.loadA2bTools,
+				enableBapTools: effectiveConfig.loadBapTools,
+				enableBsocialTools: effectiveConfig.loadBsocialTools,
+				enableWalletTools: effectiveConfig.loadWalletTools,
+				enableMneeTools: effectiveConfig.loadMneeTools,
+				identityPk,
+				payPk,
+				xprv,
+				wallet,
+				integratedWallet,
+				disableBroadcasting: effectiveConfig.disableBroadcasting,
+				ctx: remoteCtx,
+				services: remoteServices,
+			}
+		: {
+				enableBsvTools: false,
+				enableOrdinalsTools: false,
+				enableUtilsTools: false,
+				enableA2bTools: false,
+				enableBapTools: false,
+				enableBsocialTools: false,
+				enableWalletTools: false,
+				enableMneeTools: false,
+				disableBroadcasting: true,
+			};
 
-	// Register prompts if enabled
-	if (CONFIG.loadPrompts) {
-		registerAllPrompts(server);
-	}
-
-	// Register resources if enabled
-	if (CONFIG.loadResources) {
-		registerResources(server);
-	}
+	const serverFactoryOpts: ServerFactoryOptions = {
+		toolsConfig,
+		wallet,
+		loadPrompts: effectiveConfig.loadPrompts,
+		loadResources: effectiveConfig.loadResources,
+	};
 
 	// Clean up remote wallet on shutdown
 	for (const sig of ["SIGINT", "SIGTERM"] as const) {
@@ -1008,86 +1026,171 @@ Authentication:
 
 	// Start the server based on transport mode
 	if (CONFIG.transportMode === "stdio") {
+		// Stdio: single server instance, single transport
+		server = createConfiguredServer(serverFactoryOpts);
+		setServerInstance(server);
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
 		logFunc("BSV MCP Server running on stdio");
 	} else {
+		// --- HTTP: Streamable HTTP transport (MCP 2025-03-26 spec) ---
 		const port = CONFIG.port;
-		const messageEndpoint = "/messages";
-		const activeTransports = new Map<string, BunSSEServerTransport>();
-
-		// Set up resource URL for OAuth
 		const resourceUrl = CONFIG.resourceUrl || `http://localhost:${port}`;
 
-		// Initialize JWT validator if OAuth is enabled
+		// JWT validator for OAuth
 		const jwtValidator = CONFIG.enableOAuth
 			? createMCPJWTValidator(resourceUrl)
 			: null;
 
-		logFunc(`Starting BSV MCP Server in HTTP/SSE mode on port ${port}...`);
+		// Session tracking: sessionId -> { server, transport }
+		const sessions = new Map<
+			string,
+			{
+				server: McpServer;
+				transport: WebStandardStreamableHTTPServerTransport;
+			}
+		>();
+
+		logFunc(`Starting BSV MCP Server in Streamable HTTP mode on port ${port}...`);
 		if (CONFIG.enableOAuth) {
 			logFunc(`OAuth 2.1 authentication enabled`);
 			logFunc(`  Issuer: ${CONFIG.oauthIssuer}`);
 			logFunc(`  Resource: ${resourceUrl}`);
 		}
 
+		const authServer =
+			process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+
+		/** CORS headers for the /mcp endpoint */
+		const corsHeaders = {
+			"Access-Control-Allow-Origin": "*",
+			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+			"Access-Control-Allow-Headers":
+				"Content-Type, Authorization, mcp-session-id, Last-Event-ID, mcp-protocol-version",
+			"Access-Control-Expose-Headers":
+				"mcp-session-id, mcp-protocol-version",
+		} as const;
+
+		/**
+		 * Validate OAuth JWT token from request.
+		 * Returns null if auth disabled or no token. Throws on invalid token.
+		 */
+		async function validateAuth(req: Request): Promise<BSVJWTPayload | null> {
+			if (!CONFIG.enableOAuth || !jwtValidator) return null;
+
+			const userContext = await jwtValidator.validateFromRequest(req);
+			if (!userContext) {
+				const err = new Error("Authentication required");
+				(err as Error & { status: number }).status = 401;
+				throw err;
+			}
+
+			logFunc(
+				`Authenticated: ${userContext.sub} (pubkey: ${userContext.pubkey?.substring(0, 20)}...)`,
+			);
+			return userContext;
+		}
+
 		Bun.serve({
-			port: port,
+			port,
 			async fetch(req: Request): Promise<Response> {
 				const url = new URL(req.url);
 
-				// Skip auth for discovery endpoints
-				const isDiscoveryEndpoint =
-					url.pathname === "/.well-known/oauth-protected-resource" ||
-					url.pathname === "/.well-known/oauth-authorization-server";
+				// --- CORS preflight ---
+				if (req.method === "OPTIONS") {
+					return new Response(null, { status: 204, headers: corsHeaders });
+				}
 
-				// Validate JWT for protected endpoints (if OAuth enabled)
-				let userContext: BSVJWTPayload | null = null;
-				if (CONFIG.enableOAuth && jwtValidator && !isDiscoveryEndpoint) {
+				// --- OAuth 2.1 Authorization Server Metadata ---
+				if (
+					req.method === "GET" &&
+					url.pathname === "/.well-known/oauth-authorization-server"
+				) {
+					return Response.json(
+						{
+							issuer: authServer,
+							authorization_endpoint: `${authServer}/api/oauth/authorize`,
+							token_endpoint: `${authServer}/api/oauth/token`,
+							userinfo_endpoint: `${authServer}/api/oauth/userinfo`,
+							jwks_uri: `${authServer}/.well-known/jwks.json`,
+							registration_endpoint: `${authServer}/api/oauth/register`,
+							scopes_supported: [
+								"openid",
+								"profile",
+								"email",
+								"offline_access",
+								"bsv:tools",
+								"bsv:wallet",
+								"bsv:ordinals",
+								"bsv:tokens",
+							],
+							response_types_supported: ["code"],
+							grant_types_supported: [
+								"authorization_code",
+								"refresh_token",
+							],
+							token_endpoint_auth_methods_supported: ["none"],
+							code_challenge_methods_supported: ["S256"],
+						},
+						{
+							headers: {
+								"Access-Control-Allow-Origin": "*",
+								"Cache-Control": "public, max-age=3600",
+							},
+						},
+					);
+				}
+
+				// --- OAuth 2.1 Protected Resource Metadata (RFC 9728) ---
+				if (
+					req.method === "GET" &&
+					url.pathname === "/.well-known/oauth-protected-resource"
+				) {
+					return Response.json(
+						{
+							resource: resourceUrl,
+							authorization_servers: [authServer],
+							scopes_supported: [
+								"openid",
+								"profile",
+								"email",
+								"bsv:tools",
+								"bsv:wallet",
+								"bsv:ordinals",
+								"bsv:tokens",
+							],
+							bearer_methods_supported: ["header"],
+							resource_signing_alg_values_supported: ["RS256", "ES256"],
+						},
+						{
+							headers: {
+								"Access-Control-Allow-Origin": "*",
+								"Cache-Control": "public, max-age=3600",
+							},
+						},
+					);
+				}
+
+				// --- MCP Streamable HTTP endpoint ---
+				if (url.pathname === "/mcp") {
+					// Validate OAuth
+					let authInfo: { token: string; clientId: string; scopes: string[] } | undefined;
 					try {
-						userContext = await jwtValidator.validateFromRequest(req);
-
-						if (!userContext) {
-							// No token provided - return 401 with WWW-Authenticate
-							return new Response(
-								JSON.stringify({
-									error: "unauthorized",
-									message: "Authentication required",
-								}),
-								{
-									status: 401,
-									headers: {
-										"Content-Type": "application/json",
-										"WWW-Authenticate": generateWWWAuthenticate(
-											resourceUrl,
-											"invalid_token",
-											"Authentication required",
-										),
-										"Access-Control-Expose-Headers": "WWW-Authenticate",
-										"Access-Control-Allow-Origin": "*",
-									},
-								},
-							);
+						const userCtx = await validateAuth(req);
+						if (userCtx) {
+							authInfo = {
+								token: req.headers.get("Authorization")?.substring(7) || "",
+								clientId: userCtx.sub,
+								scopes: userCtx.scope?.split(" ") || [],
+							};
 						}
-
-						// Token validated successfully
-						logFunc(
-							`Authenticated request from user: ${userContext.sub} (pubkey: ${userContext.pubkey?.substring(0, 20)}...)`,
-						);
 					} catch (error) {
-						// Token provided but invalid
-						const errorMessage =
+						const msg =
 							error instanceof Error
 								? error.message
 								: "Token validation failed";
-
-						logFunc(`JWT validation error: ${errorMessage}`);
-
 						return new Response(
-							JSON.stringify({
-								error: "invalid_token",
-								message: errorMessage,
-							}),
+							JSON.stringify({ error: "invalid_token", message: msg }),
 							{
 								status: 401,
 								headers: {
@@ -1095,168 +1198,61 @@ Authentication:
 									"WWW-Authenticate": generateWWWAuthenticate(
 										resourceUrl,
 										"invalid_token",
-										errorMessage,
+										msg,
 									),
-									"Access-Control-Expose-Headers": "WWW-Authenticate",
-									"Access-Control-Allow-Origin": "*",
+									...corsHeaders,
 								},
 							},
 						);
 					}
-				}
 
-				// Handle SSE connection endpoint
-				if (req.headers.get("accept") === "text/event-stream") {
-					const transport = new BunSSEServerTransport(messageEndpoint);
-					activeTransports.set(transport.sessionId, transport);
-					logFunc(`New SSE connection: ${transport.sessionId}`);
+					// Route to existing session or create new one
+					const sessionId = req.headers.get("mcp-session-id");
 
-					try {
-						// Connect server instance to THIS transport
-						if (!server) throw new Error("Server not initialized");
-						await server.connect(transport);
-						logFunc(
-							`Server connected to transport for session: ${transport.sessionId}`,
-						);
-
-						return await transport.createResponse();
-					} catch (connectError) {
-						logFunc(
-							`Error connecting server to transport ${transport.sessionId}: ${connectError}`,
-						);
-						activeTransports.delete(transport.sessionId); // Clean up if connect fails
-						return new Response("Failed to establish SSE connection", {
-							status: 500,
-						});
+					if (sessionId) {
+						const session = sessions.get(sessionId);
+						if (!session) {
+							return new Response(
+								JSON.stringify({
+									jsonrpc: "2.0",
+									error: { code: -32001, message: "Session not found" },
+									id: null,
+								}),
+								{ status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } },
+							);
+						}
+						const response = await session.transport.handleRequest(req, { authInfo });
+						// Add CORS headers to transport response
+						for (const [k, v] of Object.entries(corsHeaders)) {
+							if (!response.headers.has(k)) response.headers.set(k, v);
+						}
+						return response;
 					}
-				}
 
-				// Handle message POST endpoint
-				if (req.method === "POST" && url.pathname === messageEndpoint) {
-					const sessionId = url.searchParams.get("sessionId");
-					if (!sessionId) {
-						return new Response("Missing sessionId query parameter", {
-							status: 400,
-						});
-					}
-					const transport = activeTransports.get(sessionId);
-					if (!transport) {
-						return new Response(`Invalid or expired sessionId: ${sessionId}`, {
-							status: 404,
-						});
-					}
-					// Let the specific transport instance handle the message
-					return await transport.handlePostMessage(req);
-				}
-
-				// Handle OAuth 2.1 Authorization Server Metadata (MCP spec requirement)
-				// MCP clients will request this to discover sigma-auth endpoints
-				if (
-					req.method === "GET" &&
-					url.pathname === "/.well-known/oauth-authorization-server"
-				) {
-					const authServer =
-						process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
-
-					return new Response(
-						JSON.stringify(
-							{
-								issuer: authServer,
-								authorization_endpoint: `${authServer}/api/oauth/authorize`,
-								token_endpoint: `${authServer}/api/oauth/token`,
-								userinfo_endpoint: `${authServer}/api/oauth/userinfo`,
-								jwks_uri: `${authServer}/.well-known/jwks.json`,
-								registration_endpoint: `${authServer}/api/oauth/register`,
-								scopes_supported: [
-									"openid",
-									"profile",
-									"email",
-									"offline_access",
-									"bsv:tools",
-									"bsv:wallet",
-									"bsv:ordinals",
-									"bsv:tokens",
-								],
-								response_types_supported: ["code"],
-								grant_types_supported: ["authorization_code", "refresh_token"],
-								token_endpoint_auth_methods_supported: ["none"],
-								code_challenge_methods_supported: ["S256"],
-							},
-							null,
-							2,
-						),
-						{
-							status: 200,
-							headers: {
-								"Content-Type": "application/json",
-								"Access-Control-Allow-Origin": "*",
-								"Cache-Control": "public, max-age=3600",
-							},
+					// No session ID — new session (initialization request)
+					const transport = new WebStandardStreamableHTTPServerTransport({
+						sessionIdGenerator: () => crypto.randomUUID(),
+						onsessioninitialized: (id: string) => {
+							sessions.set(id, { server: mcpServer, transport });
+							logFunc(`New MCP session: ${id}`);
 						},
-					);
-				}
-
-				// Handle OAuth 2.1 Protected Resource Metadata (RFC 9728)
-				if (
-					req.method === "GET" &&
-					url.pathname === "/.well-known/oauth-protected-resource"
-				) {
-					const resourceUrl =
-						process.env.RESOURCE_URL || `http://localhost:${port}`;
-					const authServer =
-						process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
-
-					return new Response(
-						JSON.stringify(
-							{
-								resource: resourceUrl,
-								authorization_servers: [authServer],
-								scopes_supported: [
-									"openid",
-									"profile",
-									"email",
-									"bsv:tools",
-									"bsv:wallet",
-									"bsv:ordinals",
-									"bsv:tokens",
-								],
-								bearer_methods_supported: ["header"],
-								resource_signing_alg_values_supported: ["RS256", "ES256"],
-							},
-							null,
-							2,
-						),
-						{
-							status: 200,
-							headers: {
-								"Content-Type": "application/json",
-								"Access-Control-Allow-Origin": "*",
-								"Access-Control-Allow-Methods": "GET",
-								"Access-Control-Allow-Headers": "Content-Type, Authorization",
-								"Access-Control-Expose-Headers": "WWW-Authenticate",
-								"Cache-Control": "public, max-age=3600",
-							},
-						},
-					);
-				}
-
-				// Handle CORS preflight for OAuth discovery
-				if (
-					req.method === "OPTIONS" &&
-					(url.pathname === "/.well-known/oauth-protected-resource" ||
-						url.pathname === "/.well-known/oauth-authorization-server")
-				) {
-					return new Response(null, {
-						status: 204,
-						headers: {
-							"Access-Control-Allow-Origin": "*",
-							"Access-Control-Allow-Methods": "GET",
-							"Access-Control-Allow-Headers": "Content-Type, Authorization",
+						onsessionclosed: (id: string) => {
+							sessions.delete(id);
+							logFunc(`MCP session closed: ${id}`);
 						},
 					});
+
+					const mcpServer = createConfiguredServer(serverFactoryOpts);
+					await mcpServer.connect(transport);
+
+					const response = await transport.handleRequest(req, { authInfo });
+					// Add CORS headers
+					for (const [k, v] of Object.entries(corsHeaders)) {
+						if (!response.headers.has(k)) response.headers.set(k, v);
+					}
+					return response;
 				}
 
-				// Default response for other paths/methods
 				return new Response("Not Found", { status: 404 });
 			},
 			error(error: Error): Response {
@@ -1264,13 +1260,12 @@ Authentication:
 				return new Response("Internal Server Error", { status: 500 });
 			},
 		});
+
 		logFunc(
-			` Bun server started successfully. Listening on http://localhost:${port} `,
+			`Bun server listening on http://localhost:${port}`,
 		);
-		logFunc("  SSE Endpoint: /sse");
-		logFunc(
-			`  Message Endpoint: ${messageEndpoint} (POST with ?sessionId=...)`,
-		);
+		logFunc("  MCP Endpoint: /mcp (Streamable HTTP)");
+		logFunc("  OAuth Discovery: /.well-known/oauth-protected-resource");
 	}
 }
 

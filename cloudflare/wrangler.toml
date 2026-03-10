@@ -1,0 +1,21 @@
+name = "bsv-mcp"
+main = "dist/index.js"
+no_bundle = true
+compatibility_date = "2025-03-10"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "cd .. && bun install && cd cloudflare && bun run build:worker"
+
+# KV namespace for rate limiting (optional, future use)
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = ""
+
+[vars]
+DROPLIT_API_URL = "https://droplit.dev"
+OAUTH_ISSUER = "https://auth.sigmaidentity.com"
+
+# Secrets (set via `wrangler secret put`):
+# - DROPLIT_FAUCET_NAME
+# - SERVER_PRIVATE_KEY_WIF

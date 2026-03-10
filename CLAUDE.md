@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 BSV MCP is a Model Context Protocol server that exposes Bitcoin SV (BSV) blockchain functionality to AI assistants. It provides tools for wallet operations, ordinals (NFTs), tokens, identity management, and social features through a modular architecture.
 
-**Current Version: 0.2.4**
+**Current Version: 0.2.10**
 
 The project supports three deployment modes:
 1. **Local MCP Server** - Runs via stdio transport with OAuth 2.1 authentication
-2. **HTTP/SSE Server** - Runs as HTTP server with JWT validation
+2. **HTTP Server (Streamable HTTP)** - Runs as HTTP server using MCP 2025-03-26 Streamable HTTP spec with JWT validation
 3. **CloudFlare Worker** - Hosted implementation with OAuth 2.1 and Bitcoin-auth
 
 ## Essential Commands
@@ -43,6 +43,9 @@ bun run lint:fix
 ```bash
 # Navigate to cloudflare directory
 cd cloudflare
+
+# Install dependencies
+bun install
 
 # Deploy the worker
 wrangler deploy
@@ -87,10 +90,13 @@ bun run lint
 ## Core Architecture
 
 ### Entry Point
-- **index.ts**: Main server initialization with stdio or HTTP/SSE transport
+- **index.ts**: Main server initialization with stdio or Streamable HTTP transport
   - Key initialization with SecureKeyManager
   - Transport mode detection (stdio/http)
   - Conditional tool/prompt/resource registration based on env vars
+  - `createConfiguredServer()` factory produces a fully-wired `McpServer` instance
+  - HTTP mode: one `McpServer` + `WebStandardStreamableHTTPServerTransport` per session (session-per-request model); sessions tracked by `mcp-session-id` header
+  - Single `/mcp` endpoint handles all MCP traffic (GET, POST, DELETE); OAuth discovery at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
 
 ### Tool System
 - **tools/**: Modular tool categories, each with registration function
@@ -107,9 +113,9 @@ bun run lint
 ### Wallet Architecture
 - **Dual Mode Support**:
   - **Local Wallet Mode**: Uses `Wallet` class with local private keys
-  - **Droplet API Mode**: Uses `IntegratedWallet` with remote faucet service
+  - **Droplit API Mode**: Uses `IntegratedWallet` with remote faucet service (droplit.dev)
 - **Key Types**: Payment key (payPk), Identity key (identityPk), BAP master (xprv)
-- **Authentication**: OAuth 2.1 with sigma-auth for MCP clients, BSM for Droplet API operations
+- **Authentication**: OAuth 2.1 with sigma-auth for MCP clients, BSM for Droplit API operations
 
 ### Key Management (SecureKeyManager)
 - **Encrypted Storage**: `~/.bsv-mcp/keys.bep` (bitcoin-backup format)
@@ -155,7 +161,7 @@ Main registration in `tools/index.ts` conditionally loads categories based on:
 ## Environment Variables
 
 ### Core Configuration
-- `TRANSPORT`: Transport mode ('stdio' for Claude Code, 'http' for HTTP/SSE, default: http)
+- `TRANSPORT`: Transport mode (`stdio` for Claude Code, `http` for Streamable HTTP server, default: `http`)
 - `PORT`: HTTP server port (default: 3000)
 - `PRIVATE_KEY_WIF`: Bitcoin SV payment private key in WIF format (optional)
 - `IDENTITY_KEY_WIF`: Identity key for BAP operations (optional)
@@ -173,9 +179,9 @@ Main registration in `tools/index.ts` conditionally loads categories based on:
 - Access tokens are JWTs validated using JWKS from the issuer
 - Follows MCP 2025-03-26 specification and OAuth 2.1 standards
 
-### Droplet API Mode
-- `USE_DROPLET_API`: Enable Droplet API mode (true/false, default: false)
-- `DROPLET_API_URL`: Droplet API endpoint (default: http://127.0.0.1:4000)
+### Droplit API Mode
+- `USE_DROPLET_API`: Enable Droplit (droplit.dev) subsidized wallet mode (true/false, default: false); codebase uses `droplet` in variable names for backward compat
+- `DROPLET_API_URL`: Droplit API endpoint (default: http://127.0.0.1:4000)
 - `DROPLET_FAUCET_NAME`: Name of the faucet to use (required when USE_DROPLET_API=true)
 
 ### Feature Toggles
@@ -216,7 +222,7 @@ Main registration in `tools/index.ts` conditionally loads categories based on:
 3. Add Zod schema for input validation
 4. Register tool in category's `index.ts` file
 5. Update main registration in `tools/index.ts` if creating new category
-6. Consider both local wallet and Droplet API modes for transaction-based tools
+6. Consider both local wallet and Droplit API modes for transaction-based tools
 7. Add tests in `.test.ts` file following existing patterns
 
 Example structure:
@@ -273,7 +279,7 @@ await client.connect(transport);
 const result = await client.callTool({ name: "tool_name", arguments: {} });
 ```
 
-### Droplet API Testing
+### Droplit API Testing
 1. Start go-faucet-api locally
 2. Configure env vars: USE_DROPLET_API=true, DROPLET_API_URL, DROPLET_FAUCET_NAME
 3. Run test scripts or use Claude Code to test wallet operations
@@ -285,15 +291,15 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 3. **Encrypted Storage**: AES-256-GCM with 600,000 PBKDF2 iterations (bitcoin-backup)
 4. **File Permissions**: Key files automatically created with 0600 permissions
 5. **Key Backup**: Automatic backup creation (keys.bep.backup) before operations
-6. **Authentication**: BSM signatures for Droplet API, Bitcoin-auth for hosted service
+6. **Authentication**: BSM signatures for Droplit API, Bitcoin-auth for hosted service
 
 ## Troubleshooting
 
-### "Faucet not found" error in Droplet mode
-- Ensure faucet exists in Droplet API
+### "Faucet not found" error in Droplit mode
+- Ensure faucet exists in Droplit API
 - Check DROPLET_FAUCET_NAME matches existing faucet name
 
-### Authentication errors with Droplet API
+### Authentication errors with Droplit API
 - Verify BSM signature format compatibility
 - Ensure key registered with API via `/auth/register`
 - Check go-bitcoin-auth version matches
@@ -302,6 +308,11 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 - Verify TRANSPORT=stdio (automatic in Claude Code, but check manually if issues)
 - Run `bun install` to ensure all dependencies installed
 - Try `claude mcp remove bsv-mcp && claude mcp add bsv-mcp "bun run index.ts"`
+
+### HTTP client not connecting
+- Ensure client sends requests to `/mcp` (not `/sse` or `/messages`) — the old SSE endpoints no longer exist
+- For new sessions, omit `mcp-session-id`; include it on subsequent requests using the value from the server's response header
+- Verify `Content-Type: application/json` on POST requests
 
 ### Tools not appearing
 - Check server logs for initialization errors
@@ -322,10 +333,17 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 - ✅ Updated key loading/saving flows
 - ✅ Migration path for users with legacy env var
 
+### Phase 2 - Transport Upgrade (Completed in v0.2.10)
+- ✅ Replaced `BunSSEServerTransport` with `WebStandardStreamableHTTPServerTransport`
+- ✅ HTTP mode now follows MCP 2025-03-26 Streamable HTTP specification
+- ✅ Single `/mcp` endpoint replaces separate `/sse` and `/messages` endpoints
+- ✅ Session-per-request model: each new connection gets its own `McpServer` instance via `createConfiguredServer()` factory
+- ✅ OAuth 2.1 discovery endpoints at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+
 ### Current Architecture Notes
 - **Wallet Detection**: System detects wallet presence at startup and logs configuration
 - **Tool Loading**: Tools conditionally loaded based on key availability
-- **Three Deployment Modes**: Local (with keys), Droplet API (remote wallet), Hosted (CloudFlare)
+- **Three Deployment Modes**: Local (with keys), Droplit API (remote wallet), Hosted (CloudFlare)
 - **Storage Formats**: Encrypted .bep (preferred) vs legacy JSON (deprecated)
 - **MCP App Views**: Tool results include a `viewUUID` field that MCP App clients use to render interactive dashboard tabs (Explorer, Wallet, Ordinals)
 
