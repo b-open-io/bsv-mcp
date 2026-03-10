@@ -2,6 +2,10 @@
 
 ## [0.2.7] - 2026-03-09
 
+### Added
+- BRC-100 wallet integration via `@1sat/actions` for standardized wallet operations
+- MCP App views: tool results now include a `viewUUID` field so MCP App clients can render interactive dashboard tabs (Explorer, Wallet, Ordinals)
+
 ### Changed
 - Inline stdio guard in index.ts — no more `--preload` flag needed
 - Simplified build script — uses `--banner` instead of post-build injection

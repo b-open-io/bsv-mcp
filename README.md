@@ -10,7 +10,17 @@ A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) fram
 
 ## Installation Options
 
-### Option 1: Hosted Version (FREE - No BSV Required!)
+### Option 1: Claude Code Plugin (Simplest)
+
+Install bsv-mcp as a Claude Code plugin — one command, no configuration required:
+
+```bash
+claude plugin install bsv-mcp@b-open-io
+```
+
+The plugin bundles the MCP server and registers it automatically. This works in both local Claude Code and Cowork environments. No environment variables or JSON config needed to get started.
+
+### Option 2: Hosted Version (FREE - No BSV Required!)
 
 **The easiest way to get started!** Use our hosted version with OAuth 2.1 authentication:
 
@@ -40,7 +50,7 @@ To get your access token, authenticate at https://auth.sigmaidentity.com
 - ✅ Always up-to-date
 - ✅ Global availability via Cloudflare
 
-### Option 2: Self-Hosted Installation
+### Option 3: Self-Hosted Installation
 
 #### Prerequisites
 
@@ -479,6 +489,20 @@ AI models can use these prompts and resources to provide more accurate and detai
 3. **Get general overviews**: "What is the BSV SDK?" or "Show me a summary of all BRCs"
 
 These prompts and resources enhance the AI's knowledge base, enabling more technical and accurate responses even for complex Bitcoin SV topics.
+
+## MCP Apps (Interactive Dashboard)
+
+bsv-mcp ships with MCP App support. Tool results include a `viewUUID` field that MCP-compatible clients use to render an interactive HTML dashboard instead of raw JSON output.
+
+Three built-in dashboard tabs are available:
+
+- **Explorer** — Browse the blockchain, look up transactions and addresses
+- **Wallet** — View balances, manage UTXOs, send BSV
+- **Ordinals** — Browse, create, and manage NFTs and ordinals
+
+When you call a tool like `wallet_getAddress` in a compatible client, the response renders as a live interactive UI rather than a wall of text. The dashboard source lives at `src/views/mcp-app.ts` and `src/views/app.html`.
+
+MCP Apps are supported in clients that implement the MCP App specification. The Claude Code plugin installation (Option 1 above) includes dashboard support automatically.
 
 ## How MCP Works
 

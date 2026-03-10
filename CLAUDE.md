@@ -56,7 +56,10 @@ wrangler dev
 
 ### Testing with Claude Code CLI
 ```bash
-# Add to Claude Code
+# Install as plugin (simplest)
+claude plugin install bsv-mcp@b-open-io
+
+# Or add manually via MCP CLI
 claude mcp add bsv-mcp "bun run index.ts"
 
 # List configured servers
@@ -324,6 +327,7 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 - **Tool Loading**: Tools conditionally loaded based on key availability
 - **Three Deployment Modes**: Local (with keys), Droplet API (remote wallet), Hosted (CloudFlare)
 - **Storage Formats**: Encrypted .bep (preferred) vs legacy JSON (deprecated)
+- **MCP App Views**: Tool results include a `viewUUID` field that MCP App clients use to render interactive dashboard tabs (Explorer, Wallet, Ordinals)
 
 ## Future Development Roadmap
 

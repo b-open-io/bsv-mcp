@@ -1,0 +1,5165 @@
+{
+  "store": {
+    "shape:cowork_keygap": {
+      "id": "shape:cowork_keygap",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aSUa4zzx",
+      "parentId": "shape:frame_cowork",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:needs_revision"
+      },
+      "type": "geo",
+      "x": 377.5,
+      "y": 327,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 80,
+        "color": "orange",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "KEY PERSISTENCE GAP"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No persistent FS"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "keys.bep lost between"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "sessions"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_ui_import_start": {
+      "id": "binding:a_ui_import_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_ui_import",
+      "toId": "shape:onboarding_ui",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:frame_local": {
+      "id": "shape:frame_local",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 2637.5,
+      "y": 868,
+      "props": {
+        "w": 790,
+        "h": 1302,
+        "name": "Local Mode (stdio)",
+        "color": "black"
+      }
+    },
+    "binding:a_import_encrypt_start": {
+      "id": "binding:a_import_encrypt_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_import_encrypt",
+      "toId": "shape:import_backup_local",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_web_hosted_end": {
+      "id": "binding:a_web_hosted_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_web_hosted",
+      "toId": "shape:onboarding_ui",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_custody_yes": {
+      "id": "shape:a_custody_yes",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aovE7eUG",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Yes"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_session_server_start": {
+      "id": "binding:a_session_server_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_session_server",
+      "toId": "shape:create_session",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:frame_mcp_apps": {
+      "id": "shape:frame_mcp_apps",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 527.5,
+      "y": 2258,
+      "props": {
+        "w": 2507.5,
+        "h": 402,
+        "name": "MCP Apps (All Modes)",
+        "color": "black"
+      }
+    },
+    "binding:a_custody_yes_end": {
+      "id": "binding:a_custody_yes_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_custody_yes",
+      "toId": "shape:install_plugin",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_import_encrypt": {
+      "id": "shape:a_import_encrypt",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "ayLIjGAV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:hosted_server": {
+      "id": "shape:hosted_server",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aO9RQ4JV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 132.5,
+      "y": 891.21875,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 150.78125,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "MCP Server (SSE/HTTP)"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Multi-tenant"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Session-authenticated"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:bitcoin_auth": {
+      "id": "shape:bitcoin_auth",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aMkeuVmV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 132.5,
+      "y": 557,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 70,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Bitcoin Auth"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(BSM signature)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:note_oauth": {
+      "id": "shape:note_oauth",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "ajjq9YRV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "note",
+      "x": 500,
+      "y": 800,
+      "props": {
+        "color": "light-blue",
+        "labelColor": "black",
+        "size": "m",
+        "font": "sans",
+        "fontSizeAdjustment": 0,
+        "align": "middle",
+        "verticalAlign": "middle",
+        "growY": 0,
+        "url": "",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "OAuth 2.1 via"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "sigma-auth is the"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "production auth path."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "JWT validation with"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "JWKS from issuer."
+                }
+              ]
+            }
+          ]
+        },
+        "scale": 1
+      }
+    },
+    "binding:a_cowork_gap_end": {
+      "id": "binding:a_cowork_gap_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_gap",
+      "toId": "shape:cowork_keygap",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_session_server": {
+      "id": "shape:a_session_server",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB6",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_gap_import_start": {
+      "id": "binding:a_gap_import_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_import",
+      "toId": "shape:cowork_keygap",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_bunx_keymgr": {
+      "id": "shape:a_bunx_keymgr",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "atsUghMG",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_bunx_keymgr_end": {
+      "id": "binding:a_bunx_keymgr_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bunx_keymgr",
+      "toId": "shape:keymgr_local",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:cowork_remote_keys": {
+      "id": "shape:cowork_remote_keys",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aVNVqeUl",
+      "parentId": "shape:frame_cowork",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:planned"
+      },
+      "type": "geo",
+      "x": 840,
+      "y": 607,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 70,
+        "color": "grey",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Remote Key Storage"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(encrypted, user-owned)"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fetch on connect"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_gap_remote_start": {
+      "id": "binding:a_gap_remote_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_remote",
+      "toId": "shape:cowork_keygap",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_custody_no_start": {
+      "id": "binding:a_custody_no_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_custody_no",
+      "toId": "shape:decision_selfcustody",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_gap_import": {
+      "id": "shape:a_gap_import",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "grey",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "planned"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:a_custody_no": {
+      "id": "shape:a_custody_no",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "apASBeSV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_server_droplet_start": {
+      "id": "binding:a_server_droplet_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_server_droplet",
+      "toId": "shape:hosted_server",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_gen_auth_end": {
+      "id": "binding:a_gen_auth_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gen_auth",
+      "toId": "shape:bitcoin_auth",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_gen_encrypt_start": {
+      "id": "binding:a_gen_encrypt_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gen_encrypt",
+      "toId": "shape:gen_keys_local",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_gap_remote": {
+      "id": "shape:a_gap_remote",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC2",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "grey",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "planned"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:note_config_tabs": {
+      "id": "shape:note_config_tabs",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "ahE0jFkV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "note",
+      "x": 100,
+      "y": 800,
+      "props": {
+        "color": "yellow",
+        "labelColor": "black",
+        "size": "m",
+        "font": "sans",
+        "fontSizeAdjustment": 0,
+        "align": "middle",
+        "verticalAlign": "middle",
+        "growY": 0,
+        "url": "",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "ConfigTabs shows:"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "- Claude Code CLI"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "- Claude Desktop JSON"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "- Cursor config"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "- Docker command"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "All implemented."
+                }
+              ]
+            }
+          ]
+        },
+        "scale": 1
+      }
+    },
+    "shape:frame_entry": {
+      "id": "shape:frame_entry",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 75,
+      "y": 18,
+      "props": {
+        "w": 1685,
+        "h": 222,
+        "name": "User Entry Points",
+        "color": "black"
+      }
+    },
+    "shape:a_server_droplet": {
+      "id": "shape:a_server_droplet",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB7",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "blue",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "subsidized txns"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_web_hosted_start": {
+      "id": "binding:a_web_hosted_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_web_hosted",
+      "toId": "shape:user_web",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:note_cowork_gap": {
+      "id": "shape:note_cowork_gap",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aizuplll",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "note",
+      "x": 900,
+      "y": 800,
+      "props": {
+        "color": "orange",
+        "labelColor": "black",
+        "size": "m",
+        "font": "sans",
+        "fontSizeAdjustment": 0,
+        "align": "middle",
+        "verticalAlign": "middle",
+        "growY": 0,
+        "url": "",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "BIGGEST GAP:"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Cowork users can install"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "the plugin but lose keys"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "between sessions."
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Needs: remote key vault"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "or session-start import"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "flow."
+                }
+              ]
+            }
+          ]
+        },
+        "scale": 1
+      }
+    },
+    "shape:gen_keys_local": {
+      "id": "shape:gen_keys_local",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aE3g4mjV",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 480,
+      "y": 715.9140625,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Auto-generate payPk"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(first run)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_cowork_install_end": {
+      "id": "binding:a_cowork_install_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_install",
+      "toId": "shape:cowork_install",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:frame_cowork": {
+      "id": "shape:frame_cowork",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 1092.5,
+      "y": 353,
+      "props": {
+        "w": 1160,
+        "h": 737,
+        "name": "Cowork Mode (Cloud IDE)",
+        "color": "black"
+      }
+    },
+    "shape:a_web_hosted": {
+      "id": "shape:a_web_hosted",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aqx6D14V",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:user_newcomer": {
+      "id": "shape:user_newcomer",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a4qKF1nV",
+      "parentId": "shape:frame_entry",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 410,
+      "y": 92,
+      "props": {
+        "geo": "ellipse",
+        "w": 200,
+        "h": 70,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Newcomer"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(no BSV)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_custody_yes_start": {
+      "id": "binding:a_custody_yes_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_custody_yes",
+      "toId": "shape:decision_selfcustody",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_cowork_gap_start": {
+      "id": "binding:a_cowork_gap_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_gap",
+      "toId": "shape:cowork_install",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_bsv_no_end": {
+      "id": "binding:a_bsv_no_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bsv_no",
+      "toId": "shape:onboarding_ui",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_keys_yes_end": {
+      "id": "binding:a_keys_yes_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keys_yes",
+      "toId": "shape:import_backup_local",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_keymgr_decision_end": {
+      "id": "binding:a_keymgr_decision_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keymgr_decision",
+      "toId": "shape:decision_keys",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_keymgr_decision": {
+      "id": "shape:a_keymgr_decision",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "au7DrVYV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_bunx_keymgr_start": {
+      "id": "binding:a_bunx_keymgr_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bunx_keymgr",
+      "toId": "shape:install_bunx",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_cowork_gap": {
+      "id": "shape:a_cowork_gap",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB8",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "orange",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:a_import_auth": {
+      "id": "shape:a_import_auth",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB4",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_import_auth_end": {
+      "id": "binding:a_import_auth_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_import_auth",
+      "toId": "shape:bitcoin_auth",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:gen_key_web": {
+      "id": "shape:gen_key_web",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aKqvqReV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 450,
+      "y": 347,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Generate New Key"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(in-browser)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:key_encrypt": {
+      "id": "shape:key_encrypt",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aex4Cx5V",
+      "parentId": "shape:frame_keymgmt",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 800,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 220,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Encrypt keys.bep"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "AES-256-GCM"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "PBKDF2 600K iter"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_encrypt_server_end": {
+      "id": "binding:a_encrypt_server_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_encrypt_server",
+      "toId": "shape:local_server",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_gap_export_end": {
+      "id": "binding:a_gap_export_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_export",
+      "toId": "shape:cowork_export",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:create_session": {
+      "id": "shape:create_session",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aN1LG8aV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 132.5,
+      "y": 720.9140625,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Create Session"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "/api/create-session"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(30-day JWT)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_gen_auth_start": {
+      "id": "binding:a_gen_auth_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gen_auth",
+      "toId": "shape:gen_key_web",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:cowork_import": {
+      "id": "shape:cowork_import",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aUtleyVV",
+      "parentId": "shape:frame_cowork",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:planned"
+      },
+      "type": "geo",
+      "x": 450,
+      "y": 612,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 60,
+        "color": "grey",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Import keys at"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "session start"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:a_plugin_keymgr": {
+      "id": "shape:a_plugin_keymgr",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "asAEfa7V",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:a_gen_auth": {
+      "id": "shape:a_gen_auth",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB3",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:droplet_api": {
+      "id": "shape:droplet_api",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aP9fbCBV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 1167,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Droplet API"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(subsidized txns)"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "User pays $0"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:key_generate": {
+      "id": "shape:key_generate",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "acRIN1DV",
+      "parentId": "shape:frame_keymgmt",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 220,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Generate payPk"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(PrivateKey.fromRandom)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_plugin_keymgr_end": {
+      "id": "binding:a_plugin_keymgr_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_plugin_keymgr",
+      "toId": "shape:keymgr_local",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_auth_session_end": {
+      "id": "binding:a_auth_session_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_auth_session",
+      "toId": "shape:create_session",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_dash_wallet_end": {
+      "id": "binding:a_dash_wallet_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_wallet",
+      "toId": "shape:mcp_app_wallet",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_dash_wallet": {
+      "id": "shape:a_dash_wallet",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC7",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_cowork_install_start": {
+      "id": "binding:a_cowork_install_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_install",
+      "toId": "shape:user_cowork",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:import_backup_local": {
+      "id": "shape:import_backup_local",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aFHsQYDV",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 90,
+      "y": 715.9140625,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Import .bep backup"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(decrypt with passphrase)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:local_server": {
+      "id": "shape:local_server",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aH0UrkOl",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 127.5,
+      "y": 1162,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "MCP Server (stdio)"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Full wallet control"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "User pays fees"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:a_cowork_install": {
+      "id": "shape:a_cowork_install",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "arS9dumV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:install_plugin": {
+      "id": "shape:install_plugin",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aBslfwvV",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 470,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Install Plugin"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "claude plugin install"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bsv-mcp@b-open-io"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_bsv_no_start": {
+      "id": "binding:a_bsv_no_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bsv_no",
+      "toId": "shape:decision_bsv",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_keys_yes_start": {
+      "id": "binding:a_keys_yes_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keys_yes",
+      "toId": "shape:decision_keys",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_keymgr_decision_start": {
+      "id": "binding:a_keymgr_decision_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keymgr_decision",
+      "toId": "shape:keymgr_local",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_cowork_to_local_end": {
+      "id": "binding:a_cowork_to_local_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_to_local",
+      "toId": "shape:local_server",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_cowork_to_local": {
+      "id": "shape:a_cowork_to_local",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC3",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "grey",
+        "fill": "none",
+        "dash": "dotted",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "after import"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:cowork_install": {
+      "id": "shape:cowork_install",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aRbNjyWV",
+      "parentId": "shape:frame_cowork",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 377.5,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 70,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "claude plugin install"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bsv-mcp@b-open-io"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(works in Cowork)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:frame_hosted": {
+      "id": "shape:frame_hosted",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 127.5,
+      "y": 868,
+      "props": {
+        "w": 750,
+        "h": 1297,
+        "name": "Hosted Mode (HTTP/SSE)",
+        "color": "black"
+      }
+    },
+    "binding:a_import_auth_start": {
+      "id": "binding:a_import_auth_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_import_auth",
+      "toId": "shape:import_backup_web",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_bsv_no": {
+      "id": "shape:a_bsv_no",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "anQ1NexV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:a_hosted_apps": {
+      "id": "shape:a_hosted_apps",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC5",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "light-blue",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "viewUUID"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_hosted_apps_end": {
+      "id": "binding:a_hosted_apps_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_hosted_apps",
+      "toId": "shape:mcp_app_dashboard",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_encrypt_server_start": {
+      "id": "binding:a_encrypt_server_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_encrypt_server",
+      "toId": "shape:encrypt_bep",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_keys_yes": {
+      "id": "shape:a_keys_yes",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "awKV4wOV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Import"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_gap_export_start": {
+      "id": "binding:a_gap_export_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_export",
+      "toId": "shape:cowork_keygap",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_encrypt_server": {
+      "id": "shape:a_encrypt_server",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "azbb8TiV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_ui_gen_end": {
+      "id": "binding:a_ui_gen_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_ui_gen",
+      "toId": "shape:gen_key_web",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_gap_export": {
+      "id": "shape:a_gap_export",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB9",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "grey",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "planned"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:mcp_app_wallet": {
+      "id": "shape:mcp_app_wallet",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aZSSfzrG",
+      "parentId": "shape:frame_mcp_apps",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 922.5,
+      "y": 282,
+      "props": {
+        "geo": "rectangle",
+        "w": 200,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Wallet Tab"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Balance, UTXOs"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_dev_decision_end": {
+      "id": "binding:a_dev_decision_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dev_decision",
+      "toId": "shape:decision_bsv",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_dash_explorer": {
+      "id": "shape:a_dash_explorer",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC6",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_plugin_keymgr_start": {
+      "id": "binding:a_plugin_keymgr_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_plugin_keymgr",
+      "toId": "shape:install_plugin",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_keys_no": {
+      "id": "shape:a_keys_no",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "avAOsu6V",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "No keys"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_auth_session_start": {
+      "id": "binding:a_auth_session_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_auth_session",
+      "toId": "shape:bitcoin_auth",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:frame_keymgmt": {
+      "id": "shape:frame_keymgmt",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "frame",
+      "x": 1830,
+      "y": 23,
+      "props": {
+        "w": 1820,
+        "h": 212,
+        "name": "Key Management (Cross-cutting)",
+        "color": "black"
+      }
+    },
+    "binding:a_keys_no_end": {
+      "id": "binding:a_keys_no_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keys_no",
+      "toId": "shape:gen_keys_local",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_dash_explorer_end": {
+      "id": "binding:a_dash_explorer_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_explorer",
+      "toId": "shape:mcp_app_explorer",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_local_apps_end": {
+      "id": "binding:a_local_apps_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_local_apps",
+      "toId": "shape:mcp_app_dashboard",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_bsv_yes_end": {
+      "id": "binding:a_bsv_yes_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bsv_yes",
+      "toId": "shape:decision_selfcustody",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_newcomer_decision": {
+      "id": "shape:a_newcomer_decision",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "alShaflV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_newcomer_decision_end": {
+      "id": "binding:a_newcomer_decision_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_newcomer_decision",
+      "toId": "shape:decision_bsv",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_auth_session": {
+      "id": "shape:a_auth_session",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB5",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_dash_wallet_start": {
+      "id": "binding:a_dash_wallet_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_wallet",
+      "toId": "shape:mcp_app_dashboard",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_bsv_yes": {
+      "id": "shape:a_bsv_yes",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "amUMABDl",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Yes"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:mcp_app_dashboard": {
+      "id": "shape:mcp_app_dashboard",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aXQ6MMxV",
+      "parentId": "shape:frame_mcp_apps",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 1395,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 130.67126935262604,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "MCP App Dashboard"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "viewUUID rendering"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "src/views/mcp-app.ts"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:import_backup_web": {
+      "id": "shape:import_backup_web",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aLz74I0G",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 347,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Import .bep/.json"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "backup file"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:a_dash_ordinals": {
+      "id": "shape:a_dash_ordinals",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC8",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_dash_ordinals_end": {
+      "id": "binding:a_dash_ordinals_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_ordinals",
+      "toId": "shape:mcp_app_ordinals",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:user_cowork": {
+      "id": "shape:user_cowork",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a5V8xzjG",
+      "parentId": "shape:frame_entry",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:in_progress"
+      },
+      "type": "geo",
+      "x": 1425,
+      "y": 92,
+      "props": {
+        "geo": "ellipse",
+        "w": 200,
+        "h": 70,
+        "color": "blue",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Cowork User"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(cloud IDE)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:key_bap": {
+      "id": "shape:key_bap",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "ag1VAgQV",
+      "parentId": "shape:frame_keymgmt",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 1540,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 220,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "BAP Identity (xprv)"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bap_generate tool"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:user_web": {
+      "id": "shape:user_web",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a6rMgVMV",
+      "parentId": "shape:frame_entry",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 92,
+      "props": {
+        "geo": "ellipse",
+        "w": 200,
+        "h": 70,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Web Client User"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(Claude.ai, etc)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_ui_import_end": {
+      "id": "binding:a_ui_import_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_ui_import",
+      "toId": "shape:import_backup_web",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_cowork_to_local_start": {
+      "id": "binding:a_cowork_to_local_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_cowork_to_local",
+      "toId": "shape:cowork_import",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:a_ui_import": {
+      "id": "shape:a_ui_import",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB2",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Returning"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "page:page": {
+      "meta": {},
+      "id": "page:page",
+      "name": "Page 1",
+      "index": "a1",
+      "typeName": "page"
+    },
+    "document:document": {
+      "gridSize": 10,
+      "name": "BSV MCP Onboarding Paths",
+      "meta": {},
+      "id": "document:document",
+      "typeName": "document"
+    },
+    "shape:install_bunx": {
+      "id": "shape:install_bunx",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aCWrWaBV",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 180.4765625,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Install via bunx"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "claude mcp add bsv-mcp"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "\"bunx bsv-mcp@latest\""
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_import_encrypt_end": {
+      "id": "binding:a_import_encrypt_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_import_encrypt",
+      "toId": "shape:encrypt_bep",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:encrypt_bep": {
+      "id": "shape:encrypt_bep",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aGTKUoSl",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 260,
+      "y": 972,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Encrypt & save"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "keys.bep (AES-256)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:user_dev": {
+      "id": "shape:user_dev",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a3lN0w2V",
+      "parentId": "shape:frame_entry",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 760,
+      "y": 92,
+      "props": {
+        "geo": "ellipse",
+        "w": 200,
+        "h": 70,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Developer"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(has BSV, CLI)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_hosted_apps_start": {
+      "id": "binding:a_hosted_apps_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_hosted_apps",
+      "toId": "shape:hosted_server",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:key_backup": {
+      "id": "shape:key_backup",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "afJzUYDt",
+      "parentId": "shape:frame_keymgmt",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 1170,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 220,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Download backup"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(.bep encrypted)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_session_server_end": {
+      "id": "binding:a_session_server_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_session_server",
+      "toId": "shape:hosted_server",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:mcp_app_explorer": {
+      "id": "shape:mcp_app_explorer",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aYpU4baG",
+      "parentId": "shape:frame_mcp_apps",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 282,
+      "props": {
+        "geo": "rectangle",
+        "w": 200,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Explorer Tab"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Price, blocks, txns"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:decision_bsv": {
+      "id": "shape:decision_bsv",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a7QCFsfV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "geo",
+      "x": 625,
+      "y": 420,
+      "props": {
+        "geo": "diamond",
+        "w": 200,
+        "h": 120,
+        "color": "orange",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Has BSV?"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_ui_gen_start": {
+      "id": "binding:a_ui_gen_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_ui_gen",
+      "toId": "shape:onboarding_ui",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:decision_selfcustody": {
+      "id": "shape:decision_selfcustody",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a80en5MV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "geo",
+      "x": 762.5,
+      "y": 660,
+      "props": {
+        "geo": "diamond",
+        "w": 220,
+        "h": 120,
+        "color": "orange",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Need self-custody?"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:a_ui_gen": {
+      "id": "shape:a_ui_gen",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aB1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "New user"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_dash_explorer_start": {
+      "id": "binding:a_dash_explorer_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_explorer",
+      "toId": "shape:mcp_app_dashboard",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_local_apps_start": {
+      "id": "binding:a_local_apps_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_local_apps",
+      "toId": "shape:local_server",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_dev_decision_start": {
+      "id": "binding:a_dev_decision_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dev_decision",
+      "toId": "shape:user_dev",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_keys_no_start": {
+      "id": "binding:a_keys_no_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_keys_no",
+      "toId": "shape:decision_keys",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:cowork_export": {
+      "id": "shape:cowork_export",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aTbyGLWV",
+      "parentId": "shape:frame_cowork",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:planned"
+      },
+      "type": "geo",
+      "x": 60,
+      "y": 612,
+      "props": {
+        "geo": "rectangle",
+        "w": 240,
+        "h": 60,
+        "color": "grey",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Export keys"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(download .bep)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:a_local_apps": {
+      "id": "shape:a_local_apps",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aC4",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "light-blue",
+        "fill": "none",
+        "dash": "dashed",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "viewUUID"
+                }
+              ]
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "shape:a_dev_decision": {
+      "id": "shape:a_dev_decision",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "akJv3RaV",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_bsv_yes_start": {
+      "id": "binding:a_bsv_yes_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_bsv_yes",
+      "toId": "shape:decision_bsv",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_gap_import_end": {
+      "id": "binding:a_gap_import_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_import",
+      "toId": "shape:cowork_import",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_newcomer_decision_start": {
+      "id": "binding:a_newcomer_decision_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_newcomer_decision",
+      "toId": "shape:user_newcomer",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:decision_keys": {
+      "id": "shape:decision_keys",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a9fXazSl",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "geo",
+      "x": 3537.5,
+      "y": 1400,
+      "props": {
+        "geo": "diamond",
+        "w": 200,
+        "h": 120,
+        "color": "orange",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Has existing"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "keys?"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:mcp_app_ordinals": {
+      "id": "shape:mcp_app_ordinals",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aa1OMbrV",
+      "parentId": "shape:frame_mcp_apps",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 2247.5,
+      "y": 282,
+      "props": {
+        "geo": "rectangle",
+        "w": 200,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Ordinals Tab"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "NFT search, grid"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "shape:keymgr_local": {
+      "id": "shape:keymgr_local",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aD8UL2UO",
+      "parentId": "shape:frame_local",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 240,
+      "y": 342,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 91.390625,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "SecureKeyManager"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "~/.bsv-mcp/"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_gap_remote_end": {
+      "id": "binding:a_gap_remote_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gap_remote",
+      "toId": "shape:cowork_remote_keys",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:key_import": {
+      "id": "shape:key_import",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "ad2TPKQV",
+      "parentId": "shape:frame_keymgmt",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 430,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 220,
+        "h": 60,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Import WIF / backup"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(.bep, .json, xprv)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_custody_no_end": {
+      "id": "binding:a_custody_no_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_custody_no",
+      "toId": "shape:onboarding_ui",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:title": {
+      "id": "shape:title",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "a1",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "text",
+      "x": 400,
+      "y": -80,
+      "props": {
+        "color": "black",
+        "size": "l",
+        "font": "sans",
+        "textAlign": "start",
+        "w": 200,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "BSV MCP Onboarding Paths"
+                }
+              ]
+            }
+          ]
+        },
+        "scale": 1,
+        "autoSize": true
+      }
+    },
+    "shape:a_gen_encrypt": {
+      "id": "shape:a_gen_encrypt",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "axz5B0dG",
+      "parentId": "page:page",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {},
+      "type": "arrow",
+      "x": 0,
+      "y": 0,
+      "props": {
+        "kind": "arc",
+        "color": "black",
+        "fill": "none",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "labelColor": "black",
+        "arrowheadStart": "none",
+        "arrowheadEnd": "triangle",
+        "start": {
+          "x": 0,
+          "y": 0
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "bend": 0,
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph"
+            }
+          ]
+        },
+        "labelPosition": 0.5,
+        "scale": 1,
+        "elbowMidPoint": 0.5
+      }
+    },
+    "binding:a_dash_ordinals_start": {
+      "id": "binding:a_dash_ordinals_start",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_dash_ordinals",
+      "toId": "shape:mcp_app_dashboard",
+      "props": {
+        "terminal": "start",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "binding:a_server_droplet_end": {
+      "id": "binding:a_server_droplet_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_server_droplet",
+      "toId": "shape:droplet_api",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    },
+    "shape:onboarding_ui": {
+      "id": "shape:onboarding_ui",
+      "typeName": "shape",
+      "rotation": 0,
+      "index": "aJSEMroV",
+      "parentId": "shape:frame_hosted",
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "note": "phase:implemented"
+      },
+      "type": "geo",
+      "x": 132.5,
+      "y": 92,
+      "props": {
+        "geo": "rectangle",
+        "w": 260,
+        "h": 121.0859375,
+        "color": "green",
+        "fill": "lined-fill",
+        "dash": "solid",
+        "size": "m",
+        "font": "sans",
+        "align": "middle",
+        "verticalAlign": "middle",
+        "labelColor": "black",
+        "richText": {
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Onboarding Web UI"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "app/page.tsx"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "(Next.js)"
+                }
+              ]
+            }
+          ]
+        },
+        "url": "",
+        "growY": 0,
+        "scale": 1
+      }
+    },
+    "binding:a_gen_encrypt_end": {
+      "id": "binding:a_gen_encrypt_end",
+      "typeName": "binding",
+      "type": "arrow",
+      "fromId": "shape:a_gen_encrypt",
+      "toId": "shape:encrypt_bep",
+      "props": {
+        "terminal": "end",
+        "normalizedAnchor": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "isExact": false,
+        "isPrecise": false,
+        "snap": "none"
+      },
+      "meta": {}
+    }
+  },
+  "schema": {
+    "schemaVersion": 2,
+    "sequences": {
+      "com.tldraw.store": 5,
+      "com.tldraw.asset": 1,
+      "com.tldraw.camera": 1,
+      "com.tldraw.document": 2,
+      "com.tldraw.instance": 26,
+      "com.tldraw.instance_page_state": 5,
+      "com.tldraw.page": 1,
+      "com.tldraw.instance_presence": 6,
+      "com.tldraw.pointer": 1,
+      "com.tldraw.shape": 4,
+      "com.tldraw.asset.bookmark": 2,
+      "com.tldraw.asset.image": 5,
+      "com.tldraw.asset.video": 5,
+      "com.tldraw.shape.group": 0,
+      "com.tldraw.shape.text": 4,
+      "com.tldraw.shape.bookmark": 2,
+      "com.tldraw.shape.draw": 4,
+      "com.tldraw.shape.geo": 11,
+      "com.tldraw.shape.note": 10,
+      "com.tldraw.shape.line": 5,
+      "com.tldraw.shape.frame": 1,
+      "com.tldraw.shape.arrow": 8,
+      "com.tldraw.shape.highlight": 3,
+      "com.tldraw.shape.embed": 4,
+      "com.tldraw.shape.image": 5,
+      "com.tldraw.shape.video": 4,
+      "com.tldraw.binding.arrow": 1
+    }
+  }
+}

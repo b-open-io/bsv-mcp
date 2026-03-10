@@ -9,7 +9,7 @@ import { registerAllTools } from "@/tools";
 // Token verification function for OAuth 2.1
 // Validates opaque tokens and fetches user identity from userinfo endpoint
 const verifyToken = async (
-	req: Request,
+	_req: Request,
 	bearerToken?: string,
 ): Promise<AuthInfo | undefined> => {
 	if (!bearerToken) {
@@ -74,13 +74,13 @@ const handler = createMcpHandler(
 
 		try {
 			if (payPkWif) payPk = PrivateKey.fromWif(payPkWif);
-		} catch (e) {
+		} catch {
 			console.error("Invalid PRIVATE_KEY_WIF");
 		}
 
 		try {
 			if (identityPkWif) identityPk = PrivateKey.fromWif(identityPkWif);
-		} catch (e) {
+		} catch {
 			console.error("Invalid IDENTITY_KEY_WIF");
 		}
 

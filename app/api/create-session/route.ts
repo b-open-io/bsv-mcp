@@ -1,23 +1,31 @@
 import { parseAuthToken, verifyAuthToken } from "bitcoin-auth";
 import { type NextRequest, NextResponse } from "next/server";
-import { getCloudflareEnv } from "@/lib/cloudflare";
+
+// In-memory session store. For production, replace with Redis/DB.
+// Sessions map: token -> { authToken, expiresAt }
+const sessions = new Map<string, { authToken: string; expiresAt: number }>();
+
+// Prune expired sessions periodically
+function pruneExpiredSessions() {
+	const now = Date.now();
+	for (const [token, session] of sessions) {
+		if (session.expiresAt < now) {
+			sessions.delete(token);
+		}
+	}
+}
 
 export async function POST(request: NextRequest) {
 	try {
-		// Access CloudFlare env from the request context
-		const env = getCloudflareEnv();
-
 		const authToken = request.headers.get("X-Auth-Token");
 		if (!authToken) {
 			return NextResponse.json(
-				{ error: "Missing auth token" },
+				{ error: "Missing X-Auth-Token header" },
 				{ status: 401 },
 			);
 		}
 
-		// Parse the auth token to get the timestamp
 		const parsedToken = parseAuthToken(authToken);
-
 		if (!parsedToken) {
 			return NextResponse.json(
 				{ error: "Invalid auth token format" },
@@ -25,29 +33,30 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Verify the auth token with the same timestamp from the token
+		// Verify the signature with a 10-minute time window
 		const isValid = verifyAuthToken(
 			authToken,
 			{
 				requestPath: "/api/create-session",
 				timestamp: parsedToken.timestamp,
 			},
-			600000,
-		); // 10 minute time window
+			600_000,
+		);
 
 		if (!isValid) {
 			return NextResponse.json(
-				{ error: "Invalid auth token" },
+				{ error: "Invalid auth token signature" },
 				{ status: 401 },
 			);
 		}
 
-		// Generate session token
-		const sessionToken = crypto.randomUUID();
+		pruneExpiredSessions();
 
-		// Store session in KV (expires in 30 days)
-		await env.SESSIONS.put(sessionToken, authToken, {
-			expirationTtl: 2592000,
+		const sessionToken = crypto.randomUUID();
+		const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+		sessions.set(sessionToken, {
+			authToken,
+			expiresAt: Date.now() + TTL_MS,
 		});
 
 		return NextResponse.json({ sessionToken });
@@ -58,4 +67,17 @@ export async function POST(request: NextRequest) {
 			{ status: 500 },
 		);
 	}
+}
+
+/**
+ * Validate a session token. Used by the MCP route middleware.
+ */
+export function validateSession(token: string): boolean {
+	const session = sessions.get(token);
+	if (!session) return false;
+	if (session.expiresAt < Date.now()) {
+		sessions.delete(token);
+		return false;
+	}
+	return true;
 }
