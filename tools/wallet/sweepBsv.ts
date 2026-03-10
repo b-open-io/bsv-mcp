@@ -24,6 +24,10 @@ export function registerSweepBsvTool(
 		'Sweep BSV from an external WIF private key into the wallet',
 		{ ...sweepBsvSchema.shape },
 		async ({ inputs, wif, amount }) => {
+			// SECURITY: sanitize WIF from any error output
+			const sanitize = (msg: string) =>
+				msg.replace(/[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/g, '[REDACTED]')
+					.replace(/\b[0-9a-f]{64}\b/gi, '[REDACTED-HEX]');
 			if (!ctx) {
 				return {
 					content: [
@@ -59,7 +63,7 @@ export function registerSweepBsvTool(
 					content: [
 						{
 							type: 'text' as const,
-							text: error instanceof Error ? error.message : String(error),
+							text: sanitize(error instanceof Error ? error.message : String(error)),
 						},
 					],
 					isError: true,

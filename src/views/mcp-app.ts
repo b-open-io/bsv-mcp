@@ -1,4 +1,5 @@
 import { App } from "@modelcontextprotocol/ext-apps";
+import { PrivateKey, P2PKH, Transaction, Utils } from "@bsv/sdk";
 
 // ── XSS helper ───────────────────────────────────────────────────────────────
 function esc(s: string): string {
@@ -50,10 +51,12 @@ const panels: Record<string, HTMLElement> = {
 	explorer: document.getElementById("explorer-panel")!,
 	wallet: document.getElementById("wallet-panel")!,
 	ordinals: document.getElementById("ordinals-panel")!,
+	sweep: document.getElementById("sweep-panel")!,
 };
 
 let walletLoaded = false;
 let ordinalsLoaded = false;
+let sweepInitialized = false;
 
 function switchTab(view: string) {
 	for (const tab of tabs) {
@@ -66,6 +69,7 @@ function switchTab(view: string) {
 	}
 	if (view === "wallet" && !walletLoaded) loadWalletData();
 	if (view === "ordinals" && !ordinalsLoaded) loadOrdinalsData();
+	if (view === "sweep" && !sweepInitialized) initSweep();
 }
 
 for (const tab of tabs) {
@@ -383,6 +387,324 @@ function renderOrdinals(data: Record<string, unknown>) {
 			}
 		});
 	}
+}
+
+// ── Sweep ────────────────────────────────────────────────────────────────────
+type SweepState = "input" | "scanning" | "review" | "preparing" | "signing" | "broadcasting" | "complete" | "error";
+
+/** Parse a private key from either WIF or 64-char hex */
+function parsePrivateKey(input: string): InstanceType<typeof PrivateKey> {
+	if (/^[0-9a-f]{64}$/i.test(input)) return new PrivateKey(input, 16);
+	return PrivateKey.fromWif(input);
+}
+
+// State stored in closure — key only in a local variable, never in DOM
+let sweepKeyInput = "";
+let sweepAddress = "";
+let sweepScanData: Record<string, unknown> | null = null;
+let sweepSelectedTypes: Set<string> = new Set();
+let sweepResults: Array<{ type: string; txid: string }> = [];
+
+function showSweepState(state: SweepState) {
+	const states: SweepState[] = ["input", "scanning", "review", "preparing", "signing", "broadcasting", "complete", "error"];
+	for (const s of states) {
+		const el = document.getElementById(`sweep-${s}-state`);
+		if (el) el.style.display = s === state ? "flex" : "none";
+	}
+}
+
+function initSweep() {
+	sweepInitialized = true;
+
+	const wifInput = document.getElementById("wif-input") as HTMLInputElement;
+	const scanBtn = document.getElementById("sweep-scan-btn")!;
+	const backBtn = document.getElementById("sweep-back-btn")!;
+	const executeBtn = document.getElementById("sweep-execute-btn")!;
+	const againBtn = document.getElementById("sweep-again-btn")!;
+	const retryBtn = document.getElementById("sweep-retry-btn")!;
+
+	scanBtn.addEventListener("click", async () => {
+		const raw = wifInput.value.trim();
+		if (!raw) return;
+
+		try {
+			const key = parsePrivateKey(raw);
+			sweepKeyInput = raw;
+			sweepAddress = key.toPublicKey().toAddress();
+		} catch {
+			showSweepState("error");
+			document.getElementById("sweep-error-msg")!.textContent = "Invalid private key. Accepts WIF (5.../K.../L...) or 64-char hex.";
+			return;
+		}
+
+		showSweepState("scanning");
+		document.getElementById("sweep-scanning-text")!.textContent = `Scanning ${truncateMid(sweepAddress, 8)}...`;
+
+		try {
+			const result = await app.callServerTool({ name: "app_sweep_scan", arguments: { address: sweepAddress } });
+			if (result?.structuredContent) {
+				const data = result.structuredContent as Record<string, unknown>;
+				if (data.error) throw new Error(String(data.error));
+				sweepScanData = data;
+				renderSweepReview(data);
+				showSweepState("review");
+			}
+		} catch (err) {
+			showSweepState("error");
+			document.getElementById("sweep-error-msg")!.textContent = `Scan failed: ${err instanceof Error ? err.message : String(err)}`;
+		}
+	});
+
+	wifInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") scanBtn.click();
+	});
+
+	backBtn.addEventListener("click", () => {
+		sweepKeyInput = "";
+		sweepAddress = "";
+		sweepScanData = null;
+		sweepSelectedTypes.clear();
+		(document.getElementById("wif-input") as HTMLInputElement).value = "";
+		showSweepState("input");
+	});
+
+	executeBtn.addEventListener("click", () => executeSweep());
+
+	againBtn.addEventListener("click", () => {
+		sweepKeyInput = "";
+		sweepAddress = "";
+		sweepScanData = null;
+		sweepSelectedTypes.clear();
+		sweepResults = [];
+		(document.getElementById("wif-input") as HTMLInputElement).value = "";
+		showSweepState("input");
+	});
+
+	retryBtn.addEventListener("click", () => {
+		sweepKeyInput = "";
+		sweepAddress = "";
+		sweepScanData = null;
+		sweepSelectedTypes.clear();
+		(document.getElementById("wif-input") as HTMLInputElement).value = "";
+		showSweepState("input");
+	});
+}
+
+function renderSweepReview(data: Record<string, unknown>) {
+	document.getElementById("sweep-address-display")!.textContent = sweepAddress;
+
+	const funding = data.funding as Array<Record<string, unknown>> | undefined;
+	const ordinals = data.ordinals as Array<Record<string, unknown>> | undefined;
+	const tokens = data.bsv21Tokens as Array<Record<string, unknown>> | undefined;
+	const totalFunding = data.totalFundingSats as number | undefined;
+
+	const categoriesEl = document.getElementById("sweep-categories")!;
+	const cards: string[] = [];
+	sweepSelectedTypes.clear();
+
+	if (funding && funding.length > 0) {
+		sweepSelectedTypes.add("bsv");
+		const bsvAmt = ((totalFunding ?? 0) / 100_000_000).toFixed(8);
+		cards.push(renderCategoryCard("bsv", "BSV Funding", `${funding.length} UTXOs`, `${bsvAmt} BSV`));
+	}
+
+	if (ordinals && ordinals.length > 0) {
+		sweepSelectedTypes.add("ordinals");
+		cards.push(renderCategoryCard("ordinals", "Ordinals", `${ordinals.length} inscription${ordinals.length !== 1 ? "s" : ""}`, `${ordinals.length} NFTs`));
+	}
+
+	if (tokens && tokens.length > 0) {
+		for (const tok of tokens) {
+			const tokenId = tok.tokenId as string;
+			const symbol = (tok.symbol as string) || truncateMid(tokenId, 6);
+			const totalAmount = tok.totalAmount as string;
+			const decimals = (tok.decimals as number) || 0;
+			const inputs = tok.inputs as Array<Record<string, unknown>>;
+			const key = `bsv21:${tokenId}`;
+			sweepSelectedTypes.add(key);
+			const displayAmt = decimals > 0
+				? (Number(BigInt(totalAmount)) / 10 ** decimals).toFixed(decimals)
+				: totalAmount;
+			cards.push(renderCategoryCard(key, `${symbol} Token`, `${inputs.length} UTXO${inputs.length !== 1 ? "s" : ""}`, `${displayAmt} ${symbol}`));
+		}
+	}
+
+	if (cards.length === 0) {
+		categoriesEl.innerHTML = `<div class="empty-state">No assets found at this address.</div>`;
+		document.getElementById("sweep-execute-btn")!.setAttribute("disabled", "");
+		return;
+	}
+
+	categoriesEl.innerHTML = cards.join("");
+	document.getElementById("sweep-execute-btn")!.removeAttribute("disabled");
+
+	// Wire up category toggle clicks
+	for (const card of categoriesEl.querySelectorAll<HTMLElement>(".sweep-category")) {
+		card.addEventListener("click", () => {
+			const type = card.dataset.sweepType!;
+			if (sweepSelectedTypes.has(type)) {
+				sweepSelectedTypes.delete(type);
+				card.classList.remove("selected");
+			} else {
+				sweepSelectedTypes.add(type);
+				card.classList.add("selected");
+			}
+			const hasSelection = sweepSelectedTypes.size > 0;
+			if (hasSelection) {
+				document.getElementById("sweep-execute-btn")!.removeAttribute("disabled");
+			} else {
+				document.getElementById("sweep-execute-btn")!.setAttribute("disabled", "");
+			}
+		});
+	}
+}
+
+function renderCategoryCard(type: string, name: string, detail: string, value: string): string {
+	return `
+		<div class="sweep-category selected" data-sweep-type="${esc(type)}">
+			<div class="sweep-category-check">
+				<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+			</div>
+			<div class="sweep-category-info">
+				<div class="sweep-category-name">${esc(name)}</div>
+				<div class="sweep-category-detail">${esc(detail)}</div>
+			</div>
+			<div class="sweep-category-value">${esc(value)}</div>
+		</div>
+	`;
+}
+
+async function executeSweep() {
+	if (!sweepScanData || sweepSelectedTypes.size === 0) return;
+
+	sweepResults = [];
+	const types = [...sweepSelectedTypes];
+
+	showSweepState("preparing");
+
+	try {
+		for (const type of types) {
+			let sweepType: "bsv" | "ordinals" | "bsv21";
+			let inputs: Array<Record<string, unknown>>;
+
+			if (type === "bsv") {
+				sweepType = "bsv";
+				inputs = sweepScanData.funding as Array<Record<string, unknown>>;
+			} else if (type === "ordinals") {
+				sweepType = "ordinals";
+				inputs = sweepScanData.ordinals as Array<Record<string, unknown>>;
+			} else if (type.startsWith("bsv21:")) {
+				sweepType = "bsv21";
+				const tokenId = type.slice(6);
+				const tokens = sweepScanData.bsv21Tokens as Array<Record<string, unknown>>;
+				const token = tokens.find((t) => t.tokenId === tokenId);
+				if (!token) throw new Error(`Token ${tokenId} not found in scan data`);
+				inputs = token.inputs as Array<Record<string, unknown>>;
+			} else {
+				continue;
+			}
+
+			document.getElementById("sweep-preparing-text")!.textContent = `Building ${sweepType} transaction...`;
+
+			// Step 1: Prepare (server builds unsigned tx)
+			const prepResult = await app.callServerTool({
+				name: "app_sweep_prepare",
+				arguments: {
+					sweepType,
+					inputs: inputs.map((i) => ({
+						outpoint: i.outpoint,
+						satoshis: i.satoshis,
+						lockingScript: i.lockingScript,
+					})),
+				},
+			});
+
+			if (!prepResult?.structuredContent) throw new Error("No response from prepare");
+			const prepData = prepResult.structuredContent as Record<string, unknown>;
+			if (prepData.error) throw new Error(String(prepData.error));
+
+			const txHex = prepData.txHex as string;
+			const reference = prepData.reference as string;
+			const inputsToSign = prepData.inputsToSign as Array<{
+				index: number;
+				outpoint: string;
+				satoshis: number;
+				lockingScript: string;
+			}>;
+
+			// Step 2: Sign client-side — key never leaves iframe
+			showSweepState("signing");
+			const key = parsePrivateKey(sweepKeyInput);
+			const txBytes = Utils.toArray(txHex, "hex");
+			const tx = Transaction.fromBEEF(txBytes);
+
+			const inputOutpoints = new Set(inputsToSign.map((i) => {
+				const [txid, voutStr] = i.outpoint.split("_");
+				return `${txid}.${Number(voutStr)}`;
+			}));
+
+			for (let idx = 0; idx < tx.inputs.length; idx++) {
+				const txInput = tx.inputs[idx];
+				const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
+				if (inputOutpoints.has(op)) {
+					const p2pkh = new P2PKH();
+					txInput.unlockingScriptTemplate = p2pkh.unlock(key, "all", true);
+				}
+			}
+
+			await tx.sign();
+
+			// Extract signed spends
+			const spends: Record<string, { unlockingScript: string }> = {};
+			for (let idx = 0; idx < tx.inputs.length; idx++) {
+				const txInput = tx.inputs[idx];
+				const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
+				if (inputOutpoints.has(op)) {
+					spends[String(idx)] = {
+						unlockingScript: txInput.unlockingScript?.toHex() ?? "",
+					};
+				}
+			}
+
+			// Step 3: Broadcast (server completes with signed spends)
+			showSweepState("broadcasting");
+			const completeResult = await app.callServerTool({
+				name: "app_sweep_complete",
+				arguments: { reference, spends },
+			});
+
+			if (!completeResult?.structuredContent) throw new Error("No response from complete");
+			const completeData = completeResult.structuredContent as Record<string, unknown>;
+			if (completeData.error) throw new Error(String(completeData.error));
+
+			sweepResults.push({
+				type: sweepType === "bsv21" ? `BSV-21 Token` : sweepType === "ordinals" ? "Ordinals" : "BSV",
+				txid: String(completeData.txid),
+			});
+		}
+
+		// Clear WIF from memory
+		sweepKeyInput = "";
+
+		// Show results
+		renderSweepComplete();
+		showSweepState("complete");
+	} catch (err) {
+		sweepKeyInput = "";
+		showSweepState("error");
+		document.getElementById("sweep-error-msg")!.textContent =
+			err instanceof Error ? err.message : String(err);
+	}
+}
+
+function renderSweepComplete() {
+	const resultsEl = document.getElementById("sweep-results")!;
+	resultsEl.innerHTML = sweepResults.map((r) => `
+		<div class="sweep-result-item">
+			<span class="sweep-result-label">${esc(r.type)}</span>
+			<span class="sweep-result-txid">${esc(truncateMid(r.txid, 10))}</span>
+		</div>
+	`).join("");
 }
 
 function renderOrdinalCard(item: Record<string, unknown>): string {

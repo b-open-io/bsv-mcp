@@ -768,6 +768,277 @@
       color: var(--accent-cyan);
     }
 
+    /* ── Sweep panel ────────────────────────────────────────────── */
+    #sweep-panel {
+      gap: 0;
+    }
+
+    .sweep-content {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .sweep-state {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .sweep-header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sweep-title {
+      font-family: var(--font-sans);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-white);
+    }
+
+    .sweep-subtitle {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .sweep-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sweep-input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .sweep-text-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .sweep-text-input:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .sweep-text-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .sweep-scan-btn {
+      background: var(--accent-cyan);
+      color: var(--bg-page);
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 10px 20px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .sweep-scan-btn:hover { opacity: 0.85; }
+    .sweep-scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .sweep-hint {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .sweep-progress {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex: 1;
+      min-height: 200px;
+    }
+
+    .sweep-progress-text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      letter-spacing: 0.05em;
+    }
+
+    .sweep-address-display {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-blue);
+      word-break: break-all;
+    }
+
+    .sweep-categories {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sweep-category {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .sweep-category:hover { border-color: var(--border-strong); }
+    .sweep-category.selected { border-color: var(--accent-cyan); }
+
+    .sweep-category-check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .sweep-category.selected .sweep-category-check {
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+    }
+
+    .sweep-category-check svg {
+      width: 12px;
+      height: 12px;
+      stroke: var(--bg-page);
+      fill: none;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+    }
+
+    .sweep-category.selected .sweep-category-check svg { opacity: 1; }
+
+    .sweep-category-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sweep-category-name {
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-white);
+    }
+
+    .sweep-category-detail {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .sweep-category-value {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-mono);
+      white-space: nowrap;
+    }
+
+    .sweep-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      padding-top: 8px;
+    }
+
+    .sweep-back-btn {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 10px 20px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .sweep-back-btn:hover {
+      background: var(--bg-active);
+      color: var(--text-primary);
+    }
+
+    .sweep-execute-btn {
+      background: var(--accent-cyan);
+      color: var(--bg-page);
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 10px 24px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .sweep-execute-btn:hover { opacity: 0.85; }
+    .sweep-execute-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .sweep-success { color: var(--accent-green); }
+    .sweep-error-title { color: var(--accent-red); }
+
+    .sweep-results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sweep-result-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+    }
+
+    .sweep-result-label {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .sweep-result-txid {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-blue);
+    }
+
     /* ── Shared utilities ────────────────────────────────────────── */
     .empty-state {
       display: flex;
@@ -815,6 +1086,7 @@
         <button class="view-tab active" data-view="explorer" role="tab" aria-selected="true">Explorer</button>
         <button class="view-tab" data-view="wallet" role="tab" aria-selected="false">Wallet</button>
         <button class="view-tab" data-view="ordinals" role="tab" aria-selected="false">Ordinals</button>
+        <button class="view-tab" data-view="sweep" role="tab" aria-selected="false">Sweep</button>
       </div>
     </div>
 
@@ -885,6 +1157,87 @@
       </div>
       <div class="ordinals-grid" id="ordinals-grid">
         <div class="empty-state" style="grid-column:1/-1">loading...</div>
+      </div>
+    </div>
+
+    <!-- Sweep panel -->
+    <div id="sweep-panel" class="panel">
+      <div class="sweep-content" id="sweep-content">
+        <!-- input state -->
+        <div class="sweep-state" id="sweep-input-state">
+          <div class="sweep-header">
+            <div class="sweep-title">Import Funds</div>
+            <div class="sweep-subtitle">Paste a WIF private key to scan for assets and sweep them into your wallet.</div>
+          </div>
+          <div class="sweep-input-group">
+            <label class="section-label" for="wif-input">Private Key</label>
+            <div class="sweep-input-row">
+              <input type="password" id="wif-input" class="sweep-text-input" placeholder="WIF (5.../K.../L...) or 64-char hex" autocomplete="off" spellcheck="false" />
+              <button class="sweep-scan-btn" id="sweep-scan-btn">Scan</button>
+            </div>
+            <div class="sweep-hint">Your key never leaves this browser tab.</div>
+          </div>
+        </div>
+        <!-- scanning state -->
+        <div class="sweep-state" id="sweep-scanning-state" style="display:none">
+          <div class="sweep-progress">
+            <div class="spinner"></div>
+            <div class="sweep-progress-text" id="sweep-scanning-text">Scanning address...</div>
+          </div>
+        </div>
+        <!-- review state -->
+        <div class="sweep-state" id="sweep-review-state" style="display:none">
+          <div class="sweep-header">
+            <div class="sweep-title">Assets Found</div>
+            <div class="sweep-address-display" id="sweep-address-display"></div>
+          </div>
+          <div class="sweep-categories" id="sweep-categories"></div>
+          <div class="sweep-actions">
+            <button class="sweep-back-btn" id="sweep-back-btn">Back</button>
+            <button class="sweep-execute-btn" id="sweep-execute-btn">Sweep Selected</button>
+          </div>
+        </div>
+        <!-- preparing state -->
+        <div class="sweep-state" id="sweep-preparing-state" style="display:none">
+          <div class="sweep-progress">
+            <div class="spinner"></div>
+            <div class="sweep-progress-text" id="sweep-preparing-text">Building transactions...</div>
+          </div>
+        </div>
+        <!-- signing state -->
+        <div class="sweep-state" id="sweep-signing-state" style="display:none">
+          <div class="sweep-progress">
+            <div class="spinner"></div>
+            <div class="sweep-progress-text">Signing transactions...</div>
+          </div>
+        </div>
+        <!-- broadcasting state -->
+        <div class="sweep-state" id="sweep-broadcasting-state" style="display:none">
+          <div class="sweep-progress">
+            <div class="spinner"></div>
+            <div class="sweep-progress-text">Broadcasting...</div>
+          </div>
+        </div>
+        <!-- complete state -->
+        <div class="sweep-state" id="sweep-complete-state" style="display:none">
+          <div class="sweep-header">
+            <div class="sweep-title sweep-success">Sweep Complete</div>
+          </div>
+          <div class="sweep-results" id="sweep-results"></div>
+          <div class="sweep-actions">
+            <button class="sweep-scan-btn" id="sweep-again-btn">Sweep Again</button>
+          </div>
+        </div>
+        <!-- error state -->
+        <div class="sweep-state" id="sweep-error-state" style="display:none">
+          <div class="sweep-header">
+            <div class="sweep-title sweep-error-title">Error</div>
+          </div>
+          <div class="error-box" id="sweep-error-msg"></div>
+          <div class="sweep-actions">
+            <button class="sweep-back-btn" id="sweep-retry-btn">Try Again</button>
+          </div>
+        </div>
       </div>
     </div>
 

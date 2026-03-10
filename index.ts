@@ -660,6 +660,429 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 		},
 	);
 
+	// App-only: scan an address for categorized UTXOs (funding, ordinals, BSV-21 tokens)
+	registerAppTool(
+		server,
+		"app_sweep_scan",
+		{
+			title: "Sweep Scan",
+			description:
+				"App-only: scans a Bitcoin address for categorized UTXOs — funding, ordinals, and BSV-21 tokens.",
+			inputSchema: {
+				address: z.string().describe("Bitcoin address to scan"),
+			},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async (args) => {
+			const { address } = args as { address: string };
+			try {
+				const res = await fetch(
+					`https://ordinals.gorillapool.io/api/txos/address/${address}/unspent?limit=1000`,
+				);
+				if (!res.ok)
+					throw new Error(`GorillaPool API error: ${res.status}`);
+				const utxos = (await res.json()) as Array<Record<string, unknown>>;
+
+				const funding: Array<{
+					outpoint: string;
+					satoshis: number;
+					lockingScript: string;
+				}> = [];
+				const ordinals: Array<{
+					outpoint: string;
+					satoshis: number;
+					lockingScript: string;
+				}> = [];
+				const bsv21Raw: Array<{
+					outpoint: string;
+					satoshis: number;
+					lockingScript: string;
+					tokenId: string;
+					amount: string;
+					sym?: string;
+					dec: number;
+				}> = [];
+
+				for (const utxo of utxos) {
+					const txid = utxo.txid as string;
+					const vout = utxo.vout as number;
+					const outpoint = `${txid}_${vout}`;
+					const satoshis = (utxo.satoshis as number) || 0;
+					const script = (utxo.script as string) || "";
+					const origin = utxo.origin as
+						| Record<string, unknown>
+						| undefined;
+					const originData = origin?.data as
+						| Record<string, unknown>
+						| undefined;
+
+					const base = { outpoint, satoshis, lockingScript: script };
+
+					if (originData?.bsv21) {
+						const bsv21 = originData.bsv21 as Record<
+							string,
+							unknown
+						>;
+						bsv21Raw.push({
+							...base,
+							tokenId: (bsv21.id as string) || "",
+							amount: (bsv21.amt as string) || "0",
+							sym: bsv21.sym as string | undefined,
+							dec: (bsv21.dec as number) ?? 0,
+						});
+					} else if (originData?.insc || origin?.outpoint) {
+						ordinals.push(base);
+					} else {
+						funding.push(base);
+					}
+				}
+
+				// Group BSV-21 tokens by tokenId
+				const tokenGroups = new Map<
+					string,
+					{
+						inputs: typeof bsv21Raw;
+						sym?: string;
+						dec: number;
+					}
+				>();
+				for (const item of bsv21Raw) {
+					let group = tokenGroups.get(item.tokenId);
+					if (!group) {
+						group = { inputs: [], sym: item.sym, dec: item.dec };
+						tokenGroups.set(item.tokenId, group);
+					}
+					group.inputs.push(item);
+				}
+
+				const bsv21Tokens: Array<{
+					tokenId: string;
+					symbol?: string;
+					decimals: number;
+					totalAmount: string;
+					inputs: typeof bsv21Raw;
+				}> = [];
+				for (const [tokenId, group] of tokenGroups) {
+					let total = BigInt(0);
+					for (const inp of group.inputs) {
+						total += BigInt(inp.amount);
+					}
+					bsv21Tokens.push({
+						tokenId,
+						symbol: group.sym,
+						decimals: group.dec,
+						totalAmount: total.toString(),
+						inputs: group.inputs,
+					});
+				}
+
+				const totalFundingSats = funding.reduce(
+					(sum, f) => sum + f.satoshis,
+					0,
+				);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Scanned ${address}: ${funding.length} funding, ${ordinals.length} ordinals, ${bsv21Tokens.length} token types`,
+						},
+					],
+					structuredContent: {
+						address,
+						funding,
+						ordinals,
+						bsv21Tokens,
+						totalFundingSats,
+					},
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			}
+		},
+	);
+
+	// App-only: prepare unsigned sweep transaction for client-side signing
+	registerAppTool(
+		server,
+		"app_sweep_prepare",
+		{
+			title: "Sweep Prepare",
+			description:
+				"App-only: builds an unsigned sweep transaction. Returns BEEF hex and reference for client-side signing.",
+			inputSchema: {
+				sweepType: z
+					.enum(["bsv", "ordinals", "bsv21"])
+					.describe("Type of assets to sweep"),
+				inputs: z
+					.array(
+						z.object({
+							outpoint: z
+								.string()
+								.describe("Outpoint (txid_vout)"),
+							satoshis: z
+								.number()
+								.int()
+								.describe("Satoshis in output"),
+							lockingScript: z
+								.string()
+								.describe("Locking script hex"),
+						}),
+					)
+					.describe("UTXOs to sweep"),
+			},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async (args) => {
+			const { sweepType, inputs } = args as {
+				sweepType: "bsv" | "ordinals" | "bsv21";
+				inputs: Array<{
+					outpoint: string;
+					satoshis: number;
+					lockingScript: string;
+				}>;
+			};
+
+			if (!ctx) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "BRC-100 wallet context not available",
+						},
+					],
+					structuredContent: { error: "No wallet context" },
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			}
+
+			try {
+				if (!ctx.services) throw new Error("Services not available");
+				if (!inputs.length) throw new Error("No inputs provided");
+
+				// Fetch and merge BEEF for all input transactions
+				const txids = [
+					...new Set(
+						inputs.map((i) => i.outpoint.split("_")[0]),
+					),
+				];
+				const firstBeef = await ctx.services.getBeefForTxid(txids[0]);
+				for (let i = 1; i < txids.length; i++) {
+					const additionalBeef = await ctx.services.getBeefForTxid(
+						txids[i],
+					);
+					firstBeef.mergeBeef(additionalBeef);
+				}
+
+				// Build input descriptors using SDK format (txid.vout)
+				const inputDescriptors = inputs.map((input) => {
+					const [txid, voutStr] = input.outpoint.split("_");
+					return {
+						outpoint: `${txid}.${Number(voutStr)}`,
+						inputDescription: `Sweep ${sweepType} input`,
+						unlockingScriptLength: 108,
+						sequenceNumber: 0xffffffff,
+					};
+				});
+
+				const inputTotal = inputs.reduce(
+					(sum, i) => sum + i.satoshis,
+					0,
+				);
+
+				const createResult = await ctx.wallet.createAction({
+					description: `Sweep ${inputTotal} sats (${sweepType})`,
+					inputBEEF: firstBeef.toBinary(),
+					inputs: inputDescriptors,
+					outputs: [],
+					options: {
+						signAndProcess: false,
+						...(sweepType !== "bsv" && {
+							randomizeOutputs: false,
+						}),
+					},
+				});
+
+				if ("error" in createResult && createResult.error) {
+					throw new Error(String(createResult.error));
+				}
+				if (!createResult.signableTransaction) {
+					throw new Error("No signable transaction returned");
+				}
+
+				// Map our inputs to their indices in the transaction
+				const { Transaction: TxClass, Utils: SdkUtils } = await import(
+					"@bsv/sdk"
+				);
+				const tx = TxClass.fromBEEF(
+					createResult.signableTransaction.tx,
+				);
+				const ourOutpoints = new Set(
+					inputs.map((i) => {
+						const [txid, voutStr] = i.outpoint.split("_");
+						return `${txid}.${Number(voutStr)}`;
+					}),
+				);
+
+				const inputsToSign: Array<{
+					index: number;
+					outpoint: string;
+					satoshis: number;
+					lockingScript: string;
+				}> = [];
+				for (let idx = 0; idx < tx.inputs.length; idx++) {
+					const txInput = tx.inputs[idx];
+					const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
+					if (ourOutpoints.has(op)) {
+						const match = inputs.find((i) => {
+							const [t, v] = i.outpoint.split("_");
+							return `${t}.${Number(v)}` === op;
+						});
+						if (match) {
+							inputsToSign.push({
+								index: idx,
+								outpoint: match.outpoint,
+								satoshis: match.satoshis,
+								lockingScript: match.lockingScript,
+							});
+						}
+					}
+				}
+
+				const txHex = SdkUtils.toHex(
+					createResult.signableTransaction.tx,
+				);
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Prepared ${sweepType} sweep: ${inputsToSign.length} inputs to sign`,
+						},
+					],
+					structuredContent: {
+						txHex,
+						reference: createResult.signableTransaction.reference,
+						inputsToSign,
+					},
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			}
+		},
+	);
+
+	// App-only: complete a sweep by broadcasting with client-signed spends
+	registerAppTool(
+		server,
+		"app_sweep_complete",
+		{
+			title: "Sweep Complete",
+			description:
+				"App-only: completes a sweep by broadcasting the transaction with client-signed unlocking scripts.",
+			inputSchema: {
+				reference: z
+					.string()
+					.describe("Opaque reference from app_sweep_prepare"),
+				spends: z
+					.record(
+						z.string(),
+						z.object({
+							unlockingScript: z
+								.string()
+								.describe("Signed unlocking script hex"),
+						}),
+					)
+					.describe(
+						"Map of input index to signed unlocking script",
+					),
+			},
+			_meta: {
+				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+			},
+		},
+		async (args) => {
+			const { reference, spends } = args as {
+				reference: string;
+				spends: Record<number, { unlockingScript: string }>;
+			};
+
+			if (!ctx) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: "BRC-100 wallet context not available",
+						},
+					],
+					structuredContent: { error: "No wallet context" },
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			}
+
+			try {
+				const signResult = await ctx.wallet.signAction({
+					reference,
+					spends,
+					options: { acceptDelayedBroadcast: false },
+				});
+
+				if ("error" in signResult) {
+					throw new Error(String(signResult.error));
+				}
+
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Sweep broadcast: ${signResult.txid}`,
+						},
+					],
+					structuredContent: {
+						txid: signResult.txid,
+						success: true,
+					},
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			} catch (err) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+						},
+					],
+					structuredContent: { error: String(err) },
+					_meta: { viewUUID: crypto.randomUUID() },
+				};
+			}
+		},
+	);
+
 	// Register the HTML resource
 	registerAppResource(
 		server,
