@@ -23,7 +23,7 @@ import * as utxoUtils from "../wallet/fetchPaymentUtxos";
 import { type BapGenerateArgs, registerBapGenerateTool } from "./generate";
 
 type GenericToolHandler = (
-	params: { args: BapGenerateArgs },
+	params: BapGenerateArgs,
 	extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 ) => CallToolResult | Promise<CallToolResult>;
 
@@ -115,12 +115,13 @@ describe("BAP Generate Tool", () => {
 	it("should register bap_generate tool with the MCP server", () => {
 		registerBapGenerateTool(mockMcpServerInstance as unknown as McpServer);
 		expect(mockServerToolSpy).toHaveBeenCalledTimes(1);
-		expect(mockServerToolSpy).toHaveBeenCalledWith(
-			"bap_generate",
-			expect.any(String),
-			{ args: expect.any(Object) },
-			expect.any(Function),
-		);
+		const [name, description, schema, handler] =
+			mockServerToolSpy.mock.calls[0];
+		expect(name).toBe("bap_generate");
+		expect(typeof description).toBe("string");
+		expect(schema).toHaveProperty("alternateName");
+		expect(schema).toHaveProperty("description");
+		expect(typeof handler).toBe("function");
 	});
 
 	const getRegisteredHandler = (): GenericToolHandler => {
@@ -141,7 +142,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(false);
 		expect(mkdirSyncSpy).toHaveBeenCalledWith(KEY_DIR, {
@@ -174,7 +175,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
 		expect(result.content?.[0]?.text).toContain(
@@ -192,7 +193,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
 		expect(result.content?.[0]?.text).toContain(
@@ -214,7 +215,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
 		expect(result.content?.[0]?.text).toContain(
@@ -236,7 +237,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
 		expect(result.content?.[0]?.text).toContain(
@@ -260,7 +261,7 @@ describe("BAP Generate Tool", () => {
 		try {
 			registerBapGenerateTool(mockMcpServerInstance as unknown as McpServer);
 			const handler = getRegisteredHandler();
-			const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+			const result = (await handler({}, mockExtra)) as CallToolResult;
 
 			expect(result.isError).toBe(true);
 			expect(result.content?.[0]?.text).toContain(
@@ -283,7 +284,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
 		expect(result.content?.[0]?.text).toContain(
@@ -302,7 +303,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(false);
 		expect(result.content?.[0]?.text).toContain(
@@ -333,7 +334,7 @@ describe("BAP Generate Tool", () => {
 			ServerRequest,
 			ServerNotification
 		>;
-		const result = (await handler({ args: {} }, mockExtra)) as CallToolResult;
+		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(false);
 		expect(result.content?.[0]?.text).toContain(
