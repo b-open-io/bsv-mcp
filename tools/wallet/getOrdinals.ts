@@ -17,14 +17,8 @@ export function registerGetOrdinalsTool(
 			try {
 				if (!ctx) throw new Error('BRC-100 wallet context not available')
 				const result = await getOrdinals.execute(ctx, params)
-				const outputs = result.outputs.map((o: any) => ({
-					outpoint: o.outpoint,
-					satoshis: o.satoshis,
-					tags: o.tags,
-					customInstructions: o.customInstructions,
-				}))
 				return {
-					content: [{ type: 'text', text: JSON.stringify(outputs, null, 2) }],
+					content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
 				}
 			} catch (err: unknown) {
 				const msg = err instanceof Error ? err.message : String(err)

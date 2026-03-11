@@ -48,14 +48,6 @@ export const walletEncryptionArgsSchema = z
 // Get address args
 export const getAddressArgsSchema = z.object({});
 
-// Send to address args
-export const sendToAddressArgsSchema = z.object({
-	address: z.string(),
-	amount: z.number(),
-	currency: z.enum(["BSV", "USD"]).optional().default("BSV"),
-	description: z.string().optional(),
-});
-
 /**
  * Schema for purchase listing arguments
  */
@@ -92,6 +84,5 @@ export const purchaseListingArgsSchema = z
 	);
 
 // Export types
-export type SendToAddressArgs = z.infer<typeof sendToAddressArgsSchema>;
 export type PurchaseListingArgs = z.infer<typeof purchaseListingArgsSchema>;
 export type WalletEncryptionArgs = z.infer<typeof walletEncryptionArgsSchema>;

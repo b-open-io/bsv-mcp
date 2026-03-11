@@ -14,7 +14,7 @@ import { registerListTokensTool } from "./listTokens";
 import { registerMintCollectionTool } from "./mintCollection";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerRefreshUtxosTool } from "./refreshUtxos";
-import { registerSendToAddressTool } from "./sendToAddress";
+import { registerSendBsvTool } from "./sendBsv";
 import { registerSignBsmTool } from "./signBsm";
 import { registerTransferOrdTokenTool } from "./transferOrdToken";
 import { registerListOrdinalTool } from "./listOrdinal";
@@ -39,8 +39,7 @@ export function registerWalletTools(
 		ctx?: OneSatContext;
 	},
 ): void {
-	// Register the wallet_sendToAddress tool
-	registerSendToAddressTool(server, config.ctx);
+	registerSendBsvTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
 	registerGetAddressTool(server, config.ctx);
