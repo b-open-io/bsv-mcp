@@ -79,7 +79,7 @@
 		"typescript": "^5.9.3"
 	},
 	"dependencies": {
-		"@1sat/actions": "0.0.37",
+		"@1sat/actions": "0.0.38",
 		"@1sat/wallet-remote": "0.0.7",
 		"@bsv/sdk": "^2.0.6",
 		"@modelcontextprotocol/ext-apps": "^1.2.0",
@@ -94,14 +94,8 @@
 		"mnee": "^3.1.0",
 		"satoshi-token": "^0.0.7",
 		"schema-dts": "^1.1.5",
-		"sigma-protocol": "^0.1.9",
-		"vite": "^7.3.1",
-		"vite-plugin-singlefile": "^2.3.0"
+		"sigma-protocol": "^0.1.9"
 	},
-	"peerDependencies": {
-		"typescript": "^5.9.3"
-	},
-	"dependencies": {},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
 		"build:view": "vite build",
