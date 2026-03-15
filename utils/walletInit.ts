@@ -1,6 +1,9 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
 	createContext,
 	deriveDepositAddresses,
+	syncMessages,
 	type OneSatContext,
 } from "@1sat/actions";
 import {
@@ -8,16 +11,14 @@ import {
 	type OneSatServices,
 	type RemoteWalletResult,
 } from "@1sat/wallet-remote";
-import { PrivateKey } from "@bsv/sdk";
-import type { Wallet } from "@bsv/wallet-toolbox/out/src/index.client.js";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { PrivateKey, type WalletInterface } from "@bsv/sdk";
+import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
 
 const DEFAULT_REMOTE_STORAGE_URL = "https://1sat.shruggr.cloud/1sat/wallet";
 const MCP_ADDRESS_PREFIX = "mcp";
 
 export interface WalletInitResult {
-	wallet: Wallet;
+	wallet: WalletInterface;
 	services: OneSatServices;
 	ctx: OneSatContext;
 	depositAddress: string;
@@ -44,12 +45,36 @@ export async function initWallet(
 	const result = await createRemoteWallet({
 		privateKey: PrivateKey.fromWif(privateKeyWif),
 		chain,
+		localBackup: true,
 		remoteStorageUrl,
+	});
+
+	const wpm = new WalletPermissionsManager(result.wallet, "bsv-mcp", {
+		seekProtocolPermissionsForSigning: false,
+		seekProtocolPermissionsForEncrypting: false,
+		seekProtocolPermissionsForHMAC: false,
+		seekPermissionsForKeyLinkageRevelation: false,
+		seekPermissionsForPublicKeyRevelation: false,
+		seekPermissionsForIdentityKeyRevelation: false,
+		seekPermissionsForIdentityResolution: false,
+		seekBasketInsertionPermissions: false,
+		seekBasketRemovalPermissions: false,
+		seekBasketListingPermissions: false,
+		seekPermissionWhenApplyingActionLabels: false,
+		seekPermissionWhenListingActionsByLabel: false,
+		seekCertificateAcquisitionPermissions: false,
+		seekCertificateRelinquishmentPermissions: false,
+		seekCertificateListingPermissions: false,
+		seekCertificateDisclosurePermissions: false,
+		seekSpendingPermissions: false,
+		seekGroupedPermission: false,
+		differentiatePrivilegedOperations: false,
+		encryptWalletMetadata: true,
 	});
 
 	const dataDir = join(homedir(), ".bsv-mcp");
 
-	const ctx = createContext(result.wallet, {
+	const ctx = createContext(wpm, {
 		services: result.services,
 		chain,
 		dataDir,
@@ -60,10 +85,19 @@ export async function initWallet(
 	});
 	const depositAddress = derivations[0].address;
 
+	// Sync incoming paymail payments from message box
+	syncMessages.execute(ctx, {}).then((r) => {
+		if (r.processed > 0) {
+			console.log(`[wallet] synced ${r.processed} message box payments`);
+		}
+	}).catch((err) => {
+		console.error("[wallet] message box sync failed:", err);
+	});
+
 	activeResult = { ...result, ctx, depositAddress };
 
 	return {
-		wallet: result.wallet,
+		wallet: wpm,
 		services: result.services,
 		ctx,
 		depositAddress,
