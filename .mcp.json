@@ -1,7 +1,3 @@
 {
-  "mcpServers": {
-    "bsv-mcp": {
-      "command": "${CLAUDE_PLUGIN_ROOT:-.}/start.sh"
-    }
-  }
+  "mcpServers": {}
 }
