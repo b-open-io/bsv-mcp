@@ -7,14 +7,14 @@ import {
 	type OneSatContext,
 } from "@1sat/actions";
 import {
-	createRemoteWallet,
+	createNodeWallet,
+	type NodeWalletResult,
 	type OneSatServices,
-	type RemoteWalletResult,
-} from "@1sat/wallet-remote";
+} from "@1sat/wallet-node";
 import { PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
 
-const DEFAULT_REMOTE_STORAGE_URL = "https://1sat.shruggr.cloud/1sat/wallet";
+const DEFAULT_REMOTE_STORAGE_URL = "https://api.1sat.app/1sat/wallet";
 const MCP_ADDRESS_PREFIX = "mcp";
 
 export interface WalletInitResult {
@@ -26,7 +26,7 @@ export interface WalletInitResult {
 }
 
 let activeResult:
-	| (RemoteWalletResult & { ctx: OneSatContext; depositAddress: string })
+	| (NodeWalletResult & { ctx: OneSatContext; depositAddress: string })
 	| null = null;
 
 /**
@@ -39,14 +39,11 @@ export async function initWallet(
 	privateKeyWif: string,
 	chain: "main" | "test" = "main",
 ): Promise<WalletInitResult> {
-	const remoteStorageUrl =
-		process.env.REMOTE_STORAGE_URL ?? DEFAULT_REMOTE_STORAGE_URL;
-
-	const result = await createRemoteWallet({
+	const result = await createNodeWallet({
 		privateKey: PrivateKey.fromWif(privateKeyWif),
 		chain,
-		localBackup: true,
-		remoteStorageUrl,
+		activeRemote: process.env.REMOTE_STORAGE_URL ?? DEFAULT_REMOTE_STORAGE_URL,
+		storageIdentityKey: "bsv-mcp",
 	});
 
 	const wpm = new WalletPermissionsManager(result.wallet, "bsv-mcp", {
