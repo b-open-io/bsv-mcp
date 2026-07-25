@@ -100,7 +100,7 @@ export class DropletClient {
 	}
 
 	async getAuthHeaders(
-		method: string,
+		_method: string,
 		path: string,
 		body: unknown,
 	): Promise<Record<string, string>> {

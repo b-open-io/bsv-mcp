@@ -3,8 +3,8 @@ import { join } from "node:path";
 import {
 	createContext,
 	deriveDepositAddresses,
-	syncMessages,
 	type OneSatContext,
+	syncMessages,
 } from "@1sat/actions";
 import {
 	createNodeWallet,
@@ -83,13 +83,16 @@ export async function initWallet(
 	const depositAddress = derivations[0].address;
 
 	// Sync incoming paymail payments from message box
-	syncMessages.execute(ctx, {}).then((r) => {
-		if (r.processed > 0) {
-			console.log(`[wallet] synced ${r.processed} message box payments`);
-		}
-	}).catch((err) => {
-		console.error("[wallet] message box sync failed:", err);
-	});
+	syncMessages
+		.execute(ctx, {})
+		.then((r) => {
+			if (r.processed > 0) {
+				console.log(`[wallet] synced ${r.processed} message box payments`);
+			}
+		})
+		.catch((err) => {
+			console.error("[wallet] message box sync failed:", err);
+		});
 
 	activeResult = { ...result, ctx, depositAddress };
 

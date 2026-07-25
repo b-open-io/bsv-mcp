@@ -52,7 +52,7 @@ export function registerPrimitivesPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_primitives",
 		"Detailed information about the primitive data types and structures in the BSV SDK, including Binary, Hex, Points, and other fundamental types.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

@@ -11,7 +11,10 @@ import { registerSearchInscriptionsTool } from "./searchInscriptions";
  * @param server The MCP server instance
  * @param ctx OneSat context for SDK service access
  */
-export function registerOrdinalsTools(server: McpServer, ctx?: OneSatContext): void {
+export function registerOrdinalsTools(
+	server: McpServer,
+	ctx?: OneSatContext,
+): void {
 	registerGetInscriptionTool(server, ctx);
 	registerSearchInscriptionsTool(server, ctx);
 	registerMarketListingsTool(server, ctx);

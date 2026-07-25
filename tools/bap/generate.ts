@@ -60,7 +60,7 @@ async function generateBapKeys(
 }> {
 	const keyManager = new SecureKeyManager({ keyDir: KEY_DIR });
 	let tempXprv = "";
-	let identityPk: string;
+	let _identityPk: string;
 	let payPkToPreserve: PrivateKey | undefined;
 
 	// 1. Load existing keys and check preconditions
@@ -174,7 +174,7 @@ async function generateBapKeys(
 			`${BAP_KEY_ID}-0`,
 			"self",
 		);
-		identityPk = identityKey.toWif();
+		_identityPk = identityKey.toWif();
 
 		console.error(`INFO: Generated BAP identity key: ${generatedIdentityKey}`);
 		console.error(

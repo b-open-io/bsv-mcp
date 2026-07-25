@@ -22,7 +22,7 @@ export function registerGetBalanceTool(
 		{},
 		async (
 			_params,
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				// Get private key from wallet

@@ -13,8 +13,12 @@ import { z } from "zod";
  * Schema for the sendMnee tool arguments.
  */
 export const sendMneeArgsSchema = z.object({
-	address: z.string().describe("The recipient's address"),
-	amount: z.number().describe("Amount to send"),
+	address: z.string().min(1).describe("The recipient's address"),
+	amount: z
+		.number()
+		.positive()
+		.finite()
+		.describe("Amount to send; must be greater than zero"),
 	currency: z
 		.enum(["MNEE", "USD"])
 		.default("MNEE")
@@ -45,10 +49,12 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 		{ ...sendMneeArgsSchema.shape },
 		async (
 			{ address, amount, currency },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
-				// Since 1 MNEE = $1, the amount is the same in both currencies
+				// MNEE is dollar-pegged, so a USD amount transfers one-for-one. The
+				// currency the caller named is echoed in the response rather than
+				// dropped, so the interpretation is visible to whoever called.
 				const mneeAmount = amount;
 
 				const transferRequest: SendMNEE[] = [
@@ -112,6 +118,7 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 									ticketId: result.ticketId,
 									txid: status.tx_id,
 									status: status.status,
+									requestedCurrency: currency,
 									mneeAmount: mneeAmount,
 									usdAmount: formatUSD(mneeAmount),
 									recipient: address,

@@ -12,7 +12,6 @@ import type {
 	CreateOrdinalsCollectionMetadata,
 	CreateOrdinalsConfig,
 	LocalSigner,
-	RarityLabels,
 } from "js-1sat-ord";
 import { createOrdinals } from "js-1sat-ord";
 import { z } from "zod";
@@ -45,8 +44,6 @@ const mintCollectionArgsSchema = z.object({
 		.optional()
 		.describe("Skip broadcasting transactions (for testing)"),
 });
-
-type MintCollectionArgs = z.infer<typeof mintCollectionArgsSchema>;
 
 interface ImageFile {
 	path: string;
@@ -121,10 +118,19 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 		"wallet_mintCollection",
 		"Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.",
 		{ ...mintCollectionArgsSchema.shape },
-		async ({ folderPath, collectionName, description, rarityLabels, traits: traitsJson, skipBroadcast }): Promise<CallToolResult> => {
+		async ({
+			folderPath,
+			collectionName,
+			description,
+			rarityLabels,
+			traits: traitsJson,
+			skipBroadcast,
+		}): Promise<CallToolResult> => {
 			try {
 				// Parse traits JSON string if provided
-				const traits: Record<string, string[]> | undefined = traitsJson ? JSON.parse(traitsJson) : undefined;
+				const traits: Record<string, string[]> | undefined = traitsJson
+					? JSON.parse(traitsJson)
+					: undefined;
 				// Get keys from wallet
 				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) {
@@ -145,8 +151,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 					description: description,
 					quantity: imageFiles.length,
 					// Transform rarity labels to correct format
-					rarityLabels:
-						rarityLabels?.map((r) => ({ label: r.label })) || [],
+					rarityLabels: rarityLabels?.map((r) => ({ label: r.label })) || [],
 					// Transform traits - need to match the CollectionTraits type
 					traits: traits
 						? Object.entries(traits).reduce((acc, [key, values]) => {
@@ -262,9 +267,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 								(i / imageFiles.length) * rarityLabels.length,
 							);
 							const rarityItem =
-								rarityLabels[
-									Math.min(rarityIndex, rarityLabels.length - 1)
-								];
+								rarityLabels[Math.min(rarityIndex, rarityLabels.length - 1)];
 							if (rarityItem) {
 								itemSubTypeData.rarityLabel = [
 									{ [rarityItem.label]: `${rarityItem.percentage}%` },

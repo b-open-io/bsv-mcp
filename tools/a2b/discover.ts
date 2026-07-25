@@ -50,7 +50,7 @@ export type A2bDiscoverArgs = z.infer<typeof a2bDiscoverArgsSchema>;
 /**
  * Format the response in a user-friendly way
  */
-function formatSearchResults(data: unknown, queryType: string): string {
+function _formatSearchResults(data: unknown, queryType: string): string {
 	// console.log(`Received data: ${JSON.stringify(data).substring(0, 200)}...`); // Debug log
 
 	// Check if data is an object with items property
@@ -124,7 +124,7 @@ export function registerA2bDiscoverTool(server: McpServer) {
 		{ ...a2bDiscoverArgsSchema.shape },
 		async (
 			{ queryType, query, limit, offset, fromBlock, toBlock },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				const params = new URLSearchParams();

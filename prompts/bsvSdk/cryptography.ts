@@ -45,7 +45,7 @@ export function registerCryptographyPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_cryptography",
 		"Detailed information about the cryptographic functionality in the BSV SDK, including key generation, signing, encryption, and hashing.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

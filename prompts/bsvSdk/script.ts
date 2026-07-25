@@ -53,7 +53,7 @@ export function registerScriptPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_script",
 		"Detailed information about the script functionality in the BSV SDK, including Bitcoin Script operations, locking and unlocking scripts, and OP_CODES.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

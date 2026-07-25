@@ -17,7 +17,9 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toSatoshi",
 		{
-			bitcoin: z.string().describe("Bitcoin amount (accepts numeric strings like '1.5')"),
+			bitcoin: z
+				.string()
+				.describe("Bitcoin amount (accepts numeric strings like '1.5')"),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
 		async ({ bitcoin, returnType }) => {
@@ -46,7 +48,9 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toBitcoin",
 		{
-			satoshis: z.string().describe("Satoshi amount (accepts numeric strings like '100000000')"),
+			satoshis: z
+				.string()
+				.describe("Satoshi amount (accepts numeric strings like '100000000')"),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
 		async ({ satoshis, returnType }) => {
@@ -58,7 +62,7 @@ export function registerTokenTools(server: McpServer): void {
 						try {
 							result = toBitcoin(satoshis, ReturnTypes.BigInt);
 							return { content: [{ type: "text", text: result.toString() }] };
-						} catch (e) {
+						} catch {
 							return {
 								content: [
 									{
@@ -87,7 +91,9 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toTokenSatoshi",
 		{
-			token: z.string().describe("Token amount (accepts numeric strings like '1.5')"),
+			token: z
+				.string()
+				.describe("Token amount (accepts numeric strings like '1.5')"),
 			decimals: z.number().int().min(0),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
@@ -117,7 +123,9 @@ export function registerTokenTools(server: McpServer): void {
 	server.tool(
 		"bsv_toToken",
 		{
-			tokenSatoshi: z.string().describe("Token satoshi amount (accepts numeric strings)"),
+			tokenSatoshi: z
+				.string()
+				.describe("Token satoshi amount (accepts numeric strings)"),
 			decimals: z.number().int().min(0),
 			returnType: z.enum(["number", "string", "bigint"]).optional(),
 		},
@@ -130,7 +138,7 @@ export function registerTokenTools(server: McpServer): void {
 						try {
 							result = toToken(tokenSatoshi, decimals, ReturnTypes.BigInt);
 							return { content: [{ type: "text", text: result.toString() }] };
-						} catch (e) {
+						} catch {
 							return {
 								content: [
 									{

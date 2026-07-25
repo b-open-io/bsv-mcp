@@ -64,7 +64,7 @@ export function registerGetPriceTool(server: McpServer): void {
 						},
 					],
 				};
-			} catch (err) {
+			} catch {
 				return {
 					content: [{ type: "text", text: "Error fetching BSV price." }],
 					isError: true,

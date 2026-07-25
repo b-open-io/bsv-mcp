@@ -22,7 +22,6 @@ export function registerPurchaseListingTool(
 			listingType,
 			tokenID,
 			tokenAmount,
-			description,
 		}): Promise<CallToolResult> => {
 			if (!ctx) {
 				return {

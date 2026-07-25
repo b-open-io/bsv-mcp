@@ -13,8 +13,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { registerAllPrompts } from "../../prompts/index.ts";
 import { registerResources } from "../../resources/resources.ts";
-import { registerAllTools } from "../../tools/index.ts";
 import type { ToolsConfig } from "../../tools/index.ts";
+import { registerAllTools } from "../../tools/index.ts";
 import { IntegratedWallet } from "../../tools/wallet/integratedWallet.ts";
 
 /** Cloudflare Worker environment bindings */
@@ -76,9 +76,7 @@ async function validateOAuthToken(
 
 	if (!response.ok) {
 		const body = await response.text().catch(() => "Unknown error");
-		throw new Error(
-			`Token validation failed (${response.status}): ${body}`,
-		);
+		throw new Error(`Token validation failed (${response.status}): ${body}`);
 	}
 
 	return (await response.json()) as UserinfoResponse;
@@ -94,8 +92,7 @@ function generateWWWAuthenticate(
 ): string {
 	let header = `Bearer realm="BSV-MCP", resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource"`;
 	if (error) header += `, error="${error}"`;
-	if (errorDescription)
-		header += `, error_description="${errorDescription}"`;
+	if (errorDescription) header += `, error_description="${errorDescription}"`;
 	return header;
 }
 
@@ -202,8 +199,7 @@ export default {
 		}
 
 		const oauthIssuer = env.OAUTH_ISSUER;
-		const resourceUrl =
-			env.RESOURCE_URL || `${url.protocol}//${url.host}`;
+		const resourceUrl = env.RESOURCE_URL || `${url.protocol}//${url.host}`;
 
 		// --- OAuth 2.1 Authorization Server Metadata ---
 		if (
@@ -229,10 +225,7 @@ export default {
 						"bsv:tokens",
 					],
 					response_types_supported: ["code"],
-					grant_types_supported: [
-						"authorization_code",
-						"refresh_token",
-					],
+					grant_types_supported: ["authorization_code", "refresh_token"],
 					token_endpoint_auth_methods_supported: ["none"],
 					code_challenge_methods_supported: ["S256"],
 				},
@@ -285,10 +278,7 @@ export default {
 				const userCtx = await validateOAuthToken(request, oauthIssuer);
 				if (userCtx) {
 					authInfo = {
-						token:
-							request.headers
-								.get("Authorization")
-								?.substring(7) || "",
+						token: request.headers.get("Authorization")?.substring(7) || "",
 						clientId: userCtx.sub,
 						scopes: userCtx.scope?.split(" ") || [],
 					};
@@ -298,9 +288,7 @@ export default {
 				}
 			} catch (error) {
 				const msg =
-					error instanceof Error
-						? error.message
-						: "Token validation failed";
+					error instanceof Error ? error.message : "Token validation failed";
 				return addCorsHeaders(
 					new Response(
 						JSON.stringify({

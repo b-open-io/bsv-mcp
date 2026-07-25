@@ -3,6 +3,7 @@ import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
 import { registerBrc100Tools } from "./brc100";
+import { registerCancelListingTool } from "./cancelListing";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
 import { registerGatherCollectionInfoTool } from "./gatherCollectionInfo";
 import { registerGetAddressTool } from "./getAddress";
@@ -10,23 +11,22 @@ import { registerWalletGetBalanceTool } from "./getBalance";
 import { registerGetBsv21BalancesTool } from "./getBsv21Balances";
 import { registerGetLockDataTool } from "./getLockData";
 import { registerGetOrdinalsTool } from "./getOrdinals";
+import { registerListOrdinalTool } from "./listOrdinal";
 import { registerListTokensTool } from "./listTokens";
+import { registerLockBsvTool } from "./lockBsv";
 import { registerMintCollectionTool } from "./mintCollection";
+import { registerOpnsDeregisterTool } from "./opnsDeregister";
+import { registerOpnsRegisterTool } from "./opnsRegister";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerRefreshUtxosTool } from "./refreshUtxos";
+import { registerSendAllBsvTool } from "./sendAllBsv";
 import { registerSendBsvTool } from "./sendBsv";
 import { registerSignBsmTool } from "./signBsm";
-import { registerTransferOrdTokenTool } from "./transferOrdToken";
-import { registerListOrdinalTool } from "./listOrdinal";
-import { registerCancelListingTool } from "./cancelListing";
-import { registerSendAllBsvTool } from "./sendAllBsv";
-import { registerLockBsvTool } from "./lockBsv";
-import { registerUnlockBsvTool } from "./unlockBsv";
-import { registerOpnsRegisterTool } from "./opnsRegister";
-import { registerOpnsDeregisterTool } from "./opnsDeregister";
 import { registerSweepBsvTool } from "./sweepBsv";
-import { registerSweepOrdinalsTool } from "./sweepOrdinals";
 import { registerSweepBsv21Tool } from "./sweepBsv21";
+import { registerSweepOrdinalsTool } from "./sweepOrdinals";
+import { registerTransferOrdTokenTool } from "./transferOrdToken";
+import { registerUnlockBsvTool } from "./unlockBsv";
 import type { Wallet } from "./wallet";
 
 export function registerWalletTools(
@@ -94,5 +94,4 @@ export function registerWalletTools(
 	registerSweepBsvTool(server, config.ctx);
 	registerSweepOrdinalsTool(server, config.ctx);
 	registerSweepBsv21Tool(server, config.ctx);
-
 }

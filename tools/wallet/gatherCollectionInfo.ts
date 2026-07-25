@@ -11,8 +11,6 @@ const gatherCollectionInfoArgsSchema = z.object({
 		.describe("Path to folder containing images to analyze for collection"),
 });
 
-type GatherCollectionInfoArgs = z.infer<typeof gatherCollectionInfoArgsSchema>;
-
 interface ImageInfo {
 	fileName: string;
 	filePath: string;
@@ -172,7 +170,7 @@ export function registerGatherCollectionInfoTool(
 					if (!folderStat.isDirectory()) {
 						throw new Error(`Path is not a directory: ${folderPath}`);
 					}
-				} catch (error) {
+				} catch (_error) {
 					analysis.errors.push(
 						`Folder not found or inaccessible: ${folderPath}`,
 					);
@@ -213,7 +211,7 @@ export function registerGatherCollectionInfoTool(
 					);
 					analysis.walletInfo.balance = balance;
 					analysis.walletInfo.balanceBSV = balance / 100000000;
-				} catch (error) {
+				} catch (_error) {
 					analysis.warnings.push("Could not fetch wallet balance");
 				}
 

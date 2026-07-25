@@ -9,7 +9,11 @@ const listOrdinalArgsSchema = z.object({
 		.describe(
 			"Tracking id of the ordinal in the ordinals basket (the 'id:' tag from wallet_getOrdinals)",
 		),
-	price: z.number().describe("Price in satoshis"),
+	price: z
+		.number()
+		.int()
+		.positive()
+		.describe("Price in satoshis; whole satoshis above zero"),
 	payAddress: z
 		.string()
 		.optional()

@@ -13,9 +13,7 @@ export function registerGetInscriptionTool(
 		"ordinals_getInscription",
 		"Retrieves metadata for an inscription by its outpoint. Returns content type, file info, origin, MAP data, and sequence info.",
 		{
-			outpoint: z
-				.string()
-				.describe("Outpoint in format 'txid_vout'"),
+			outpoint: z.string().describe("Outpoint in format 'txid_vout'"),
 		},
 		async ({ outpoint }) => {
 			try {

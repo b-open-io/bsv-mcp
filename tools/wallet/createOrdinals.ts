@@ -58,6 +58,12 @@ export function registerCreateOrdinalsTool(
 					contentType,
 					map: metadata,
 					signWithBAP,
+					// Without this the inscription locks to a wallet-derived self
+					// key, so a caller-supplied address has to be forwarded or the
+					// ordinal silently mints to the wrong owner.
+					...(destinationAddress && {
+						destination: { address: destinationAddress },
+					}),
 				});
 
 				if (result.error) {

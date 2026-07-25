@@ -92,7 +92,7 @@ async function callIngestEndpoint(txid: string): Promise<boolean> {
 			return false;
 		}
 
-		const result = await response.json();
+		const _result = await response.json();
 		// console.log('Ingest result:', result);
 		return true;
 	} catch (error) {

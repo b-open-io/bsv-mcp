@@ -86,7 +86,7 @@ export function registerOrdinalsPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_ordinals",
 		"Comprehensive information about Bitcoin SV ordinals, including what they are, how they work, and how to use them.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

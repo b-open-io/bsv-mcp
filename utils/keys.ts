@@ -1,4 +1,4 @@
-import type { PrivateKey, PublicKey } from "@bsv/sdk";
+import type { PrivateKey } from "@bsv/sdk";
 import { Hash, HD, Utils } from "@bsv/sdk";
 
 /**

@@ -80,7 +80,7 @@
 		"typescript": "^5.9.3"
 	},
 	"overrides": {
-		"zod": "^4.4.3"
+		"zod": "4.4.3"
 	},
 	"dependencies": {
 		"@1sat/actions": "^0.0.192",
@@ -102,7 +102,7 @@
 		"satoshi-token": "^0.0.7",
 		"schema-dts": "^1.1.5",
 		"sigma-protocol": "^0.1.9",
-		"zod": "^4.4.3"
+		"zod": "4.4.3"
 	},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",

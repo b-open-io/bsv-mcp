@@ -1,23 +1,15 @@
 #!/usr/bin/env bun
 
-// Redirect console.log/warn/info/debug to stderr in stdio mode.
-// MCP stdio transport uses stdout exclusively for JSON-RPC messages —
-// any stray stdout output corrupts the protocol. Must run before any import.
-const _isStdio =
-	process.argv.includes("--stdio") ||
-	process.env.TRANSPORT?.toLowerCase() === "stdio";
-if (_isStdio) {
-	const _err = console.error.bind(console);
-	console.log = (...a: unknown[]) => _err("[log]", ...a);
-	console.warn = (...a: unknown[]) => _err("[warn]", ...a);
-	console.info = (...a: unknown[]) => _err("[info]", ...a);
-	console.debug = (...a: unknown[]) => _err("[debug]", ...a);
-}
+// Must stay the first import. The stdio transport owns stdout for JSON-RPC, so
+// the console redirect has to be installed before any other module initializes
+// and gets a chance to log. This was previously a statement block below the
+// imports, which cannot work: ES imports are evaluated before any top-level
+// statement, so every dependency had already initialized by the time it ran.
+import "./utils/stdioGuard";
 
 import { readFile } from "node:fs/promises";
 import os from "node:os";
-import path from "node:path";
-import { dirname, join } from "node:path";
+import path, { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrivateKey } from "@bsv/sdk";
 import {
@@ -27,6 +19,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
@@ -35,8 +28,6 @@ import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
-import { initWallet, destroyWallet } from "./utils/walletInit.ts";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
 	type BSVJWTPayload,
 	createMCPJWTValidator,
@@ -44,6 +35,7 @@ import {
 } from "./utils/jwtValidator.ts";
 import { SecureKeyManager } from "./utils/keyManager.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
+import { destroyWallet, initWallet } from "./utils/walletInit.ts";
 
 // Initialize server variable (used for stdio mode and passphrase detection)
 let server: McpServer | undefined;
@@ -113,7 +105,7 @@ const CONFIG = {
 	// --stdio CLI flag takes precedence over TRANSPORT env var (matches neighborhood plugin pattern)
 	transportMode: process.argv.includes("--stdio")
 		? "stdio"
-		: (process.env.TRANSPORT?.toLowerCase() || "http"), // 'stdio' or 'http'/default
+		: process.env.TRANSPORT?.toLowerCase() || "http", // 'stdio' or 'http'/default
 	port: Number.parseInt(process.env.PORT || "3000", 10),
 
 	// --- Droplet API Configuration ---
@@ -279,7 +271,11 @@ async function initializeKeys(): Promise<{
 const APP_RESOURCE_URI = "ui://bsv-mcp/app.html";
 const __appDirname = dirname(fileURLToPath(import.meta.url));
 
-function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@1sat/actions").OneSatContext) {
+function registerMcpAppTools(
+	server: McpServer,
+	wallet?: Wallet,
+	ctx?: import("@1sat/actions").OneSatContext,
+) {
 	// Primary dashboard tool — model calls this to open the UI
 	registerAppTool(
 		server,
@@ -333,8 +329,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 					const res = await fetch(
 						`https://junglebus.gorillapool.io/v1/transaction/get/${txid}`,
 					);
-					if (!res.ok)
-						throw new Error(`Transaction not found: ${res.status}`);
+					if (!res.ok) throw new Error(`Transaction not found: ${res.status}`);
 					const jbData = (await res.json()) as Record<string, unknown>;
 
 					const { Transaction, Utils } = await import("@bsv/sdk");
@@ -491,7 +486,8 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 						},
 					],
 					structuredContent: {
-						error: "No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
+						error:
+							"No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
 					},
 					_meta: { viewUUID: crypto.randomUUID() },
 				};
@@ -681,8 +677,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 				const res = await fetch(
 					`https://ordinals.gorillapool.io/api/txos/address/${address}/unspent?limit=1000`,
 				);
-				if (!res.ok)
-					throw new Error(`GorillaPool API error: ${res.status}`);
+				if (!res.ok) throw new Error(`GorillaPool API error: ${res.status}`);
 				const utxos = (await res.json()) as Array<Record<string, unknown>>;
 
 				const funding: Array<{
@@ -711,9 +706,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 					const outpoint = `${txid}_${vout}`;
 					const satoshis = (utxo.satoshis as number) || 0;
 					const script = (utxo.script as string) || "";
-					const origin = utxo.origin as
-						| Record<string, unknown>
-						| undefined;
+					const origin = utxo.origin as Record<string, unknown> | undefined;
 					const originData = origin?.data as
 						| Record<string, unknown>
 						| undefined;
@@ -721,10 +714,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 					const base = { outpoint, satoshis, lockingScript: script };
 
 					if (originData?.bsv21) {
-						const bsv21 = originData.bsv21 as Record<
-							string,
-							unknown
-						>;
+						const bsv21 = originData.bsv21 as Record<string, unknown>;
 						bsv21Raw.push({
 							...base,
 							tokenId: (bsv21.id as string) || "",
@@ -829,16 +819,9 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 				inputs: z
 					.array(
 						z.object({
-							outpoint: z
-								.string()
-								.describe("Outpoint (txid_vout)"),
-							satoshis: z
-								.number()
-								.int()
-								.describe("Satoshis in output"),
-							lockingScript: z
-								.string()
-								.describe("Locking script hex"),
+							outpoint: z.string().describe("Outpoint (txid_vout)"),
+							satoshis: z.number().int().describe("Satoshis in output"),
+							lockingScript: z.string().describe("Locking script hex"),
 						}),
 					)
 					.describe("UTXOs to sweep"),
@@ -875,16 +858,10 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 				if (!inputs.length) throw new Error("No inputs provided");
 
 				// Fetch and merge BEEF for all input transactions
-				const txids = [
-					...new Set(
-						inputs.map((i) => i.outpoint.split("_")[0]),
-					),
-				];
+				const txids = [...new Set(inputs.map((i) => i.outpoint.split("_")[0]))];
 				const firstBeef = await ctx.services.getBeefForTxid(txids[0]);
 				for (let i = 1; i < txids.length; i++) {
-					const additionalBeef = await ctx.services.getBeefForTxid(
-						txids[i],
-					);
+					const additionalBeef = await ctx.services.getBeefForTxid(txids[i]);
 					firstBeef.mergeBeef(additionalBeef);
 				}
 
@@ -899,10 +876,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 					};
 				});
 
-				const inputTotal = inputs.reduce(
-					(sum, i) => sum + i.satoshis,
-					0,
-				);
+				const inputTotal = inputs.reduce((sum, i) => sum + i.satoshis, 0);
 
 				const createResult = await ctx.wallet.createAction({
 					description: `Sweep ${inputTotal} sats (${sweepType})`,
@@ -928,9 +902,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 				const { Transaction: TxClass, Utils: SdkUtils } = await import(
 					"@bsv/sdk"
 				);
-				const tx = TxClass.fromBEEF(
-					createResult.signableTransaction.tx,
-				);
+				const tx = TxClass.fromBEEF(createResult.signableTransaction.tx);
 				const ourOutpoints = new Set(
 					inputs.map((i) => {
 						const [txid, voutStr] = i.outpoint.split("_");
@@ -963,9 +935,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 					}
 				}
 
-				const txHex = SdkUtils.toHex(
-					createResult.signableTransaction.tx,
-				);
+				const txHex = SdkUtils.toHex(createResult.signableTransaction.tx);
 
 				return {
 					content: [
@@ -1017,9 +987,7 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 								.describe("Signed unlocking script hex"),
 						}),
 					)
-					.describe(
-						"Map of input index to signed unlocking script",
-					),
+					.describe("Map of input index to signed unlocking script"),
 			},
 			_meta: {
 				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
@@ -1088,7 +1056,10 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 		server,
 		"BSV Dashboard",
 		APP_RESOURCE_URI,
-		{ description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs" },
+		{
+			description:
+				"Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs",
+		},
 		async () => {
 			// When running from bundle (dist/index.js), app.html is a sibling.
 			// When running from source (index.ts), it's in dist/.
@@ -1099,7 +1070,8 @@ function registerMcpAppTools(server: McpServer, wallet?: Wallet, ctx?: import("@
 			try {
 				html = await readFile(distPath, "utf-8");
 			} catch {
-				html = "<html><body><p>Dashboard not built. Run <code>bun run build:view</code> to enable it.</p></body></html>";
+				html =
+					"<html><body><p>Dashboard not built. Run <code>bun run build:view</code> to enable it.</p></body></html>";
 			}
 			return {
 				contents: [
@@ -1503,7 +1475,9 @@ Authentication:
 			}
 		>();
 
-		logFunc(`Starting BSV MCP Server in Streamable HTTP mode on port ${port}...`);
+		logFunc(
+			`Starting BSV MCP Server in Streamable HTTP mode on port ${port}...`,
+		);
 		if (CONFIG.enableOAuth) {
 			logFunc(`OAuth 2.1 authentication enabled`);
 			logFunc(`  Issuer: ${CONFIG.oauthIssuer}`);
@@ -1519,8 +1493,7 @@ Authentication:
 			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 			"Access-Control-Allow-Headers":
 				"Content-Type, Authorization, mcp-session-id, Last-Event-ID, mcp-protocol-version",
-			"Access-Control-Expose-Headers":
-				"mcp-session-id, mcp-protocol-version",
+			"Access-Control-Expose-Headers": "mcp-session-id, mcp-protocol-version",
 		} as const;
 
 		/**
@@ -1577,10 +1550,7 @@ Authentication:
 								"bsv:tokens",
 							],
 							response_types_supported: ["code"],
-							grant_types_supported: [
-								"authorization_code",
-								"refresh_token",
-							],
+							grant_types_supported: ["authorization_code", "refresh_token"],
 							token_endpoint_auth_methods_supported: ["none"],
 							code_challenge_methods_supported: ["S256"],
 						},
@@ -1626,7 +1596,9 @@ Authentication:
 				// --- MCP Streamable HTTP endpoint ---
 				if (url.pathname === "/mcp") {
 					// Validate OAuth
-					let authInfo: { token: string; clientId: string; scopes: string[] } | undefined;
+					let authInfo:
+						| { token: string; clientId: string; scopes: string[] }
+						| undefined;
 					try {
 						const userCtx = await validateAuth(req);
 						if (userCtx) {
@@ -1670,10 +1642,18 @@ Authentication:
 									error: { code: -32001, message: "Session not found" },
 									id: null,
 								}),
-								{ status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } },
+								{
+									status: 404,
+									headers: {
+										"Content-Type": "application/json",
+										...corsHeaders,
+									},
+								},
 							);
 						}
-						const response = await session.transport.handleRequest(req, { authInfo });
+						const response = await session.transport.handleRequest(req, {
+							authInfo,
+						});
 						// Add CORS headers to transport response
 						for (const [k, v] of Object.entries(corsHeaders)) {
 							if (!response.headers.has(k)) response.headers.set(k, v);
@@ -1713,9 +1693,7 @@ Authentication:
 			},
 		});
 
-		logFunc(
-			`Bun server listening on http://localhost:${port}`,
-		);
+		logFunc(`Bun server listening on http://localhost:${port}`);
 		logFunc("  MCP Endpoint: /mcp (Streamable HTTP)");
 		logFunc("  OAuth Discovery: /.well-known/oauth-protected-resource");
 	}

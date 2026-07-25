@@ -94,9 +94,6 @@ const exploreArgsSchema = z.object({
 		.describe("Number of days for miner stats endpoints (defaults to 7)"),
 });
 
-// Type for the tool arguments
-type ExploreArgs = z.infer<typeof exploreArgsSchema>;
-
 /**
  * Register the bsv_explore tool with the MCP server
  * @param server The MCP server instance
@@ -134,7 +131,6 @@ export function registerExploreTool(server: McpServer): void {
 		exploreArgsSchema.shape,
 		async (params) => {
 			try {
-
 				// Validate required parameters for specific endpoints
 				if (
 					params.endpoint === ExploreEndpoint.BLOCK_BY_HASH &&

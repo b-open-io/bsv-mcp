@@ -1,4 +1,4 @@
-import type { Identity, IdentityData, SchemaType } from "./types";
+import type { Identity, SchemaType } from "./types";
 
 type AllFields = {
 	schemaType: SchemaType;

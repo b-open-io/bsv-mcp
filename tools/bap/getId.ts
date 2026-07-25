@@ -103,7 +103,7 @@ export function registerBapGetIdTool(
 						if (identityKeyWifEnv) {
 							try {
 								pkToUse = PrivateKey.fromWif(identityKeyWifEnv);
-							} catch (e) {
+							} catch {
 								// Don't error here, let it be handled by the final check
 							}
 						}

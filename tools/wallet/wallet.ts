@@ -8,7 +8,6 @@
 
 import type { GetPublicKeyArgs, GetPublicKeyResult, PubKeyHex } from "@bsv/sdk";
 import {
-	Beef,
 	type BroadcastFailure,
 	type BroadcastResponse,
 	fromUtxo,
@@ -16,7 +15,6 @@ import {
 	isBroadcastResponse,
 	P2PKH,
 	PrivateKey,
-	type PublicKey,
 	SatoshisPerKilobyte,
 	Script,
 	Transaction,
@@ -25,16 +23,6 @@ import {
 import { fetchNftUtxos, type NftUtxo, type Utxo } from "js-1sat-ord";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import { fetchPaymentUtxosFromV5 } from "./fetchPaymentUtxos";
-
-// Local interface for what encrypt/decrypt expect, will be mapped from Zod schema
-interface InternalEncryptionArgs {
-	data: number[];
-	recipientPublicKey?: PublicKey; // For encryption
-}
-
-interface InternalDecryptionArgs {
-	data: number[];
-}
 
 export class Wallet {
 	private paymentUtxos: Utxo[] = [];
@@ -146,7 +134,7 @@ export class Wallet {
 		return this.getPaymentKey()?.toAddress();
 	}
 
-	async getPublicKey(args?: GetPublicKeyArgs): Promise<GetPublicKeyResult> {
+	async getPublicKey(_args?: GetPublicKeyArgs): Promise<GetPublicKeyResult> {
 		const currentPaymentKey = this.getPaymentKey();
 		if (!currentPaymentKey) {
 			throw new Error("No payment key available to derive public key.");

@@ -3,7 +3,6 @@ import {
 	type JSONRPCMessage,
 	JSONRPCMessageSchema,
 	type JSONRPCNotification,
-	type JSONRPCRequest,
 	type JSONRPCResponse,
 } from "@modelcontextprotocol/sdk/types.js";
 

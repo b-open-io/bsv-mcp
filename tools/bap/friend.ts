@@ -53,9 +53,9 @@ export function registerBapFriendTool(
 		{ ...bapFriendArgsSchema.shape },
 		async (
 			{ targetBapId },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
-			const logFunc = console.error;
+			const _logFunc = console.error;
 
 			try {
 				// --- Preconditions ---

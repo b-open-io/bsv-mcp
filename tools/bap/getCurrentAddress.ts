@@ -1,7 +1,5 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import type { Wallet } from "../wallet/wallet";
 
 /**
  * Register the tool to get the BAP identity address
@@ -26,7 +24,7 @@ export function registerBapGetCurrentAddressTool(
 					if (identityKeyWifEnv) {
 						try {
 							pkToUse = PrivateKey.fromWif(identityKeyWifEnv);
-						} catch (e) {
+						} catch {
 							// Let the final check handle the error
 						}
 					}

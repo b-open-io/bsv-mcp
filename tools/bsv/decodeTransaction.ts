@@ -126,7 +126,7 @@ export function registerDecodeTransactionTool(server: McpServer): void {
 		decodeTransactionArgsSchema.shape,
 		async (
 			{ tx, encoding },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		) => {
 			try {
 				let transaction: Transaction;

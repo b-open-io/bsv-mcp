@@ -57,3 +57,8 @@ config/
 todo.md
 .vercel
 .worktrees
+
+# SQLite store created by @bsv/wallet-toolbox at runtime
+wallet.db
+wallet.db-shm
+wallet.db-wal

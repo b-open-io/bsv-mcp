@@ -50,14 +50,16 @@ export async function executeTransaction<TArgs>(
 			throw new Error("Could not get wallet address");
 		}
 
-		// Parse identity key if provided
+		// Absent means "do not use identity features". Present but unparseable
+		// means the caller meant to sign and the key is wrong, so proceeding
+		// would silently produce an unsigned transaction.
 		let identityKey: PrivateKey | undefined;
 		if (identityKeyWif) {
 			try {
 				identityKey = PrivateKey.fromWif(identityKeyWif);
 			} catch (e) {
-				console.warn(
-					"Invalid IDENTITY_KEY_WIF provided, skipping identity features",
+				throw new Error(
+					`An identity key was supplied but is not a valid WIF: ${formatError(e)}`,
 				);
 			}
 		}
@@ -96,8 +98,14 @@ export function getIdentityKeyFromEnv(): PrivateKey | undefined {
 	try {
 		return PrivateKey.fromWif(identityKeyWif);
 	} catch (e) {
-		console.warn("Invalid IDENTITY_KEY_WIF in environment:", formatError(e));
-		return undefined;
+		// Unset means "do not sign" and is a valid configuration. Set but
+		// unparseable means the operator intended to sign and the key is wrong,
+		// so returning undefined here would silently publish unsigned data under
+		// no identity. Fail instead. The parse error carries no key material --
+		// @bsv/sdk reports "Invalid checksum" without echoing its input.
+		throw new Error(
+			`IDENTITY_KEY_WIF is set but is not a valid WIF: ${formatError(e)}`,
+		);
 	}
 }
 

@@ -1,12 +1,4 @@
-import {
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	mock,
-	spyOn,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,7 +16,7 @@ import { type BapGenerateArgs, registerBapGenerateTool } from "./generate";
 
 type GenericToolHandler = (
 	params: BapGenerateArgs,
-	extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+	_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 ) => CallToolResult | Promise<CallToolResult>;
 
 /** Narrow the first content block of a tool result to its text payload. */
@@ -43,10 +35,10 @@ const mockMcpServerInstance = {
 };
 
 const KEY_DIR = path.join(os.homedir(), ".bsv-mcp");
-const KEY_FILE_PATH = path.join(KEY_DIR, "keys.json");
+const _KEY_FILE_PATH = path.join(KEY_DIR, "keys.json");
 
 const MOCK_PAY_PK_WIF = "L3tg5yk23vBrSGZT8pfrDFQBK8n46eeot2Sf91ezNt7rhyReCA53";
-const MOCK_PAY_ADDRESS = PrivateKey.fromWif(MOCK_PAY_PK_WIF).toAddress();
+const _MOCK_PAY_ADDRESS = PrivateKey.fromWif(MOCK_PAY_PK_WIF).toAddress();
 const MOCK_KEYS_WITH_PAYPK = { payPk: MOCK_PAY_PK_WIF };
 const MOCK_UTXO_SCRIPT_HASH_PLACEHOLDER =
 	"1a2b3c4d5e6f7081920a1b2c3d4e5f607081920a";

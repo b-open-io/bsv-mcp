@@ -1,5 +1,17 @@
+import { P2PKH, PrivateKey, Transaction, Utils } from "@bsv/sdk";
 import { App } from "@modelcontextprotocol/ext-apps";
-import { PrivateKey, P2PKH, Transaction, Utils } from "@bsv/sdk";
+
+// ── DOM helper ───────────────────────────────────────────────────────────────
+/**
+ * The view ships with its own markup, so a missing id means the HTML and this
+ * script have drifted apart. Name the id that is missing rather than letting a
+ * null surface later as "cannot read properties of null".
+ */
+function el(id: string): HTMLElement {
+	const found = document.getElementById(id);
+	if (!found) throw new Error(`View markup is missing #${id}`);
+	return found;
+}
 
 // ── XSS helper ───────────────────────────────────────────────────────────────
 function esc(s: string): string {
@@ -14,8 +26,12 @@ async function copyText(text: string, btn: HTMLElement) {
 		await navigator.clipboard.writeText(text);
 		const prev = btn.innerHTML;
 		btn.innerHTML = `<svg viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>`;
-		setTimeout(() => { btn.innerHTML = prev; }, 1500);
-	} catch { /* clipboard unavailable in iframe */ }
+		setTimeout(() => {
+			btn.innerHTML = prev;
+		}, 1500);
+	} catch {
+		/* clipboard unavailable in iframe */
+	}
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -25,7 +41,7 @@ function truncateMid(s: string, keep = 8): string {
 }
 
 function formatSats(n: number): string {
-	return n.toLocaleString() + " sats";
+	return `${n.toLocaleString()} sats`;
 }
 
 function formatDifficulty(d: number | undefined): string {
@@ -48,10 +64,10 @@ function timeAgo(ts: number | undefined): string {
 // ── Tab switching ────────────────────────────────────────────────────────────
 const tabs = document.querySelectorAll<HTMLButtonElement>(".view-tab");
 const panels: Record<string, HTMLElement> = {
-	explorer: document.getElementById("explorer-panel")!,
-	wallet: document.getElementById("wallet-panel")!,
-	ordinals: document.getElementById("ordinals-panel")!,
-	sweep: document.getElementById("sweep-panel")!,
+	explorer: el("explorer-panel"),
+	wallet: el("wallet-panel"),
+	ordinals: el("ordinals-panel"),
+	sweep: el("sweep-panel"),
 };
 
 let walletLoaded = false;
@@ -73,7 +89,10 @@ function switchTab(view: string) {
 }
 
 for (const tab of tabs) {
-	tab.addEventListener("click", () => switchTab(tab.dataset.view!));
+	tab.addEventListener("click", () => {
+		const view = tab.dataset.view;
+		if (view) switchTab(view);
+	});
 }
 
 // ── MCP App connection ───────────────────────────────────────────────────────
@@ -93,18 +112,21 @@ await app.connect();
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 function onDashboardReady(_data: Record<string, unknown>) {
-	document.getElementById("loading")!.style.display = "none";
-	document.getElementById("app")!.classList.add("ready");
+	el("loading").style.display = "none";
+	el("app").classList.add("ready");
 	loadExplorerData();
 }
 
 // ── Explorer ─────────────────────────────────────────────────────────────────
-const explorerContent = document.getElementById("explorer-content")!;
+const explorerContent = el("explorer-content");
 
 async function loadExplorerData() {
 	explorerContent.innerHTML = `<div class="empty-state">loading...</div>`;
 	try {
-		const result = await app.callServerTool({ name: "app_explorer_data", arguments: {} });
+		const result = await app.callServerTool({
+			name: "app_explorer_data",
+			arguments: {},
+		});
 		if (result?.structuredContent) {
 			renderExplorer(result.structuredContent as Record<string, unknown>);
 		}
@@ -116,7 +138,9 @@ async function loadExplorerData() {
 function renderExplorer(data: Record<string, unknown>) {
 	const price = data.price as number | undefined;
 	const chainInfo = data.chainInfo as Record<string, unknown> | undefined;
-	const recentBlocks = data.recentBlocks as Array<Record<string, unknown>> | undefined;
+	const recentBlocks = data.recentBlocks as
+		| Array<Record<string, unknown>>
+		| undefined;
 
 	const blocks = chainInfo?.blocks as number | undefined;
 	const difficulty = chainInfo?.difficulty as number | undefined;
@@ -151,13 +175,14 @@ function renderExplorer(data: Record<string, unknown>) {
 }
 
 function renderBlocksTable(blocks: Array<Record<string, unknown>>): string {
-	const rows = blocks.map(b => {
-		const height = b.height as number | undefined;
-		const hash = b.hash as string | undefined;
-		const txs = b.tx as Array<unknown> | undefined;
-		const size = b.size as number | undefined;
-		const time = b.time as number | undefined;
-		return `
+	const rows = blocks
+		.map((b) => {
+			const height = b.height as number | undefined;
+			const hash = b.hash as string | undefined;
+			const txs = b.tx as Array<unknown> | undefined;
+			const size = b.size as number | undefined;
+			const time = b.time as number | undefined;
+			return `
 			<div class="blocks-table-row">
 				<div class="cell-mono">${height?.toLocaleString() ?? "—"}</div>
 				<div class="cell-hash">${hash ? truncateMid(hash, 10) : "—"}</div>
@@ -166,7 +191,8 @@ function renderBlocksTable(blocks: Array<Record<string, unknown>>): string {
 				<div class="cell-dim" style="text-align:right">${timeAgo(time)}</div>
 			</div>
 		`;
-	}).join("");
+		})
+		.join("");
 
 	return `
 		<div class="blocks-section">
@@ -186,37 +212,53 @@ function renderBlocksTable(blocks: Array<Record<string, unknown>>): string {
 }
 
 function wireSearch() {
-	const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+	const searchInput = document.getElementById(
+		"search-input",
+	) as HTMLInputElement | null;
 	const searchBtn = document.getElementById("search-btn");
-	const searchResults = document.getElementById("search-results");
+	const searchResults = el("search-results");
 	if (!searchInput || !searchBtn || !searchResults) return;
 
 	async function doSearch() {
-		const query = searchInput!.value.trim();
+		const query = searchInput?.value.trim();
 		if (!query) return;
-		searchResults!.innerHTML = `<div class="empty-state">searching...</div>`;
+		searchResults.innerHTML = `<div class="empty-state">searching...</div>`;
 		try {
 			const isTxid = /^[0-9a-f]{64}$/i.test(query);
-			const isAddress = query.startsWith("1") && query.length >= 25 && query.length <= 34;
+			const isAddress =
+				query.startsWith("1") && query.length >= 25 && query.length <= 34;
 			const args: Record<string, string> = {};
 			if (isTxid) args.txid = query;
 			else if (isAddress) args.address = query;
 			else args.query = query;
 
-			const res = await app.callServerTool({ name: "app_explorer_data", arguments: args });
+			const res = await app.callServerTool({
+				name: "app_explorer_data",
+				arguments: args,
+			});
 			if (res?.structuredContent) {
-				renderSearchResult(searchResults!, res.structuredContent as Record<string, unknown>, query);
+				renderSearchResult(
+					searchResults,
+					res.structuredContent as Record<string, unknown>,
+					query,
+				);
 			}
 		} catch (err) {
-			searchResults!.innerHTML = `<div class="error-box">${esc(String(err))}</div>`;
+			searchResults.innerHTML = `<div class="error-box">${esc(String(err))}</div>`;
 		}
 	}
 
 	searchBtn.addEventListener("click", doSearch);
-	searchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+	searchInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") doSearch();
+	});
 }
 
-function renderSearchResult(el: HTMLElement, data: Record<string, unknown>, query: string) {
+function renderSearchResult(
+	el: HTMLElement,
+	data: Record<string, unknown>,
+	query: string,
+) {
 	const tx = data.transaction as Record<string, unknown> | undefined;
 	const addr = data.addressInfo as Record<string, unknown> | undefined;
 
@@ -256,23 +298,28 @@ function renderSearchResult(el: HTMLElement, data: Record<string, unknown>, quer
 // ── Wallet ───────────────────────────────────────────────────────────────────
 async function loadWalletData() {
 	// Show loading state inline
-	document.getElementById("balance-value")!.textContent = "loading...";
-	document.getElementById("utxo-list")!.innerHTML = `<div class="empty-state">loading...</div>`;
+	el("balance-value").textContent = "loading...";
+	el("utxo-list").innerHTML = `<div class="empty-state">loading...</div>`;
 	try {
-		const result = await app.callServerTool({ name: "app_wallet_data", arguments: {} });
+		const result = await app.callServerTool({
+			name: "app_wallet_data",
+			arguments: {},
+		});
 		if (result?.structuredContent) {
 			const data = result.structuredContent as Record<string, unknown>;
 			if (data.error) {
-				document.getElementById("balance-value")!.textContent = "—";
-				document.getElementById("utxo-list")!.innerHTML = `<div class="error-box">${esc(String(data.error))}</div>`;
+				el("balance-value").textContent = "—";
+				el("utxo-list").innerHTML =
+					`<div class="error-box">${esc(String(data.error))}</div>`;
 				return;
 			}
 			walletLoaded = true;
 			renderWallet(data);
 		}
 	} catch (err) {
-		document.getElementById("balance-value")!.textContent = "error";
-		document.getElementById("utxo-list")!.innerHTML = `<div class="error-box">${esc(String(err))}</div>`;
+		el("balance-value").textContent = "error";
+		el("utxo-list").innerHTML =
+			`<div class="error-box">${esc(String(err))}</div>`;
 	}
 }
 
@@ -283,45 +330,53 @@ function renderWallet(data: Record<string, unknown>) {
 	const price = data.price as number | undefined;
 
 	const satoshis = Number(balance?.satoshis ?? 0);
-	const bsv = balance?.bsv ? String(balance.bsv) : (satoshis / 100_000_000).toFixed(8);
+	const bsv = balance?.bsv
+		? String(balance.bsv)
+		: (satoshis / 100_000_000).toFixed(8);
 	const usdValue = price ? (satoshis / 100_000_000) * price : null;
-	const utxoCount = Number(balance?.utxoCount ?? (utxos?.length ?? 0));
+	const utxoCount = Number(balance?.utxoCount ?? utxos?.length ?? 0);
 
 	// Hero
-	document.getElementById("balance-value")!.textContent = `${bsv} BSV`;
-	document.getElementById("sats-value")!.textContent = `${satoshis.toLocaleString()} sats`;
-	document.getElementById("usd-value")!.textContent = usdValue != null ? `~$${usdValue.toFixed(2)} USD` : "— USD";
-	document.getElementById("utxo-count")!.textContent = `${utxoCount} UTXOs`;
+	el("balance-value").textContent = `${bsv} BSV`;
+	el("sats-value").textContent = `${satoshis.toLocaleString()} sats`;
+	el("usd-value").textContent =
+		usdValue != null ? `~$${usdValue.toFixed(2)} USD` : "— USD";
+	el("utxo-count").textContent = `${utxoCount} UTXOs`;
 
 	// Address
 	if (address) {
-		const addrSection = document.getElementById("address-section")!;
+		const addrSection = el("address-section");
 		addrSection.style.display = "flex";
-		document.getElementById("address-display")!.textContent = address;
-		document.getElementById("copy-address-btn")!.addEventListener("click", (e) => {
-			copyText(address, e.currentTarget as HTMLElement);
-		});
+		el("address-display").textContent = address;
+		document
+			.getElementById("copy-address-btn")
+			?.addEventListener("click", (e) => {
+				copyText(address, e.currentTarget as HTMLElement);
+			});
 	}
 
 	// UTXO list
-	const utxoList = document.getElementById("utxo-list")!;
+	const utxoList = el("utxo-list");
 	if (!utxos || utxos.length === 0) {
 		utxoList.innerHTML = `<div class="empty-state">No UTXOs found</div>`;
 		return;
 	}
 
-	const rows = utxos.slice(0, 25).map((u) => {
-		const txid = String(u.txid ?? "");
-		const index = u.vout ?? u.outputIndex ?? "—";
-		const value = Number(u.satoshis ?? 0);
-		return `
+	const rows = utxos
+		.slice(0, 25)
+		.map((u) => {
+			const txid = String(u.txid ?? "");
+			const index = u.vout ?? u.outputIndex ?? "—";
+			const value = Number(u.satoshis ?? 0);
+			return `
 			<div class="utxo-row">
 				<div class="utxo-txid">${esc(truncateMid(txid, 10))}</div>
 				<div class="utxo-index">${index}</div>
 				<div class="utxo-value">${value.toLocaleString()}</div>
 			</div>
 		`;
-	}).join("");
+		})
+		.join("");
 
 	utxoList.innerHTML = `
 		<div class="utxo-header">
@@ -335,15 +390,20 @@ function renderWallet(data: Record<string, unknown>) {
 
 // ── Ordinals ─────────────────────────────────────────────────────────────────
 async function loadOrdinalsData() {
-	document.getElementById("ordinals-grid")!.innerHTML = `<div class="empty-state" style="grid-column:1/-1">loading...</div>`;
+	el("ordinals-grid").innerHTML =
+		`<div class="empty-state" style="grid-column:1/-1">loading...</div>`;
 	try {
-		const result = await app.callServerTool({ name: "app_ordinals_data", arguments: {} });
+		const result = await app.callServerTool({
+			name: "app_ordinals_data",
+			arguments: {},
+		});
 		if (result?.structuredContent) {
 			ordinalsLoaded = true;
 			renderOrdinals(result.structuredContent as Record<string, unknown>);
 		}
 	} catch (err) {
-		document.getElementById("ordinals-grid")!.innerHTML = `<div class="error-box" style="grid-column:1/-1">${esc(String(err))}</div>`;
+		el("ordinals-grid").innerHTML =
+			`<div class="error-box" style="grid-column:1/-1">${esc(String(err))}</div>`;
 	}
 }
 
@@ -351,9 +411,14 @@ function renderOrdinals(data: Record<string, unknown>) {
 	const listings = data.listings as Array<Record<string, unknown>> | undefined;
 	const total = data.total as number | undefined;
 
-	document.getElementById("ordinals-count")!.textContent = total != null ? String(total) : (listings?.length ? String(listings.length) : "0");
+	el("ordinals-count").textContent =
+		total != null
+			? String(total)
+			: listings?.length
+				? String(listings.length)
+				: "0";
 
-	const grid = document.getElementById("ordinals-grid")!;
+	const grid = el("ordinals-grid");
 	if (!listings || listings.length === 0) {
 		grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">No inscriptions found</div>`;
 		return;
@@ -362,7 +427,9 @@ function renderOrdinals(data: Record<string, unknown>) {
 	grid.innerHTML = listings.slice(0, 12).map(renderOrdinalCard).join("");
 
 	// Wire up search
-	const searchInput = document.getElementById("ordinals-search-input") as HTMLInputElement;
+	const searchInput = document.getElementById(
+		"ordinals-search-input",
+	) as HTMLInputElement;
 	if (searchInput) {
 		searchInput.addEventListener("keydown", async (e) => {
 			if (e.key !== "Enter") return;
@@ -370,14 +437,23 @@ function renderOrdinals(data: Record<string, unknown>) {
 			if (!query) return;
 			grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">searching...</div>`;
 			try {
-				const res = await app.callServerTool({ name: "app_ordinals_data", arguments: { query } });
+				const res = await app.callServerTool({
+					name: "app_ordinals_data",
+					arguments: { query },
+				});
 				if (res?.structuredContent) {
 					const d = res.structuredContent as Record<string, unknown>;
-					const results = (d.results ?? d.listings) as Array<Record<string, unknown>> | undefined;
+					const results = (d.results ?? d.listings) as
+						| Array<Record<string, unknown>>
+						| undefined;
 					const found = d.total as number | undefined;
-					document.getElementById("ordinals-count")!.textContent = found != null ? String(found) : String(results?.length ?? 0);
+					el("ordinals-count").textContent =
+						found != null ? String(found) : String(results?.length ?? 0);
 					if (results && results.length > 0) {
-						grid.innerHTML = results.slice(0, 12).map(renderOrdinalCard).join("");
+						grid.innerHTML = results
+							.slice(0, 12)
+							.map(renderOrdinalCard)
+							.join("");
 					} else {
 						grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">No results found</div>`;
 					}
@@ -390,7 +466,15 @@ function renderOrdinals(data: Record<string, unknown>) {
 }
 
 // ── Sweep ────────────────────────────────────────────────────────────────────
-type SweepState = "input" | "scanning" | "review" | "preparing" | "signing" | "broadcasting" | "complete" | "error";
+type SweepState =
+	| "input"
+	| "scanning"
+	| "review"
+	| "preparing"
+	| "signing"
+	| "broadcasting"
+	| "complete"
+	| "error";
 
 /** Parse a private key from either WIF or 64-char hex */
 function parsePrivateKey(input: string): InstanceType<typeof PrivateKey> {
@@ -402,11 +486,20 @@ function parsePrivateKey(input: string): InstanceType<typeof PrivateKey> {
 let sweepKeyInput = "";
 let sweepAddress = "";
 let sweepScanData: Record<string, unknown> | null = null;
-let sweepSelectedTypes: Set<string> = new Set();
+const sweepSelectedTypes: Set<string> = new Set();
 let sweepResults: Array<{ type: string; txid: string }> = [];
 
 function showSweepState(state: SweepState) {
-	const states: SweepState[] = ["input", "scanning", "review", "preparing", "signing", "broadcasting", "complete", "error"];
+	const states: SweepState[] = [
+		"input",
+		"scanning",
+		"review",
+		"preparing",
+		"signing",
+		"broadcasting",
+		"complete",
+		"error",
+	];
 	for (const s of states) {
 		const el = document.getElementById(`sweep-${s}-state`);
 		if (el) el.style.display = s === state ? "flex" : "none";
@@ -417,11 +510,11 @@ function initSweep() {
 	sweepInitialized = true;
 
 	const wifInput = document.getElementById("wif-input") as HTMLInputElement;
-	const scanBtn = document.getElementById("sweep-scan-btn")!;
-	const backBtn = document.getElementById("sweep-back-btn")!;
-	const executeBtn = document.getElementById("sweep-execute-btn")!;
-	const againBtn = document.getElementById("sweep-again-btn")!;
-	const retryBtn = document.getElementById("sweep-retry-btn")!;
+	const scanBtn = el("sweep-scan-btn");
+	const backBtn = el("sweep-back-btn");
+	const executeBtn = el("sweep-execute-btn");
+	const againBtn = el("sweep-again-btn");
+	const retryBtn = el("sweep-retry-btn");
 
 	scanBtn.addEventListener("click", async () => {
 		const raw = wifInput.value.trim();
@@ -433,15 +526,20 @@ function initSweep() {
 			sweepAddress = key.toPublicKey().toAddress();
 		} catch {
 			showSweepState("error");
-			document.getElementById("sweep-error-msg")!.textContent = "Invalid private key. Accepts WIF (5.../K.../L...) or 64-char hex.";
+			el("sweep-error-msg").textContent =
+				"Invalid private key. Accepts WIF (5.../K.../L...) or 64-char hex.";
 			return;
 		}
 
 		showSweepState("scanning");
-		document.getElementById("sweep-scanning-text")!.textContent = `Scanning ${truncateMid(sweepAddress, 8)}...`;
+		el("sweep-scanning-text").textContent =
+			`Scanning ${truncateMid(sweepAddress, 8)}...`;
 
 		try {
-			const result = await app.callServerTool({ name: "app_sweep_scan", arguments: { address: sweepAddress } });
+			const result = await app.callServerTool({
+				name: "app_sweep_scan",
+				arguments: { address: sweepAddress },
+			});
 			if (result?.structuredContent) {
 				const data = result.structuredContent as Record<string, unknown>;
 				if (data.error) throw new Error(String(data.error));
@@ -451,7 +549,8 @@ function initSweep() {
 			}
 		} catch (err) {
 			showSweepState("error");
-			document.getElementById("sweep-error-msg")!.textContent = `Scan failed: ${err instanceof Error ? err.message : String(err)}`;
+			el("sweep-error-msg").textContent =
+				`Scan failed: ${err instanceof Error ? err.message : String(err)}`;
 		}
 	});
 
@@ -491,26 +590,40 @@ function initSweep() {
 }
 
 function renderSweepReview(data: Record<string, unknown>) {
-	document.getElementById("sweep-address-display")!.textContent = sweepAddress;
+	el("sweep-address-display").textContent = sweepAddress;
 
 	const funding = data.funding as Array<Record<string, unknown>> | undefined;
 	const ordinals = data.ordinals as Array<Record<string, unknown>> | undefined;
 	const tokens = data.bsv21Tokens as Array<Record<string, unknown>> | undefined;
 	const totalFunding = data.totalFundingSats as number | undefined;
 
-	const categoriesEl = document.getElementById("sweep-categories")!;
+	const categoriesEl = el("sweep-categories");
 	const cards: string[] = [];
 	sweepSelectedTypes.clear();
 
 	if (funding && funding.length > 0) {
 		sweepSelectedTypes.add("bsv");
 		const bsvAmt = ((totalFunding ?? 0) / 100_000_000).toFixed(8);
-		cards.push(renderCategoryCard("bsv", "BSV Funding", `${funding.length} UTXOs`, `${bsvAmt} BSV`));
+		cards.push(
+			renderCategoryCard(
+				"bsv",
+				"BSV Funding",
+				`${funding.length} UTXOs`,
+				`${bsvAmt} BSV`,
+			),
+		);
 	}
 
 	if (ordinals && ordinals.length > 0) {
 		sweepSelectedTypes.add("ordinals");
-		cards.push(renderCategoryCard("ordinals", "Ordinals", `${ordinals.length} inscription${ordinals.length !== 1 ? "s" : ""}`, `${ordinals.length} NFTs`));
+		cards.push(
+			renderCategoryCard(
+				"ordinals",
+				"Ordinals",
+				`${ordinals.length} inscription${ordinals.length !== 1 ? "s" : ""}`,
+				`${ordinals.length} NFTs`,
+			),
+		);
 	}
 
 	if (tokens && tokens.length > 0) {
@@ -522,26 +635,37 @@ function renderSweepReview(data: Record<string, unknown>) {
 			const inputs = tok.inputs as Array<Record<string, unknown>>;
 			const key = `bsv21:${tokenId}`;
 			sweepSelectedTypes.add(key);
-			const displayAmt = decimals > 0
-				? (Number(BigInt(totalAmount)) / 10 ** decimals).toFixed(decimals)
-				: totalAmount;
-			cards.push(renderCategoryCard(key, `${symbol} Token`, `${inputs.length} UTXO${inputs.length !== 1 ? "s" : ""}`, `${displayAmt} ${symbol}`));
+			const displayAmt =
+				decimals > 0
+					? (Number(BigInt(totalAmount)) / 10 ** decimals).toFixed(decimals)
+					: totalAmount;
+			cards.push(
+				renderCategoryCard(
+					key,
+					`${symbol} Token`,
+					`${inputs.length} UTXO${inputs.length !== 1 ? "s" : ""}`,
+					`${displayAmt} ${symbol}`,
+				),
+			);
 		}
 	}
 
 	if (cards.length === 0) {
 		categoriesEl.innerHTML = `<div class="empty-state">No assets found at this address.</div>`;
-		document.getElementById("sweep-execute-btn")!.setAttribute("disabled", "");
+		document.getElementById("sweep-execute-btn")?.setAttribute("disabled", "");
 		return;
 	}
 
 	categoriesEl.innerHTML = cards.join("");
-	document.getElementById("sweep-execute-btn")!.removeAttribute("disabled");
+	document.getElementById("sweep-execute-btn")?.removeAttribute("disabled");
 
 	// Wire up category toggle clicks
-	for (const card of categoriesEl.querySelectorAll<HTMLElement>(".sweep-category")) {
+	for (const card of categoriesEl.querySelectorAll<HTMLElement>(
+		".sweep-category",
+	)) {
 		card.addEventListener("click", () => {
-			const type = card.dataset.sweepType!;
+			const type = card.dataset.sweepType;
+			if (!type) return;
 			if (sweepSelectedTypes.has(type)) {
 				sweepSelectedTypes.delete(type);
 				card.classList.remove("selected");
@@ -551,15 +675,24 @@ function renderSweepReview(data: Record<string, unknown>) {
 			}
 			const hasSelection = sweepSelectedTypes.size > 0;
 			if (hasSelection) {
-				document.getElementById("sweep-execute-btn")!.removeAttribute("disabled");
+				document
+					.getElementById("sweep-execute-btn")
+					?.removeAttribute("disabled");
 			} else {
-				document.getElementById("sweep-execute-btn")!.setAttribute("disabled", "");
+				document
+					.getElementById("sweep-execute-btn")
+					?.setAttribute("disabled", "");
 			}
 		});
 	}
 }
 
-function renderCategoryCard(type: string, name: string, detail: string, value: string): string {
+function renderCategoryCard(
+	type: string,
+	name: string,
+	detail: string,
+	value: string,
+): string {
 	return `
 		<div class="sweep-category selected" data-sweep-type="${esc(type)}">
 			<div class="sweep-category-check">
@@ -596,7 +729,9 @@ async function executeSweep() {
 			} else if (type.startsWith("bsv21:")) {
 				sweepType = "bsv21";
 				const tokenId = type.slice(6);
-				const tokens = sweepScanData.bsv21Tokens as Array<Record<string, unknown>>;
+				const tokens = sweepScanData.bsv21Tokens as Array<
+					Record<string, unknown>
+				>;
 				const token = tokens.find((t) => t.tokenId === tokenId);
 				if (!token) throw new Error(`Token ${tokenId} not found in scan data`);
 				inputs = token.inputs as Array<Record<string, unknown>>;
@@ -604,7 +739,8 @@ async function executeSweep() {
 				continue;
 			}
 
-			document.getElementById("sweep-preparing-text")!.textContent = `Building ${sweepType} transaction...`;
+			el("sweep-preparing-text").textContent =
+				`Building ${sweepType} transaction...`;
 
 			// Step 1: Prepare (server builds unsigned tx)
 			const prepResult = await app.callServerTool({
@@ -619,7 +755,8 @@ async function executeSweep() {
 				},
 			});
 
-			if (!prepResult?.structuredContent) throw new Error("No response from prepare");
+			if (!prepResult?.structuredContent)
+				throw new Error("No response from prepare");
 			const prepData = prepResult.structuredContent as Record<string, unknown>;
 			if (prepData.error) throw new Error(String(prepData.error));
 
@@ -638,10 +775,12 @@ async function executeSweep() {
 			const txBytes = Utils.toArray(txHex, "hex");
 			const tx = Transaction.fromBEEF(txBytes);
 
-			const inputOutpoints = new Set(inputsToSign.map((i) => {
-				const [txid, voutStr] = i.outpoint.split("_");
-				return `${txid}.${Number(voutStr)}`;
-			}));
+			const inputOutpoints = new Set(
+				inputsToSign.map((i) => {
+					const [txid, voutStr] = i.outpoint.split("_");
+					return `${txid}.${Number(voutStr)}`;
+				}),
+			);
 
 			for (let idx = 0; idx < tx.inputs.length; idx++) {
 				const txInput = tx.inputs[idx];
@@ -673,12 +812,21 @@ async function executeSweep() {
 				arguments: { reference, spends },
 			});
 
-			if (!completeResult?.structuredContent) throw new Error("No response from complete");
-			const completeData = completeResult.structuredContent as Record<string, unknown>;
+			if (!completeResult?.structuredContent)
+				throw new Error("No response from complete");
+			const completeData = completeResult.structuredContent as Record<
+				string,
+				unknown
+			>;
 			if (completeData.error) throw new Error(String(completeData.error));
 
 			sweepResults.push({
-				type: sweepType === "bsv21" ? `BSV-21 Token` : sweepType === "ordinals" ? "Ordinals" : "BSV",
+				type:
+					sweepType === "bsv21"
+						? `BSV-21 Token`
+						: sweepType === "ordinals"
+							? "Ordinals"
+							: "BSV",
 				txid: String(completeData.txid),
 			});
 		}
@@ -692,19 +840,23 @@ async function executeSweep() {
 	} catch (err) {
 		sweepKeyInput = "";
 		showSweepState("error");
-		document.getElementById("sweep-error-msg")!.textContent =
+		el("sweep-error-msg").textContent =
 			err instanceof Error ? err.message : String(err);
 	}
 }
 
 function renderSweepComplete() {
-	const resultsEl = document.getElementById("sweep-results")!;
-	resultsEl.innerHTML = sweepResults.map((r) => `
+	const resultsEl = el("sweep-results");
+	resultsEl.innerHTML = sweepResults
+		.map(
+			(r) => `
 		<div class="sweep-result-item">
 			<span class="sweep-result-label">${esc(r.type)}</span>
 			<span class="sweep-result-txid">${esc(truncateMid(r.txid, 10))}</span>
 		</div>
-	`).join("");
+	`,
+		)
+		.join("");
 }
 
 function renderOrdinalCard(item: Record<string, unknown>): string {
@@ -719,15 +871,19 @@ function renderOrdinalCard(item: Record<string, unknown>): string {
 	const mime = String(file?.type ?? "");
 	const isImage = mime.startsWith("image/");
 	const price = listData?.price as number | undefined;
-	const name = String((inscData as Record<string, unknown> | undefined)?.name ?? truncateMid(outpoint, 8));
+	const name = String(
+		(inscData as Record<string, unknown> | undefined)?.name ??
+			truncateMid(outpoint, 8),
+	);
 	const isListed = price != null;
 
 	return `
 		<div class="ordinal-card" title="${esc(outpoint)}">
 			<div class="ordinal-preview">
-				${isImage
-					? `<img src="https://ordfs.network/${esc(txid)}" alt="inscription" loading="lazy" />`
-					: `<span class="ordinal-placeholder">${mime ? esc(mime.split("/")[1] ?? mime) : "?"}</span>`
+				${
+					isImage
+						? `<img src="https://ordfs.network/${esc(txid)}" alt="inscription" loading="lazy" />`
+						: `<span class="ordinal-placeholder">${mime ? esc(mime.split("/")[1] ?? mime) : "?"}</span>`
 				}
 				${isListed ? `<div class="listed-badge">Listed</div>` : ""}
 			</div>

@@ -27,7 +27,7 @@ export function registerParseTxTool(
 		{ ...parseTxArgsSchema.shape },
 		async (
 			{ txid },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
 				const result: ParseTxResponse = await mnee.parseTx(txid);

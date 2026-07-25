@@ -1,9 +1,9 @@
-import { P2PKH, Transaction, Utils } from "@bsv/sdk";
+import { Utils } from "@bsv/sdk";
 import type { Utxo } from "js-1sat-ord";
 import { V5_API_URL } from "../constants";
-import { getBeefTransactionById, getTransactionById } from "./utxo";
+import { getBeefTransactionById } from "./utxo";
 
-const { toBase64, toHex, toArray } = Utils;
+const { toHex, toArray } = Utils;
 
 /**
  * Type definition for WhatsOnChain UTXO response
@@ -105,7 +105,9 @@ export async function fetchPaymentUtxosFromV5(
 		console.error(`Fetching UTXOs from V5: ${url}`);
 		const response = await fetch(url);
 		if (!response.ok) {
-			console.error(`V5 UTXO fetch failed: ${response.status} ${response.statusText}`);
+			console.error(
+				`V5 UTXO fetch failed: ${response.status} ${response.statusText}`,
+			);
 			return undefined;
 		}
 		const data = (await response.json()) as V5Utxo[] | null;
@@ -126,7 +128,7 @@ export async function fetchPaymentUtxosFromV5(
 			}
 			utxos.push({
 				txid,
-				vout: Number.parseInt(vout),
+				vout: Number.parseInt(vout, 10),
 				satoshis: utxo.satoshis,
 				script: toHex(toArray(utxo.script, "base64")),
 			} as Utxo);

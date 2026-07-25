@@ -6,7 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
  */
 export function registerMarketListingsTool(
 	server: McpServer,
-	ctx?: OneSatContext,
+	_ctx?: OneSatContext,
 ): void {
 	server.tool(
 		"ordinals_marketListings",

@@ -4,7 +4,7 @@ import type { IdentityData, SigmaIdentityProfile } from "./types";
 import { SchemaType } from "./types";
 
 // Store the original fetch function
-const originalFetch = global.fetch;
+const _originalFetch = global.fetch;
 let fetchMock: ReturnType<typeof spyOn>;
 
 describe("BAP getId - fetchProfile", () => {

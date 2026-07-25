@@ -1,7 +1,4 @@
-import {
-	deriveDepositAddresses,
-	type OneSatContext,
-} from "@1sat/actions";
+import { deriveDepositAddresses, type OneSatContext } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const MCP_ADDRESS_PREFIX = "mcp";

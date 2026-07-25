@@ -171,7 +171,7 @@ export function registerWalletPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_wallet",
 		"Detailed information about the wallet functionality in the BSV SDK, including key management, address handling, and UTXO management.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

@@ -88,7 +88,7 @@ export function registerOverviewPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_overview",
 		"General overview of the Bitcoin SV SDK, including its purpose and main components.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

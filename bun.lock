@@ -24,7 +24,7 @@
         "satoshi-token": "^0.0.7",
         "schema-dts": "^1.1.5",
         "sigma-protocol": "^0.1.9",
-        "zod": "^4.4.3",
+        "zod": "4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.6",
@@ -67,7 +67,7 @@
     },
   },
   "overrides": {
-    "zod": "^4.4.3",
+    "zod": "4.4.3",
   },
   "packages": {
     "@1sat/actions": ["@1sat/actions@0.0.192", "", { "dependencies": { "@1sat/client": "0.0.46", "@1sat/templates": "0.0.27", "@1sat/types": "0.0.37", "@1sat/utils": "0.0.30", "@1sat/wallet": "0.0.98", "@bsv/message-box-client": "^2.2.1" }, "peerDependencies": { "@bsv/sdk": "^2.1.9" } }, "sha512-qivre9L3m4Ct8qmCbJPR0cPvpFHoapKqQorzvuEVNQNF1f+/UsIsj4nSFXFjN4R6eoGn8mjK/pqK/Sn3iXTJOw=="],

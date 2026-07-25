@@ -44,7 +44,7 @@ export function registerAuthPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_auth",
 		"Detailed information about the authentication functionality in the BSV SDK, including identity protocols, certificates, and session management.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

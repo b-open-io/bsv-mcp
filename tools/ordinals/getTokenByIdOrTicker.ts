@@ -13,9 +13,7 @@ export function registerGetTokenByIdOrTickerTool(
 		"ordinals_getTokenByIdOrTicker",
 		"Retrieves detailed information about a BSV21 token by its ID (txid_vout format). Returns token data including symbol, supply, decimals, funding status, and current state.",
 		{
-			id: z
-				.string()
-				.describe("BSV21 token ID in outpoint format (txid_vout)"),
+			id: z.string().describe("BSV21 token ID in outpoint format (txid_vout)"),
 		},
 		async ({ id }) => {
 			try {

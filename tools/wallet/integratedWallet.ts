@@ -23,7 +23,7 @@ export class IntegratedWallet {
 	private localWallet?: Wallet;
 	private dropletClient?: DropletClient;
 
-	constructor(private config: IntegratedWalletConfig) {
+	constructor(config: IntegratedWalletConfig) {
 		if (config.useDropletApi && config.dropletConfig) {
 			// If we have a payment key, use it for auth with Droplet API
 			if (config.paymentKey) {

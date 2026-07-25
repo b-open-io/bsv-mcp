@@ -232,7 +232,7 @@ export function registerTransactionPrompt(server: McpServer): void {
 	server.prompt(
 		"bitcoin_sv_sdk_transaction",
 		"Detailed information about transaction building and management in the BSV SDK, including input/output handling, script integration, and transaction signing.",
-		async (extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
 			return {
 				messages: [
 					{

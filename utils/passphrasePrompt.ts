@@ -35,7 +35,7 @@ export function setServerInstance(server: McpServer): void {
  * Detect if we're running in MCP stdio mode by checking the actual transport
  * This uses the official MCP SDK approach with fallback to environment detection
  */
-function isStdioMode(): boolean {
+function _isStdioMode(): boolean {
 	// Primary: Check environment variable (set by MCP inspector and other clients)
 	if (process.env.TRANSPORT === "stdio") {
 		return true;
@@ -419,7 +419,7 @@ export async function promptForPassphrase(
 						server.close();
 						removePromptLock();
 						resolve(passphrase);
-					} catch (error) {
+					} catch (_error) {
 						res.writeHead(400, { "Content-Type": "application/json" });
 						res.end(JSON.stringify({ error: "Invalid request" }));
 					}

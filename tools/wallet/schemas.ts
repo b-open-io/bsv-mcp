@@ -74,10 +74,6 @@ export const purchaseListingArgsSchema = z
 			.describe(
 				"Amount of tokens in the listing (as string) — required when listingType is 'token'",
 			),
-		description: z
-			.string()
-			.optional()
-			.describe("Optional description for the transaction"),
 	})
 	.describe(
 		"Schema for the wallet_purchaseListing tool arguments (purchase NFTs or BSV21 tokens).",

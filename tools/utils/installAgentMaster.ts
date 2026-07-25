@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { platform } from "node:os";
 import { z } from "zod";
 
 const installAgentMasterSchema = z.object({
