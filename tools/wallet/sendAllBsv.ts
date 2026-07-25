@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { sendAllBsv } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const sendAllBsvArgsSchema = z.object({
 	destination: z
@@ -31,6 +32,7 @@ export function registerSendAllBsvTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_sendAllBsv");
 				const result = await sendAllBsv.execute(ctx, { destination });
 
 				if (result.error) {

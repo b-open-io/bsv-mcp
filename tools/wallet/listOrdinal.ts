@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { sellOrdinal } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const listOrdinalArgsSchema = z.object({
 	id: z
@@ -44,6 +45,7 @@ export function registerListOrdinalTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_listOrdinal");
 				const result = await sellOrdinal.execute(ctx, {
 					id,
 					price,

@@ -8,6 +8,7 @@ import type {
 import type Mnee from "mnee";
 import type { SendMNEE, TransferResponse } from "mnee";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 /**
  * Schema for the sendMnee tool arguments.
@@ -52,6 +53,7 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 		): Promise<CallToolResult> => {
 			try {
+				assertBroadcastAllowed("mnee_sendMnee");
 				// MNEE is dollar-pegged, so a USD amount transfers one-for-one. The
 				// currency the caller named is echoed in the response rather than
 				// dropped, so the interpretation is visible to whoever called.

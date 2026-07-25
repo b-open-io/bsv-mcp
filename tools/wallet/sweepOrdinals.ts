@@ -3,6 +3,8 @@ import { sweepOrdinals } from "@1sat/actions";
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
+import { redactKeyMaterial, redactUnknown } from "../../utils/redact";
 
 const sweepInputSchema = z.object({
 	outpoint: z.string().describe("Outpoint (txid_vout)"),
@@ -24,11 +26,6 @@ export function registerSweepOrdinalsTool(
 		"Sweep ordinals from an external WIF private key into the wallet",
 		{ ...sweepOrdinalsSchema.shape },
 		async ({ inputs, wif }) => {
-			// SECURITY: sanitize WIF from any error output
-			const sanitize = (msg: string) =>
-				msg
-					.replace(/[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/g, "[REDACTED]")
-					.replace(/\b[0-9a-f]{64}\b/gi, "[REDACTED-HEX]");
 			if (!ctx) {
 				return {
 					content: [
@@ -42,6 +39,7 @@ export function registerSweepOrdinalsTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_sweepOrdinals");
 				const key = PrivateKey.fromWif(wif);
 				const result = await sweepOrdinals.execute(ctx, {
 					inputs,
@@ -50,7 +48,9 @@ export function registerSweepOrdinalsTool(
 
 				if (result.error) {
 					return {
-						content: [{ type: "text" as const, text: result.error }],
+						content: [
+							{ type: "text" as const, text: redactKeyMaterial(result.error) },
+						],
 						isError: true,
 					};
 				}
@@ -59,11 +59,7 @@ export function registerSweepOrdinalsTool(
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify(
-								result,
-								(_, v) => (typeof v === "bigint" ? v.toString() : v),
-								2,
-							),
+							text: redactUnknown(result, 2),
 						},
 					],
 				};
@@ -72,7 +68,7 @@ export function registerSweepOrdinalsTool(
 					content: [
 						{
 							type: "text" as const,
-							text: sanitize(
+							text: redactKeyMaterial(
 								error instanceof Error ? error.message : String(error),
 							),
 						},

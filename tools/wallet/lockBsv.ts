@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { lockBsv } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const lockBsvArgsSchema = z.object({
 	requests: z
@@ -44,6 +45,7 @@ export function registerLockBsvTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_lockBsv");
 				const result = await lockBsv.execute(ctx, { requests });
 
 				if (result.error) {

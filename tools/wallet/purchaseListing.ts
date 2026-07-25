@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { buyBsv21, buyOrdinal } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import {
 	MARKET_FEE_PERCENTAGE,
 	MARKET_WALLET_ADDRESS,
@@ -36,6 +37,7 @@ export function registerPurchaseListingTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_purchaseListing");
 				let marketplaceRate = MARKET_FEE_PERCENTAGE;
 
 				if (listingType === "token") {

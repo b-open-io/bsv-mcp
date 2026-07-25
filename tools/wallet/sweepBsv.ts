@@ -3,6 +3,8 @@ import { sweepBsv } from "@1sat/actions";
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
+import { redactKeyMaterial, redactUnknown } from "../../utils/redact";
 
 const sweepInputSchema = z.object({
 	outpoint: z.string().describe("Outpoint (txid_vout)"),
@@ -33,11 +35,6 @@ export function registerSweepBsvTool(
 		"Sweep BSV from an external WIF private key into the wallet",
 		{ ...sweepBsvSchema.shape },
 		async ({ inputs, wif, amount }) => {
-			// SECURITY: sanitize WIF from any error output
-			const sanitize = (msg: string) =>
-				msg
-					.replace(/[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/g, "[REDACTED]")
-					.replace(/\b[0-9a-f]{64}\b/gi, "[REDACTED-HEX]");
 			if (!ctx) {
 				return {
 					content: [
@@ -51,6 +48,7 @@ export function registerSweepBsvTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_sweepBsv");
 				const key = PrivateKey.fromWif(wif);
 				const result = await sweepBsv.execute(ctx, {
 					inputs,
@@ -60,7 +58,9 @@ export function registerSweepBsvTool(
 
 				if (result.error) {
 					return {
-						content: [{ type: "text" as const, text: result.error }],
+						content: [
+							{ type: "text" as const, text: redactKeyMaterial(result.error) },
+						],
 						isError: true,
 					};
 				}
@@ -69,11 +69,7 @@ export function registerSweepBsvTool(
 					content: [
 						{
 							type: "text" as const,
-							text: JSON.stringify(
-								result,
-								(_, v) => (typeof v === "bigint" ? v.toString() : v),
-								2,
-							),
+							text: redactUnknown(result, 2),
 						},
 					],
 				};
@@ -82,7 +78,7 @@ export function registerSweepBsvTool(
 					content: [
 						{
 							type: "text" as const,
-							text: sanitize(
+							text: redactKeyMaterial(
 								error instanceof Error ? error.message : String(error),
 							),
 						},

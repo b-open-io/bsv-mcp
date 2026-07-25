@@ -16,6 +16,7 @@ import type {
 import { createOrdinals } from "js-1sat-ord";
 import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import type { Wallet } from "./wallet";
 
 const mintCollectionArgsSchema = z.object({
@@ -127,6 +128,7 @@ export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
 			skipBroadcast,
 		}): Promise<CallToolResult> => {
 			try {
+				assertBroadcastAllowed("wallet_mintCollection");
 				// Parse traits JSON string if provided
 				const traits: Record<string, string[]> | undefined = traitsJson
 					? JSON.parse(traitsJson)

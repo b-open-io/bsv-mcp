@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { cancelOrdinalListing } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const cancelListingArgsSchema = z.object({
 	id: z
@@ -33,6 +34,7 @@ export function registerCancelListingTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_cancelListing");
 				const result = await cancelOrdinalListing.execute(ctx, { id });
 
 				if (result.error) {

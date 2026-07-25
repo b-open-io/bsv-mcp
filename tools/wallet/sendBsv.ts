@@ -3,6 +3,7 @@ import { sendBsv } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { toSatoshi } from "satoshi-token";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import { getBsvPriceWithCache } from "../bsv/getPrice";
 
 const recipientSchema = z.object({
@@ -41,6 +42,7 @@ export function registerSendBsvTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_sendBsv");
 				let bsvPrice: number | undefined;
 
 				const requests = await Promise.all(

@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { sendBsv21, sendOrdinals } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 export const transferOrdTokenArgsSchema = z.object({
 	type: z
@@ -59,6 +60,7 @@ export function registerTransferOrdTokenTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_transferOrdToken");
 				if (!address && !counterparty) {
 					return {
 						content: [

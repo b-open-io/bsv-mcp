@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { deregisterOpns } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const opnsDeregisterArgsSchema = z.object({
 	id: z
@@ -31,6 +32,7 @@ export function registerOpnsDeregisterTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_opnsDeregister");
 				const result = await deregisterOpns.execute(ctx, { id });
 
 				if (result.error) {

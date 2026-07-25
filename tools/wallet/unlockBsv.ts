@@ -1,6 +1,7 @@
 import type { OneSatContext } from "@1sat/actions";
 import { unlockBsv } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 export function registerUnlockBsvTool(
 	server: McpServer,
@@ -24,6 +25,7 @@ export function registerUnlockBsvTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_unlockBsv");
 				const result = await unlockBsv.execute(ctx, {});
 
 				if (result.error) {

@@ -3,6 +3,7 @@ import { inscribe } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 export const createOrdinalsArgsSchema = z.object({
 	dataB64: z.string().describe("Base64-encoded content to inscribe"),
@@ -53,6 +54,7 @@ export function registerCreateOrdinalsTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_createOrdinals");
 				const result = await inscribe.execute(ctx, {
 					base64Content: dataB64,
 					contentType,

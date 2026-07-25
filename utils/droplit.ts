@@ -1,4 +1,5 @@
-import { BSM, type PrivateKey, Utils } from "@bsv/sdk";
+import type { PrivateKey } from "@bsv/sdk";
+import { getAuthToken } from "bitcoin-auth";
 
 export interface DroplitConfig {
 	apiUrl: string;
@@ -108,32 +109,18 @@ export class DroplitClient {
 			return {};
 		}
 
-		// Generate timestamp
-		const timestamp = Math.floor(Date.now() / 1000).toString();
-
-		// Create the message to sign (BSM format)
-		// Format: requestPath + timestamp + body
-		const bodyStr = JSON.stringify(body);
-		const message = `${path}${timestamp}${bodyStr}`;
-
-		// Sign the message using BSM. base64 mode returns the compact signature
-		// already base64-encoded, which is what the token carries.
-		const signature = BSM.sign(
-			Utils.toArray(message, "utf8"),
-			this.config.authKey,
-			"base64",
-		);
-		if (typeof signature !== "string") {
-			throw new Error("BSM.sign did not return base64 in base64 mode");
-		}
-
-		// Create the auth token in the format expected by go-bitcoin-auth
-		// Format: "BSM <pubkey> <signature> <timestamp> <path>"
-		const pubkey = this.config.authKey.toPublicKey().toString();
-		const authToken = `BSM ${pubkey} ${signature} ${timestamp} ${path}`;
-
+		// bitcoin-auth owns this format and go-bitcoin-auth verifies it on the
+		// server. Hand-rolling it here produced a token the server could never
+		// accept: space-separated with a "BSM " prefix instead of the
+		// pubkey|scheme|timestamp|path|signature form, signing a raw
+		// concatenation rather than path|timestamp|bodyHash, and stamping Unix
+		// seconds where an ISO8601 timestamp is expected.
 		return {
-			"X-Auth-Token": authToken,
+			"X-Auth-Token": getAuthToken({
+				privateKeyWif: this.config.authKey.toWif(),
+				requestPath: path,
+				body: JSON.stringify(body),
+			}),
 		};
 	}
 }

@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { registerOpns } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
 const opnsRegisterArgsSchema = z.object({
 	id: z
@@ -31,6 +32,7 @@ export function registerOpnsRegisterTool(
 			}
 
 			try {
+				assertBroadcastAllowed("wallet_opnsRegister");
 				const result = await registerOpns.execute(ctx, { id });
 
 				if (result.error) {
