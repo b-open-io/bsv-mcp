@@ -109,15 +109,12 @@ export function registerSetupDroplitTools(
 		},
 		async ({ faucetName, fixedDropSats, maxConsolidationInputs }) => {
 			try {
-				const { apiUrl, publicKeyHex, client } =
-					requireDroplit(integratedWallet);
+				const { apiUrl, client } = requireDroplit(integratedWallet);
 
-				// The provisioning endpoint names the identifier
-				// faucet_identifier_name and rejects the request outright without an
-				// owner key, so neither can be omitted or renamed here.
+				// Ownership comes from the BRC-103/104 identity on the request, not
+				// from the body, so the key is never sent here.
 				const body = {
-					faucet_identifier_name: faucetName,
-					owner_counterparty_pubkey_hex: publicKeyHex,
+					name: faucetName,
 					...(fixedDropSats !== undefined && {
 						fixed_drop_sats: fixedDropSats,
 					}),
@@ -126,7 +123,7 @@ export function registerSetupDroplitTools(
 					}),
 				};
 
-				const path = "/admin/faucets";
+				const path = "/faucets";
 				const response = await fetch(`${apiUrl}${path}`, {
 					method: "POST",
 					headers: {
