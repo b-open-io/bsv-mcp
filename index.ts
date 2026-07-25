@@ -108,10 +108,10 @@ const CONFIG = {
 		: process.env.TRANSPORT?.toLowerCase() || "http", // 'stdio' or 'http'/default
 	port: Number.parseInt(process.env.PORT || "3000", 10),
 
-	// --- Droplet API Configuration ---
-	useDropletApi: process.env.USE_DROPLET_API === "true",
-	dropletApiUrl: process.env.DROPLET_API_URL || "http://127.0.0.1:4000",
-	dropletFaucetName: process.env.DROPLET_FAUCET_NAME || "",
+	// --- Droplit API Configuration ---
+	useDroplitApi: process.env.USE_DROPLIT_API === "true",
+	droplitApiUrl: process.env.DROPLIT_API_URL || "http://127.0.0.1:4000",
+	droplitFaucetName: process.env.DROPLIT_FAUCET_NAME || "",
 
 	// --- OAuth Configuration ---
 	enableOAuth: process.env.ENABLE_OAUTH !== "false", // Enabled by default
@@ -1113,7 +1113,7 @@ Environment Variables:
   DISABLE_BSOCIAL_TOOLS  Disable BSocial tools (default: false)
   ENABLE_A2B_TOOLS       Enable A2B tools (default: false)
   DISABLE_BROADCASTING   Disable transaction broadcasting (default: false)
-  USE_DROPLET_API        Use Droplet API for transactions (default: false)
+  USE_DROPLIT_API        Use Droplit API for transactions (default: false)
 
 Tool Categories:
   BSV Tools:      Price lookup, transaction decoding, validation
@@ -1207,11 +1207,11 @@ Authentication:
 		`  DISABLE_BROADCASTING: ${process.env.DISABLE_BROADCASTING === "true" ? "Set (true)" : "Not Set/false"}`,
 	);
 	logFunc(
-		`  USE_DROPLET_API:      ${CONFIG.useDropletApi ? "Set (true)" : "Not Set/false"}`,
+		`  USE_DROPLIT_API:      ${CONFIG.useDroplitApi ? "Set (true)" : "Not Set/false"}`,
 	);
-	if (CONFIG.useDropletApi) {
-		logFunc(`  DROPLET_API_URL:      ${CONFIG.dropletApiUrl}`);
-		logFunc(`  DROPLET_FAUCET_NAME:  ${CONFIG.dropletFaucetName || "Not Set"}`);
+	if (CONFIG.useDroplitApi) {
+		logFunc(`  DROPLIT_API_URL:      ${CONFIG.droplitApiUrl}`);
+		logFunc(`  DROPLIT_FAUCET_NAME:  ${CONFIG.droplitFaucetName || "Not Set"}`);
 	}
 
 	logFunc("\nKey Source:");
@@ -1305,28 +1305,28 @@ Authentication:
 	let remoteServices: import("@1sat/wallet-remote").OneSatServices | undefined;
 
 	if (CONFIG.loadTools) {
-		// Check if we should use Droplet API mode
-		if (CONFIG.useDropletApi && CONFIG.dropletFaucetName) {
-			// Initialize IntegratedWallet in Droplet mode
+		// Check if we should use Droplit API mode
+		if (CONFIG.useDroplitApi && CONFIG.droplitFaucetName) {
+			// Initialize IntegratedWallet in Droplit mode
 			if (CONFIG.loadWalletTools) {
 				try {
 					integratedWallet = new IntegratedWallet({
-						useDropletApi: true,
-						dropletConfig: {
-							apiUrl: CONFIG.dropletApiUrl,
-							faucetName: CONFIG.dropletFaucetName,
+						useDroplitApi: true,
+						droplitConfig: {
+							apiUrl: CONFIG.droplitApiUrl,
+							faucetName: CONFIG.droplitFaucetName,
 						},
 						paymentKey: payPk,
 						identityKey: identityPk,
 					});
 					logFunc(
-						`\x1b[32mINFO: Droplet API mode initialized successfully (Faucet: ${CONFIG.dropletFaucetName}).\x1b[0m`,
+						`\x1b[32mINFO: Droplit API mode initialized successfully (Faucet: ${CONFIG.droplitFaucetName}).\x1b[0m`,
 					);
 					logFunc(
-						`\x1b[33mNOTE: Using Droplet API at ${CONFIG.dropletApiUrl}\x1b[0m`,
+						`\x1b[33mNOTE: Using Droplit API at ${CONFIG.droplitApiUrl}\x1b[0m`,
 					);
 					logFunc(
-						"\x1b[33mNOTE: Local keys are ignored in Droplet API mode\x1b[0m",
+						"\x1b[33mNOTE: Local keys are ignored in Droplit API mode\x1b[0m",
 					);
 					wallet = integratedWallet.getLocalWallet();
 
@@ -1336,7 +1336,7 @@ Authentication:
 					effectiveConfig.loadBsocialTools = false;
 				} catch (e) {
 					logFunc(
-						`\x1b[31mERROR: Failed to initialize Droplet API mode: ${e instanceof Error ? e.message : String(e)}. Wallet-dependent tools will be unavailable.\x1b[0m`,
+						`\x1b[31mERROR: Failed to initialize Droplit API mode: ${e instanceof Error ? e.message : String(e)}. Wallet-dependent tools will be unavailable.\x1b[0m`,
 					);
 					integratedWallet = undefined;
 					effectiveConfig.loadWalletTools = false;

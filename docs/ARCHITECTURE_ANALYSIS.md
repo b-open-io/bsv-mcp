@@ -250,7 +250,7 @@ These work fine without authentication:
 
 ---
 
-### Option 2: Droplet API (Faucet Service)
+### Option 2: Droplit API (Faucet Service)
 **Location:** `/Users/satchmo/code/bsv-mcp/tools/wallet/integratedWallet.ts`
 
 - No local keys required
@@ -321,7 +321,7 @@ return await transport.handlePostMessage(req, userContext);
 
 **Current:** Tools either:
 - Use local private keys (security issue for hosted)
-- Use Droplet API (limited functionality)
+- Use Droplit API (limited functionality)
 - Fail with "no private key" error
 
 **Needed:** Standardized signing service

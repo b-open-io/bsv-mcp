@@ -811,7 +811,7 @@ describe("OAuth integration", () => {
 2. **Refresh tokens:** Implement now or defer to v2?
 3. **Multi-key scenarios:** Allow users to select signing key?
 4. **Offline mode:** Support local keys alongside OAuth? ✅ Confirmed: Yes, fallback
-5. **Droplet API:** Keep for funding, OAuth for signing? ✅ Confirmed: Yes
+5. **Droplit API:** Keep for funding, OAuth for signing? ✅ Confirmed: Yes
 
 ---
 

@@ -576,34 +576,34 @@ The BSV MCP server can be customized using environment variables to enable or di
 | `IDENTITY_KEY_WIF`    | `not set` | Optional WIF for identity key; if set, ordinals inscriptions will be signed with sigma-protocol for authentication, curation, and web-of-trust. |
 | `DISABLE_BROADCASTING` | `false` | Set to `true` to disable transaction broadcasting; returns raw transaction hex instead - useful for testing and transaction review before broadcasting |
 
-### Droplet API Configuration
+### Droplit API Configuration
 
-The BSV MCP server supports running in Droplet API mode, which allows operation without local private keys by using a remote faucet service:
+The BSV MCP server supports running in Droplit API mode, which allows operation without local private keys by using a remote faucet service:
 
 | Environment Variable | Default | Description |
 | -------------------- | ------- | ----------- |
-| `USE_DROPLET_API` | `false` | Set to `true` to enable Droplet API mode for remote wallet operations |
-| `DROPLET_API_URL` | `http://localhost:4000` | Base URL for the Droplet faucet API service |
-| `DROPLET_FAUCET_NAME` | `not set` | Name of the faucet to use (required when `USE_DROPLET_API` is true) |
+| `USE_DROPLIT_API` | `false` | Set to `true` to enable Droplit API mode for remote wallet operations |
+| `DROPLIT_API_URL` | `http://localhost:4000` | Base URL for the Droplit faucet API service |
+| `DROPLIT_FAUCET_NAME` | `not set` | Name of the faucet to use (required when `USE_DROPLIT_API` is true) |
 | `TRANSPORT` | `stdio` | MCP transport mode (stdio/http) - automatically set to stdio for Claude Code compatibility |
 
-#### Droplet API Mode
+#### Droplit API Mode
 
-When `USE_DROPLET_API=true` is set, the server operates in remote mode:
+When `USE_DROPLIT_API=true` is set, the server operates in remote mode:
 
 - **No Local Keys Required**: The server doesn't need `PRIVATE_KEY_WIF` or local key files
-- **Remote Wallet Operations**: Transactions are funded and broadcast through the Droplet API
+- **Remote Wallet Operations**: Transactions are funded and broadcast through the Droplit API
 - **BSM Authentication**: Uses Bitcoin Signed Message (BSM) authentication for secure API communication
 - **Automatic Funding**: The faucet automatically provides UTXOs for transactions
 - **Seamless Integration**: All existing wallet tools work transparently with the remote service
 
-#### Example Droplet Configuration
+#### Example Droplit Configuration
 
 ```bash
-# Enable Droplet API mode
-USE_DROPLET_API=true
-DROPLET_API_URL=https://your-droplet-service.com
-DROPLET_FAUCET_NAME=your-faucet-name
+# Enable Droplit API mode
+USE_DROPLIT_API=true
+DROPLIT_API_URL=https://your-droplit-service.com
+DROPLIT_FAUCET_NAME=your-faucet-name
 TRANSPORT=stdio
 ```
 

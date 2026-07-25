@@ -27,7 +27,7 @@ bun build ./index.ts --outdir ./dist --target node
 bun run index.ts
 
 # Run with environment variables
-TRANSPORT=stdio USE_DROPLET_API=true bun run index.ts
+TRANSPORT=stdio USE_DROPLIT_API=true bun run index.ts
 
 # Run tests
 bun test
@@ -180,9 +180,9 @@ Main registration in `tools/index.ts` conditionally loads categories based on:
 - Follows MCP 2025-03-26 specification and OAuth 2.1 standards
 
 ### Droplit API Mode
-- `USE_DROPLET_API`: Enable Droplit (droplit.dev) subsidized wallet mode (true/false, default: false); codebase uses `droplet` in variable names for backward compat
-- `DROPLET_API_URL`: Droplit API endpoint (default: http://127.0.0.1:4000)
-- `DROPLET_FAUCET_NAME`: Name of the faucet to use (required when USE_DROPLET_API=true)
+- `USE_DROPLIT_API`: Enable Droplit (droplit.dev) subsidized wallet mode (true/false, default: false); codebase uses `droplit` in variable names for backward compat
+- `DROPLIT_API_URL`: Droplit API endpoint (default: http://127.0.0.1:4000)
+- `DROPLIT_FAUCET_NAME`: Name of the faucet to use (required when USE_DROPLIT_API=true)
 
 ### Feature Toggles
 - `DISABLE_PROMPTS`: Disable all prompts (default: false)
@@ -281,7 +281,7 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 
 ### Droplit API Testing
 1. Start go-faucet-api locally
-2. Configure env vars: USE_DROPLET_API=true, DROPLET_API_URL, DROPLET_FAUCET_NAME
+2. Configure env vars: USE_DROPLIT_API=true, DROPLIT_API_URL, DROPLIT_FAUCET_NAME
 3. Run test scripts or use Claude Code to test wallet operations
 
 ## Security Best Practices
@@ -297,7 +297,7 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 
 ### "Faucet not found" error in Droplit mode
 - Ensure faucet exists in Droplit API
-- Check DROPLET_FAUCET_NAME matches existing faucet name
+- Check DROPLIT_FAUCET_NAME matches existing faucet name
 
 ### Authentication errors with Droplit API
 - Verify BSM signature format compatibility

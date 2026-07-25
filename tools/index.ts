@@ -9,9 +9,9 @@ import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
-import { registerWalletGetBalanceDropletTool } from "./wallet/getBalanceDroplet";
+import { registerWalletGetBalanceDroplitTool } from "./wallet/getBalanceDroplit";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
-import { registerSetupDropletTool } from "./wallet/setupDroplet";
+import { registerSetupDroplitTools } from "./wallet/setupDroplit";
 import { registerWalletTools } from "./wallet/tools";
 import type { Wallet } from "./wallet/wallet";
 
@@ -116,16 +116,16 @@ export function registerAllTools(
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
-		if (config.integratedWallet?.isDropletMode) {
-			// Register Droplet-mode wallet tools
-			const dropletClient = config.integratedWallet.getDropletClient();
-			if (dropletClient) {
-				// Register Droplet-specific tools
-				registerWalletGetBalanceDropletTool(server, dropletClient);
+		if (config.integratedWallet?.isDroplitMode) {
+			// Register Droplit-mode wallet tools
+			const droplitClient = config.integratedWallet.getDroplitClient();
+			if (droplitClient) {
+				// Register Droplit-specific tools
+				registerWalletGetBalanceDroplitTool(server, droplitClient);
 				if (config.integratedWallet) {
-					registerSetupDropletTool(server, config.integratedWallet);
+					registerSetupDroplitTools(server, config.integratedWallet);
 				}
-				console.error("Registered Droplet mode wallet tools");
+				console.error("Registered Droplit mode wallet tools");
 			}
 		} else if (config.wallet) {
 			// Register normal wallet tools

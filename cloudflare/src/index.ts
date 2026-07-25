@@ -4,7 +4,7 @@
  * Stateless MCP server using Streamable HTTP transport (MCP 2025-03-26 spec).
  * Each request creates a fresh McpServer + WebStandardStreamableHTTPServerTransport.
  *
- * Wallet operations use Droplet API mode (no local key storage).
+ * Wallet operations use Droplit API mode (no local key storage).
  * OAuth 2.1 via sigma-auth userinfo endpoint.
  */
 
@@ -19,9 +19,9 @@ import { IntegratedWallet } from "../../tools/wallet/integratedWallet.ts";
 
 /** Cloudflare Worker environment bindings */
 interface Env {
-	/** Droplet API base URL */
+	/** Droplit API base URL */
 	DROPLIT_API_URL: string;
-	/** Droplet faucet name (secret) */
+	/** Droplit faucet name (secret) */
 	DROPLIT_FAUCET_NAME: string;
 	/** Server payment key in WIF format (secret) */
 	SERVER_PRIVATE_KEY_WIF: string;
@@ -121,7 +121,7 @@ function createConfiguredServer(toolsConfig: ToolsConfig): McpServer {
 }
 
 /**
- * Build ToolsConfig for Droplet API mode from worker env.
+ * Build ToolsConfig for Droplit API mode from worker env.
  */
 function buildToolsConfig(env: Env): ToolsConfig {
 	let payPk: PrivateKey | undefined;
@@ -137,8 +137,8 @@ function buildToolsConfig(env: Env): ToolsConfig {
 	if (env.DROPLIT_FAUCET_NAME) {
 		try {
 			integratedWallet = new IntegratedWallet({
-				useDropletApi: true,
-				dropletConfig: {
+				useDroplitApi: true,
+				droplitConfig: {
 					apiUrl: env.DROPLIT_API_URL,
 					faucetName: env.DROPLIT_FAUCET_NAME,
 				},

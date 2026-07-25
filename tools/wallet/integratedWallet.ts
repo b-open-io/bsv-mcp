@@ -1,5 +1,5 @@
 import { type PrivateKey, Utils } from "@bsv/sdk";
-import { DropletClient, type DropletConfig } from "../../utils/droplet";
+import { DroplitClient, type DroplitConfig } from "../../utils/droplit";
 import {
 	buildAndSendTransaction,
 	buildOpReturnScript,
@@ -11,26 +11,26 @@ export interface IntegratedWalletConfig {
 	paymentKey?: PrivateKey;
 	identityKey?: PrivateKey;
 
-	// Droplet API config
-	useDropletApi?: boolean;
-	dropletConfig?: DropletConfig;
+	// Droplit API config
+	useDroplitApi?: boolean;
+	droplitConfig?: DroplitConfig;
 }
 
 /**
- * Integrated wallet that can use either local keys or Droplet API
+ * Integrated wallet that can use either local keys or Droplit API
  */
 export class IntegratedWallet {
 	private localWallet?: Wallet;
-	private dropletClient?: DropletClient;
+	private droplitClient?: DroplitClient;
 
 	constructor(config: IntegratedWalletConfig) {
-		if (config.useDropletApi && config.dropletConfig) {
-			// If we have a payment key, use it for auth with Droplet API
+		if (config.useDroplitApi && config.droplitConfig) {
+			// If we have a payment key, use it for auth with Droplit API
 			if (config.paymentKey) {
-				config.dropletConfig.authKey = config.paymentKey;
+				config.droplitConfig.authKey = config.paymentKey;
 			}
-			this.dropletClient = new DropletClient(config.dropletConfig);
-			console.error("IntegratedWallet: Using Droplet API mode");
+			this.droplitClient = new DroplitClient(config.droplitConfig);
+			console.error("IntegratedWallet: Using Droplit API mode");
 		} else if (config.paymentKey) {
 			this.localWallet = new Wallet(config.paymentKey, config.identityKey);
 			console.error("IntegratedWallet: Using local wallet mode");
@@ -41,17 +41,17 @@ export class IntegratedWallet {
 		}
 	}
 
-	get isDropletMode(): boolean {
-		return !!this.dropletClient;
+	get isDroplitMode(): boolean {
+		return !!this.droplitClient;
 	}
 
 	get hasWallet(): boolean {
-		return !!this.localWallet || !!this.dropletClient;
+		return !!this.localWallet || !!this.droplitClient;
 	}
 
 	async getBalance(): Promise<number> {
-		if (this.dropletClient) {
-			const status = await this.dropletClient.getFaucetStatus();
+		if (this.droplitClient) {
+			const status = await this.droplitClient.getFaucetStatus();
 			return status.balance_satoshis;
 		}
 		if (this.localWallet) {
@@ -65,10 +65,10 @@ export class IntegratedWallet {
 		address: string,
 		satoshis: number,
 	): Promise<{ txid: string }> {
-		if (this.dropletClient) {
-			// For Droplet API, we use the tap endpoint which sends the faucet's fixed amount
-			// Note: Droplet API doesn't support custom amounts, it uses fixed_drop_sats
-			const response = await this.dropletClient.tap(address);
+		if (this.droplitClient) {
+			// For Droplit API, we use the tap endpoint which sends the faucet's fixed amount
+			// Note: Droplit API doesn't support custom amounts, it uses fixed_drop_sats
+			const response = await this.droplitClient.tap(address);
 			return { txid: response.txid };
 		}
 		if (this.localWallet) {
@@ -78,8 +78,8 @@ export class IntegratedWallet {
 	}
 
 	async pushData(data: string[], encoding = "hex"): Promise<{ txid: string }> {
-		if (this.dropletClient) {
-			const response = await this.dropletClient.push(data, encoding);
+		if (this.droplitClient) {
+			const response = await this.droplitClient.push(data, encoding);
 			return { txid: response.txid };
 		}
 		if (this.localWallet) {
@@ -116,7 +116,7 @@ export class IntegratedWallet {
 		return this.localWallet;
 	}
 
-	getDropletClient(): DropletClient | undefined {
-		return this.dropletClient;
+	getDroplitClient(): DroplitClient | undefined {
+		return this.droplitClient;
 	}
 }

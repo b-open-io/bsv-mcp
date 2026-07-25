@@ -129,29 +129,29 @@
 - Improved error handling with standardized error types
 - Better code organization with new utility modules
 
-## v0.1.0 - Droplet API Integration & Claude Code CLI Support
+## v0.1.0 - Droplit API Integration & Claude Code CLI Support
 
 ### Major Features
-- **Droplet API Integration**: Added support for running without local keys using Droplet faucet API
+- **Droplit API Integration**: Added support for running without local keys using Droplit faucet API
   - New `IntegratedWallet` class supports both local and remote wallet modes
-  - BSM (Bitcoin Signed Message) authentication for Droplet API communication
-  - Environment variable configuration: `USE_DROPLET_API`, `DROPLET_API_URL`, `DROPLET_FAUCET_NAME`
-  - Automatic faucet funding and transaction broadcasting through Droplet service
+  - BSM (Bitcoin Signed Message) authentication for Droplit API communication
+  - Environment variable configuration: `USE_DROPLIT_API`, `DROPLIT_API_URL`, `DROPLIT_FAUCET_NAME`
+  - Automatic faucet funding and transaction broadcasting through Droplit service
 - **Claude Code CLI Compatibility**: Fixed stdio transport configuration for seamless Claude Code integration
   - Updated smithery.yaml configuration for proper MCP CLI operation
   - Enhanced testing and debugging workflows with Claude CLI
 
 ### Technical Improvements
-- Created `DropletClient` class for robust API communication with go-faucet-api
-- Added comprehensive error handling and validation for Droplet operations
+- Created `DroplitClient` class for robust API communication with go-faucet-api
+- Added comprehensive error handling and validation for Droplit operations
 - Enhanced documentation with testing instructions and troubleshooting guides
 - Improved dual-mode wallet architecture maintaining backward compatibility
 - Updated development documentation with detailed testing workflows
 
 ### Environment Variables
-- `USE_DROPLET_API`: Enable Droplet API mode (default: false)
-- `DROPLET_API_URL`: Droplet service endpoint (default: http://localhost:4000)
-- `DROPLET_FAUCET_NAME`: Faucet name for API operations (required in Droplet mode)
+- `USE_DROPLIT_API`: Enable Droplit API mode (default: false)
+- `DROPLIT_API_URL`: Droplit service endpoint (default: http://localhost:4000)
+- `DROPLIT_FAUCET_NAME`: Faucet name for API operations (required in Droplit mode)
 - `TRANSPORT`: MCP transport mode (stdio/http) for Claude Code compatibility
 
 ## v0.0.37 - Resource Updates

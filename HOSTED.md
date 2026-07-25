@@ -95,8 +95,8 @@ Add this to your IDE's MCP settings:
 ```bash
 # Environment variables
 export SERVER_PRIVATE_KEY_WIF="L1abc..."  # Your funded wallet
-export DROPLET_API_URL="https://droplet.api.com"
-export DROPLET_FAUCET_NAME="your-faucet"
+export DROPLIT_API_URL="https://droplit.api.com"
+export DROPLIT_FAUCET_NAME="your-faucet"
 
 # Start server
 bun run hosted-server
