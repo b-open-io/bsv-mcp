@@ -15,6 +15,22 @@ import { PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
 
 const DEFAULT_REMOTE_STORAGE_URL = "https://api.1sat.app/1sat/wallet";
+
+/**
+ * The originator that bypasses every permission check in
+ * WalletPermissionsManager — isAdminOriginator short-circuits
+ * ensureSpendingAuthorization to true before any spending gate runs.
+ *
+ * This was the package name, "bsv-mcp", which is the exact string a caller
+ * reaches for when a parameter named `originator` needs a value. Passing it
+ * from a tool would disable the spending gate while the configuration still
+ * reported it armed. It is deliberately a name no tool would send.
+ *
+ * It must never normalize to the empty string: normalizeOriginator(undefined)
+ * returns "", so an empty admin originator would make every anonymous call
+ * admin and disable the gate entirely.
+ */
+export const ADMIN_ORIGINATOR = "admin.bsv-mcp.internal";
 const MCP_ADDRESS_PREFIX = "mcp";
 
 export interface WalletInitResult {
@@ -46,7 +62,7 @@ export async function initWallet(
 		storageIdentityKey: "bsv-mcp",
 	});
 
-	const wpm = new WalletPermissionsManager(result.wallet, "bsv-mcp", {
+	const wpm = new WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
 		seekProtocolPermissionsForSigning: false,
 		seekProtocolPermissionsForEncrypting: false,
 		seekProtocolPermissionsForHMAC: false,
