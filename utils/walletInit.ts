@@ -1,6 +1,8 @@
+import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+	type ActionLogEntry,
 	createContext,
 	deriveDepositAddresses,
 	type OneSatContext,
@@ -13,6 +15,13 @@ import {
 } from "@1sat/wallet-node";
 import { PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
+import { redactKeyMaterial } from "./redact";
+import {
+	handleSpendingAuthorization,
+	type SpendingPermissionRequest,
+} from "./spendingApproval.ts";
+
+export { setSpendingApprovalServerInstance } from "./spendingApproval.ts";
 
 const DEFAULT_REMOTE_STORAGE_URL = "https://api.1sat.app/1sat/wallet";
 
@@ -32,6 +41,22 @@ const DEFAULT_REMOTE_STORAGE_URL = "https://api.1sat.app/1sat/wallet";
  */
 export const ADMIN_ORIGINATOR = "admin.bsv-mcp.internal";
 const MCP_ADDRESS_PREFIX = "mcp";
+
+function writeAuditLog(dataDir: string, entry: ActionLogEntry): void {
+	try {
+		mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+		const serialized = JSON.stringify(entry, (_, value) =>
+			typeof value === "bigint" ? value.toString() : value,
+		);
+		appendFileSync(
+			join(dataDir, "audit.log"),
+			`${redactKeyMaterial(serialized)}\n`,
+			{ encoding: "utf8", mode: 0o600 },
+		);
+	} catch (error) {
+		console.error("[wallet] failed to write audit log:", error);
+	}
+}
 
 export interface WalletInitResult {
 	wallet: WalletInterface;
@@ -79,11 +104,16 @@ export async function initWallet(
 		seekCertificateRelinquishmentPermissions: false,
 		seekCertificateListingPermissions: false,
 		seekCertificateDisclosurePermissions: false,
-		seekSpendingPermissions: false,
+		seekSpendingPermissions: true,
 		seekGroupedPermission: false,
 		differentiatePrivilegedOperations: false,
 		encryptWalletMetadata: true,
 	});
+	wpm.bindCallback(
+		"onSpendingAuthorizationRequested",
+		(request: SpendingPermissionRequest) =>
+			handleSpendingAuthorization(request, wpm),
+	);
 
 	const dataDir = join(homedir(), ".bsv-mcp");
 
@@ -91,6 +121,8 @@ export async function initWallet(
 		services: result.services,
 		chain,
 		dataDir,
+		debug: true,
+		log: (entry) => writeAuditLog(dataDir, entry),
 	});
 
 	const { derivations } = await deriveDepositAddresses.execute(ctx, {

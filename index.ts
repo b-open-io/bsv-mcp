@@ -35,7 +35,11 @@ import {
 } from "./utils/jwtValidator.ts";
 import { SecureKeyManager } from "./utils/keyManager.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
-import { destroyWallet, initWallet } from "./utils/walletInit.ts";
+import {
+	destroyWallet,
+	initWallet,
+	setSpendingApprovalServerInstance,
+} from "./utils/walletInit.ts";
 
 // Initialize server variable (used for stdio mode and passphrase detection)
 let server: McpServer | undefined;
@@ -1453,6 +1457,7 @@ Authentication:
 		// Stdio: single server instance, single transport
 		server = createConfiguredServer(serverFactoryOpts);
 		setServerInstance(server);
+		setSpendingApprovalServerInstance(server);
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
 		logFunc("BSV MCP Server running on stdio");

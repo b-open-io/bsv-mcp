@@ -10,6 +10,15 @@ import {
 } from "../constants";
 import { purchaseListingArgsSchema } from "./schemas";
 
+export function computeMarketplaceRate(listingPriceSatoshis: number): number {
+	if (listingPriceSatoshis === 0) {
+		return MARKET_FEE_PERCENTAGE;
+	}
+
+	const fee = Math.round(listingPriceSatoshis * MARKET_FEE_PERCENTAGE);
+	return Math.max(fee, MINIMUM_MARKET_FEE_SATOSHIS) / listingPriceSatoshis;
+}
+
 export function registerPurchaseListingTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
@@ -63,12 +72,9 @@ export function registerPurchaseListingTool(
 						tokenAmount = listingData.data.bsv20.amt;
 
 						if (listingData.data?.list?.price) {
-							const fee = Math.round(
-								listingData.data.list.price * MARKET_FEE_PERCENTAGE,
+							marketplaceRate = computeMarketplaceRate(
+								listingData.data.list.price,
 							);
-							marketplaceRate =
-								Math.max(fee, MINIMUM_MARKET_FEE_SATOSHIS) /
-								listingData.data.list.price;
 						}
 					}
 
