@@ -8,9 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import { PrivateKey } from "@bsv/sdk";
 import {
-	type BapMasterBackup,
 	decryptBackup,
 	encryptBackup,
+	isLegacyBackup,
 	type OneSatBackup,
 } from "bitcoin-backup";
 
@@ -176,13 +176,15 @@ export class SecureKeyManager {
 			};
 		}
 
-		// Check if it's a BapMasterBackup (for xprv)
-		if ("xprv" in decrypted) {
-			const backup = decrypted as BapMasterBackup;
+		// BapMasterBackup is a union: the legacy shape carries xprv, the type-42
+		// shape carries rootPk and has no xprv to hand back. Narrow with the
+		// library's guard rather than casting the union, which cannot be read
+		// through safely.
+		if (isLegacyBackup(decrypted)) {
 			return {
 				payPk: undefined,
 				identityPk: undefined,
-				xprv: backup.xprv,
+				xprv: decrypted.xprv,
 			};
 		}
 

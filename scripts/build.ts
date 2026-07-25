@@ -19,9 +19,34 @@ if (__isStdio) {
 }
 `;
 
+// knex ships every SQL dialect and require()s that dialect's driver at module
+// scope. @bsv/wallet-toolbox pulls knex in for SQLite alone, so the remaining
+// drivers are never installed and the bundler cannot resolve them. They stay
+// external; nothing reaches them at runtime.
+const UNUSED_KNEX_DRIVERS = [
+	"pg",
+	"pg-query-stream",
+	"mysql",
+	"mysql2",
+	"mariadb",
+	"mariadb/callback",
+	"oracledb",
+	"tedious",
+	"better-sqlite3",
+	"sqlite3",
+];
+
 console.log("Building bundle...");
 const result = Bun.spawnSync(
-	["bun", "build", "./index.ts", "--target=node", `--outfile=${OUTFILE}`, `--banner=${STDIO_GUARD}`],
+	[
+		"bun",
+		"build",
+		"./index.ts",
+		"--target=node",
+		`--outfile=${OUTFILE}`,
+		`--banner=${STDIO_GUARD}`,
+		...UNUSED_KNEX_DRIVERS.flatMap((driver) => ["--external", driver]),
+	],
 	{ stdout: "inherit", stderr: "inherit" },
 );
 if (result.exitCode !== 0) {
