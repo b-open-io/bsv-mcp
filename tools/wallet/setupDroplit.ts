@@ -109,10 +109,10 @@ export function registerSetupDroplitTools(
 		},
 		async ({ faucetName, fixedDropSats, maxConsolidationInputs }) => {
 			try {
-				const { apiUrl, client } = requireDroplit(integratedWallet);
+				const { client } = requireDroplit(integratedWallet);
 
-				// Ownership comes from the BRC-103/104 identity on the request, not
-				// from the body, so the key is never sent here.
+				// Ownership comes from the BRC-103/104 identity established by the
+				// handshake, not from the body, so the key is never sent here.
 				const body = {
 					name: faucetName,
 					...(fixedDropSats !== undefined && {
@@ -123,14 +123,9 @@ export function registerSetupDroplitTools(
 					}),
 				};
 
-				const path = "/faucets";
-				const response = await fetch(`${apiUrl}${path}`, {
+				const response = await client.authenticatedFetch("/faucets", {
 					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						...(await client.getAuthHeaders("POST", path, body)),
-					},
-					body: JSON.stringify(body),
+					body,
 				});
 				await failIfNotOk(response, "Creating the Droplit faucet");
 
