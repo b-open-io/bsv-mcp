@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { fetchProfile } from "./getId";
 import type { IdentityData, SigmaIdentityProfile } from "./types";
+import { SchemaType } from "./types";
 
 // Store the original fetch function
 const originalFetch = global.fetch;
@@ -21,18 +22,25 @@ describe("BAP getId - fetchProfile", () => {
 	it("should return identity data for a valid idKey", async () => {
 		const mockIdKey = "testIdKey";
 		const mockIdentityData: IdentityData = {
-			"@context": ["https://w3id.org/did/v0.11", "https://w3id.org/bap/v1"],
-			id: `did:bap:id:${mockIdKey}`,
-			publicKey: [
+			idKey: mockIdKey,
+			rootAddress: "1SomeRootAddress",
+			currentAddress: "1SomeCurrentAddress",
+			addresses: [
 				{
-					id: `did:bap:id:${mockIdKey}#root`,
-					controller: `did:bap:id:${mockIdKey}`,
-					type: "EcdsaSecp256k1VerificationKey2019",
-					bitcoinAddress: "1SomeBitcoinAddress",
+					address: "1SomeCurrentAddress",
+					txId: "a1b2c3d4".repeat(8),
+					block: 800000,
 				},
 			],
-			authentication: ["#root"],
-			assertionMethod: ["#root"],
+			block: 800000,
+			firstSeen: 799999,
+			timestamp: 1700000000,
+			valid: true,
+			identity: {
+				"@context": "https://schema.org",
+				"@type": SchemaType.Person,
+				alternateName: "Test User",
+			},
 		};
 		const mockApiResponse: SigmaIdentityProfile = { result: mockIdentityData };
 

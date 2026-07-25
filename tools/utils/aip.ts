@@ -1,45 +1,54 @@
-import { BSM, type PrivateKey, Utils } from "@bsv/sdk";
+import { BigNumber, BSM, OP, type PrivateKey, Utils } from "@bsv/sdk";
 import { AIP_PREFIX } from "../constants";
 
-const { toArray, toBase64, toUTF8 } = Utils;
+const { toArray } = Utils;
+
+const PIPE = 0x7c;
 
 /**
  * Sign OP_RETURN data with AIP (Author Identity Protocol)
- * @param dataArrays - Array of data arrays to sign
+ *
+ * The signed message is the OP_RETURN opcode, then every push payload, then
+ * the `|` protocol separator — the reconstruction every AIP verifier performs
+ * (bsv-bap `verifyAttestationWithAIP`, `@1sat/templates` `AIP.validateAIP`,
+ * go-templates). The signature is written as raw compact bytes, not as base64
+ * text; verifiers base64-encode the pushdata themselves.
+ *
+ * @param dataArrays - Push payloads that follow OP_RETURN
  * @param signingKey - Private key to sign with
  * @param signingAddress - Address associated with the signing key
- * @returns Object containing signed data array
+ * @returns Object containing the payloads with the AIP fields appended
  */
 export async function signOpReturnWithAIP(
-	dataArrays: Uint8Array[],
+	dataArrays: number[][],
 	signingKey: PrivateKey,
 	signingAddress: string,
-): Promise<{ signedData: Uint8Array[] }> {
-	// Concatenate all data arrays to create message to sign
-	let messageToSign = new Uint8Array();
-	for (const data of dataArrays) {
-		const temp = new Uint8Array(messageToSign.length + data.length);
-		temp.set(messageToSign);
-		temp.set(data, messageToSign.length);
-		messageToSign = temp;
+): Promise<{ signedData: number[][] }> {
+	const messageToSign = [OP.OP_RETURN, ...dataArrays.flat(), PIPE];
+
+	const signature = BSM.sign(messageToSign, signingKey, "raw");
+	if (typeof signature === "string") {
+		throw new Error("BSM.sign returned a string in raw mode");
 	}
 
-	// Create BSM signature
-	const signature = BSM.sign(messageToSign, signingKey);
+	const magicHash = new BigNumber(BSM.magicHash(messageToSign));
+	const recovery = signature.CalculateRecoveryFactor(
+		signingKey.toPublicKey(),
+		magicHash,
+	);
+	const compactSignature = signature.toCompact(recovery, true);
+	if (!Array.isArray(compactSignature)) {
+		throw new Error("Signature.toCompact returned a string without encoding");
+	}
 
-	// Convert signature to base64
-	const signatureBase64 = toBase64(signature.toCompact());
-
-	// Add AIP data to the arrays
-	const aipData: Uint8Array[] = [
+	const aipData: number[][] = [
 		toArray("|", "utf8"), // Separator
 		toArray(AIP_PREFIX, "utf8"),
 		toArray("BITCOIN_ECDSA", "utf8"),
 		toArray(signingAddress, "utf8"),
-		toArray(signatureBase64, "utf8"),
+		compactSignature,
 	];
 
-	// Return combined data
 	return {
 		signedData: [...dataArrays, ...aipData],
 	};

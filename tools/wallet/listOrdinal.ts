@@ -1,86 +1,81 @@
-import type { OneSatContext } from '@1sat/actions'
-import { listOrdinal } from '@1sat/actions'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod'
-
-const walletOutputSchema = z.object({
-	outpoint: z.string(),
-	satoshis: z.number().optional(),
-	tags: z.array(z.string()).optional(),
-	customInstructions: z.string().optional(),
-	lockingScript: z.string().optional(),
-})
+import type { OneSatContext } from "@1sat/actions";
+import { sellOrdinal } from "@1sat/actions";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 
 const listOrdinalArgsSchema = z.object({
-	ordinal: walletOutputSchema.describe(
-		'WalletOutput of the ordinal to list (from wallet_getOrdinals)',
-	),
-	inputBEEF: z
-		.array(z.number())
+	id: z
+		.string()
 		.describe(
-			"BEEF bytes from listOutputs (include: 'entire transactions')",
+			"Tracking id of the ordinal in the ordinals basket (the 'id:' tag from wallet_getOrdinals)",
 		),
-	price: z.number().describe('Price in satoshis'),
+	price: z.number().describe("Price in satoshis"),
 	payAddress: z
 		.string()
-		.describe('Address to receive payment on purchase'),
-})
+		.optional()
+		.describe(
+			"Address to receive payment on purchase. Defaults to the wallet's P1SAT '1sat 0' address.",
+		),
+});
 
 export function registerListOrdinalTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
 	server.tool(
-		'wallet_listOrdinal',
-		'List an ordinal for sale on the marketplace',
+		"wallet_listOrdinal",
+		"List an ordinal for sale on the marketplace",
 		{ ...listOrdinalArgsSchema.shape },
-		async ({ ordinal, inputBEEF, price, payAddress }) => {
+		async ({ id, price, payAddress }) => {
 			if (!ctx) {
 				return {
 					content: [
 						{
-							type: 'text',
-							text: 'Wallet not initialized. Please configure a wallet before listing.',
+							type: "text",
+							text: "Wallet not initialized. Please configure a wallet before listing.",
 						},
 					],
 					isError: true,
-				}
+				};
 			}
 
 			try {
-				const result = await listOrdinal.execute(ctx, {
-					ordinal: ordinal as Parameters<typeof listOrdinal.execute>[1]['ordinal'],
-					inputBEEF,
+				const result = await sellOrdinal.execute(ctx, {
+					id,
 					price,
 					payAddress,
-				})
+				});
 
 				if (result.error) {
 					return {
-						content: [{ type: 'text', text: result.error }],
+						content: [{ type: "text", text: result.error }],
 						isError: true,
-					}
+					};
 				}
 
 				return {
 					content: [
 						{
-							type: 'text',
-							text: JSON.stringify(result, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2),
+							type: "text",
+							text: JSON.stringify(
+								result,
+								(_, v) => (typeof v === "bigint" ? v.toString() : v),
+								2,
+							),
 						},
 					],
-				}
+				};
 			} catch (err: unknown) {
 				return {
 					content: [
 						{
-							type: 'text',
+							type: "text",
 							text: err instanceof Error ? err.message : String(err),
 						},
 					],
 					isError: true,
-				}
+				};
 			}
 		},
-	)
+	);
 }

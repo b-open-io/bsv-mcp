@@ -1,75 +1,89 @@
-import type { OneSatContext } from '@1sat/actions'
-import { sweepBsv21 } from '@1sat/actions'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod'
+import type { OneSatContext } from "@1sat/actions";
+import { sweepBsv21 } from "@1sat/actions";
+import { PrivateKey } from "@bsv/sdk";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 
 const sweepBsv21InputSchema = z.object({
-	outpoint: z.string().describe('Outpoint (txid_vout)'),
-	satoshis: z.number().int().describe('Satoshis (should be 1)'),
-	lockingScript: z.string().describe('Locking script hex'),
-	tokenId: z.string().describe('Token ID (txid_vout format)'),
-	amount: z.string().describe('Token amount as string'),
-})
+	outpoint: z.string().describe("Outpoint (txid_vout)"),
+	satoshis: z.number().int().describe("Satoshis (should be 1)"),
+	lockingScript: z.string().describe("Locking script hex"),
+	tokenId: z.string().describe("Token ID (txid_vout format)"),
+	amount: z.string().describe("Token amount as string"),
+});
 
 const sweepBsv21Schema = z.object({
-	inputs: z.array(sweepBsv21InputSchema).describe('Token UTXOs to sweep (must all be same tokenId)'),
-	wif: z.string().describe('WIF private key controlling the inputs'),
-})
+	inputs: z
+		.array(sweepBsv21InputSchema)
+		.describe("Token UTXOs to sweep (must all be same tokenId)"),
+	wif: z.string().describe("WIF private key controlling the inputs"),
+});
 
 export function registerSweepBsv21Tool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
 	server.tool(
-		'wallet_sweepBsv21',
-		'Sweep BSV21 tokens from an external WIF private key into the wallet',
+		"wallet_sweepBsv21",
+		"Sweep BSV21 tokens from an external WIF private key into the wallet",
 		{ ...sweepBsv21Schema.shape },
 		async ({ inputs, wif }) => {
 			// SECURITY: sanitize WIF from any error output
 			const sanitize = (msg: string) =>
-				msg.replace(/[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/g, '[REDACTED]')
-					.replace(/\b[0-9a-f]{64}\b/gi, '[REDACTED-HEX]');
+				msg
+					.replace(/[5KL][1-9A-HJ-NP-Za-km-z]{50,51}/g, "[REDACTED]")
+					.replace(/\b[0-9a-f]{64}\b/gi, "[REDACTED-HEX]");
 			if (!ctx) {
 				return {
 					content: [
 						{
-							type: 'text' as const,
-							text: 'BRC-100 wallet context not available',
+							type: "text" as const,
+							text: "BRC-100 wallet context not available",
 						},
 					],
 					isError: true,
-				}
+				};
 			}
 
 			try {
-				const result = await sweepBsv21.execute(ctx, { inputs, wif })
+				const key = PrivateKey.fromWif(wif);
+				const result = await sweepBsv21.execute(ctx, {
+					inputs,
+					keys: inputs.map(() => key),
+				});
 
 				if (result.error) {
 					return {
-						content: [{ type: 'text' as const, text: result.error }],
+						content: [{ type: "text" as const, text: result.error }],
 						isError: true,
-					}
+					};
 				}
 
 				return {
 					content: [
 						{
-							type: 'text' as const,
-							text: JSON.stringify(result, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2),
+							type: "text" as const,
+							text: JSON.stringify(
+								result,
+								(_, v) => (typeof v === "bigint" ? v.toString() : v),
+								2,
+							),
 						},
 					],
-				}
+				};
 			} catch (error) {
 				return {
 					content: [
 						{
-							type: 'text' as const,
-							text: sanitize(error instanceof Error ? error.message : String(error)),
+							type: "text" as const,
+							text: sanitize(
+								error instanceof Error ? error.message : String(error),
+							),
 						},
 					],
 					isError: true,
-				}
+				};
 			}
 		},
-	)
+	);
 }

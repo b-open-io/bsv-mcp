@@ -35,7 +35,10 @@ export const McpConfigSchema = z.object({
 	tools: z.array(z.string()).optional().describe("Available tool names"),
 	prompts: z.array(z.string()).optional().describe("Available prompt names"),
 	resources: z.array(z.string()).optional().describe("Available resource URIs"),
-	env: z.record(z.string()).optional().describe("Environment variables"),
+	env: z
+		.record(z.string(), z.string())
+		.optional()
+		.describe("Environment variables"),
 });
 
 export type McpConfig = z.infer<typeof McpConfigSchema>;
@@ -195,7 +198,15 @@ export function registerA2bPublishMcpTool(
 		"wallet_a2bPublishMcp",
 		"Publish an MCP tool configuration record on-chain via Ordinal inscription. This creates a permanent, immutable, and discoverable tool definition that can be accessed by other MCP servers. The tool is published as a JSON inscription with metadata and optional digital signatures for authenticity verification.",
 		{ ...a2bPublishMcpArgsSchema.shape },
-		async ({ toolName, command, args, keywords, env, description, destinationAddress }) => {
+		async ({
+			toolName,
+			command,
+			args,
+			keywords,
+			env,
+			description,
+			destinationAddress,
+		}) => {
 			try {
 				if (!identityPk) {
 					console.warn(
@@ -334,8 +345,7 @@ export function registerA2bPublishMcpTool(
 										toolCount: metadata.tools.length,
 										promptCount: metadata.prompts.length,
 										resourceCount: metadata.resources.length,
-										description:
-											description || `MCP Tool: ${toolName}`,
+										description: description || `MCP Tool: ${toolName}`,
 										address: targetAddress,
 									},
 									null,

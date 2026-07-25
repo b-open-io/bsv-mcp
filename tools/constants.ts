@@ -2,6 +2,8 @@
  * Constants for BSV MCP Tools
  */
 
+import { AIP_BITCOM_ADDRESS } from "bsv-bap";
+
 /**
  * Market fee percentage applied to all marketplace purchases
  * Expressed as a decimal (e.g., 0.03 = 3%)
@@ -23,7 +25,9 @@ export const MINIMUM_MARKET_FEE_SATOSHIS = 10000; // 10000 satoshis = 0.0001 BSV
 export const BAP_PREFIX = "1BAPSuaPnfGnSBM3GLV9yhxUdYe4vGbdMT";
 export const B_PREFIX = "19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut";
 export const MAP_PREFIX = "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5";
-export const AIP_PREFIX = "1HPcP7a4kQjpJzyV4HWHKagon76KC3BsZA";
+// Sourced from bsv-bap so it stays in step with the verifiers (bsv-bap,
+// @1sat/templates, go-templates) rather than drifting from them.
+export const AIP_PREFIX: string = AIP_BITCOM_ADDRESS;
 export const STORAGE_MNEMONIC_KEY = "id_mnemonic";
 export const PUBLIC_URL = process.env.PUBLIC_URL || "";
 export const BMAP_URL =

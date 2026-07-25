@@ -1,13 +1,14 @@
 import os from "node:os";
 import path from "node:path";
+import { BAP_KEY_ID, BAP_PROTOCOL_ID } from "@1sat/actions";
 import {
 	Utils as BSVUtils,
 	fromUtxo,
 	HD,
 	isBroadcastFailure,
+	KeyDeriver,
 	P2PKH,
-	PrivateKey,
-	Script,
+	type PrivateKey,
 	Transaction,
 } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -17,6 +18,8 @@ import { z } from "zod";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import { SecureKeyManager } from "../../utils/keyManager";
 import { BAP_PREFIX } from "../constants";
+import { signOpReturnWithAIP } from "../utils/aip";
+import { buildOpReturnScript } from "../utils/transactionBuilder";
 import { fetchPaymentUtxos } from "../wallet/fetchPaymentUtxos";
 
 // Get toArray from BSV SDK Utils
@@ -26,8 +29,14 @@ const KEY_DIR = path.join(os.homedir(), ".bsv-mcp");
 const KEY_FILE_PATH = path.join(KEY_DIR, "keys.json");
 
 const bapGenerateArgsSchema = z.object({
-	alternateName: z.string().optional().describe("Alternate name for the BAP identity profile"),
-	description: z.string().optional().describe("Description for the BAP identity profile"),
+	alternateName: z
+		.string()
+		.optional()
+		.describe("Alternate name for the BAP identity profile"),
+	description: z
+		.string()
+		.optional()
+		.describe("Description for the BAP identity profile"),
 });
 
 export type BapGenerateArgs = z.infer<typeof bapGenerateArgsSchema>;
@@ -150,29 +159,22 @@ async function generateBapKeys(
 
 		// 3. Create BAP instance and generate identity
 		const bapInstance = new BAP(tempXprv);
-
-		// Create identity attributes
-		const identityAttributes = {
-			name: {
-				value: args?.alternateName || "Anonymous User",
-				nonce: BSVUtils.toHex(BSVUtils.toArray(Math.random().toString())),
-			},
-			description: {
-				value: args?.description || "A BAP identity managed by BSV-MCP.",
-				nonce: BSVUtils.toHex(BSVUtils.toArray(Math.random().toString())),
-			},
-		};
-
-		// Create new ID with the BAP instance
-		const bapId = bapInstance.newId(undefined, identityAttributes);
+		const bapId = bapInstance.newId();
 
 		// Get the generated identity information
-		const generatedIdentityKey = bapId.getIdentityKey();
+		const generatedIdentityKey = bapId.bapId;
 		const generatedIdentityAddress = bapId.rootAddress;
 
-		// Export member backup to get the private key
-		const memberBackup = bapId.exportMemberBackup();
-		identityPk = memberBackup.derivedPrivateKey;
+		// rootAddress is the identity-0 key derived from the account key at
+		// protocolID [1,"sigma"], keyID "identity-0", counterparty "self".
+		// That is the key the BAP ID record declares, so it must also be the
+		// key that signs it.
+		const identityKey = new KeyDeriver(bapId.getAccountKey()).derivePrivateKey(
+			BAP_PROTOCOL_ID,
+			`${BAP_KEY_ID}-0`,
+			"self",
+		);
+		identityPk = identityKey.toWif();
 
 		console.error(`INFO: Generated BAP identity key: ${generatedIdentityKey}`);
 		console.error(
@@ -182,7 +184,7 @@ async function generateBapKeys(
 		// 5. Save Keys to secure storage
 		const updatedKeys = {
 			payPk: payPkToPreserve,
-			identityPk: PrivateKey.fromWif(identityPk),
+			identityPk: identityKey,
 			xprv: tempXprv,
 		};
 
@@ -201,7 +203,7 @@ async function generateBapKeys(
 
 		// Create the ID registration transaction output
 		// BAP ID format: OP_0 OP_RETURN <BAP_PREFIX> "ID" <identity_key> <root_address> <current_address>
-		const idPayload = [
+		const idPayload: number[][] = [
 			toArray(BAP_PREFIX, "utf8"),
 			toArray("ID"),
 			toArray(generatedIdentityKey),
@@ -210,14 +212,12 @@ async function generateBapKeys(
 		];
 
 		// Sign the ID payload with AIP
-		const signedIdPayload = bapId.signOpReturnWithAIP(idPayload);
-
-		// Convert to hex strings for Script
-		const idHexStrings = signedIdPayload.map((bytes) =>
-			BSVUtils.toHex(bytes as number[]),
+		const { signedData: signedIdPayload } = await signOpReturnWithAIP(
+			idPayload,
+			identityKey,
+			bapId.rootAddress,
 		);
-		const idAsmString = `OP_0 OP_RETURN ${idHexStrings.join(" ")}`;
-		const idScript = Script.fromASM(idAsmString);
+		const idScript = buildOpReturnScript(signedIdPayload);
 
 		// Create the ALIAS transaction output
 		// First create the structured data object for the alias
@@ -229,7 +229,7 @@ async function generateBapKeys(
 			url: `bitcoin:${paymentAddress}`,
 		};
 
-		const aliasPayload = [
+		const aliasPayload: number[][] = [
 			toArray(BAP_PREFIX, "utf8"),
 			toArray("ALIAS"),
 			toArray(generatedIdentityKey),
@@ -237,14 +237,12 @@ async function generateBapKeys(
 		];
 
 		// Sign the ALIAS payload with AIP
-		const signedAliasPayload = bapId.signOpReturnWithAIP(aliasPayload);
-
-		// Convert to hex strings for Script
-		const aliasHexStrings = signedAliasPayload.map((bytes) =>
-			BSVUtils.toHex(bytes as number[]),
+		const { signedData: signedAliasPayload } = await signOpReturnWithAIP(
+			aliasPayload,
+			identityKey,
+			bapId.rootAddress,
 		);
-		const aliasAsmString = `OP_0 OP_RETURN ${aliasHexStrings.join(" ")}`;
-		const aliasScript = Script.fromASM(aliasAsmString);
+		const aliasScript = buildOpReturnScript(signedAliasPayload);
 
 		// 6. Build Transaction
 		const tx = new Transaction();
@@ -409,14 +407,21 @@ async function generateBapKeys(
 /**
  * Registers the bap_generate tool
  */
-export function registerBapGenerateTool(server: McpServer) {
+export function registerBapGenerateTool(
+	server: McpServer,
+	config?: { disableBroadcasting?: boolean },
+) {
 	server.tool(
 		"bap_generate",
 		"Generates a BAP HD master key AND derives the first identity key if no BAP keys (xprv or identityPk) exist. Saves keys to secure storage. Attempts on-chain registration using payPk (honors DISABLE_BROADCASTING). Optionally takes alternateName and description for the profile.",
 		{ ...bapGenerateArgsSchema.shape },
 		async ({ alternateName, description }): Promise<CallToolResult> => {
 			try {
-				const result = await generateBapKeys({ alternateName, description });
+				const result = await generateBapKeys({
+					alternateName,
+					description,
+					disableBroadcasting: config?.disableBroadcasting,
+				});
 				// Format result as JSON
 				return {
 					content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

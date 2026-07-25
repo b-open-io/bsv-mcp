@@ -20,7 +20,8 @@
 		"paths": {
 			"@/*": ["./*"]
 		},
-		"target": "ES2022"
+		"target": "ES2022",
+		"allowImportingTsExtensions": true
 	},
 	"include": [
 		"**/*.ts",

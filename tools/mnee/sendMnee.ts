@@ -81,13 +81,25 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 					};
 				}
 
+				// transfer() throws on failure. On success it returns the cosigner's
+				// broadcast ticket id — the txid is only known once the ticket
+				// resolves, so it is read back via getTxStatus.
 				const result: TransferResponse = await mnee.transfer(
 					transferRequest,
 					wif,
 				);
 
-				if (result.error) {
-					throw new Error(result.error);
+				if (!result.ticketId) {
+					throw new Error(
+						"MNEE transfer returned no ticket id; the transaction was not submitted for broadcast.",
+					);
+				}
+
+				const status = await mnee.getTxStatus(result.ticketId);
+				if (status.status === "FAILED") {
+					throw new Error(
+						`MNEE transfer ${result.ticketId} failed: ${status.errors ?? "no error detail returned"}`,
+					);
 				}
 
 				return {
@@ -97,8 +109,9 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 							text: JSON.stringify(
 								{
 									success: true,
-									txid: result.txid,
-									rawtx: result.rawtx,
+									ticketId: result.ticketId,
+									txid: status.tx_id,
+									status: status.status,
 									mneeAmount: mneeAmount,
 									usdAmount: formatUSD(mneeAmount),
 									recipient: address,

@@ -27,7 +27,9 @@ const createPostArgsSchema = z.object({
 	additionalMapData: z
 		.string()
 		.optional()
-		.describe("Additional MAP protocol key-value pairs as a JSON object string, e.g. '{\"key\": \"value\"}'"),
+		.describe(
+			'Additional MAP protocol key-value pairs as a JSON object string, e.g. \'{"key": "value"}\'',
+		),
 });
 
 type CreatePostArgs = z.infer<typeof createPostArgsSchema>;
@@ -48,7 +50,6 @@ export async function createSocialPost(
 		const { content, contentType, app, additionalMapData } = args;
 
 		// Get wallet info
-		const address = await wallet.getAddress();
 		const paymentKey = wallet.getPaymentKey();
 		if (!paymentKey) {
 			return {
@@ -56,6 +57,7 @@ export async function createSocialPost(
 				error: "Payment key not available in wallet",
 			};
 		}
+		const address = paymentKey.toAddress();
 
 		// Prepare file extension based on content type
 		const fileExtension = contentType === "text/markdown" ? "md" : "txt";
@@ -71,7 +73,7 @@ export async function createSocialPost(
 		];
 
 		// Build MAP protocol data
-		const mapData: Uint8Array[] = [
+		const mapData: number[][] = [
 			toArray(MAP_PREFIX, "utf8"),
 			toArray("SET", "utf8"),
 			toArray("app", "utf8"),
@@ -82,7 +84,8 @@ export async function createSocialPost(
 
 		// Add any additional MAP data (parse JSON string if provided)
 		if (additionalMapData) {
-			const parsedMapData: Record<string, string> = JSON.parse(additionalMapData);
+			const parsedMapData: Record<string, string> =
+				JSON.parse(additionalMapData);
 			for (const [key, value] of Object.entries(parsedMapData)) {
 				mapData.push(toArray(key, "utf8"), toArray(value, "utf8"));
 			}
@@ -96,20 +99,20 @@ export async function createSocialPost(
 		const { signedData } = await signOpReturnWithAIP(
 			dataToSign,
 			paymentKey,
-			address.toString(),
+			address,
 		);
 
 		// Create OP_RETURN script
 		const script = buildOpReturnScript(signedData);
 
 		// Get UTXOs
-		const utxos = await wallet.getPaymentUtxos();
+		const { paymentUtxos } = await wallet.getUtxos();
 
 		// Build and send transaction using the new utility
 		return await buildAndSendTransaction({
 			outputs: [{ script, satoshis: 0 }],
-			utxos,
-			changeAddress: address.toString(),
+			utxos: paymentUtxos,
+			changeAddress: address,
 			paymentKey,
 		});
 	} catch (error) {
@@ -129,8 +132,16 @@ export function registerCreatePostTool(server: McpServer, wallet: Wallet) {
 		"bsocial_createPost",
 		"Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
 		{ ...createPostArgsSchema.shape },
-		async ({ content, contentType, app, additionalMapData }): Promise<CallToolResult> => {
-			const result = await createSocialPost({ content, contentType, app, additionalMapData }, wallet);
+		async ({
+			content,
+			contentType,
+			app,
+			additionalMapData,
+		}): Promise<CallToolResult> => {
+			const result = await createSocialPost(
+				{ content, contentType, app, additionalMapData },
+				wallet,
+			);
 			return createResponse(result);
 		},
 	);

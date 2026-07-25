@@ -5,7 +5,6 @@ import {
 	isBroadcastFailure,
 	isBroadcastResponse,
 	P2PKH,
-	PrivateKey,
 	SatoshisPerKilobyte,
 	Script,
 	Transaction,
@@ -18,21 +17,17 @@ import type {
 	ServerNotification,
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
-import { BAP, MemberID } from "bsv-bap";
+import { BAP } from "bsv-bap";
 import { z } from "zod";
 import { BsocialBroadcaster } from "../../utils/broadcaster";
-import {
-	friendPrivateKeyFromMemberIdKey,
-	friendPublicKeyFromSeedString,
-} from "../../utils/keys";
+import { friendPrivateKeyFromMemberIdKey } from "../../utils/keys";
 import { MAP_PREFIX } from "../constants";
-import {
-	fetchPaymentUtxos,
-	fetchPaymentUtxosFromV5,
-} from "../wallet/fetchPaymentUtxos";
+import { signOpReturnWithAIP } from "../utils/aip";
+import { buildOpReturnScript } from "../utils/transactionBuilder";
+import { fetchPaymentUtxosFromV5 } from "../wallet/fetchPaymentUtxos";
 import type { Wallet } from "../wallet/wallet";
 
-const { toArray, toHex } = Utils;
+const { toArray } = Utils;
 
 const APP_DOMAIN = "bsv-mcp";
 
@@ -95,10 +90,7 @@ export function registerBapFriendTool(
 
 				// 3. Derive Initial Identity
 				const bap = new BAP(xprv);
-				const idpk = PrivateKey.fromWif(
-					bap.newId().exportMemberBackup().derivedPrivateKey,
-				);
-				const identityInstance = new MemberID(idpk);
+				const idpk = bap.newId().getAccountKey();
 				const paymentAddress = payPk.toAddress();
 
 				// --- Derive friend public key ---
@@ -123,15 +115,16 @@ export function registerBapFriendTool(
 					friendPubKey,
 				];
 
-				const payloadBuffers = payloadParts.map(
-					(part) => toArray(part) as number[],
+				const payloadBuffers: number[][] = payloadParts.map((part) =>
+					toArray(part),
 				);
 
-				const signedBuffers =
-					identityInstance.signOpReturnWithAIP(payloadBuffers);
-				const payloadHex = signedBuffers.map((b) => toHex(b));
-				const asmPayload = `OP_0 ${payloadHex.join(" ")}`;
-				const opReturnScript = Script.fromASM(asmPayload);
+				const { signedData } = await signOpReturnWithAIP(
+					payloadBuffers,
+					idpk,
+					idpk.toAddress(),
+				);
+				const opReturnScript = buildOpReturnScript(signedData);
 
 				// --- Build Transaction ---
 				const tx = new Transaction();

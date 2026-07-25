@@ -1,5 +1,9 @@
-import { P2PKH, type PrivateKey, Script } from "@bsv/sdk";
+import { type PrivateKey, Utils } from "@bsv/sdk";
 import { DropletClient, type DropletConfig } from "../../utils/droplet";
+import {
+	buildAndSendTransaction,
+	buildOpReturnScript,
+} from "../utils/transactionBuilder";
 import { Wallet } from "./wallet";
 
 export interface IntegratedWalletConfig {
@@ -51,7 +55,8 @@ export class IntegratedWallet {
 			return status.balance_satoshis;
 		}
 		if (this.localWallet) {
-			return this.localWallet.getTotalBalance();
+			const { paymentUtxos } = await this.localWallet.getUtxos();
+			return paymentUtxos.reduce((sum, utxo) => sum + utxo.satoshis, 0);
 		}
 		throw new Error("No wallet configured");
 	}
@@ -59,7 +64,6 @@ export class IntegratedWallet {
 	async sendToAddress(
 		address: string,
 		satoshis: number,
-		description?: string,
 	): Promise<{ txid: string }> {
 		if (this.dropletClient) {
 			// For Droplet API, we use the tap endpoint which sends the faucet's fixed amount
@@ -68,17 +72,7 @@ export class IntegratedWallet {
 			return { txid: response.txid };
 		}
 		if (this.localWallet) {
-			const tx = await this.localWallet.createAction({
-				description: description || "Send to address",
-				outputs: [
-					{
-						lockingScript: new P2PKH().lock(address).toHex(),
-						satoshis,
-						outputDescription: `Payment to ${address}`,
-					},
-				],
-			});
-			return { txid: tx.txid };
+			return await this.localWallet.sendToAddress(address, satoshis);
 		}
 		throw new Error("No wallet configured");
 	}
@@ -89,22 +83,30 @@ export class IntegratedWallet {
 			return { txid: response.txid };
 		}
 		if (this.localWallet) {
-			// For local wallet, we need to implement OP_RETURN transaction
-			// This is a simplified version - you might want to enhance this
-			const opReturnScript = Script.fromASM(
-				`OP_FALSE OP_RETURN ${data.join(" ")}`,
+			const paymentKey = this.localWallet.getPaymentKey();
+			const changeAddress = this.localWallet.getAddress();
+			if (!paymentKey || !changeAddress) {
+				throw new Error("Local wallet has no payment key");
+			}
+			if (encoding !== "hex" && encoding !== "utf8" && encoding !== "base64") {
+				throw new Error(
+					`Unsupported push data encoding "${encoding}"; expected hex, utf8 or base64`,
+				);
+			}
+			const script = buildOpReturnScript(
+				data.map((item) => Utils.toArray(item, encoding)),
 			);
-			const tx = await this.localWallet.createAction({
-				description: "Push data",
-				outputs: [
-					{
-						lockingScript: opReturnScript.toHex(),
-						satoshis: 0,
-						outputDescription: "OP_RETURN data",
-					},
-				],
+			const { paymentUtxos } = await this.localWallet.getUtxos();
+			const result = await buildAndSendTransaction({
+				outputs: [{ script, satoshis: 0 }],
+				utxos: paymentUtxos,
+				changeAddress,
+				paymentKey,
 			});
-			return { txid: tx.txid };
+			if (!result.success || !result.txid) {
+				throw new Error(result.error ?? "Failed to broadcast OP_RETURN data");
+			}
+			return { txid: result.txid };
 		}
 		throw new Error("No wallet configured");
 	}

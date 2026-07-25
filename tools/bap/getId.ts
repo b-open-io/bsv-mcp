@@ -82,14 +82,16 @@ export function registerBapGetIdTool(
 
 			if (!targetIdKey) {
 				// First priority: Use authenticated user's BAP ID from OAuth session
-				const authInfo = (extra as any).authInfo;
-				if (authInfo?.metadata?.bapId) {
-					targetIdKey = authInfo.metadata.bapId;
+				const authExtra = extra.authInfo?.extra;
+				const authBapId = authExtra?.bapId;
+				const authPubkey = authExtra?.pubkey;
+				if (typeof authBapId === "string") {
+					targetIdKey = authBapId;
 					console.error(`Using authenticated user's BAP ID: ${targetIdKey}`);
 				}
 				// Second priority: Use authenticated user's pubkey
-				else if (authInfo?.metadata?.pubkey) {
-					targetIdKey = authInfo.metadata.pubkey;
+				else if (typeof authPubkey === "string") {
+					targetIdKey = authPubkey;
 					console.error(`Using authenticated user's pubkey: ${targetIdKey}`);
 				}
 				// Fallback: Attempt to get idKey from the passed identityPk or environment variable

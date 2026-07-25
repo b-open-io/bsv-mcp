@@ -83,9 +83,9 @@ export async function readSocialPosts(args: ReadPostsArgs): Promise<{
 
 			return {
 				success: true,
-				posts: [data.result.post],
-				signers: data.result.signers,
-				meta: [data.result.meta],
+				posts: [data.data.post],
+				signers: data.data.signers,
+				meta: [data.data.meta],
 			};
 		}
 
@@ -201,7 +201,13 @@ export function registerReadPostsTool(server: McpServer) {
 		{ ...readPostsArgsSchema.shape },
 		async ({ bapId, txid, limit, page, feed }): Promise<CallToolResult> => {
 			try {
-				const result = await readSocialPosts({ bapId, txid, limit, page, feed });
+				const result = await readSocialPosts({
+					bapId,
+					txid,
+					limit,
+					page,
+					feed,
+				});
 
 				if (result.success && result.posts) {
 					// Format posts for display

@@ -1,4 +1,5 @@
 import { Transaction } from "@bsv/sdk";
+import { arrayBufferToUint8Array } from "../../utils/buffer";
 
 export async function getTransactionById(
 	txid: string,

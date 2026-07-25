@@ -79,6 +79,9 @@
 	"peerDependencies": {
 		"typescript": "^5.9.3"
 	},
+	"overrides": {
+		"zod": "^4.4.3"
+	},
 	"dependencies": {
 		"@1sat/actions": "^0.0.192",
 		"@1sat/wallet-node": "^0.0.64",

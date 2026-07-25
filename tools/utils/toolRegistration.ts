@@ -2,6 +2,7 @@
  * Common tool registration utilities for the BSV MCP server
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 
 export interface ToolConfig<TArgs = Record<string, unknown>> {
@@ -11,13 +12,7 @@ export interface ToolConfig<TArgs = Record<string, unknown>> {
 	handler: (args: TArgs) => Promise<ToolResponse>;
 }
 
-export interface ToolResponse {
-	content: Array<{
-		type: "text";
-		text: string;
-	}>;
-	isError?: boolean;
-}
+export type ToolResponse = CallToolResult;
 
 /**
  * Register a tool with standard error handling and response formatting
@@ -26,21 +21,25 @@ export function registerTool<TArgs = Record<string, unknown>>(
 	server: McpServer,
 	config: ToolConfig<TArgs>,
 ): void {
-	server.tool(config.name, config.schema, async (args: TArgs) => {
-		try {
-			return await config.handler(args);
-		} catch (error) {
-			return {
-				content: [
-					{
-						type: "text" as const,
-						text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-					},
-				],
-				isError: true,
-			};
-		}
-	});
+	server.registerTool(
+		config.name,
+		{ description: config.description, inputSchema: config.schema },
+		async (args) => {
+			try {
+				return await config.handler(args as TArgs);
+			} catch (error) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+						},
+					],
+					isError: true,
+				};
+			}
+		},
+	);
 }
 
 /**

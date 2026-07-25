@@ -116,16 +116,21 @@ export class DropletClient {
 		const bodyStr = JSON.stringify(body);
 		const message = `${path}${timestamp}${bodyStr}`;
 
-		// Sign the message using BSM
+		// Sign the message using BSM. base64 mode returns the compact signature
+		// already base64-encoded, which is what the token carries.
 		const signature = BSM.sign(
 			Utils.toArray(message, "utf8"),
 			this.config.authKey,
+			"base64",
 		);
+		if (typeof signature !== "string") {
+			throw new Error("BSM.sign did not return base64 in base64 mode");
+		}
 
 		// Create the auth token in the format expected by go-bitcoin-auth
 		// Format: "BSM <pubkey> <signature> <timestamp> <path>"
 		const pubkey = this.config.authKey.toPublicKey().toString();
-		const authToken = `BSM ${pubkey} ${Utils.toBase64(signature)} ${timestamp} ${path}`;
+		const authToken = `BSM ${pubkey} ${signature} ${timestamp} ${path}`;
 
 		return {
 			"X-Auth-Token": authToken,

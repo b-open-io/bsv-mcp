@@ -27,6 +27,17 @@ type GenericToolHandler = (
 	extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
 ) => CallToolResult | Promise<CallToolResult>;
 
+/** Narrow the first content block of a tool result to its text payload. */
+function firstText(result: CallToolResult): string {
+	const block = result.content?.[0];
+	if (block?.type !== "text") {
+		throw new Error(
+			`Expected a text content block, got ${block?.type ?? "none"}`,
+		);
+	}
+	return block.text;
+}
+
 const mockMcpServerInstance = {
 	tool: (..._args: Parameters<McpServer["tool"]>): void => undefined,
 };
@@ -45,6 +56,7 @@ const MOCK_UTXO = {
 	satoshis: 100000,
 	script: `76a914${MOCK_UTXO_SCRIPT_HASH_PLACEHOLDER}88ac`,
 };
+const MOCK_BROADCAST_TXID = "b1c2d3e4".repeat(8);
 
 describe("BAP Generate Tool", () => {
 	let readFileSyncSpy: ReturnType<typeof spyOn<typeof fs, "readFileSync">>;
@@ -58,7 +70,7 @@ describe("BAP Generate Tool", () => {
 		typeof spyOn<typeof utxoUtils, "fetchPaymentUtxos">
 	>;
 	let transactionBroadcastSpy: ReturnType<
-		typeof spyOn<Transaction.prototype, "broadcast">
+		typeof spyOn<Transaction, "broadcast">
 	>;
 	let passphrasePromptSpy: ReturnType<
 		typeof spyOn<
@@ -96,9 +108,11 @@ describe("BAP Generate Tool", () => {
 		mkdirSyncSpy.mockImplementation(() => undefined);
 		writeFileSyncSpy.mockImplementation(() => undefined);
 		fetchPaymentUtxosSpy.mockResolvedValue([MOCK_UTXO]);
-		transactionBroadcastSpy.mockResolvedValue(
-			`mock_txid_broadcasted_${"a".repeat(40)}`,
-		);
+		transactionBroadcastSpy.mockResolvedValue({
+			status: "success",
+			txid: MOCK_BROADCAST_TXID,
+			message: "broadcast accepted",
+		});
 	});
 
 	afterEach(() => {
@@ -159,10 +173,10 @@ describe("BAP Generate Tool", () => {
 		expect(writtenData.xprv?.startsWith("xprv")).toBe(true);
 		expect(writtenData.identityPk).toBeString();
 
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"BAP HD Key and Initial Identity Generated & Saved",
 		);
-		expect(result.content?.[0]?.text).toContain("Registration TXID:");
+		expect(firstText(result)).toContain("Registration TXID:");
 		expect(transactionBroadcastSpy).toHaveBeenCalled();
 	});
 
@@ -178,7 +192,7 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"keys.json not found. Payment Private Key (payPk) is required.",
 		);
 		expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -196,7 +210,7 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"Payment Private Key (payPk) does not exist in keys.json.",
 		);
 		expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -218,7 +232,7 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"BAP Master Key (xprv) already exists in keys.json.",
 		);
 		expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -240,7 +254,7 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"BAP Identity Key (identityPk) already exists in keys.json.",
 		);
 		expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -264,7 +278,7 @@ describe("BAP Generate Tool", () => {
 			const result = (await handler({}, mockExtra)) as CallToolResult;
 
 			expect(result.isError).toBe(true);
-			expect(result.content?.[0]?.text).toContain(
+			expect(firstText(result)).toContain(
 				"Failed during BAP key generation/saving or transaction construction: Test HD generation error",
 			);
 			expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -287,7 +301,7 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(true);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"Could not read or parse keys.json: JSON Parse error",
 		);
 		expect(writeFileSyncSpy).not.toHaveBeenCalled();
@@ -306,12 +320,8 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(false);
-		expect(result.content?.[0]?.text).toContain(
-			"No UTXOs found for payment address",
-		);
-		expect(result.content?.[0]?.text).toContain(
-			"Cannot fund BAP registration.",
-		);
+		expect(firstText(result)).toContain("No UTXOs found for payment address");
+		expect(firstText(result)).toContain("Cannot fund BAP registration.");
 		expect(writeFileSyncSpy).toHaveBeenCalledTimes(1);
 		const writtenData = JSON.parse(
 			writeFileSyncSpy.mock.calls[0][1] as string,
@@ -337,10 +347,10 @@ describe("BAP Generate Tool", () => {
 		const result = (await handler({}, mockExtra)) as CallToolResult;
 
 		expect(result.isError).toBe(false);
-		expect(result.content?.[0]?.text).toContain(
+		expect(firstText(result)).toContain(
 			"Keys generated and saved, but failed to broadcast BAP registration transaction",
 		);
-		expect(result.content?.[0]?.text).toContain("Broadcast network error");
+		expect(firstText(result)).toContain("Broadcast network error");
 		expect(writeFileSyncSpy).toHaveBeenCalledTimes(1);
 		const writtenData = JSON.parse(
 			writeFileSyncSpy.mock.calls[0][1] as string,

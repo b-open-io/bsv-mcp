@@ -18,14 +18,7 @@ export async function installAgentMaster(
 	const method = args.method || "auto";
 
 	return new Promise((resolve, reject) => {
-		let command: string;
-		let commandArgs: string[] = [];
-
-		if (method === "auto" || method === "go") {
-			// Try go install first
-			command = "go";
-			commandArgs = ["install", "github.com/b-open-io/agent-master-cli@latest"];
-		} else if (method === "source") {
+		if (method === "source") {
 			// Install from source
 			reject(
 				new Error(
@@ -34,6 +27,13 @@ export async function installAgentMaster(
 			);
 			return;
 		}
+
+		// "auto" and "go" both install through the Go toolchain
+		const command = "go";
+		const commandArgs = [
+			"install",
+			"github.com/b-open-io/agent-master-cli@latest",
+		];
 
 		console.error(`🔧 Installing Agent Master CLI using ${method} method...`);
 

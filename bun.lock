@@ -66,6 +66,9 @@
       },
     },
   },
+  "overrides": {
+    "zod": "^4.4.3",
+  },
   "packages": {
     "@1sat/actions": ["@1sat/actions@0.0.192", "", { "dependencies": { "@1sat/client": "0.0.46", "@1sat/templates": "0.0.27", "@1sat/types": "0.0.37", "@1sat/utils": "0.0.30", "@1sat/wallet": "0.0.98", "@bsv/message-box-client": "^2.2.1" }, "peerDependencies": { "@bsv/sdk": "^2.1.9" } }, "sha512-qivre9L3m4Ct8qmCbJPR0cPvpFHoapKqQorzvuEVNQNF1f+/UsIsj4nSFXFjN4R6eoGn8mjK/pqK/Sn3iXTJOw=="],
 
@@ -1098,8 +1101,6 @@
     "@bopen-io/templates/@bsv/sdk": ["@bsv/sdk@2.0.6", "", {}, "sha512-Kj6xoqSe4hN+4O8FwY2PMEJQI0/EA8kcwtb0B8zC2IGQWvYDCLJw37kMJRpIBxQNWAtWiI2bnpek1F5UYJAKmw=="],
 
     "@modelcontextprotocol/sdk/express-rate-limit": ["express-rate-limit@8.3.1", "", { "dependencies": { "ip-address": "10.1.0" }, "peerDependencies": { "express": ">= 4.11" } }, "sha512-D1dKN+cmyPWuvB+G2SREQDzPY1agpBIcTa9sJxOPMCNeH3gwzhqJRDWCXW3gg0y//+LQ/8j52JbMROWyrKdMdw=="],
-
-    "@modelcontextprotocol/sdk/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 
     "@radix-ui/react-alert-dialog/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
 

@@ -1083,10 +1083,10 @@
     <!-- Tab bar -->
     <div id="tab-bar">
       <div class="segmented-control" role="tablist">
-        <button class="view-tab active" data-view="explorer" role="tab" aria-selected="true">Explorer</button>
-        <button class="view-tab" data-view="wallet" role="tab" aria-selected="false">Wallet</button>
-        <button class="view-tab" data-view="ordinals" role="tab" aria-selected="false">Ordinals</button>
-        <button class="view-tab" data-view="sweep" role="tab" aria-selected="false">Sweep</button>
+        <button type="button" class="view-tab active" data-view="explorer" role="tab" aria-selected="true">Explorer</button>
+        <button type="button" class="view-tab" data-view="wallet" role="tab" aria-selected="false">Wallet</button>
+        <button type="button" class="view-tab" data-view="ordinals" role="tab" aria-selected="false">Ordinals</button>
+        <button type="button" class="view-tab" data-view="sweep" role="tab" aria-selected="false">Sweep</button>
       </div>
     </div>
 
@@ -1094,9 +1094,9 @@
     <div id="explorer-panel" class="panel active">
       <!-- Search bar -->
       <div class="explorer-search">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <svg viewBox="0 0 24 24"><title>Search</title><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="search-input" placeholder="Search transactions, blocks, addresses..." />
-        <button class="search-btn" id="search-btn">SEARCH</button>
+        <button type="button" class="search-btn" id="search-btn">SEARCH</button>
       </div>
       <!-- Dynamic content fills here -->
       <div class="explorer-content" id="explorer-content">
@@ -1124,8 +1124,8 @@
         <div class="section-label">Receive Address</div>
         <div class="address-row">
           <span class="address-text" id="address-display"></span>
-          <button class="copy-btn" id="copy-address-btn" title="Copy address">
-            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <button type="button" class="copy-btn" id="copy-address-btn" title="Copy address">
+            <svg viewBox="0 0 24 24"><title>Copy</title><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
         </div>
       </div>
@@ -1146,13 +1146,13 @@
           <span class="ordinals-title">My Collection</span>
           <span class="count-badge" id="ordinals-count">—</span>
         </div>
-        <button class="mint-btn" id="mint-btn">
-          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <button type="button" class="mint-btn" id="mint-btn">
+          <svg viewBox="0 0 24 24"><title>Mint</title><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Mint New
         </button>
       </div>
       <div class="ordinals-search">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <svg viewBox="0 0 24 24"><title>Search</title><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="ordinals-search-input" placeholder="Search inscriptions..." />
       </div>
       <div class="ordinals-grid" id="ordinals-grid">
@@ -1173,7 +1173,7 @@
             <label class="section-label" for="wif-input">Private Key</label>
             <div class="sweep-input-row">
               <input type="password" id="wif-input" class="sweep-text-input" placeholder="WIF (5.../K.../L...) or 64-char hex" autocomplete="off" spellcheck="false" />
-              <button class="sweep-scan-btn" id="sweep-scan-btn">Scan</button>
+              <button type="button" class="sweep-scan-btn" id="sweep-scan-btn">Scan</button>
             </div>
             <div class="sweep-hint">Your key never leaves this browser tab.</div>
           </div>
@@ -1193,8 +1193,8 @@
           </div>
           <div class="sweep-categories" id="sweep-categories"></div>
           <div class="sweep-actions">
-            <button class="sweep-back-btn" id="sweep-back-btn">Back</button>
-            <button class="sweep-execute-btn" id="sweep-execute-btn">Sweep Selected</button>
+            <button type="button" class="sweep-back-btn" id="sweep-back-btn">Back</button>
+            <button type="button" class="sweep-execute-btn" id="sweep-execute-btn">Sweep Selected</button>
           </div>
         </div>
         <!-- preparing state -->
@@ -1225,7 +1225,7 @@
           </div>
           <div class="sweep-results" id="sweep-results"></div>
           <div class="sweep-actions">
-            <button class="sweep-scan-btn" id="sweep-again-btn">Sweep Again</button>
+            <button type="button" class="sweep-scan-btn" id="sweep-again-btn">Sweep Again</button>
           </div>
         </div>
         <!-- error state -->
@@ -1235,7 +1235,7 @@
           </div>
           <div class="error-box" id="sweep-error-msg"></div>
           <div class="sweep-actions">
-            <button class="sweep-back-btn" id="sweep-retry-btn">Try Again</button>
+            <button type="button" class="sweep-back-btn" id="sweep-retry-btn">Try Again</button>
           </div>
         </div>
       </div>

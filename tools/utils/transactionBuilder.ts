@@ -1,14 +1,15 @@
 import {
+	fromUtxo,
 	isBroadcastFailure,
 	isBroadcastResponse,
+	OP,
 	P2PKH,
 	type PrivateKey,
 	Script,
 	Transaction,
-	Utils,
 } from "@bsv/sdk";
+import type { Utxo } from "js-1sat-ord";
 import { V5Broadcaster } from "../../utils/broadcaster";
-import type { Utxo } from "../wallet/utxo";
 
 const DEFAULT_SAT_PER_BYTE = 0.05;
 const DUST_LIMIT = 546;
@@ -90,12 +91,18 @@ export async function buildAndSendTransaction(
 		selectedUtxos.push(utxo);
 		totalInputSatoshis += utxo.satoshis;
 
-		const input = {
-			sourceTransaction: utxo.tx,
-			sourceOutputIndex: utxo.vout,
-			unlockingScriptTemplate: p2pkh.unlock(paymentKey),
-		};
-		tx.addInput(input);
+		tx.addInput(
+			fromUtxo(
+				utxo,
+				p2pkh.unlock(
+					paymentKey,
+					"all",
+					false,
+					utxo.satoshis,
+					Script.fromHex(utxo.script),
+				),
+			),
+		);
 
 		// Estimate fee with current inputs
 		const estimatedSize = tx.toHex().length / 2 + 150; // rough estimate for unsigned tx
@@ -187,10 +194,10 @@ export async function buildAndSendTransaction(
 /**
  * Build OP_RETURN script from data arrays
  */
-export function buildOpReturnScript(dataArrays: Uint8Array[]): Script {
-	return new Script([
-		{ op: 0 }, // OP_0
-		{ op: 106 }, // OP_RETURN
-		...dataArrays.map((data) => ({ data })),
-	]);
+export function buildOpReturnScript(dataArrays: number[][]): Script {
+	const script = new Script([{ op: OP.OP_FALSE }, { op: OP.OP_RETURN }]);
+	for (const data of dataArrays) {
+		script.writeBin(data);
+	}
+	return script;
 }

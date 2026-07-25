@@ -188,7 +188,7 @@ export function registerGatherCollectionInfoTool(
 				}
 
 				// Get wallet info
-				const paymentPk = wallet.getPrivateKey();
+				const paymentPk = wallet.getPaymentKey();
 				if (!paymentPk) {
 					analysis.errors.push("No payment key available in wallet");
 					return {

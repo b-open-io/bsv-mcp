@@ -20,7 +20,7 @@ export interface KeyState {
 	copied: string;
 }
 
-type KeyAction =
+export type KeyAction =
 	| { type: "SET_WIF"; wif: string; source: KeySource }
 	| { type: "SET_LOADING"; loading: boolean }
 	| { type: "SET_ERROR"; error: string }
@@ -93,9 +93,7 @@ function keyReducer(state: KeyState, action: KeyAction): KeyState {
 	}
 }
 
-async function deriveWifFromBackup(
-	backup: Record<string, unknown>,
-): Promise<string> {
+async function deriveWifFromBackup(backup: object): Promise<string> {
 	if ("wif" in backup && typeof backup.wif === "string" && backup.wif) {
 		return backup.wif;
 	}
@@ -186,10 +184,10 @@ export function useKeyState() {
 		dispatch({ type: "SET_LOADING", loading: true });
 		try {
 			const { decryptBackup: decrypt } = await import("bitcoin-backup");
-			const backup = (await decrypt(
+			const backup = await decrypt(
 				state.pendingFileContent,
 				state.backupPassword,
-			)) as Record<string, unknown>;
+			);
 			const wif = await deriveWifFromBackup(backup);
 			dispatch({ type: "SET_WIF", wif, source: "imported" });
 		} catch (err) {
