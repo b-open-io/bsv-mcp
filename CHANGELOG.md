@@ -1,5 +1,78 @@
 # BSV MCP Server Changelog
 
+## [0.3.0] - 2026-07-30
+
+### Breaking Changes
+
+- **Spending now requires approval.** `WalletPermissionsManager` was constructed
+  with `seekSpendingPermissions: false`, so no spend was ever gated. It is armed,
+  and a handler is bound to `onSpendingAuthorizationRequested`. Clients that
+  support elicitation prompt the user with the exact satoshi amount and itemised
+  line items; approval grants that amount ephemerally. **On a client without
+  elicitation support, spends are denied.** The refusal names the amount and the
+  reason. This is deliberate — a confirmation gate that silently passes when the
+  client cannot be asked is not a gate.
+- `wallet_setupDroplit` is replaced by three tools —
+  `wallet_registerDroplitKey`, `wallet_createDroplitFaucet`, and
+  `wallet_checkDroplitFaucetStatus`. It had put three unrelated operations behind
+  an `action` enum, which made every argument conditional.
+- `wallet_purchaseListing` no longer accepts `description`. The underlying
+  purchase actions have no parameter for it, so it was advertised and discarded.
+
+### Security
+
+- **`DISABLE_BROADCASTING` did nothing for the tools that move money.** The
+  startup banner printed `Broadcasting: Disabled` while the flag reached only the
+  BAP tools; `wallet_sendBsv`, `sendAllBsv`, the three sweeps, `purchaseListing`
+  and `sendMnee` never received it. Setting the variable, reading "Disabled", and
+  calling `wallet_sendBsv` moved real money. Sixteen transaction-submitting tools
+  now assert through one guard that reads the same environment variable the
+  banner reads.
+- **WIF redaction covered one of three exit paths.** The sweep tools each defined
+  a sanitizer commented "sanitize WIF from any error output" and applied it only
+  in the `catch`. The `result.error` branch and the serialised success payload
+  both returned raw, on tools that take a raw WIF as an argument. One shared
+  redactor now covers all three exits in all three tools, and additionally
+  catches testnet WIFs and xprvs.
+- The admin originator was the package name, `bsv-mcp` — the exact string a
+  caller reaches for when a parameter named `originator` wants a value. Passing
+  it would have bypassed the spending gate while the configuration reported it
+  armed.
+- Two identity-key paths caught an invalid WIF, logged a warning, and continued
+  unsigned. Both now fail.
+
+### Added
+
+- Audit log at `~/.bsv-mcp/audit.log` (JSON Lines, directory `0700`, file
+  `0600`), routed through the key redactor. A failed write reports to stderr and
+  does not break a payment the user already approved.
+- Amount validation on the money-moving tools. `sendBsv`, `sendMnee`, `lockBsv`
+  and `listOrdinal` took a bare `z.number()`, so negative, zero and NaN amounts
+  reached the SDK; a negative USD amount converted to a negative satoshi count.
+
+### Fixed
+
+- `wallet_createOrdinals` accepted `destinationAddress` and never forwarded it,
+  so an ordinal minted to a named address silently locked to a wallet-derived
+  self key.
+- Droplit authentication was hand-rolled and could never have succeeded. It is
+  now BRC-103/104 via `AuthFetch`, verified against the live service.
+- Five packages the code imports were never declared, `zod` among them, so a
+  clean install of the published package could not resolve them.
+- The stdio guard was dead code. Its replacement is a first-position side-effect
+  import, since ES imports evaluate before any top-level statement.
+- `purchaseListing`'s marketplace-rate arithmetic is a pure function, so a fee
+  bug can be told apart from an execution bug.
+
+### Changed
+
+- Core SDKs to current: `@modelcontextprotocol/sdk` 1.27.1 → 1.29.0,
+  `@modelcontextprotocol/ext-apps` 1.2.0 → 1.7.5, `@1sat/actions` 0.0.41 →
+  0.0.192, `@bsv/sdk` 2.0.6 → 2.2.0, `bsv-bap` 0.1.23 → 0.3.4.
+- `Droplet` is spelled `Droplit` throughout, matching droplit.dev. Environment
+  variables are now `DROPLIT_API_URL` and `DROPLIT_FAUCET_NAME`.
+- Test coverage 15 → 45.
+
 ## [0.2.15] - 2026-03-10
 
 ### Fixed
