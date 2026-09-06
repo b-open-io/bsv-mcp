@@ -1,5 +1,11 @@
 # BSV MCP Server Changelog
 
+## [0.3.2] - 2026-09-06
+
+### Added
+- Reveal a human-issued Sigma delegation with the connected agent wallet, using standard certificate acquisition and proof.
+- Reject redirects, automatic payments, and ambiguous mutation retries; submit only verifier-specific keys.
+
 ## [0.3.1] - 2026-09-05
 
 ### Added

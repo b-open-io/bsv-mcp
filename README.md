@@ -912,3 +912,44 @@ BRC-105 payment handling cannot spend funds; a 402 requires human review. Struct
 available quota reset information is retained. `unknown_outcome` means reconcile
 transaction/history before retrying; no idempotency-key support is claimed.
 The legacy `USE_DROPLIT_API=true` wallet mode remains available separately.
+
+
+### Reveal a Sigma agent delegation with the connected wallet
+
+After the human owner binds this agent wallet and issues its BRC-169 delegation,
+copy the owner's complete handoff JSON into `wallet_revealDelegation`:
+
+- `sigmaOrigin`: the intended Sigma HTTPS origin (HTTP is allowed only for loopback testing).
+- `handoffJSON`: the owner's JSON containing `certificate`, `subjectKeyring`, `revealTo`, and `revelationPath`.
+
+The explicit tool invocation acquires the certificate into the connected wallet,
+proves all restrictions to the named Sigma verifier, and POSTs only that verifier's
+keyring. Use the same wallet that supplied the bound identity; its Ed25519 agent
+token cannot perform this step. The encrypted subject keyring stays with the agent
+and is never included in the HTTP request or tool result. This does not grant
+Droplit sponsor permission. No automatic payments, redirects, or POST retries are
+allowed. On `outcome_unknown`, ask the owner to refresh delegation status before
+trying again; certificate acquisition may already have succeeded.
+
+For a **local 1Sat CLI wallet** used throughout binding, the existing commands
+provide the same operation. Save the owner package as `handoff.json`, then:
+
+```sh
+bun -e 'const h=await Bun.file("handoff.json").json(),c=h.certificate; await Bun.write("acquire.json",JSON.stringify({acquisitionProtocol:"direct",type:c.type,certifier:c.certifier,fields:c.fields,serialNumber:c.serialNumber,revocationOutpoint:c.revocationOutpoint,signature:c.signature,keyringRevealer:"certifier",keyringForSubject:h.subjectKeyring})); await Bun.write("prove.json",JSON.stringify({certificate:c,fieldsToReveal:Object.keys(c.fields),verifier:h.revealTo}));'
+1sat wallet acquire-certificate "$(cat acquire.json)" --json
+1sat wallet prove-certificate "$(cat prove.json)" --json > proof.json
+bun -e 'const p=await Bun.file("proof.json").json(); if(!p.keyringForVerifier) throw new Error("Missing verifier keyring"); await Bun.write("revelation.json",JSON.stringify({keyring:p.keyringForVerifier}));'
+```
+
+Set `SIGMA_ORIGIN` to the intended Sigma origin and `REVELATION_PATH` to the
+owner's `/api/agents/{agentId}/delegations/{encodedSerialNumber}/revelation` path;
+percent-encode the base64 serial number as one path segment. Then:
+
+```sh
+1sat authfetch POST "${SIGMA_ORIGIN}${REVELATION_PATH}" --body @revelation.json --json
+```
+
+Use `@1sat/cli` 0.0.110 or later for stale-session mutation replay protection.
+Keep the same configured wallet and chain for every command. This CLI alternative
+does not use the MCP external wallet connection. The endpoint does not require a
+payment; do not add `--yes` to work around an unexpected 402.

@@ -19,6 +19,7 @@ import { registerOpnsDeregisterTool } from "./opnsDeregister";
 import { registerOpnsRegisterTool } from "./opnsRegister";
 import { registerPurchaseListingTool } from "./purchaseListing";
 import { registerRefreshUtxosTool } from "./refreshUtxos";
+import { registerRevealDelegationTool } from "./revealDelegation";
 import { registerSendAllBsvTool } from "./sendAllBsv";
 import { registerSendBsvTool } from "./sendBsv";
 import { registerSignBsmTool } from "./signBsm";
@@ -58,6 +59,7 @@ export function registerWalletTools(
 
 	// Register full BRC-100 wallet interface
 	registerBrc100Tools(server, config.ctx);
+	registerRevealDelegationTool(server, config.ctx);
 
 	// A2B tools have to be explicitly enabled
 	if (config.enableA2bTools && wallet && config.identityPk) {

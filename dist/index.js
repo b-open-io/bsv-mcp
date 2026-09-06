@@ -207971,9 +207971,9 @@ var require_vary = __commonJS((exports, module) => {
     if (!field) {
       throw new TypeError("field argument is required");
     }
-    var fields = !Array.isArray(field) ? parse8(String(field)) : field;
-    for (var j5 = 0;j5 < fields.length; j5++) {
-      if (!FIELD_NAME_REGEXP.test(fields[j5])) {
+    var fields2 = !Array.isArray(field) ? parse8(String(field)) : field;
+    for (var j5 = 0;j5 < fields2.length; j5++) {
+      if (!FIELD_NAME_REGEXP.test(fields2[j5])) {
         throw new TypeError("field argument contains an invalid header name");
       }
     }
@@ -207982,14 +207982,14 @@ var require_vary = __commonJS((exports, module) => {
     }
     var val = header;
     var vals = parse8(header.toLowerCase());
-    if (fields.indexOf("*") !== -1 || vals.indexOf("*") !== -1) {
+    if (fields2.indexOf("*") !== -1 || vals.indexOf("*") !== -1) {
       return "*";
     }
-    for (var i = 0;i < fields.length; i++) {
-      var fld = fields[i].toLowerCase();
+    for (var i = 0;i < fields2.length; i++) {
+      var fld = fields2[i].toLowerCase();
       if (vals.indexOf(fld) === -1) {
         vals.push(fld);
-        val = val ? val + ", " + fields[i] : fields[i];
+        val = val ? val + ", " + fields2[i] : fields2[i];
       }
     }
     return val;
@@ -213168,13 +213168,13 @@ var require_StorageKnex = __commonJS((exports) => {
         delete e2.certificateId;
       if (e2.logger != null)
         delete e2.logger;
-      const fields = e2.fields;
+      const fields2 = e2.fields;
       if (e2.fields != null)
         delete e2.fields;
       const [id] = await this.toDb(trx)("certificates").insert(e2);
       certificate.certificateId = id;
-      if (fields != null) {
-        for (const field of fields) {
+      if (fields2 != null) {
+        for (const field of fields2) {
           field.certificateId = id;
           field.userId = certificate.userId;
           await this.insertCertificateField(field, trx);
@@ -227862,11 +227862,11 @@ var require_querycompiler = __commonJS((exports, module) => {
     _preValidate() {
       const method = this.method;
       const verb = hasOwn(methodAliases, method) ? methodAliases[method] : method;
-      const invalid = this.invalidClauses[verb];
-      if (!invalid)
+      const invalid2 = this.invalidClauses[verb];
+      if (!invalid2)
         return;
-      for (let i = 0;i < invalid.length; i++) {
-        const clause = invalid[i];
+      for (let i = 0;i < invalid2.length; i++) {
+        const clause = invalid2[i];
         const hasNonEmptyGrouped = hasOwn(this.grouped, clause) && this.grouped[clause].length > 0;
         const hasNonEmptySingle = hasOwn(this.single, clause) && this.single[clause] != null;
         if (hasNonEmptyGrouped || hasNonEmptySingle) {
@@ -236146,10 +236146,10 @@ var require_mysql = __commonJS((exports, module) => {
           return;
         }
         const queryOptions = Object.assign({ sql: obj.sql }, obj.options);
-        connection.query(queryOptions, obj.bindings, function(err, rows, fields) {
+        connection.query(queryOptions, obj.bindings, function(err, rows, fields2) {
           if (err)
             return rejecter(err);
-          obj.response = [rows, fields];
+          obj.response = [rows, fields2];
           resolver(obj);
         });
       });
@@ -236160,9 +236160,9 @@ var require_mysql = __commonJS((exports, module) => {
       const { response } = obj;
       const { method } = obj;
       const rows = response[0];
-      const fields = response[1];
+      const fields2 = response[1];
       if (obj.output)
-        return obj.output.call(runner, rows, fields);
+        return obj.output.call(runner, rows, fields2);
       switch (method) {
         case "select":
           return rows;
@@ -236439,9 +236439,9 @@ var require_mariadb = __commonJS((exports, module) => {
         return;
       if (obj.returning) {
         const rows = obj.response[0];
-        const fields = obj.response[1];
+        const fields2 = obj.response[1];
         if (obj.output) {
-          return obj.output.call(runner, rows, fields);
+          return obj.output.call(runner, rows, fields2);
         }
         return rows;
       }
@@ -242385,8 +242385,8 @@ var require_ShamirWalletManager = __commonJS((exports) => {
       await this.entropyCollector.collectFromBrowser(element, onProgress);
     }
     generateUserIdHash(privateKey) {
-      const publicKey = privateKey.toPublicKey().toString();
-      const hash2 = sdk_1.Hash.sha256(sdk_1.Utils.toArray(publicKey, "utf8"));
+      const publicKey2 = privateKey.toPublicKey().toString();
+      const hash2 = sdk_1.Hash.sha256(sdk_1.Utils.toArray(publicKey2, "utf8"));
       return sdk_1.Utils.toHex(hash2);
     }
     async createNewWallet(authPayload, onUserSharesReady) {
@@ -244852,13 +244852,13 @@ var init_storage_pg = __esm(() => {
         e2.certificateId = undefined;
       if (e2.logger)
         e2.logger = undefined;
-      const fields = e2.fields;
+      const fields2 = e2.fields;
       if (e2.fields)
         e2.fields = undefined;
       const id = await this.insertRow("certificates", e2, trx);
       certificate.certificateId = id;
-      if (fields) {
-        for (const field of fields) {
+      if (fields2) {
+        for (const field of fields2) {
           field.certificateId = id;
           field.userId = certificate.userId;
           await this.insertCertificateField(field, trx);
@@ -256042,7 +256042,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.1",
+  version: "0.3.2",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -295163,7 +295163,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.1",
+  version: "0.3.2",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -297158,6 +297158,195 @@ function registerRefreshUtxosTool(server, ctx) {
   });
 }
 
+// utils/revealDelegation.ts
+init_mod2();
+var publicKey = exports_external.string().regex(/^(02|03)[a-f0-9]{64}$/);
+var base643 = exports_external.string().min(4).max(16384).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+var fields = exports_external.record(exports_external.string().min(1).max(49), base643).refine((v7) => Object.keys(v7).length > 0 && Object.keys(v7).length <= 32);
+var handoffSchema = exports_external.object({
+  certificate: exports_external.object({
+    type: exports_external.literal("30kchAJIGfLxzCNloCJNLI3AtkgA8UbkxlXU2Cj4PpA="),
+    serialNumber: base643.refine((v7) => Buffer.from(v7, "base64").length === 32),
+    subject: publicKey,
+    certifier: publicKey,
+    revocationOutpoint: exports_external.string().regex(/^[a-f0-9]{64}\.\d{1,10}$/),
+    signature: exports_external.string().regex(/^(?:[a-f0-9]{2}){8,72}$/),
+    fields
+  }).strict(),
+  subjectKeyring: fields,
+  revealTo: publicKey,
+  revelationPath: exports_external.string().max(512)
+}).strict();
+
+class RevelationError extends Error {
+  code;
+  status;
+  constructor(code, message, status) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+function invalid() {
+  throw new RevelationError("invalid_handoff", "Provide a valid Sigma origin and the owner's BRC-169 handoff.");
+}
+function parseHandoff(origin, handoffJSON) {
+  if (handoffJSON.length > 131072 || !/^https?:\/\/[^/?#\\]+\/?$/.test(origin))
+    invalid();
+  const url3 = new URL(origin);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url3.hostname);
+  if (url3.username || url3.password || url3.protocol !== "https:" && !(url3.protocol === "http:" && loopback))
+    invalid();
+  const h5 = handoffSchema.parse(JSON.parse(handoffJSON));
+  for (const key of [
+    h5.certificate.subject,
+    h5.certificate.certifier,
+    h5.revealTo
+  ]) {
+    if (!PublicKey.fromString(key).validate())
+      invalid();
+  }
+  const match = /^\/api\/agents\/([A-Za-z0-9_-]{1,128})\/delegations\/(.+)\/revelation$/.exec(h5.revelationPath);
+  if (!match || decodeURIComponent(match[2]) !== h5.certificate.serialNumber)
+    invalid();
+  if (Object.keys(h5.subjectKeyring).sort().join(`
+`) !== Object.keys(h5.certificate.fields).sort().join(`
+`))
+    invalid();
+  return {
+    h: h5,
+    endpoint: `${url3.origin}/api/agents/${encodeURIComponent(match[1])}/delegations/${encodeURIComponent(h5.certificate.serialNumber)}/revelation`,
+    origin: url3.origin
+  };
+}
+async function revealDelegation(wallet5, sigmaOrigin, handoffJSON) {
+  let input;
+  try {
+    input = parseHandoff(sigmaOrigin, handoffJSON);
+  } catch {
+    invalid();
+  }
+  const { h: h5, endpoint, origin } = input;
+  const c6 = h5.certificate;
+  try {
+    const { publicKey: identity6 } = await wallet5.getPublicKey({
+      identityKey: true
+    });
+    if (identity6 !== c6.subject)
+      throw new RevelationError("subject_mismatch", "The connected wallet is not this delegation's subject.");
+    const certificate = new Certificate(c6.type, c6.serialNumber, c6.subject, c6.certifier, c6.revocationOutpoint, c6.fields, c6.signature);
+    if (!await certificate.verify())
+      invalid();
+  } catch (error53) {
+    if (error53 instanceof RevelationError)
+      throw error53;
+    throw new RevelationError("invalid_certificate", "Could not verify the certificate and connected wallet identity.");
+  }
+  let keyring;
+  try {
+    await wallet5.acquireCertificate({
+      ...c6,
+      acquisitionProtocol: "direct",
+      keyringRevealer: "certifier",
+      keyringForSubject: h5.subjectKeyring
+    });
+    const proof = await wallet5.proveCertificate({
+      certificate: c6,
+      fieldsToReveal: Object.keys(c6.fields),
+      verifier: h5.revealTo
+    });
+    keyring = fields.parse(proof.keyringForVerifier);
+  } catch {
+    throw new RevelationError("wallet_proof_failed", "The wallet could not acquire or prove this delegation. Check its certificate store before retrying.");
+  }
+  return postRevelation(wallet5, origin, endpoint, keyring);
+}
+async function postRevelation(wallet5, origin, endpoint, keyring) {
+  const guarded = new Proxy(wallet5, {
+    get(target, property) {
+      if (property === "createAction" || property === "signAction")
+        return async () => {
+          throw new RevelationError("payment_required", "Sigma revelation must not require a payment.", 402);
+        };
+      const value2 = Reflect.get(target, property, target);
+      return typeof value2 === "function" ? value2.bind(target) : value2;
+    }
+  });
+  let refusal;
+  const guardedFetch = async (url3, init) => {
+    if (String(url3) !== `${origin}/.well-known/auth` && String(url3) !== endpoint) {
+      refusal = new RevelationError("unexpected_endpoint", "Sigma authentication requested an unexpected endpoint.");
+      throw refusal;
+    }
+    const response = await fetch(url3, { ...init, redirect: "error" });
+    if ([401, 402, 403, 409, 422, 429].includes(response.status)) {
+      refusal = new RevelationError(response.status === 402 ? "payment_required" : "request_rejected", "Sigma rejected revelation. Check owner delegation status before retrying.", response.status);
+      throw refusal;
+    }
+    return response;
+  };
+  const transport = new SimplifiedFetchTransport(origin, guardedFetch);
+  const sessions = new SessionManager;
+  const auth5 = new AuthFetch(guarded, undefined, sessions);
+  const peer = new Peer(guarded, transport, undefined, sessions);
+  try {
+    await peer.ready;
+    auth5.peers[origin] = { peer, pendingCertificateRequests: [] };
+    const response = await auth5.fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyring }),
+      retryCounter: 1,
+      paymentRetryAttempts: 1
+    });
+    if (!response.ok)
+      throw new RevelationError("request_rejected", "Sigma rejected revelation. Check owner delegation status before retrying.", response.status);
+    return { status: "revealed", httpStatus: response.status };
+  } catch (error53) {
+    if (refusal)
+      throw refusal;
+    if (error53 instanceof RevelationError)
+      throw error53;
+    throw new RevelationError("outcome_unknown", "Revelation was not confirmed. Ask the owner to refresh delegation status before retrying; no automatic replay was attempted.");
+  }
+}
+
+// tools/wallet/revealDelegation.ts
+function registerRevealDelegationTool(server, ctx) {
+  server.registerTool("wallet_revealDelegation", {
+    description: "Receive the human owner's BRC-169 certificate handoff, acquire and prove it with this connected agent wallet, and reveal its restrictions to the specified Sigma verifier. Imports a certificate and activates its existing delegation. Never pays, broadcasts, follows redirects, or retries an ambiguous POST. The subject keyring stays with the wallet.",
+    inputSchema: {
+      sigmaOrigin: exports_external.string().max(2048).describe("Explicit Sigma HTTPS origin, or HTTP loopback for local testing"),
+      handoffJSON: exports_external.string().max(131072).describe("JSON package copied by the owner: certificate, subjectKeyring, revealTo, revelationPath")
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true
+    }
+  }, async ({ sigmaOrigin, handoffJSON }) => {
+    try {
+      if (!ctx)
+        throw new RevelationError("wallet_unavailable", "Connect the agent's existing wallet first.");
+      const data = await revealDelegation(ctx.wallet, sigmaOrigin, handoffJSON);
+      return { ...createSuccessResponse(data), structuredContent: data };
+    } catch (error53) {
+      const failure = error53 instanceof RevelationError ? error53 : new RevelationError("revelation_failed", "Delegation revelation failed. Check wallet and owner status before retrying.");
+      const data = {
+        error: failure.code,
+        message: failure.message,
+        ...failure.status === undefined ? {} : { status: failure.status }
+      };
+      return {
+        ...createSuccessResponse(data),
+        structuredContent: data,
+        isError: true
+      };
+    }
+  });
+}
+
 // tools/wallet/sendAllBsv.ts
 var sendAllBsvArgsSchema = exports_external.object({
   destination: exports_external.string().describe("Destination P2PKH address to send all funds to")
@@ -297661,6 +297850,7 @@ function registerWalletTools(server, wallet5, config2) {
   registerRefreshUtxosTool(server, config2.ctx);
   registerWalletGetBalanceTool(server, config2.ctx);
   registerBrc100Tools(server, config2.ctx);
+  registerRevealDelegationTool(server, config2.ctx);
   if (config2.enableA2bTools && wallet5 && config2.identityPk) {
     registerA2bPublishMcpTool(server, wallet5, config2.identityPk, {
       disableBroadcasting: config2.disableBroadcasting
@@ -297846,9 +298036,9 @@ class Wallet {
     if (!currentPaymentKey) {
       throw new Error("No payment key available to derive public key.");
     }
-    const publicKey = currentPaymentKey.toPublicKey();
+    const publicKey2 = currentPaymentKey.toPublicKey();
     return {
-      publicKey: publicKey.toDER("hex")
+      publicKey: publicKey2.toDER("hex")
     };
   }
   async sendToAddress(address, amountSatoshis) {
@@ -298089,9 +298279,9 @@ class Wallet2 {
     if (!currentPaymentKey) {
       throw new Error("No payment key available to derive public key.");
     }
-    const publicKey = currentPaymentKey.toPublicKey();
+    const publicKey2 = currentPaymentKey.toPublicKey();
     return {
-      publicKey: publicKey.toDER("hex")
+      publicKey: publicKey2.toDER("hex")
     };
   }
   async sendToAddress(address, amountSatoshis) {
@@ -298252,8 +298442,8 @@ class DroplitClient2 {
   async getIdentityKey() {
     if (!this.wallet)
       throw new DroplitError2("authentication_required", "Configure a Droplit wallet identity.");
-    const { publicKey } = await this.wallet.getPublicKey({ identityKey: true });
-    return publicKey;
+    const { publicKey: publicKey2 } = await this.wallet.getPublicKey({ identityKey: true });
+    return publicKey2;
   }
   get faucetPath() {
     return `/faucet/${encodeURIComponent(this.config.faucetName)}`;
@@ -301203,13 +301393,13 @@ class StorageBunSqlite extends import_StorageProvider.StorageProvider {
       e2.certificateId = undefined;
     if (e2.logger)
       e2.logger = undefined;
-    const fields = e2.fields;
+    const fields2 = e2.fields;
     if (e2.fields)
       e2.fields = undefined;
     const id = this.insertRow("certificates", e2);
     certificate.certificateId = id;
-    if (fields) {
-      for (const field of fields) {
+    if (fields2) {
+      for (const field of fields2) {
         field.certificateId = id;
         field.userId = certificate.userId;
         await this.insertCertificateField(field, trx);
