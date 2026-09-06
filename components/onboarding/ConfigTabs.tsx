@@ -216,16 +216,16 @@ export function ConfigTabs({
 				<p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
 					Config File Locations
 				</p>
-				<p className="text-xs text-muted-foreground font-mono">
+				<p className="text-xs text-muted-foreground font-mono break-all">
 					Claude Desktop (macOS):{" "}
 					<span className="text-foreground">
 						~/Library/Application Support/Claude/claude_desktop_config.json
 					</span>
 				</p>
-				<p className="text-xs text-muted-foreground font-mono">
+				<p className="text-xs text-muted-foreground font-mono break-all">
 					Cursor: <span className="text-foreground">~/.cursor/mcp.json</span>
 				</p>
-				<p className="text-xs text-muted-foreground font-mono">
+				<p className="text-xs text-muted-foreground font-mono break-all">
 					VS Code: <span className="text-foreground">~/.vscode/mcp.json</span>
 				</p>
 			</div>

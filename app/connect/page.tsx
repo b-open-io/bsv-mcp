@@ -52,7 +52,7 @@ export default function OnboardingPage() {
 						Model Context Protocol for Bitcoin SV
 					</p>
 					<p className="text-xs text-muted-foreground/60">
-						MCP 2025-03-26 Specification
+						Streamable HTTP · OAuth 2.1
 					</p>
 				</div>
 
