@@ -184,8 +184,15 @@ export function registerBrc100Tools(
 			outputsJSON: z.string().describe("JSON array of outputs to internalize"),
 			description: z.string().describe("5-50 char description"),
 			labelsJSON: z.string().optional().describe("JSON array of label strings"),
+			seekPermission: z.boolean().optional(),
 		},
-		async ({ txJSON, outputsJSON, description, labelsJSON }) => {
+		async ({
+			txJSON,
+			outputsJSON,
+			description,
+			labelsJSON,
+			seekPermission,
+		}) => {
 			if (!ctx) return noCtx;
 			try {
 				return result(
@@ -193,6 +200,7 @@ export function registerBrc100Tools(
 						tx: parseRequiredJSON("txJSON", txJSON),
 						outputs: parseRequiredJSON("outputsJSON", outputsJSON),
 						description,
+						seekPermission,
 						labels: parseJSON("labelsJSON", labelsJSON),
 					}),
 				);
@@ -221,6 +229,7 @@ export function registerBrc100Tools(
 			includeOutputLockingScripts: z.boolean().default(false),
 			limit: z.number().default(25),
 			offset: z.number().default(0),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ labelsJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -250,6 +259,7 @@ export function registerBrc100Tools(
 			includeLabels: z.boolean().default(false),
 			limit: z.number().default(25),
 			offset: z.number().default(0),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ tagsJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -331,6 +341,8 @@ export function registerBrc100Tools(
 			keyID: z.string(),
 			counterparty: z.string().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -358,6 +370,8 @@ export function registerBrc100Tools(
 			keyID: z.string(),
 			counterparty: z.string().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -385,6 +399,8 @@ export function registerBrc100Tools(
 			keyID: z.string(),
 			counterparty: z.string().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -413,6 +429,8 @@ export function registerBrc100Tools(
 			keyID: z.string(),
 			counterparty: z.string().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -444,6 +462,8 @@ export function registerBrc100Tools(
 			keyID: z.string(),
 			counterparty: z.string().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -480,6 +500,8 @@ export function registerBrc100Tools(
 			counterparty: z.string().optional(),
 			forSelf: z.boolean().optional(),
 			privileged: z.boolean().optional(),
+			privilegedReason: z.string().optional(),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -677,6 +699,7 @@ export function registerBrc100Tools(
 			identityKey: z.string().describe("Identity public key hex"),
 			limit: z.number().default(25),
 			offset: z.number().default(0),
+			seekPermission: z.boolean().optional(),
 		},
 		async (args) => {
 			if (!ctx) return noCtx;
@@ -697,6 +720,7 @@ export function registerBrc100Tools(
 				.describe("JSON object of attribute key/value pairs to match"),
 			limit: z.number().default(25),
 			offset: z.number().default(0),
+			seekPermission: z.boolean().optional(),
 		},
 		async ({ attributesJSON, ...rest }) => {
 			if (!ctx) return noCtx;

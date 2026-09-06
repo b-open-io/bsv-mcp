@@ -23,11 +23,11 @@ type DroplitClient = NonNullable<
  * signing key, so resolve both up front rather than failing part-way through a
  * request with a different message depending on which tool was called.
  */
-function requireDroplit(integratedWallet: IntegratedWallet): {
+async function requireDroplit(integratedWallet: IntegratedWallet): Promise<{
 	apiUrl: string;
 	publicKeyHex: string;
 	client: DroplitClient;
-} {
+}> {
 	const client = integratedWallet.getDroplitClient();
 	if (!client) {
 		throw new Error(
@@ -35,14 +35,8 @@ function requireDroplit(integratedWallet: IntegratedWallet): {
 		);
 	}
 
-	const { apiUrl, authKey } = client.getConfig();
-	if (!authKey) {
-		throw new Error(
-			"Droplit requests must be signed, but no auth key is configured.",
-		);
-	}
-
-	return { apiUrl, publicKeyHex: authKey.toPublicKey().toString(), client };
+	const { apiUrl } = client.getConfig();
+	return { apiUrl, publicKeyHex: await client.getIdentityKey(), client };
 }
 
 async function failIfNotOk(
@@ -61,11 +55,11 @@ export function registerSetupDroplitTools(
 ) {
 	server.tool(
 		"wallet_registerDroplitKey",
-		"Registers this wallet's public key with the Droplit API so it can sign authenticated faucet requests. Run once before creating or operating a faucet.",
+		"Registers public authentication material. Registration does not grant sponsor access; a sponsor owner must approve the wallet separately.",
 		{},
 		async () => {
 			try {
-				const { apiUrl, publicKeyHex } = requireDroplit(integratedWallet);
+				const { apiUrl, publicKeyHex } = await requireDroplit(integratedWallet);
 
 				const response = await fetch(`${apiUrl}/auth/register`, {
 					method: "POST",
@@ -86,7 +80,7 @@ export function registerSetupDroplitTools(
 
 	server.tool(
 		"wallet_createDroplitFaucet",
-		"Provisions a new Droplit faucet owned by this wallet. Register the wallet's public key first with wallet_registerDroplitKey.",
+		"Creates a faucet owned by this wallet which must be funded before use. This does not provide free credit or approval for another sponsor.",
 		{
 			faucetName: z
 				.string()
@@ -109,7 +103,7 @@ export function registerSetupDroplitTools(
 		},
 		async ({ faucetName, fixedDropSats, maxConsolidationInputs }) => {
 			try {
-				const { client } = requireDroplit(integratedWallet);
+				const { client } = await requireDroplit(integratedWallet);
 
 				// Ownership comes from the BRC-103/104 identity established by the
 				// handshake, not from the body, so the key is never sent here.
@@ -141,11 +135,11 @@ export function registerSetupDroplitTools(
 
 	server.tool(
 		"wallet_checkDroplitFaucetStatus",
-		"Reads the status of the configured Droplit faucet, including balance and payout settings.",
+		"Reads public faucet balance and payout settings. This is not proof of caller authorization; use droplit_getAccess for that.",
 		{},
 		async () => {
 			try {
-				const { client } = requireDroplit(integratedWallet);
+				const { client } = await requireDroplit(integratedWallet);
 				return createSuccessResponse({
 					faucetStatus: await client.getFaucetStatus(),
 				});

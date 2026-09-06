@@ -1,5 +1,16 @@
 # BSV MCP Server Changelog
 
+## [0.3.1] - 2026-09-05
+
+### Added
+- Connect an existing BRC-100 HTTP signer without loading local private keys or provisioning wallet storage.
+- Inspect sponsor access and submit sponsored push/fund operations with the connected signer.
+
+### Fixed
+- Preserve wallet permission arguments through MCP schemas.
+- Block automatic HTTP payment during sponsor authentication and avoid ambiguous write retries.
+- Preserve explicitly requested satoshi amounts in legacy Droplit taps.
+
 ## [0.3.0] - 2026-07-30
 
 ### Breaking Changes

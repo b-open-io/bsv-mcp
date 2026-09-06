@@ -66,9 +66,7 @@ export class IntegratedWallet {
 		satoshis: number,
 	): Promise<{ txid: string }> {
 		if (this.droplitClient) {
-			// For Droplit API, we use the tap endpoint which sends the faucet's fixed amount
-			// Note: Droplit API doesn't support custom amounts, it uses fixed_drop_sats
-			const response = await this.droplitClient.tap(address);
+			const response = await this.droplitClient.tap(address, satoshis);
 			return { txid: response.txid };
 		}
 		if (this.localWallet) {

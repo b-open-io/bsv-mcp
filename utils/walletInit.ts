@@ -13,8 +13,15 @@ import {
 	type NodeWalletResult,
 	type OneSatServices,
 } from "@1sat/wallet-node";
-import { PrivateKey, type WalletInterface } from "@bsv/sdk";
+import { OneSatServices as ExternalServices } from "@1sat/wallet-remote";
+import {
+	HTTPWalletJSON,
+	PrivateKey,
+	PublicKey,
+	type WalletInterface,
+} from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
+import type { ExternalWalletConfig } from "./externalWalletConfig";
 import { redactKeyMaterial } from "./redact";
 import {
 	handleSpendingAuthorization,
@@ -66,9 +73,7 @@ export interface WalletInitResult {
 	destroy: () => Promise<void>;
 }
 
-let activeResult:
-	| (NodeWalletResult & { ctx: OneSatContext; depositAddress: string })
-	| null = null;
+let activeResult: Pick<NodeWalletResult, "destroy"> | null = null;
 
 /**
  * Initialize the BRC-100 remote wallet.
@@ -142,7 +147,7 @@ export async function initWallet(
 			console.error("[wallet] message box sync failed:", err);
 		});
 
-	activeResult = { ...result, ctx, depositAddress };
+	activeResult = result;
 
 	return {
 		wallet: wpm,
@@ -151,6 +156,60 @@ export async function initWallet(
 		depositAddress,
 		destroy: result.destroy,
 	};
+}
+
+/**
+ * Connect to an existing signer without keys, local storage or permission wrappers.
+ * The timeout also bounds response body consumption; requests are never retried.
+ */
+export async function initExternalWallet(
+	config: ExternalWalletConfig,
+	chain: "main" | "test" = "main",
+): Promise<{
+	wallet: WalletInterface;
+	ctx: OneSatContext;
+	services: OneSatServices;
+	identityKey: string;
+	destroy: () => Promise<void>;
+}> {
+	const httpClient = ((input, init) =>
+		fetch(input, {
+			...init,
+			redirect: "error",
+			signal: init?.signal
+				? AbortSignal.any([init.signal, AbortSignal.timeout(10_000)])
+				: AbortSignal.timeout(10_000),
+		})) as typeof fetch;
+	const wallet = new HTTPWalletJSON(config.originator, config.url, httpClient);
+	let identityKey: string;
+	try {
+		const identity = await wallet.getPublicKey({ identityKey: true });
+		if (!/^(02|03)[0-9a-f]{64}$/i.test(identity.publicKey)) {
+			throw new Error(
+				"Signer returned an invalid compressed identity public key",
+			);
+		}
+		PublicKey.fromString(identity.publicKey);
+		identityKey = identity.publicKey;
+	} catch (error) {
+		throw new Error(
+			"External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.",
+			{ cause: error },
+		);
+	}
+	// These are API clients only: construction does not provision wallet storage.
+	const services = new ExternalServices(chain, process.env.ONESAT_API_URL);
+	const dataDir = join(homedir(), ".bsv-mcp");
+	const ctx = createContext(wallet, {
+		services,
+		chain,
+		dataDir,
+		log: (entry) => writeAuditLog(dataDir, entry),
+	});
+	// This connection owns no signer resources. Never destroy the remote wallet.
+	const destroy = async () => {};
+	activeResult = { destroy };
+	return { wallet, ctx, services, identityKey, destroy };
 }
 
 /**

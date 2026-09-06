@@ -31,7 +31,7 @@ import type { Wallet } from "./wallet";
 
 export function registerWalletTools(
 	server: McpServer,
-	wallet: Wallet,
+	wallet: Wallet | undefined,
 	config: {
 		disableBroadcasting: boolean;
 		enableA2bTools: boolean;
@@ -60,7 +60,7 @@ export function registerWalletTools(
 	registerBrc100Tools(server, config.ctx);
 
 	// A2B tools have to be explicitly enabled
-	if (config.enableA2bTools) {
+	if (config.enableA2bTools && wallet && config.identityPk) {
 		// Register the wallet_a2bPublishMcp tool
 		registerA2bPublishMcpTool(server, wallet, config.identityPk, {
 			disableBroadcasting: config.disableBroadcasting,
@@ -71,8 +71,10 @@ export function registerWalletTools(
 	registerCreateOrdinalsTool(server, config.ctx);
 
 	// Register collection tools
-	registerGatherCollectionInfoTool(server, wallet);
-	registerMintCollectionTool(server, wallet);
+	if (wallet) {
+		registerGatherCollectionInfoTool(server, wallet);
+		registerMintCollectionTool(server, wallet);
+	}
 
 	// Register read-only wallet tools
 	registerGetOrdinalsTool(server, config.ctx);
