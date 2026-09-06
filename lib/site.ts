@@ -31,8 +31,16 @@ export const GITHUB_URL = "https://github.com/b-open-io/bsv-mcp";
 export const NPM_URL = "https://www.npmjs.com/package/bsv-mcp";
 export const MCP_SPEC_URL = "https://modelcontextprotocol.io";
 
-/** The hosted Streamable HTTP endpoint MCP clients connect to. */
-export const MCP_ENDPOINT = `${SITE_URL}/api/mcp`;
+/**
+ * The hosted Streamable HTTP endpoint MCP clients connect to.
+ *
+ * It is the site origin: the root serves the landing page to browsers and the
+ * MCP server to MCP clients, so there is no path to append.
+ */
+export const MCP_ENDPOINT = SITE_URL;
+
+/** The original endpoint, still served for clients already configured on it. */
+export const MCP_ENDPOINT_LEGACY = `${SITE_URL}/api/mcp`;
 
 /** The OAuth 2.1 authorization server that issues tokens for this resource. */
 export const AUTH_SERVER_URL =

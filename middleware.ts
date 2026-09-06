@@ -5,6 +5,7 @@ import {
 	selectMediaType,
 	VARY_HEADER,
 } from "@/lib/content-negotiation";
+import { isMcpRequest, MCP_HANDLER_PATH } from "@/lib/mcp-request";
 
 /**
  * Accept negotiation for the site's pages, per acceptmarkdown.com.
@@ -15,6 +16,20 @@ import {
  * that accepts neither gets 406 rather than the wrong media type.
  */
 export function middleware(request: NextRequest) {
+	// The site root is also the MCP endpoint, so `https://bsvmcp.com` is the
+	// whole connection URL with nothing to append. MCP requests are recognised
+	// by method and headers and rewritten to the handler; everything else falls
+	// through to page negotiation below. /api/mcp keeps working for clients
+	// already configured against it.
+	if (
+		request.nextUrl.pathname === "/" &&
+		isMcpRequest(request.method, request.headers)
+	) {
+		const url = request.nextUrl.clone();
+		url.pathname = MCP_HANDLER_PATH;
+		return NextResponse.rewrite(url);
+	}
+
 	const accept = request.headers.get("accept");
 	const chosen = selectMediaType(accept, OFFERED_MEDIA);
 

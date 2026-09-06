@@ -205,8 +205,7 @@ export const installTargets: InstallTarget[] = [
 			},
 			{
 				label: "Or use the hosted server",
-				command:
-					"claude mcp add --transport http bsv-mcp https://bsvmcp.com/api/mcp",
+				command: "claude mcp add --transport http bsv-mcp https://bsvmcp.com",
 			},
 		],
 		note: "The plugin bundles the server and registers it automatically, so no config file is needed.",
@@ -245,8 +244,7 @@ export const installTargets: InstallTarget[] = [
 		altCommands: [
 			{
 				label: "Or use the hosted server",
-				command:
-					"grok mcp add --transport http bsv-mcp https://bsvmcp.com/api/mcp",
+				command: "grok mcp add --transport http bsv-mcp https://bsvmcp.com",
 			},
 		],
 		configPath: "~/.grok/config.toml",
@@ -273,7 +271,7 @@ export const installTargets: InstallTarget[] = [
 		key: "other",
 		label: "Any MCP client",
 		command: "bunx bsv-mcp@latest",
-		note: "Any client that speaks MCP over stdio can run the server directly. For Streamable HTTP, point it at https://bsvmcp.com/api/mcp and authenticate with OAuth 2.1.",
+		note: "Any client that speaks MCP over stdio can run the server directly. For Streamable HTTP, point it at https://bsvmcp.com and authenticate with OAuth 2.1.",
 		docsUrl: "https://modelcontextprotocol.io",
 	},
 ];
