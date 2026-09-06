@@ -221,9 +221,9 @@ export default function LandingPage() {
 					}
 				/>
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{toolCategories.map(({ key, name, directories, description }) => {
+					{toolCategories.map(({ key, name, description }) => {
 						const Icon = iconFor[key];
-						const count = countTools(toolCounts, directories);
+						const count = countTools(toolCounts, key);
 						return (
 							<Card
 								key={name}

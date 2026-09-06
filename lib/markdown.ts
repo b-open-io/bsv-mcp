@@ -66,7 +66,7 @@ export function renderHomeMarkdown(): string {
 
 	const categories = toolCategories
 		.map((category) => {
-			const count = countTools(counts, category.directories);
+			const count = countTools(counts, category.key);
 			const suffix = count > 0 ? ` (${count} tools)` : "";
 			return `### ${category.name}${suffix}\n\n${category.description}`;
 		})
