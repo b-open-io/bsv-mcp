@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import type { SoftwareApplication, WithContext } from "schema-dts";
+import {
+	GITHUB_URL,
+	getAppVersion,
+	MCP_ENDPOINT,
+	SITE_DESCRIPTION,
+	SITE_NAME,
+	SITE_TAGLINE,
+	SITE_URL,
+} from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 const geistSans = Geist({
@@ -14,10 +24,86 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "BSV MCP — Bitcoin SV tools for AI agents",
-	description:
-		"An open source Model Context Protocol server that gives Claude, Cursor, and any MCP client a Bitcoin SV wallet: send BSV, inscribe ordinals, manage identity, and read the chain.",
+	metadataBase: new URL(SITE_URL),
+	title: {
+		default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+		template: `%s · ${SITE_NAME}`,
+	},
+	description: SITE_DESCRIPTION,
+	applicationName: SITE_NAME,
+	keywords: [
+		"BSV MCP",
+		"Bitcoin SV MCP server",
+		"Model Context Protocol",
+		"MCP server",
+		"Bitcoin SV",
+		"1Sat Ordinals",
+		"BSV wallet for AI agents",
+		"Claude MCP connector",
+	],
+	authors: [{ name: "b-open-io", url: GITHUB_URL }],
+	creator: "b-open-io",
+	publisher: "b-open-io",
+	alternates: {
+		canonical: "/",
+		types: {
+			"text/markdown": `${SITE_URL}/index.md`,
+		},
+	},
+	openGraph: {
+		type: "website",
+		siteName: SITE_NAME,
+		title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+		description: SITE_DESCRIPTION,
+		url: SITE_URL,
+		locale: "en_US",
+	},
+	twitter: {
+		card: "summary_large_image",
+		title: `${SITE_NAME} — ${SITE_TAGLINE}`,
+		description: SITE_DESCRIPTION,
+	},
+	robots: {
+		index: true,
+		follow: true,
+		googleBot: { index: true, follow: true, "max-snippet": -1 },
+	},
 };
+
+/**
+ * Structured data naming the product and its MCP endpoint, so a name-based
+ * search for "BSV MCP" can resolve to this domain rather than to unrelated
+ * pages about Bitcoin SV or about MCP generally.
+ */
+function structuredData(): WithContext<SoftwareApplication> {
+	return {
+		"@context": "https://schema.org",
+		"@type": "SoftwareApplication",
+		name: SITE_NAME,
+		alternateName: "Bitcoin SV Model Context Protocol Server",
+		description: SITE_DESCRIPTION,
+		url: SITE_URL,
+		applicationCategory: "DeveloperApplication",
+		operatingSystem: "macOS, Linux, Windows",
+		softwareVersion: getAppVersion(),
+		license: "https://opensource.org/licenses/MIT",
+		codeRepository: GITHUB_URL,
+		offers: {
+			"@type": "Offer",
+			price: "0",
+			priceCurrency: "USD",
+		},
+		author: {
+			"@type": "Organization",
+			name: "b-open-io",
+			url: GITHUB_URL,
+		},
+		potentialAction: {
+			"@type": "UseAction",
+			target: MCP_ENDPOINT,
+		},
+	};
+}
 
 export default function RootLayout({
 	children,
@@ -33,6 +119,13 @@ export default function RootLayout({
 					geistMono.variable,
 				)}
 			>
+				<script
+					type="application/ld+json"
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body.
+					dangerouslySetInnerHTML={{
+						__html: JSON.stringify(structuredData()),
+					}}
+				/>
 				{children}
 			</body>
 		</html>

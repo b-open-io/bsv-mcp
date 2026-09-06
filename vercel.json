@@ -6,6 +6,18 @@
 	"env": {
 		"ENABLE_OAUTH": "true",
 		"OAUTH_ISSUER": "https://auth.sigmaidentity.com",
-		"RESOURCE_URL": "https://bsv-mcp.vercel.app"
-	}
+		"RESOURCE_URL": "https://bsv-mcp.vercel.app",
+		"NEXT_PUBLIC_SITE_URL": "https://bsvmcp.com"
+	},
+	"headers": [
+		{
+			"source": "/((?!_next/).*)",
+			"headers": [
+				{
+					"key": "Vary",
+					"value": "Accept, Accept-Encoding, RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch"
+				}
+			]
+		}
+	]
 }

@@ -30,146 +30,44 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+	GITHUB_URL,
+	getAppVersion,
+	MCP_PROTOCOL_LATEST,
+	NPM_URL,
+} from "@/lib/site";
+import {
+	clientConfig,
+	clients,
+	deployModes,
+	guarantees,
+	installCommands,
+	steps,
+	toolCategories,
+} from "@/lib/site-content";
 import { approximateTotal, countTools, getToolCounts } from "@/lib/tool-count";
 
-const GITHUB_URL = "https://github.com/b-open-io/bsv-mcp";
-const NPM_URL = "https://www.npmjs.com/package/bsv-mcp";
+const iconFor: Record<string, typeof Wallet> = {
+	wallet: Wallet,
+	ordinals: ImageIcon,
+	explorer: Search,
+	identity: Fingerprint,
+	social: MessageSquare,
+	tokens: Bitcoin,
+};
 
-const clients = [
-	"Claude Code",
-	"Claude Desktop",
-	"Cursor",
-	"Windsurf",
-	"Any MCP client",
-];
+const deployIconFor: Record<string, typeof Wallet> = {
+	local: Terminal,
+	http: Server,
+	hosted: Cloud,
+};
 
-const toolCategories: {
-	icon: typeof Wallet;
-	name: string;
-	directories: string[];
-	description: string;
-}[] = [
-	{
-		icon: Wallet,
-		name: "Wallet",
-		directories: ["wallet"],
-		description:
-			"Send BSV, manage UTXOs, inscribe files and mint collections from a local key, a BRC-100 signer, or a Droplit-sponsored wallet.",
-	},
-	{
-		icon: ImageIcon,
-		name: "Ordinals",
-		directories: ["ordinals"],
-		description:
-			"Look up 1Sat Ordinals, browse marketplace listings, and buy or list NFTs directly from a conversation.",
-	},
-	{
-		icon: Search,
-		name: "Explorer",
-		directories: ["bsv"],
-		description:
-			"Decode raw transactions, fetch blocks and addresses, and pull the live BSV price with built-in caching.",
-	},
-	{
-		icon: Fingerprint,
-		name: "Identity",
-		directories: ["bap"],
-		description:
-			"Create and manage Bitcoin Attestation Protocol (BAP) identities and sign attestations on-chain.",
-	},
-	{
-		icon: MessageSquare,
-		name: "Social",
-		directories: ["bsocial"],
-		description:
-			"Post, like, and follow on BSocial. Your agent can publish to the open social graph.",
-	},
-	{
-		icon: Bitcoin,
-		name: "Tokens",
-		directories: ["mnee", "utils"],
-		description:
-			"Check balances and transfer MNEE stablecoin, with utilities for encoding, hashing, and data conversion.",
-	},
-];
-
-const steps = [
-	{
-		title: "Install",
-		description:
-			"One plugin command for Claude Code, a JSON snippet for Cursor or Claude Desktop, or a hosted URL. No build step.",
-	},
-	{
-		title: "Connect a key",
-		description:
-			"Bring a WIF, point at an existing BRC-100 wallet, or let the server generate an encrypted key on first run.",
-	},
-	{
-		title: "Ask",
-		description:
-			"“Inscribe this SVG”, “what's in block 900000”, “send 5000 sats to…”. The agent picks the right tool and shows you the txid.",
-	},
-];
-
-const deployModes = [
-	{
-		icon: Terminal,
-		title: "Local",
-		subtitle: "stdio transport",
-		description:
-			"Runs on your machine with keys encrypted at rest. The default for Claude Code and desktop clients.",
-	},
-	{
-		icon: Server,
-		title: "HTTP",
-		subtitle: "Streamable HTTP",
-		description:
-			"Self-host the MCP 2025-03-26 Streamable HTTP endpoint with OAuth 2.1 and JWT validation.",
-	},
-	{
-		icon: Cloud,
-		title: "Hosted",
-		subtitle: "bsvmcp.com",
-		description:
-			"Authenticate with a Bitcoin signature and get a ready-to-paste config. Nothing to run.",
-	},
-];
-
-const guarantees = [
-	{
-		icon: KeyRound,
-		title: "Encrypted at rest",
-		description:
-			"AES-256-GCM with 600k PBKDF2 iterations in the bitcoin-backup format. Files are created with 0600 permissions.",
-	},
-	{
-		icon: ShieldCheck,
-		title: "No passphrase env vars",
-		description:
-			"Passphrases are entered through a temporary local web prompt, never read from the environment.",
-	},
-	{
-		icon: Fingerprint,
-		title: "Bitcoin-signed auth",
-		description:
-			"Hosted mode uses OAuth 2.1 via sigma-auth. Your public key is your identity. Nothing to register.",
-	},
-	{
-		icon: Wallet,
-		title: "External signers",
-		description:
-			"Point at a BRC-100 wallet and it stays the permission authority. Every spend is approved there.",
-	},
-];
-
-const clientConfig = `{
-  "mcpServers": {
-    "bsv-mcp": {
-      "command": "bunx",
-      "args": ["bsv-mcp@latest"]
-    }
-  }
-}`;
+const guaranteeIconFor: Record<string, typeof Wallet> = {
+	encrypted: KeyRound,
+	"no-env-passphrase": ShieldCheck,
+	"bitcoin-auth": Fingerprint,
+	"external-signer": Wallet,
+};
 
 function SectionHeading({
 	title,
@@ -234,10 +132,18 @@ export default function LandingPage() {
 
 			<section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
 				<div className="min-w-0 space-y-7">
-					<Badge variant="outline" className="py-1">
-						<span aria-hidden className="size-1.5 rounded-full bg-success" />
-						Open source · MCP 2025-03-26 · v0.3
-					</Badge>
+					<div className="flex flex-wrap items-center gap-2">
+						<Badge variant="outline" className="py-1">
+							<span aria-hidden className="size-1.5 rounded-full bg-success" />
+							Open source
+						</Badge>
+						<Badge variant="outline" className="py-1">
+							MCP protocol {MCP_PROTOCOL_LATEST}
+						</Badge>
+						<Badge variant="outline" className="py-1">
+							v{getAppVersion()}
+						</Badge>
+					</div>
 					<h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
 						Give your AI agent a{" "}
 						<span className="text-primary">Bitcoin wallet</span>.
@@ -265,7 +171,7 @@ export default function LandingPage() {
 						</Button>
 					</div>
 					<CopyCommand
-						command="claude plugin install bsv-mcp@b-open-io"
+						command={installCommands.claudeCode}
 						className="max-w-xl"
 					/>
 				</div>
@@ -317,32 +223,31 @@ export default function LandingPage() {
 					}
 				/>
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{toolCategories.map(
-						({ icon: Icon, name, directories, description }) => {
-							const count = countTools(toolCounts, directories);
-							return (
-								<Card
-									key={name}
-									className="h-full bg-card/60 transition-colors hover:border-primary/40"
-								>
-									<CardHeader>
-										<div className="flex items-start justify-between gap-3">
-											<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-												<Icon className="size-5" />
-											</span>
-											{count > 0 && (
-												<Badge variant="secondary">
-													{count} {count === 1 ? "tool" : "tools"}
-												</Badge>
-											)}
-										</div>
-										<CardTitle className="pt-2">{name}</CardTitle>
-										<CardDescription>{description}</CardDescription>
-									</CardHeader>
-								</Card>
-							);
-						},
-					)}
+					{toolCategories.map(({ key, name, directories, description }) => {
+						const Icon = iconFor[key];
+						const count = countTools(toolCounts, directories);
+						return (
+							<Card
+								key={name}
+								className="h-full bg-card/60 transition-colors hover:border-primary/40"
+							>
+								<CardHeader>
+									<div className="flex items-start justify-between gap-3">
+										<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+											<Icon className="size-5" />
+										</span>
+										{count > 0 && (
+											<Badge variant="secondary">
+												{count} {count === 1 ? "tool" : "tools"}
+											</Badge>
+										)}
+									</div>
+									<CardTitle className="pt-2">{name}</CardTitle>
+									<CardDescription>{description}</CardDescription>
+								</CardHeader>
+							</Card>
+						);
+					})}
 				</div>
 			</section>
 
@@ -353,24 +258,27 @@ export default function LandingPage() {
 						description="The same server ships in three shapes. Pick the one that fits your client and your key custody."
 					/>
 					<div className="grid gap-4 md:grid-cols-3">
-						{deployModes.map(({ icon: Icon, title, subtitle, description }) => (
-							<Card key={title} className="h-full bg-card/60">
-								<CardHeader>
-									<div className="flex items-center gap-3">
-										<Icon className="size-5 text-primary" />
-										<div>
-											<CardTitle>{title}</CardTitle>
-											<p className="font-mono text-xs text-muted-foreground">
-												{subtitle}
-											</p>
+						{deployModes.map(({ key, title, subtitle, description }) => {
+							const Icon = deployIconFor[key];
+							return (
+								<Card key={key} className="h-full bg-card/60">
+									<CardHeader>
+										<div className="flex items-center gap-3">
+											<Icon className="size-5 text-primary" />
+											<div>
+												<CardTitle>{title}</CardTitle>
+												<p className="font-mono text-xs text-muted-foreground">
+													{subtitle}
+												</p>
+											</div>
 										</div>
-									</div>
-									<CardDescription className="pt-2">
-										{description}
-									</CardDescription>
-								</CardHeader>
-							</Card>
-						))}
+										<CardDescription className="pt-2">
+											{description}
+										</CardDescription>
+									</CardHeader>
+								</Card>
+							);
+						})}
 					</div>
 
 					<Separator className="my-10" />
@@ -381,12 +289,12 @@ export default function LandingPage() {
 								<Plug className="size-4 text-primary" />
 								Claude Code
 							</p>
-							<CopyCommand command="claude plugin install bsv-mcp@b-open-io" />
+							<CopyCommand command={installCommands.claudeCode} />
 							<p className="flex items-center gap-2 pt-2 text-sm font-medium">
 								<Wrench className="size-4 text-primary" />
 								Any stdio client
 							</p>
-							<CopyCommand command="bunx bsv-mcp@latest" />
+							<CopyCommand command={installCommands.stdio} />
 						</div>
 						<div className="space-y-3">
 							<p className="flex items-center gap-2 text-sm font-medium">
@@ -411,17 +319,20 @@ export default function LandingPage() {
 						</p>
 					</div>
 					<ul className="grid gap-4 sm:grid-cols-2">
-						{guarantees.map(({ icon: Icon, title, description }) => (
-							<li key={title}>
-								<Card className="h-full bg-card/60">
-									<CardHeader>
-										<Icon className="size-5 text-primary" />
-										<CardTitle className="pt-2">{title}</CardTitle>
-										<CardDescription>{description}</CardDescription>
-									</CardHeader>
-								</Card>
-							</li>
-						))}
+						{guarantees.map(({ key, title, description }) => {
+							const Icon = guaranteeIconFor[key];
+							return (
+								<li key={key}>
+									<Card className="h-full bg-card/60">
+										<CardHeader>
+											<Icon className="size-5 text-primary" />
+											<CardTitle className="pt-2">{title}</CardTitle>
+											<CardDescription>{description}</CardDescription>
+										</CardHeader>
+									</Card>
+								</li>
+							);
+						})}
 					</ul>
 				</div>
 			</section>
