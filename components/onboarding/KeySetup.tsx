@@ -29,8 +29,10 @@ export function KeySetup({
 }: KeySetupProps) {
 	return (
 		<div className="space-y-4">
-			{/* Key source selection */}
-			<div className="flex gap-2">
+			{/* Key source selection. Stacks on narrow screens: the buttons carry
+			    whitespace-nowrap, so side by side they cannot shrink below their
+			    label width and overflow the viewport under about 375px. */}
+			<div className="flex flex-col gap-2 sm:flex-row">
 				<Button
 					type="button"
 					variant="outline"
