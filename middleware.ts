@@ -41,9 +41,14 @@ export function middleware(request: NextRequest) {
 		return response;
 	}
 
-	// Best effort only: Next overwrites Vary on page responses after middleware
-	// runs, so the authoritative declaration lives in the CDN header config
-	// (vercel.json). Route handlers, which keep their own headers, set it too.
+	// Best effort only. Next and Vercel set Vary on prerendered page responses
+	// and that value wins over middleware, next.config headers and the CDN
+	// header config alike (all three verified in production). Route handlers do
+	// keep their own headers, so the markdown variants declare it correctly.
+	//
+	// Correctness does not depend on it: markdown requests are rewritten to
+	// /md/*, so the two representations occupy different cache keys and a CDN
+	// cannot serve one in place of the other.
 	const response = NextResponse.next();
 	response.headers.append("Vary", "Accept");
 	return response;
