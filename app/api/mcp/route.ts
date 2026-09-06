@@ -1,6 +1,7 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
+import { RESOURCE_METADATA_PATH } from "@/lib/oauth-metadata";
 import { registerAllTools } from "@/tools";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
@@ -120,7 +121,10 @@ const handler = createMcpHandler(
 const withAuth = withMcpAuth(handler, verifyToken, {
 	required: process.env.ENABLE_OAUTH !== "false",
 	requiredScopes: [],
-	resourceMetadataPath: "/.well-known/oauth-protected-resource",
+	// RFC 9728 §3.1: the metadata for a resource under a path lives at the
+	// well-known prefix with that path appended. Pointing the challenge at the
+	// bare path sends clients somewhere the spec does not expect.
+	resourceMetadataPath: RESOURCE_METADATA_PATH,
 });
 
 export {
