@@ -18,7 +18,27 @@
 	--color-popover-foreground: hsl(var(--popover-foreground));
 	--color-card: hsl(var(--card));
 	--color-card-foreground: hsl(var(--card-foreground));
+	--color-success: hsl(var(--success));
+	--color-success-foreground: hsl(var(--success-foreground));
+	--color-warning: hsl(var(--warning));
+	--color-warning-foreground: hsl(var(--warning-foreground));
 
+	--color-chart-1: hsl(var(--chart-1));
+	--color-chart-2: hsl(var(--chart-2));
+	--color-chart-3: hsl(var(--chart-3));
+	--color-chart-4: hsl(var(--chart-4));
+	--color-chart-5: hsl(var(--chart-5));
+
+	--color-sidebar: hsl(var(--sidebar));
+	--color-sidebar-foreground: hsl(var(--sidebar-foreground));
+	--color-sidebar-primary: hsl(var(--sidebar-primary));
+	--color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+	--color-sidebar-accent: hsl(var(--sidebar-accent));
+	--color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+	--color-sidebar-border: hsl(var(--sidebar-border));
+	--color-sidebar-ring: hsl(var(--sidebar-ring));
+
+	--radius-xl: calc(var(--radius) + 4px);
 	--radius-lg: var(--radius);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-sm: calc(var(--radius) - 4px);
