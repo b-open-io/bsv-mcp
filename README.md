@@ -888,11 +888,21 @@ DROPLIT_FAUCET_NAME=your-sponsor-slug
 DROPLIT_SITE_URL=https://droplit.dev
 ```
 
-Set both sponsor values explicitly. The URL includes the server's configured
+Set both sponsor values explicitly for wallet operations. The URL includes the server's configured
 base path. Leave `USE_DROPLIT_API` unset: these sponsor tools appear alongside
 normal wallet tools and use the same connected signer identity. Existing local
 BRC-100 wallet contexts also support this sponsor pair. `1sat serve` exposes a
 wallet stack service; it is not itself a BRC-100 signer RPC endpoint.
+
+For public sponsor discovery, set only `DROPLIT_API_URL` and call
+`droplit_discover` with optional `limit` (1–50, default 20) and `after`
+(the previous `next_cursor`). This unsigned read needs no selected sponsor or
+wallet and returns only names, slugs, and `approval_required: true`. It neither
+creates a wallet nor grants sponsor access. Normal MCP startup retains its
+existing wallet initialization behavior; this tool itself makes no wallet calls.
+An empty catalog means no owners have opted in. Select a listed slug, configure
+`DROPLIT_FAUCET_NAME`, and use the existing wallet access/owner approval flow.
+Listing does not promise funding or quota availability.
 
 Call `droplit_getAccess` to inspect your own authorization and quotas. An
 `approval_required` response includes a link to `DROPLIT_SITE_URL` (default

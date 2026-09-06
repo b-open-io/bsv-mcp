@@ -1,5 +1,12 @@
 # BSV MCP Server Changelog
 
+## [0.3.4] - 2026-09-06
+
+### Added
+- Discover owner-listed Droplit sponsors without a wallet or preselected faucet.
+- Validate public responses and pagination; discovery never authorizes access or payment.
+
+
 ## [0.3.3] - 2026-09-06
 
 ### Fixed

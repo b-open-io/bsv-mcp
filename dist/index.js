@@ -256042,7 +256042,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.3",
+  version: "0.3.4",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -284877,6 +284877,14 @@ function registerUtilsTools(server) {
 
 // utils/droplit.ts
 init_mod2();
+function droplitApiBaseUrl(apiUrl) {
+  const url3 = new URL(apiUrl);
+  const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
+  if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+    throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
+  }
+  return url3.href.replace(/\/$/, "");
+}
 function approvalSiteOrigin(value2 = "https://droplit.dev") {
   const url3 = new URL(value2);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url3.hostname);
@@ -284942,11 +284950,7 @@ class DroplitClient {
     this.siteOrigin = approvalSiteOrigin(config2.siteUrl);
     if (config2.wallet && config2.authKey)
       throw new Error("Configure Droplit wallet or authKey, not both");
-    const url3 = new URL(config2.apiUrl);
-    const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
-    if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
-      throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
-    }
+    droplitApiBaseUrl(config2.apiUrl);
     if (!config2.faucetName.trim())
       throw new Error("Droplit faucet name is required");
     this.wallet = config2.wallet ?? (config2.authKey ? new ProtoWallet_default(config2.authKey) : undefined);
@@ -285070,6 +285074,74 @@ class DroplitClient {
   async authenticatedFetch(path3, init) {
     return this.authed(path3, init);
   }
+}
+var publicSponsorsSchema = exports_external.object({
+  sponsors: exports_external.array(exports_external.object({
+    name: exports_external.string(),
+    slug: exports_external.string().min(1),
+    approval_required: exports_external.literal(true)
+  })).max(50),
+  next_cursor: exports_external.string().min(1).nullable()
+});
+async function discoverDroplitSponsors(apiUrl, options = {}) {
+  const limit = options.limit ?? 20;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Error("limit must be an integer from 1 to 50");
+  const url3 = new URL(`${droplitApiBaseUrl(apiUrl)}/sponsors`);
+  url3.searchParams.set("limit", String(limit));
+  if (options.after !== undefined)
+    url3.searchParams.set("after", options.after);
+  let response;
+  try {
+    response = await fetch(url3, {
+      method: "GET",
+      redirect: "error",
+      credentials: "omit",
+      signal: AbortSignal.timeout(15000)
+    });
+  } catch {
+    throw new DroplitError("request_failed", "Could not read public sponsors. Check the configured API origin.");
+  }
+  if (!response.ok)
+    throw new DroplitError("request_failed", "Could not read public sponsors.", response.status);
+  try {
+    return publicSponsorsSchema.parse(await response.json());
+  } catch {
+    throw new DroplitError("invalid_response", "Public sponsor response was invalid.");
+  }
+}
+
+// tools/wallet/droplitDiscovery.ts
+function registerDroplitDiscoveryTool(server, apiUrl) {
+  const baseUrl = droplitApiBaseUrl(apiUrl);
+  server.registerTool("droplit_discover", {
+    description: "List publicly opted-in sponsors. No wallet or sponsor selection is required. Listing grants no access or funding; choose a slug, then request the sponsor owner's approval separately.",
+    inputSchema: {
+      limit: exports_external.number().int().min(1).max(50).optional(),
+      after: exports_external.string().optional()
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    }
+  }, async (options) => {
+    try {
+      const data = await discoverDroplitSponsors(baseUrl, options);
+      return { ...createSuccessResponse(data), structuredContent: data };
+    } catch (error52) {
+      const data = {
+        error: error52 instanceof DroplitError ? error52.code : "invalid_request",
+        message: error52 instanceof DroplitError ? error52.message : "Invalid sponsor discovery request."
+      };
+      return {
+        ...createSuccessResponse(data),
+        structuredContent: data,
+        isError: true
+      };
+    }
+  });
 }
 
 // tools/wallet/droplit.ts
@@ -295175,7 +295247,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.3",
+  version: "0.3.4",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -297908,6 +297980,9 @@ function registerAllTools(server, config2 = {}) {
   }
   if (enableUtilsTools) {
     registerUtilsTools(server);
+    const apiUrl = config2.droplitApiUrl ?? process.env.DROPLIT_API_URL ?? config2.droplitClient?.getConfig().apiUrl;
+    if (apiUrl)
+      registerDroplitDiscoveryTool(server, apiUrl);
   }
   if (enableA2bTools) {
     registerA2bDiscoverTool(server);
@@ -298366,6 +298441,12 @@ function readDroplitSponsorConfig(env = process.env) {
   const siteUrl = env.DROPLIT_SITE_URL;
   if (apiUrl === undefined && faucetName === undefined && siteUrl === undefined)
     return;
+  if (apiUrl?.trim() && faucetName === undefined) {
+    droplitApiBaseUrl2(apiUrl);
+    if (siteUrl !== undefined)
+      approvalSiteOrigin2(siteUrl);
+    return;
+  }
   if (!apiUrl?.trim() || !faucetName?.trim()) {
     throw new Error("DROPLIT_API_URL and DROPLIT_FAUCET_NAME must both be explicitly configured");
   }
@@ -298374,6 +298455,14 @@ function readDroplitSponsorConfig(env = process.env) {
     faucetName,
     ...siteUrl === undefined ? {} : { siteUrl: approvalSiteOrigin2(siteUrl) }
   };
+}
+function droplitApiBaseUrl2(apiUrl) {
+  const url3 = new URL(apiUrl);
+  const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
+  if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+    throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
+  }
+  return url3.href.replace(/\/$/, "");
 }
 function approvalSiteOrigin2(value2 = "https://droplit.dev") {
   const url3 = new URL(value2);
@@ -298440,11 +298529,7 @@ class DroplitClient2 {
     this.siteOrigin = approvalSiteOrigin2(config2.siteUrl);
     if (config2.wallet && config2.authKey)
       throw new Error("Configure Droplit wallet or authKey, not both");
-    const url3 = new URL(config2.apiUrl);
-    const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
-    if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
-      throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
-    }
+    droplitApiBaseUrl2(config2.apiUrl);
     if (!config2.faucetName.trim())
       throw new Error("Droplit faucet name is required");
     this.wallet = config2.wallet ?? (config2.authKey ? new ProtoWallet_default(config2.authKey) : undefined);
@@ -298569,6 +298654,14 @@ class DroplitClient2 {
     return this.authed(path5, init);
   }
 }
+var publicSponsorsSchema2 = exports_external.object({
+  sponsors: exports_external.array(exports_external.object({
+    name: exports_external.string(),
+    slug: exports_external.string().min(1),
+    approval_required: exports_external.literal(true)
+  })).max(50),
+  next_cursor: exports_external.string().min(1).nullable()
+});
 
 // utils/externalWalletConfig.ts
 function readExternalWalletConfig(env = process.env) {

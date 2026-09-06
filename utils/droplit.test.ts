@@ -34,11 +34,11 @@ function wallet() {
 }
 afterEach(() => mock.restore());
 
-test("sponsor configuration requires an explicit pair", () => {
+test("sponsor operations require a pair while API-only config permits discovery", () => {
 	expect(readDroplitSponsorConfig({})).toBeUndefined();
-	expect(() =>
+	expect(
 		readDroplitSponsorConfig({ DROPLIT_API_URL: config.apiUrl }),
-	).toThrow("both");
+	).toBeUndefined();
 	expect(() =>
 		readDroplitSponsorConfig({ DROPLIT_FAUCET_NAME: config.faucetName }),
 	).toThrow("both");
