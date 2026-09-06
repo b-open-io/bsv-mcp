@@ -28,6 +28,11 @@ import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
+import { DroplitClient, readDroplitSponsorConfig } from "./utils/droplit";
+import {
+	initializeKeysForWalletMode,
+	readExternalWalletConfig,
+} from "./utils/externalWalletConfig";
 import {
 	type BSVJWTPayload,
 	createMCPJWTValidator,
@@ -37,6 +42,7 @@ import { SecureKeyManager } from "./utils/keyManager.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
 import {
 	destroyWallet,
+	initExternalWallet,
 	initWallet,
 	setSpendingApprovalServerInstance,
 } from "./utils/walletInit.ts";
@@ -1107,6 +1113,8 @@ Options:
 Environment Variables:
   TRANSPORT           Transport mode: 'stdio' or 'http' (default: http)
   PORT               HTTP server port (default: 3000)
+  BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
+  BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
   PRIVATE_KEY_WIF    Payment private key in WIF format
   DISABLE_TOOLS      Disable all tools (default: false)
   DISABLE_WALLET_TOOLS   Disable wallet tools (default: false)
@@ -1130,7 +1138,7 @@ Tool Categories:
 
 Authentication:
   - Most tools work without authentication
-  - Wallet operations require PRIVATE_KEY_WIF or generated keys
+  - Wallet operations use BRC100_WALLET_URL, PRIVATE_KEY_WIF or generated keys
   - BAP/A2B tools require identity keys (generated via bap_generate tool)
 		`);
 		process.exit(0);
@@ -1142,7 +1150,25 @@ Authentication:
 	}
 
 	// --- Initialize Keys ---
-	const { payPk, identityPk, xprv, source: keySource } = await initializeKeys();
+	const externalWallet = readExternalWalletConfig();
+	const sponsorConfig = CONFIG.useDroplitApi
+		? undefined
+		: readDroplitSponsorConfig();
+	const keys = await initializeKeysForWalletMode(
+		externalWallet,
+		initializeKeys,
+	);
+	const {
+		payPk,
+		identityPk,
+		xprv,
+		source: keySource,
+	} = keys ?? {
+		payPk: undefined,
+		identityPk: undefined,
+		xprv: undefined,
+		source: "external",
+	};
 
 	// Define persistence based on source
 	const hasPersistentPayKey =
@@ -1154,6 +1180,15 @@ Authentication:
 		(keySource === "file" || keySource === "env" || keySource === "encrypted");
 
 	const effectiveConfig = { ...CONFIG };
+	if (externalWallet) {
+		effectiveConfig.loadBapTools = false;
+		effectiveConfig.loadBsocialTools = false;
+		effectiveConfig.loadMneeTools = false;
+		effectiveConfig.loadA2bTools = false;
+		logFunc(
+			"External BRC-100 signer selected; local key loading and generation bypassed.",
+		);
+	}
 
 	// --- Configuration Logging ---
 	logFunc("\n--- BSV MCP Server Configuration ---");
@@ -1169,10 +1204,10 @@ Authentication:
 		);
 	}
 	logFunc(
-		`  PRIVATE_KEY_WIF:      ${process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`,
+		`  PRIVATE_KEY_WIF:      ${externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`,
 	);
 	logFunc(
-		`  IDENTITY_KEY_WIF:     ${process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`,
+		`  IDENTITY_KEY_WIF:     ${externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`,
 	);
 	if (process.env.BSV_MCP_PASSPHRASE) {
 		logFunc("  BSV_MCP_PASSPHRASE:   \x1b[31mDEPRECATED - Remove this!\x1b[0m");
@@ -1269,11 +1304,11 @@ Authentication:
 			: "\x1b[31mDisabled\x1b[0m";
 
 		let payKeyNote = "";
-		if (!hasPersistentPayKey) {
+		if (!externalWallet && !hasPersistentPayKey) {
 			payKeyNote = " \x1b[33m(Using generated payPk)\x1b[0m";
 		}
 		let identityKeyNote = "";
-		if (!hasPersistentIdentityKey) {
+		if (!externalWallet && !hasPersistentIdentityKey) {
 			identityKeyNote = " \x1b[33m(Using generated identityPk)\x1b[0m";
 		}
 
@@ -1310,7 +1345,15 @@ Authentication:
 
 	if (CONFIG.loadTools) {
 		// Check if we should use Droplit API mode
-		if (CONFIG.useDroplitApi && CONFIG.droplitFaucetName) {
+		if (externalWallet) {
+			const chain = process.env.BSV_CHAIN ?? "main";
+			if (chain !== "main" && chain !== "test")
+				throw new Error("BSV_CHAIN must be main or test");
+			const result = await initExternalWallet(externalWallet, chain);
+			remoteCtx = result.ctx;
+			remoteServices = result.services;
+			logFunc(`External BRC-100 signer ready. Identity: ${result.identityKey}`);
+		} else if (CONFIG.useDroplitApi && CONFIG.droplitFaucetName) {
 			// Initialize IntegratedWallet in Droplit mode
 			if (CONFIG.loadWalletTools) {
 				try {
@@ -1405,6 +1448,16 @@ Authentication:
 		}
 	}
 
+	const droplitClient =
+		sponsorConfig && remoteCtx
+			? new DroplitClient({ ...sponsorConfig, wallet: remoteCtx.wallet })
+			: undefined;
+	if (sponsorConfig && CONFIG.loadTools && !remoteCtx) {
+		throw new Error(
+			"Configured Droplit sponsor requires an initialized BRC-100 wallet context",
+		);
+	}
+
 	// Build the shared tools config (used by server factory for each session)
 	const toolsConfig: ToolsConfig = CONFIG.loadTools
 		? {
@@ -1424,6 +1477,7 @@ Authentication:
 				disableBroadcasting: effectiveConfig.disableBroadcasting,
 				ctx: remoteCtx,
 				services: remoteServices,
+				droplitClient,
 			}
 		: {
 				enableBsvTools: false,

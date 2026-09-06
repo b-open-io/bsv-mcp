@@ -8,6 +8,51 @@
 
 A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework. This library provides wallet, ordinals, and utility functions for BSV blockchain interaction.
 
+## Connect an existing BRC-100 signer
+
+Set `BRC100_WALLET_URL` to explicitly use an existing wallet through the SDK's
+`HTTPWalletJSON` signer RPC transport. For example, **if your wallet already
+exposes this signer RPC**:
+
+```bash
+BRC100_WALLET_URL=http://127.0.0.1:3321 BRC100_WALLET_ORIGINATOR=bsv-mcp.local bun run index.ts --stdio
+```
+
+`BRC100_WALLET_ORIGINATOR` is optional and defaults to `bsv-mcp.local`; use a
+domain or HTTP(S) origin without credentials, paths, queries or fragments.
+Empty, malformed and `admin.bsv-mcp.internal` origins are rejected. The SDK
+sends the origin as both `Origin` and `Originator` headers in Node/Bun.
+Signer URLs must use HTTPS, or HTTP on loopback (`localhost`, `127.0.0.0/8`,
+`[::1]`), without credentials, queries or fragments. Redirects are rejected.
+
+Remove `PRIVATE_KEY_WIF`, `IDENTITY_KEY_WIF`, `DROPLIT_API_URL` and
+`DROPLIT_FAUCET_NAME`, and disable `USE_DROPLIT_API` before enabling this mode:
+explicit conflicting configuration is rejected. Existing local key files are
+left unread. This mode generates no keys, creates no local wallet or storage,
+and provisions no remote storage. Startup performs one identity-public-key
+request with a 10-second timeout. Failure stops startup with a nonzero exit;
+there is no endpoint probing or identity fallback. All signer calls have a
+10-second timeout and no automatic retries; a timed-out write may have reached
+the signer, so inspect its state before resubmitting.
+
+The external wallet remains the permission authority, including spending and
+identity disclosure. Tool arguments (including `seekPermission`) reach it
+without a permission-bypass wrapper or automatic approval. Approve requests
+in your wallet. MCP shutdown does not shut down the signer.
+
+Context wallet/BRC-100 tools are available without a legacy wallet. Legacy
+collection minting/gathering, A2B publication, BAP/raw-key, BSocial and MNEE
+tools are unavailable in this mode. `BSV_CHAIN` selects `main` (default) or
+`test`. Existing `ONESAT_API_URL` configures the auxiliary OneSat API clients
+used by context actions; it is separate from the signer URL. Those actions
+still require the corresponding OneSat service capabilities and the signer's
+support for the requested protocol/baskets. Existing tool disable flags apply.
+
+**Transport distinction:** `1sat serve wallet` exposes **storage RPC**, not
+the SDK signer RPC. Do not set `BRC100_WALLET_URL` to that storage endpoint.
+This server does not start or supply a signer daemon. Without
+`BRC100_WALLET_URL`, the existing local wallet configuration remains in effect.
+
 ## Installation Options
 
 ### Option 1: Claude Code Plugin (Simplest)
@@ -830,3 +875,40 @@ npm test
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+### Use a sponsor with your connected wallet
+
+```sh
+BRC100_WALLET_URL=http://127.0.0.1:3321
+BRC100_WALLET_ORIGINATOR=bsv-mcp.local
+DROPLIT_API_URL=https://api.droplit.dev/droplit
+DROPLIT_FAUCET_NAME=your-sponsor-slug
+```
+
+Set both sponsor values explicitly. The URL includes the server's configured
+base path. Leave `USE_DROPLIT_API` unset: these sponsor tools appear alongside
+normal wallet tools and use the same connected signer identity. Existing local
+BRC-100 wallet contexts also support this sponsor pair. `1sat serve` exposes a
+wallet stack service; it is not itself a BRC-100 signer RPC endpoint.
+
+Call `droplit_getAccess` to inspect your own authorization and quotas. An
+`approval_required` response includes a `https://droplit.dev` link for manual
+owner review. Do not automatically open, approve, or register to obtain access.
+Public status and public-key registration do not prove sponsor approval, and
+creating your own faucet requires funding rather than providing free credit.
+Missing quota kinds are unrestricted for authorized users; a configured zero
+count remains denied. Count and transfer quotas exclude a guaranteed miner-fee
+budget.
+
+`droplit_push` accepts `data: string[]` and `encoding: "hex" | "utf8"`.
+`droplit_fund` accepts `rawtx` transaction hex and requests sponsor funding and
+broadcast. Both obey broadcasting disable settings and make one client
+submission, with no automatic 402 payment or ambiguous-write retry. Wallet
+signing permissions remain controlled by the configured signer. The API authentication
+facade forwards signer methods but rejects payment creation/signing, so SDK
+BRC-105 payment handling cannot spend funds; a 402 requires human review. Structured
+401/403/429 errors identify authentication, approval, or quota problems;
+available quota reset information is retained. `unknown_outcome` means reconcile
+transaction/history before retrying; no idempotency-key support is claimed.
+The legacy `USE_DROPLIT_API=true` wallet mode remains available separately.

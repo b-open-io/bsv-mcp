@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import type { OneSatServices } from "@1sat/wallet-remote";
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { DroplitClient } from "../utils/droplit";
 import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
 import { registerBsocialTools } from "./bsocial";
@@ -9,6 +10,7 @@ import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
+import { registerDroplitTools } from "./wallet/droplit";
 import { registerWalletGetBalanceDroplitTool } from "./wallet/getBalanceDroplit";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
 import { registerSetupDroplitTools } from "./wallet/setupDroplit";
@@ -45,6 +47,7 @@ export interface ToolsConfig {
 	disableBroadcasting?: boolean; // For wallet tools
 	ctx?: OneSatContext;
 	services?: OneSatServices;
+	droplitClient?: DroplitClient;
 }
 
 /**
@@ -99,7 +102,7 @@ export function registerAllTools(
 	}
 
 	// Register BAP tools
-	if (enableBapTools) {
+	if (enableBapTools && (!config.ctx || config.wallet)) {
 		const bapConfig: import("./bap").BapToolsConfig = {
 			disableBroadcasting: config.disableBroadcasting,
 			identityPk: config.identityPk,
@@ -116,6 +119,12 @@ export function registerAllTools(
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
+		if (config.droplitClient)
+			registerDroplitTools(
+				server,
+				config.droplitClient,
+				config.disableBroadcasting,
+			);
 		if (config.integratedWallet?.isDroplitMode) {
 			// Register Droplit-mode wallet tools
 			const droplitClient = config.integratedWallet.getDroplitClient();
@@ -127,7 +136,7 @@ export function registerAllTools(
 				}
 				console.error("Registered Droplit mode wallet tools");
 			}
-		} else if (config.wallet) {
+		} else if (config.wallet || config.ctx) {
 			// Register normal wallet tools
 			const walletToolOptions = {
 				disableBroadcasting: config.disableBroadcasting === true,
@@ -140,7 +149,7 @@ export function registerAllTools(
 	}
 
 	// Register MNEE tools
-	if (enableMneeTools) {
+	if (enableMneeTools && (!config.ctx || config.wallet)) {
 		registerMneeTools(server);
 	}
 

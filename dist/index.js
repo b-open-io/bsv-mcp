@@ -223156,7 +223156,7 @@ var require_timestamp2 = __commonJS((exports, module) => {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS((exports, module) => {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/.codex/worktrees/agent-stack-mcp/node_modules/knex/lib/migrations/migrate";
   var path6 = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -223863,7 +223863,7 @@ var require_seeder_configuration_merger = __commonJS((exports, module) => {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS((exports, module) => {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/.codex/worktrees/agent-stack-mcp/node_modules/knex/lib/migrations/seed";
   var path6 = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();
@@ -256042,7 +256042,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.0",
+  version: "0.3.1",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -284875,6 +284875,281 @@ function registerUtilsTools(server) {
   });
 }
 
+// utils/droplit.ts
+init_mod2();
+class DroplitError extends Error {
+  code;
+  status;
+  details;
+  constructor(code, message, status, details = {}) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+function quotaDetails(body) {
+  if (!body || typeof body !== "object")
+    return {};
+  const value2 = body;
+  return {
+    ...typeof value2.remaining === "number" || value2.remaining === null ? { remaining: value2.remaining } : {},
+    ...typeof value2.resets_at === "string" ? { resets_at: value2.resets_at } : {}
+  };
+}
+function httpFailure(status, details = {}) {
+  const known = {
+    401: [
+      "authentication_required",
+      "Authenticate with the configured wallet before retrying."
+    ],
+    402: [
+      "approval_required",
+      "Payment is required. No automatic payment was made; review payment with the wallet owner."
+    ],
+    403: [
+      "approval_required",
+      "The sponsor has not authorized this action. Ask its owner to approve your wallet."
+    ],
+    429: [
+      "quota_exceeded",
+      "Sponsor quota exhausted. Wait until resets_at or ask the owner to adjust your quota."
+    ]
+  };
+  const [code, message] = known[status] ?? [
+    "http_error",
+    "Droplit rejected the request. Check sponsor access and transaction history before retrying."
+  ];
+  return new DroplitError(code, message, status, details);
+}
+
+class DroplitClient {
+  config;
+  authFetch;
+  wallet;
+  constructor(config2) {
+    this.config = config2;
+    if (config2.wallet && config2.authKey)
+      throw new Error("Configure Droplit wallet or authKey, not both");
+    const url3 = new URL(config2.apiUrl);
+    const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
+    if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+      throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
+    }
+    if (!config2.faucetName.trim())
+      throw new Error("Droplit faucet name is required");
+    this.wallet = config2.wallet ?? (config2.authKey ? new ProtoWallet_default(config2.authKey) : undefined);
+    if (this.wallet) {
+      const authenticationWallet = new Proxy(this.wallet, {
+        get(target, property) {
+          if (property === "createAction" || property === "signAction") {
+            return async () => {
+              throw httpFailure(402);
+            };
+          }
+          const value2 = Reflect.get(target, property, target);
+          return typeof value2 === "function" ? value2.bind(target) : value2;
+        }
+      });
+      this.authFetch = new AuthFetch(authenticationWallet);
+    }
+  }
+  getConfig() {
+    return { apiUrl: this.config.apiUrl, faucetName: this.config.faucetName };
+  }
+  async getIdentityKey() {
+    if (!this.wallet)
+      throw new DroplitError("authentication_required", "Configure a Droplit wallet identity.");
+    const { publicKey } = await this.wallet.getPublicKey({ identityKey: true });
+    return publicKey;
+  }
+  get faucetPath() {
+    return `/faucet/${encodeURIComponent(this.config.faucetName)}`;
+  }
+  get base() {
+    return this.config.apiUrl.replace(/\/+$/, "");
+  }
+  async authed(path3, init) {
+    if (!this.authFetch) {
+      throw new Error(`${path3} requires authentication and no Droplit auth key is configured.`);
+    }
+    try {
+      return await this.authFetch.fetch(`${this.base}${path3}`, {
+        method: init.method,
+        headers: { "Content-Type": "application/json" },
+        ...init.body === undefined ? {} : { body: JSON.stringify(init.body) },
+        paymentRetryAttempts: 0,
+        ...init.method === "GET" || init.method === "HEAD" ? {} : { retryCounter: 1 }
+      });
+    } catch (error52) {
+      if (error52 instanceof DroplitError)
+        throw error52;
+      const details = error52?.details;
+      const status = details?.status;
+      if (typeof status === "number" && [401, 402, 403, 429].includes(status)) {
+        let body;
+        if (status === 429 && typeof details?.bodyPreview === "string") {
+          try {
+            body = JSON.parse(details.bodyPreview);
+          } catch {}
+        }
+        throw httpFailure(status, status === 429 ? quotaDetails(body) : {});
+      }
+      const write = init.method !== "GET" && init.method !== "HEAD";
+      throw new DroplitError(write ? "unknown_outcome" : "request_failed", write ? "Request outcome is unknown. Reconcile transaction/history before retrying; no automatic retry was made." : "Authenticated request failed. Check the signer and sponsor connection.");
+    }
+  }
+  async parse(response, _attempted) {
+    if (response.ok) {
+      try {
+        return await response.json();
+      } catch {
+        throw new DroplitError("unknown_outcome", "Response could not be read. Reconcile transaction/history before retrying.", response.status);
+      }
+    }
+    let body = {};
+    try {
+      body = await response.json();
+    } catch {}
+    throw httpFailure(response.status, response.status === 429 ? quotaDetails(body) : {});
+  }
+  async getAccess() {
+    const response = await this.authed(`${this.faucetPath}/access`, {
+      method: "GET"
+    });
+    const access = await this.parse(response, "Reading sponsor access");
+    const identity6 = await this.getIdentityKey();
+    if (!access || access.public_key !== identity6 || access.slug !== this.config.faucetName || typeof access.authorized !== "boolean" || typeof access.is_owner !== "boolean" || !Array.isArray(access.quotas) || !Array.isArray(access.unrestricted_kinds)) {
+      throw new DroplitError("invalid_response", "Sponsor access response did not match the authenticated wallet.");
+    }
+    access.approval_path = `/droplit/${encodeURIComponent(this.config.faucetName)}?tab=api&request_key=${encodeURIComponent(identity6)}`;
+    return access;
+  }
+  async fund(rawtx) {
+    const response = await this.authed(`${this.faucetPath}/fund`, {
+      method: "POST",
+      body: { rawtx }
+    });
+    return this.parse(response, "Funding transaction");
+  }
+  async getFaucetStatus() {
+    const response = await fetch(`${this.base}${this.faucetPath}/status`);
+    return this.parse(response, "Reading the faucet status");
+  }
+  async tap(recipientAddress, satoshis) {
+    if (satoshis !== undefined && (!Number.isSafeInteger(satoshis) || satoshis <= 0))
+      throw new Error("satoshis must be a positive safe integer");
+    const response = await this.authed(`${this.faucetPath}/tap`, {
+      method: "POST",
+      body: {
+        recipient_address: recipientAddress,
+        ...satoshis === undefined ? {} : { satoshis }
+      }
+    });
+    return this.parse(response, "Tapping the faucet");
+  }
+  async push(data, encoding = "hex") {
+    const response = await this.authed(`${this.faucetPath}/push`, {
+      method: "POST",
+      body: { data, encoding }
+    });
+    return this.parse(response, "Pushing data");
+  }
+  async authenticatedFetch(path3, init) {
+    return this.authed(path3, init);
+  }
+}
+
+// tools/wallet/droplit.ts
+function errorResult(error52) {
+  const failure = error52 instanceof DroplitError ? error52 : new DroplitError("request_failed", "Droplit operation failed. Check configuration and broadcasting policy.");
+  const data = {
+    error: failure.code,
+    message: failure.message,
+    ...failure.status === undefined ? {} : { status: failure.status },
+    ...failure.details
+  };
+  return {
+    ...createSuccessResponse(data),
+    structuredContent: data,
+    isError: true
+  };
+}
+function registerDroplitTools(server, client, disableBroadcasting = false) {
+  server.registerTool("droplit_getAccess", {
+    description: "Read this connected wallet's sponsor authorization and quotas. If unauthorized, a human sponsor owner must approve the wallet manually. Does not create, fund, or approve anything.",
+    inputSchema: {},
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    }
+  }, async () => {
+    try {
+      const access = await client.getAccess();
+      const data = {
+        ...access,
+        ...!access.authorized ? {
+          error: "approval_required",
+          message: "Ask the sponsor owner to approve this wallet. Copy the approval URL for manual review; do not auto-open or submit approval.",
+          approval_url: `https://droplit.dev${access.approval_path}`
+        } : {}
+      };
+      return {
+        ...createSuccessResponse(data),
+        structuredContent: data,
+        isError: !access.authorized
+      };
+    } catch (error52) {
+      return errorResult(error52);
+    }
+  });
+  server.registerTool("droplit_push", {
+    description: "Submit one sponsored data transaction. Subject to sponsor approval and quotas. An unknown outcome requires checking transaction history before retrying.",
+    inputSchema: {
+      data: exports_external.array(exports_external.string()).min(1),
+      encoding: exports_external.enum(["hex", "utf8"])
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    }
+  }, async ({ data, encoding }) => {
+    try {
+      if (disableBroadcasting)
+        throw new Error("Broadcasting disabled");
+      assertBroadcastAllowed("droplit_push");
+      return createSuccessResponse(await client.push(data, encoding));
+    } catch (error52) {
+      return errorResult(error52);
+    }
+  });
+  server.registerTool("droplit_fund", {
+    description: "Submit one raw transaction for sponsor funding and broadcast. Subject to sponsor approval and quotas. Unknown outcomes must be reconciled before retrying.",
+    inputSchema: {
+      rawtx: exports_external.string().min(2).regex(/^(?:[0-9a-fA-F]{2})+$/, "Expected raw transaction hex")
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    }
+  }, async ({ rawtx }) => {
+    try {
+      if (disableBroadcasting)
+        throw new Error("Broadcasting disabled");
+      assertBroadcastAllowed("droplit_fund");
+      return createSuccessResponse(await client.fund(rawtx));
+    } catch (error52) {
+      return errorResult(error52);
+    }
+  });
+}
+
 // tools/wallet/getBalanceDroplit.ts
 function registerWalletGetBalanceDroplitTool(server, droplitClient) {
   server.tool("wallet_getBalance", "Gets the current balance of the wallet (Droplit mode)", {}, async () => {
@@ -284911,16 +285186,13 @@ function registerWalletGetBalanceDroplitTool(server, droplitClient) {
 }
 
 // tools/wallet/setupDroplit.ts
-function requireDroplit(integratedWallet) {
+async function requireDroplit(integratedWallet) {
   const client = integratedWallet.getDroplitClient();
   if (!client) {
     throw new Error("Droplit client is not configured. Set DROPLIT_API_URL and DROPLIT_FAUCET_NAME.");
   }
-  const { apiUrl, authKey } = client.getConfig();
-  if (!authKey) {
-    throw new Error("Droplit requests must be signed, but no auth key is configured.");
-  }
-  return { apiUrl, publicKeyHex: authKey.toPublicKey().toString(), client };
+  const { apiUrl } = client.getConfig();
+  return { apiUrl, publicKeyHex: await client.getIdentityKey(), client };
 }
 async function failIfNotOk(response, attempted) {
   if (response.ok)
@@ -284928,9 +285200,9 @@ async function failIfNotOk(response, attempted) {
   throw new Error(`${attempted} failed (${response.status}): ${await response.text()}`);
 }
 function registerSetupDroplitTools(server, integratedWallet) {
-  server.tool("wallet_registerDroplitKey", "Registers this wallet's public key with the Droplit API so it can sign authenticated faucet requests. Run once before creating or operating a faucet.", {}, async () => {
+  server.tool("wallet_registerDroplitKey", "Registers public authentication material. Registration does not grant sponsor access; a sponsor owner must approve the wallet separately.", {}, async () => {
     try {
-      const { apiUrl, publicKeyHex } = requireDroplit(integratedWallet);
+      const { apiUrl, publicKeyHex } = await requireDroplit(integratedWallet);
       const response = await fetch(`${apiUrl}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -284945,13 +285217,13 @@ function registerSetupDroplitTools(server, integratedWallet) {
       return createErrorResponse(error52);
     }
   });
-  server.tool("wallet_createDroplitFaucet", "Provisions a new Droplit faucet owned by this wallet. Register the wallet's public key first with wallet_registerDroplitKey.", {
+  server.tool("wallet_createDroplitFaucet", "Creates a faucet owned by this wallet which must be funded before use. This does not provide free credit or approval for another sponsor.", {
     faucetName: exports_external.string().min(1).describe("Identifier for the new faucet; must be unique"),
     fixedDropSats: exports_external.number().int().positive().optional().describe("Satoshis paid out per tap. Server default applies if unset."),
     maxConsolidationInputs: exports_external.number().int().positive().optional().describe("Cap on inputs the faucet consolidates in one transaction")
   }, async ({ faucetName, fixedDropSats, maxConsolidationInputs }) => {
     try {
-      const { client } = requireDroplit(integratedWallet);
+      const { client } = await requireDroplit(integratedWallet);
       const body = {
         name: faucetName,
         ...fixedDropSats !== undefined && {
@@ -284974,9 +285246,9 @@ function registerSetupDroplitTools(server, integratedWallet) {
       return createErrorResponse(error52);
     }
   });
-  server.tool("wallet_checkDroplitFaucetStatus", "Reads the status of the configured Droplit faucet, including balance and payout settings.", {}, async () => {
+  server.tool("wallet_checkDroplitFaucetStatus", "Reads public faucet balance and payout settings. This is not proof of caller authorization; use droplit_getAccess for that.", {}, async () => {
     try {
-      const { client } = requireDroplit(integratedWallet);
+      const { client } = await requireDroplit(integratedWallet);
       return createSuccessResponse({
         faucetStatus: await client.getFaucetStatus()
       });
@@ -294891,7 +295163,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.0",
+  version: "0.3.1",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -295324,8 +295596,15 @@ function registerBrc100Tools(server, ctx) {
     txJSON: exports_external.string().describe("JSON array of AtomicBEEF bytes"),
     outputsJSON: exports_external.string().describe("JSON array of outputs to internalize"),
     description: exports_external.string().describe("5-50 char description"),
-    labelsJSON: exports_external.string().optional().describe("JSON array of label strings")
-  }, async ({ txJSON, outputsJSON, description, labelsJSON }) => {
+    labelsJSON: exports_external.string().optional().describe("JSON array of label strings"),
+    seekPermission: exports_external.boolean().optional()
+  }, async ({
+    txJSON,
+    outputsJSON,
+    description,
+    labelsJSON,
+    seekPermission
+  }) => {
     if (!ctx)
       return noCtx;
     try {
@@ -295333,6 +295612,7 @@ function registerBrc100Tools(server, ctx) {
         tx: parseRequiredJSON("txJSON", txJSON),
         outputs: parseRequiredJSON("outputsJSON", outputsJSON),
         description,
+        seekPermission,
         labels: parseJSON("labelsJSON", labelsJSON)
       }));
     } catch (e2) {
@@ -295349,7 +295629,8 @@ function registerBrc100Tools(server, ctx) {
     includeOutputs: exports_external.boolean().default(false),
     includeOutputLockingScripts: exports_external.boolean().default(false),
     limit: exports_external.number().default(25),
-    offset: exports_external.number().default(0)
+    offset: exports_external.number().default(0),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ labelsJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295371,7 +295652,8 @@ function registerBrc100Tools(server, ctx) {
     includeTags: exports_external.boolean().default(false),
     includeLabels: exports_external.boolean().default(false),
     limit: exports_external.number().default(25),
-    offset: exports_external.number().default(0)
+    offset: exports_external.number().default(0),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ tagsJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295423,7 +295705,9 @@ function registerBrc100Tools(server, ctx) {
     protocolIDJSON: exports_external.string().describe("JSON array [securityLevel, protocolString]"),
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295441,7 +295725,9 @@ function registerBrc100Tools(server, ctx) {
     protocolIDJSON: exports_external.string().describe("JSON array [securityLevel, protocolString]"),
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295459,7 +295745,9 @@ function registerBrc100Tools(server, ctx) {
     protocolIDJSON: exports_external.string().describe("JSON array [securityLevel, protocolString]"),
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295478,7 +295766,9 @@ function registerBrc100Tools(server, ctx) {
     protocolIDJSON: exports_external.string().describe("JSON array [securityLevel, protocolString]"),
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295497,7 +295787,9 @@ function registerBrc100Tools(server, ctx) {
     protocolIDJSON: exports_external.string().describe("JSON array [securityLevel, protocolString]"),
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295518,7 +295810,9 @@ function registerBrc100Tools(server, ctx) {
     keyID: exports_external.string(),
     counterparty: exports_external.string().optional(),
     forSelf: exports_external.boolean().optional(),
-    privileged: exports_external.boolean().optional()
+    privileged: exports_external.boolean().optional(),
+    privilegedReason: exports_external.string().optional(),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ protocolIDJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -295645,7 +295939,8 @@ function registerBrc100Tools(server, ctx) {
   server.tool("wallet_discoverByIdentityKey", "Discovers certificates issued to a given identity key.", {
     identityKey: exports_external.string().describe("Identity public key hex"),
     limit: exports_external.number().default(25),
-    offset: exports_external.number().default(0)
+    offset: exports_external.number().default(0),
+    seekPermission: exports_external.boolean().optional()
   }, async (args) => {
     if (!ctx)
       return noCtx;
@@ -295658,7 +295953,8 @@ function registerBrc100Tools(server, ctx) {
   server.tool("wallet_discoverByAttributes", "Discovers certificates matching specific attributes.", {
     attributesJSON: exports_external.string().describe("JSON object of attribute key/value pairs to match"),
     limit: exports_external.number().default(25),
-    offset: exports_external.number().default(0)
+    offset: exports_external.number().default(0),
+    seekPermission: exports_external.boolean().optional()
   }, async ({ attributesJSON, ...rest }) => {
     if (!ctx)
       return noCtx;
@@ -297365,14 +297661,16 @@ function registerWalletTools(server, wallet5, config2) {
   registerRefreshUtxosTool(server, config2.ctx);
   registerWalletGetBalanceTool(server, config2.ctx);
   registerBrc100Tools(server, config2.ctx);
-  if (config2.enableA2bTools) {
+  if (config2.enableA2bTools && wallet5 && config2.identityPk) {
     registerA2bPublishMcpTool(server, wallet5, config2.identityPk, {
       disableBroadcasting: config2.disableBroadcasting
     });
   }
   registerCreateOrdinalsTool(server, config2.ctx);
-  registerGatherCollectionInfoTool(server, wallet5);
-  registerMintCollectionTool(server, wallet5);
+  if (wallet5) {
+    registerGatherCollectionInfoTool(server, wallet5);
+    registerMintCollectionTool(server, wallet5);
+  }
   registerGetOrdinalsTool(server, config2.ctx);
   registerListTokensTool(server, config2.ctx);
   registerGetBsv21BalancesTool(server, config2.ctx);
@@ -297412,7 +297710,7 @@ function registerAllTools(server, config2 = {}) {
   if (enableA2bTools) {
     registerA2bDiscoverTool(server);
   }
-  if (enableBapTools) {
+  if (enableBapTools && (!config2.ctx || config2.wallet)) {
     const bapConfig = {
       disableBroadcasting: config2.disableBroadcasting,
       identityPk: config2.identityPk,
@@ -297425,6 +297723,8 @@ function registerAllTools(server, config2 = {}) {
     registerBsocialTools(server, { wallet: config2.wallet });
   }
   if (enableWalletTools) {
+    if (config2.droplitClient)
+      registerDroplitTools(server, config2.droplitClient, config2.disableBroadcasting);
     if (config2.integratedWallet?.isDroplitMode) {
       const droplitClient = config2.integratedWallet.getDroplitClient();
       if (droplitClient) {
@@ -297434,7 +297734,7 @@ function registerAllTools(server, config2 = {}) {
         }
         console.error("Registered Droplit mode wallet tools");
       }
-    } else if (config2.wallet) {
+    } else if (config2.wallet || config2.ctx) {
       const walletToolOptions = {
         disableBroadcasting: config2.disableBroadcasting === true,
         enableA2bTools,
@@ -297444,69 +297744,13 @@ function registerAllTools(server, config2 = {}) {
       registerWalletTools(server, config2.wallet, walletToolOptions);
     }
   }
-  if (enableMneeTools) {
+  if (enableMneeTools && (!config2.ctx || config2.wallet)) {
     registerMneeTools(server);
   }
 }
 
 // tools/wallet/integratedWallet.ts
 init_mod2();
-
-// utils/droplit.ts
-init_mod2();
-
-class DroplitClient {
-  config;
-  authFetch;
-  constructor(config2) {
-    this.config = config2;
-    if (config2.authKey) {
-      this.authFetch = new AuthFetch(new ProtoWallet_default(config2.authKey));
-    }
-  }
-  getConfig() {
-    return this.config;
-  }
-  get base() {
-    return this.config.apiUrl.replace(/\/+$/, "");
-  }
-  async authed(path5, init) {
-    if (!this.authFetch) {
-      throw new Error(`${path5} requires authentication and no Droplit auth key is configured.`);
-    }
-    return this.authFetch.fetch(`${this.base}${path5}`, {
-      method: init.method,
-      headers: { "Content-Type": "application/json" },
-      ...init.body === undefined ? {} : { body: JSON.stringify(init.body) }
-    });
-  }
-  async parse(response, attempted) {
-    if (response.ok)
-      return await response.json();
-    const raw = await response.text();
-    let detail = raw.slice(0, 200);
-    try {
-      const parsed = JSON.parse(raw);
-      detail = parsed.message ?? parsed.error ?? detail;
-    } catch {}
-    throw new Error(`${attempted} failed (${response.status}): ${detail}`);
-  }
-  async getFaucetStatus() {
-    const response = await fetch(`${this.base}/faucet/${this.config.faucetName}/status`);
-    return this.parse(response, "Reading the faucet status");
-  }
-  async tap(recipientAddress) {
-    const response = await this.authed(`/faucet/${this.config.faucetName}/tap`, { method: "POST", body: { recipient_address: recipientAddress } });
-    return this.parse(response, "Tapping the faucet");
-  }
-  async push(data, encoding = "hex") {
-    const response = await this.authed(`/faucet/${this.config.faucetName}/push`, { method: "POST", body: { data, encoding } });
-    return this.parse(response, "Pushing data");
-  }
-  async authenticatedFetch(path5, init) {
-    return this.authed(path5, init);
-  }
-}
 
 // tools/wallet/wallet.ts
 init_mod2();
@@ -297706,7 +297950,7 @@ class IntegratedWallet {
   }
   async sendToAddress(address, satoshis) {
     if (this.droplitClient) {
-      const response = await this.droplitClient.tap(address);
+      const response = await this.droplitClient.tap(address, satoshis);
       return { txid: response.txid };
     }
     if (this.localWallet) {
@@ -297910,6 +298154,245 @@ class Wallet2 {
       throw new Error(`Failed to broadcast transaction ${txidFromTxObject}: ${error53 instanceof Error ? error53.message : String(error53)}`);
     }
   }
+}
+
+// utils/droplit.ts
+init_mod2();
+function readDroplitSponsorConfig(env = process.env) {
+  const apiUrl = env.DROPLIT_API_URL;
+  const faucetName = env.DROPLIT_FAUCET_NAME;
+  if (apiUrl === undefined && faucetName === undefined)
+    return;
+  if (!apiUrl?.trim() || !faucetName?.trim()) {
+    throw new Error("DROPLIT_API_URL and DROPLIT_FAUCET_NAME must both be explicitly configured");
+  }
+  return { apiUrl, faucetName };
+}
+
+class DroplitError2 extends Error {
+  code;
+  status;
+  details;
+  constructor(code, message, status, details = {}) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+function quotaDetails2(body) {
+  if (!body || typeof body !== "object")
+    return {};
+  const value2 = body;
+  return {
+    ...typeof value2.remaining === "number" || value2.remaining === null ? { remaining: value2.remaining } : {},
+    ...typeof value2.resets_at === "string" ? { resets_at: value2.resets_at } : {}
+  };
+}
+function httpFailure2(status, details = {}) {
+  const known = {
+    401: [
+      "authentication_required",
+      "Authenticate with the configured wallet before retrying."
+    ],
+    402: [
+      "approval_required",
+      "Payment is required. No automatic payment was made; review payment with the wallet owner."
+    ],
+    403: [
+      "approval_required",
+      "The sponsor has not authorized this action. Ask its owner to approve your wallet."
+    ],
+    429: [
+      "quota_exceeded",
+      "Sponsor quota exhausted. Wait until resets_at or ask the owner to adjust your quota."
+    ]
+  };
+  const [code, message] = known[status] ?? [
+    "http_error",
+    "Droplit rejected the request. Check sponsor access and transaction history before retrying."
+  ];
+  return new DroplitError2(code, message, status, details);
+}
+
+class DroplitClient2 {
+  config;
+  authFetch;
+  wallet;
+  constructor(config2) {
+    this.config = config2;
+    if (config2.wallet && config2.authKey)
+      throw new Error("Configure Droplit wallet or authKey, not both");
+    const url3 = new URL(config2.apiUrl);
+    const loopback = url3.hostname === "localhost" || url3.hostname === "127.0.0.1" || url3.hostname === "[::1]";
+    if (url3.username || url3.password || url3.search || url3.hash || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+      throw new Error("Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment");
+    }
+    if (!config2.faucetName.trim())
+      throw new Error("Droplit faucet name is required");
+    this.wallet = config2.wallet ?? (config2.authKey ? new ProtoWallet_default(config2.authKey) : undefined);
+    if (this.wallet) {
+      const authenticationWallet = new Proxy(this.wallet, {
+        get(target, property) {
+          if (property === "createAction" || property === "signAction") {
+            return async () => {
+              throw httpFailure2(402);
+            };
+          }
+          const value2 = Reflect.get(target, property, target);
+          return typeof value2 === "function" ? value2.bind(target) : value2;
+        }
+      });
+      this.authFetch = new AuthFetch(authenticationWallet);
+    }
+  }
+  getConfig() {
+    return { apiUrl: this.config.apiUrl, faucetName: this.config.faucetName };
+  }
+  async getIdentityKey() {
+    if (!this.wallet)
+      throw new DroplitError2("authentication_required", "Configure a Droplit wallet identity.");
+    const { publicKey } = await this.wallet.getPublicKey({ identityKey: true });
+    return publicKey;
+  }
+  get faucetPath() {
+    return `/faucet/${encodeURIComponent(this.config.faucetName)}`;
+  }
+  get base() {
+    return this.config.apiUrl.replace(/\/+$/, "");
+  }
+  async authed(path5, init) {
+    if (!this.authFetch) {
+      throw new Error(`${path5} requires authentication and no Droplit auth key is configured.`);
+    }
+    try {
+      return await this.authFetch.fetch(`${this.base}${path5}`, {
+        method: init.method,
+        headers: { "Content-Type": "application/json" },
+        ...init.body === undefined ? {} : { body: JSON.stringify(init.body) },
+        paymentRetryAttempts: 0,
+        ...init.method === "GET" || init.method === "HEAD" ? {} : { retryCounter: 1 }
+      });
+    } catch (error53) {
+      if (error53 instanceof DroplitError2)
+        throw error53;
+      const details = error53?.details;
+      const status = details?.status;
+      if (typeof status === "number" && [401, 402, 403, 429].includes(status)) {
+        let body;
+        if (status === 429 && typeof details?.bodyPreview === "string") {
+          try {
+            body = JSON.parse(details.bodyPreview);
+          } catch {}
+        }
+        throw httpFailure2(status, status === 429 ? quotaDetails2(body) : {});
+      }
+      const write = init.method !== "GET" && init.method !== "HEAD";
+      throw new DroplitError2(write ? "unknown_outcome" : "request_failed", write ? "Request outcome is unknown. Reconcile transaction/history before retrying; no automatic retry was made." : "Authenticated request failed. Check the signer and sponsor connection.");
+    }
+  }
+  async parse(response, _attempted) {
+    if (response.ok) {
+      try {
+        return await response.json();
+      } catch {
+        throw new DroplitError2("unknown_outcome", "Response could not be read. Reconcile transaction/history before retrying.", response.status);
+      }
+    }
+    let body = {};
+    try {
+      body = await response.json();
+    } catch {}
+    throw httpFailure2(response.status, response.status === 429 ? quotaDetails2(body) : {});
+  }
+  async getAccess() {
+    const response = await this.authed(`${this.faucetPath}/access`, {
+      method: "GET"
+    });
+    const access = await this.parse(response, "Reading sponsor access");
+    const identity6 = await this.getIdentityKey();
+    if (!access || access.public_key !== identity6 || access.slug !== this.config.faucetName || typeof access.authorized !== "boolean" || typeof access.is_owner !== "boolean" || !Array.isArray(access.quotas) || !Array.isArray(access.unrestricted_kinds)) {
+      throw new DroplitError2("invalid_response", "Sponsor access response did not match the authenticated wallet.");
+    }
+    access.approval_path = `/droplit/${encodeURIComponent(this.config.faucetName)}?tab=api&request_key=${encodeURIComponent(identity6)}`;
+    return access;
+  }
+  async fund(rawtx) {
+    const response = await this.authed(`${this.faucetPath}/fund`, {
+      method: "POST",
+      body: { rawtx }
+    });
+    return this.parse(response, "Funding transaction");
+  }
+  async getFaucetStatus() {
+    const response = await fetch(`${this.base}${this.faucetPath}/status`);
+    return this.parse(response, "Reading the faucet status");
+  }
+  async tap(recipientAddress, satoshis) {
+    if (satoshis !== undefined && (!Number.isSafeInteger(satoshis) || satoshis <= 0))
+      throw new Error("satoshis must be a positive safe integer");
+    const response = await this.authed(`${this.faucetPath}/tap`, {
+      method: "POST",
+      body: {
+        recipient_address: recipientAddress,
+        ...satoshis === undefined ? {} : { satoshis }
+      }
+    });
+    return this.parse(response, "Tapping the faucet");
+  }
+  async push(data, encoding = "hex") {
+    const response = await this.authed(`${this.faucetPath}/push`, {
+      method: "POST",
+      body: { data, encoding }
+    });
+    return this.parse(response, "Pushing data");
+  }
+  async authenticatedFetch(path5, init) {
+    return this.authed(path5, init);
+  }
+}
+
+// utils/externalWalletConfig.ts
+function readExternalWalletConfig(env = process.env) {
+  const raw = env.BRC100_WALLET_URL;
+  if (raw === undefined) {
+    if (env.BRC100_WALLET_ORIGINATOR !== undefined) {
+      throw new Error("BRC100_WALLET_ORIGINATOR requires BRC100_WALLET_URL");
+    }
+    return;
+  }
+  for (const name of ["PRIVATE_KEY_WIF", "IDENTITY_KEY_WIF"]) {
+    if (env[name] !== undefined) {
+      throw new Error(`BRC100_WALLET_URL conflicts with ${name}; select one wallet identity`);
+    }
+  }
+  if (env.USE_DROPLIT_API === "true") {
+    throw new Error("BRC100_WALLET_URL conflicts with USE_DROPLIT_API");
+  }
+  let url3;
+  try {
+    url3 = new URL(raw);
+  } catch {
+    throw new Error("BRC100_WALLET_URL must be a valid signer RPC URL");
+  }
+  const loopback = url3.hostname === "localhost" || url3.hostname === "[::1]" || /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(url3.hostname);
+  if (!raw || raw !== raw.trim() || /[\\\s@?]/.test(raw) || url3.username || url3.password || raw.includes("#") || url3.search || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+    throw new Error("BRC100_WALLET_URL requires HTTPS or HTTP loopback, without credentials, queries or fragments");
+  }
+  const originator = env.BRC100_WALLET_ORIGINATOR ?? "bsv-mcp.local";
+  let origin;
+  try {
+    origin = new URL(originator.includes("://") ? originator : `http://${originator}`);
+  } catch {
+    throw new Error("BRC100_WALLET_ORIGINATOR must be a domain or HTTP(S) origin");
+  }
+  if (!originator || /[\s\\]/.test(originator) || originator.length >= 250 || !["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || /[#?@]/.test(originator) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[::1\])$/i.test(origin.hostname) || origin.hostname.toLowerCase() === "admin.bsv-mcp.internal") {
+    throw new Error("BRC100_WALLET_ORIGINATOR must be a non-admin domain or HTTP(S) origin without credentials, path, query or fragment");
+  }
+  return { url: url3.toString().replace(/\/$/, ""), originator };
+}
+async function initializeKeysForWalletMode(external4, loadLocalKeys) {
+  return external4 ? undefined : loadLocalKeys();
 }
 
 // node_modules/jose/dist/webapi/lib/buffer_utils.js
@@ -301997,9 +302480,19 @@ async function buildLocalStorage(config2, baseOptions) {
 init_storage_pg();
 var import_wallet_toolbox2 = __toESM(require_src6(), 1);
 
+// node_modules/@1sat/wallet-remote/dist/index.js
+init_dist4();
+
+// node_modules/@1sat/wallet-remote/dist/createRemoteWallet.js
+init_dist4();
+var import_index_client2 = __toESM(require_index_client5(), 1);
+
+// node_modules/@1sat/wallet-remote/dist/index.js
+var import_index_client3 = __toESM(require_index_client5(), 1);
+
 // utils/walletInit.ts
 init_mod2();
-var import_index_client2 = __toESM(require_index_client5(), 1);
+var import_index_client4 = __toESM(require_index_client5(), 1);
 
 // utils/spendingApproval.ts
 var serverInstance2 = null;
@@ -302096,7 +302589,7 @@ async function initWallet(privateKeyWif, chain = "main") {
     activeRemote: process.env.REMOTE_STORAGE_URL ?? DEFAULT_REMOTE_STORAGE_URL,
     storageIdentityKey: "bsv-mcp"
   });
-  const wpm = new import_index_client2.WalletPermissionsManager(result2.wallet, ADMIN_ORIGINATOR, {
+  const wpm = new import_index_client4.WalletPermissionsManager(result2.wallet, ADMIN_ORIGINATOR, {
     seekProtocolPermissionsForSigning: false,
     seekProtocolPermissionsForEncrypting: false,
     seekProtocolPermissionsForHMAC: false,
@@ -302138,7 +302631,7 @@ async function initWallet(privateKeyWif, chain = "main") {
   }).catch((err) => {
     console.error("[wallet] message box sync failed:", err);
   });
-  activeResult = { ...result2, ctx, depositAddress };
+  activeResult = result2;
   return {
     wallet: wpm,
     services: result2.services,
@@ -302146,6 +302639,36 @@ async function initWallet(privateKeyWif, chain = "main") {
     depositAddress,
     destroy: result2.destroy
   };
+}
+async function initExternalWallet(config2, chain = "main") {
+  const httpClient = (input, init) => fetch(input, {
+    ...init,
+    redirect: "error",
+    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(1e4)]) : AbortSignal.timeout(1e4)
+  });
+  const wallet7 = new HTTPWalletJSON(config2.originator, config2.url, httpClient);
+  let identityKey;
+  try {
+    const identity6 = await wallet7.getPublicKey({ identityKey: true });
+    if (!/^(02|03)[0-9a-f]{64}$/i.test(identity6.publicKey)) {
+      throw new Error("Signer returned an invalid compressed identity public key");
+    }
+    PublicKey.fromString(identity6.publicKey);
+    identityKey = identity6.publicKey;
+  } catch (error53) {
+    throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error53 });
+  }
+  const services2 = new OneSatServices(chain, process.env.ONESAT_API_URL);
+  const dataDir = join2(homedir(), ".bsv-mcp");
+  const ctx = createContext(wallet7, {
+    services: services2,
+    chain,
+    dataDir,
+    log: (entry) => writeAuditLog(dataDir, entry)
+  });
+  const destroy = async () => {};
+  activeResult = { destroy };
+  return { wallet: wallet7, ctx, services: services2, identityKey, destroy };
 }
 async function destroyWallet() {
   if (activeResult) {
@@ -302283,7 +302806,7 @@ async function initializeKeys() {
 }
 var APP_RESOURCE_URI = "ui://bsv-mcp/app.html";
 var __appDirname = dirname2(fileURLToPath(import.meta.url));
-function registerMcpAppTools(server2, wallet6, ctx) {
+function registerMcpAppTools(server2, wallet7, ctx) {
   K3(server2, "bsv_dashboard", {
     title: "BSV Dashboard",
     description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs. Use this for any BSV-related query that benefits from visual display.",
@@ -302433,7 +302956,7 @@ function registerMcpAppTools(server2, wallet6, ctx) {
       ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] }
     }
   }, async () => {
-    if (!ctx && !wallet6) {
+    if (!ctx && !wallet7) {
       return {
         content: [
           {
@@ -302465,9 +302988,9 @@ function registerMcpAppTools(server2, wallet6, ctx) {
           const [txid = "", voutStr = "0"] = (o6.outpoint ?? "").split(".");
           return { txid, vout: Number(voutStr), satoshis: o6.satoshis };
         });
-      } else if (wallet6) {
-        address = wallet6.getAddress();
-        const { paymentUtxos } = await wallet6.getUtxos();
+      } else if (wallet7) {
+        address = wallet7.getAddress();
+        const { paymentUtxos } = await wallet7.getUtxos();
         for (const utxo of paymentUtxos) {
           totalSatoshis += utxo.satoshis || 0;
         }
@@ -302892,6 +303415,8 @@ Options:
 Environment Variables:
   TRANSPORT           Transport mode: 'stdio' or 'http' (default: http)
   PORT               HTTP server port (default: 3000)
+  BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
+  BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
   PRIVATE_KEY_WIF    Payment private key in WIF format
   DISABLE_TOOLS      Disable all tools (default: false)
   DISABLE_WALLET_TOOLS   Disable wallet tools (default: false)
@@ -302915,7 +303440,7 @@ Tool Categories:
 
 Authentication:
   - Most tools work without authentication
-  - Wallet operations require PRIVATE_KEY_WIF or generated keys
+  - Wallet operations use BRC100_WALLET_URL, PRIVATE_KEY_WIF or generated keys
   - BAP/A2B tools require identity keys (generated via bap_generate tool)
 		`);
     process.exit(0);
@@ -302924,11 +303449,31 @@ Authentication:
     console.log(`${package_default.name} v${package_default.version}`);
     process.exit(0);
   }
-  const { payPk, identityPk, xprv, source: keySource } = await initializeKeys();
+  const externalWallet = readExternalWalletConfig();
+  const sponsorConfig = CONFIG.useDroplitApi ? undefined : readDroplitSponsorConfig();
+  const keys = await initializeKeysForWalletMode(externalWallet, initializeKeys);
+  const {
+    payPk,
+    identityPk,
+    xprv,
+    source: keySource
+  } = keys ?? {
+    payPk: undefined,
+    identityPk: undefined,
+    xprv: undefined,
+    source: "external"
+  };
   const hasPersistentPayKey = keySource === "env" || keySource === "file" || keySource === "encrypted";
   const hasPersistentIdentityKey = !!identityPk && (keySource === "file" || keySource === "encrypted");
   const hasXprv = !!xprv && (keySource === "file" || keySource === "env" || keySource === "encrypted");
   const effectiveConfig = { ...CONFIG };
+  if (externalWallet) {
+    effectiveConfig.loadBapTools = false;
+    effectiveConfig.loadBsocialTools = false;
+    effectiveConfig.loadMneeTools = false;
+    effectiveConfig.loadA2bTools = false;
+    logFunc2("External BRC-100 signer selected; local key loading and generation bypassed.");
+  }
   logFunc2(`
 --- BSV MCP Server Configuration ---`);
   logFunc2(`Server Version: ${package_default.version}`);
@@ -302939,8 +303484,8 @@ Environment Variables:`);
   if (CONFIG.transportMode === "http") {
     logFunc2(`  PORT:                 ${process.env.PORT || "Not Set (3000 default)"}`);
   }
-  logFunc2(`  PRIVATE_KEY_WIF:      ${process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`);
-  logFunc2(`  IDENTITY_KEY_WIF:     ${process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`);
+  logFunc2(`  PRIVATE_KEY_WIF:      ${externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`);
+  logFunc2(`  IDENTITY_KEY_WIF:     ${externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using file/generating)"}`);
   if (process.env.BSV_MCP_PASSPHRASE) {
     logFunc2("  BSV_MCP_PASSPHRASE:   \x1B[31mDEPRECATED - Remove this!\x1B[0m");
   }
@@ -302996,11 +303541,11 @@ Effective Component Status:`);
     const a2bStatus = effectiveConfig.loadA2bTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m";
     const bapStatus = effectiveConfig.loadBapTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m";
     let payKeyNote = "";
-    if (!hasPersistentPayKey) {
+    if (!externalWallet && !hasPersistentPayKey) {
       payKeyNote = " \x1B[33m(Using generated payPk)\x1B[0m";
     }
     let identityKeyNote = "";
-    if (!hasPersistentIdentityKey) {
+    if (!externalWallet && !hasPersistentIdentityKey) {
       identityKeyNote = " \x1B[33m(Using generated identityPk)\x1B[0m";
     }
     logFunc2(`    Wallet:       ${walletStatus}${payKeyNote}`);
@@ -303017,12 +303562,20 @@ Effective Component Status:`);
   }
   logFunc2(`------------------------------------
 `);
-  let wallet6;
+  let wallet7;
   let integratedWallet;
   let remoteCtx;
   let remoteServices;
   if (CONFIG.loadTools) {
-    if (CONFIG.useDroplitApi && CONFIG.droplitFaucetName) {
+    if (externalWallet) {
+      const chain = process.env.BSV_CHAIN ?? "main";
+      if (chain !== "main" && chain !== "test")
+        throw new Error("BSV_CHAIN must be main or test");
+      const result2 = await initExternalWallet(externalWallet, chain);
+      remoteCtx = result2.ctx;
+      remoteServices = result2.services;
+      logFunc2(`External BRC-100 signer ready. Identity: ${result2.identityKey}`);
+    } else if (CONFIG.useDroplitApi && CONFIG.droplitFaucetName) {
       if (CONFIG.loadWalletTools) {
         try {
           integratedWallet = new IntegratedWallet({
@@ -303037,7 +303590,7 @@ Effective Component Status:`);
           logFunc2(`\x1B[32mINFO: Droplit API mode initialized successfully (Faucet: ${CONFIG.droplitFaucetName}).\x1B[0m`);
           logFunc2(`\x1B[33mNOTE: Using Droplit API at ${CONFIG.droplitApiUrl}\x1B[0m`);
           logFunc2("\x1B[33mNOTE: Local keys are ignored in Droplit API mode\x1B[0m");
-          wallet6 = integratedWallet.getLocalWallet();
+          wallet7 = integratedWallet.getLocalWallet();
           effectiveConfig.loadMneeTools = false;
           effectiveConfig.loadBapTools = false;
           effectiveConfig.loadA2bTools = false;
@@ -303053,7 +303606,7 @@ Effective Component Status:`);
     } else if (payPk) {
       if (CONFIG.loadWalletTools) {
         try {
-          wallet6 = new Wallet2(payPk, identityPk);
+          wallet7 = new Wallet2(payPk, identityPk);
           integratedWallet = new IntegratedWallet({
             paymentKey: payPk,
             identityKey: identityPk
@@ -303067,7 +303620,7 @@ Effective Component Status:`);
           }
         } catch (e2) {
           logFunc2(`\x1B[31mERROR: Failed to initialize custom wallet: ${e2 instanceof Error ? e2.message : String(e2)}. Wallet-dependent tools will be unavailable.\x1B[0m`);
-          wallet6 = undefined;
+          wallet7 = undefined;
           integratedWallet = undefined;
           effectiveConfig.loadWalletTools = false;
           effectiveConfig.loadMneeTools = false;
@@ -303083,11 +303636,15 @@ Effective Component Status:`);
           logFunc2(`\x1B[33mWARN: Remote BRC-100 wallet initialization failed: ${e2 instanceof Error ? e2.message : String(e2)}. Falling back to local wallet only.\x1B[0m`);
         }
       }
-      if (effectiveConfig.loadMneeTools && !wallet6 && CONFIG.loadWalletTools) {
+      if (effectiveConfig.loadMneeTools && !wallet7 && CONFIG.loadWalletTools) {
         logFunc2("\x1B[33mWARN: MNEE tools require a wallet but wallet initialization failed. MNEE tools disabled.\x1B[0m");
         effectiveConfig.loadMneeTools = false;
       }
     }
+  }
+  const droplitClient = sponsorConfig && remoteCtx ? new DroplitClient2({ ...sponsorConfig, wallet: remoteCtx.wallet }) : undefined;
+  if (sponsorConfig && CONFIG.loadTools && !remoteCtx) {
+    throw new Error("Configured Droplit sponsor requires an initialized BRC-100 wallet context");
   }
   const toolsConfig = CONFIG.loadTools ? {
     enableBsvTools: effectiveConfig.loadBsvTools,
@@ -303101,11 +303658,12 @@ Effective Component Status:`);
     identityPk,
     payPk,
     xprv,
-    wallet: wallet6,
+    wallet: wallet7,
     integratedWallet,
     disableBroadcasting: effectiveConfig.disableBroadcasting,
     ctx: remoteCtx,
-    services: remoteServices
+    services: remoteServices,
+    droplitClient
   } : {
     enableBsvTools: false,
     enableOrdinalsTools: false,
@@ -303119,7 +303677,7 @@ Effective Component Status:`);
   };
   const serverFactoryOpts = {
     toolsConfig,
-    wallet: wallet6,
+    wallet: wallet7,
     ctx: remoteCtx,
     loadPrompts: effectiveConfig.loadPrompts,
     loadResources: effectiveConfig.loadResources
