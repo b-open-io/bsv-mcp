@@ -10,6 +10,7 @@ import { registerBsvTools } from "./bsv";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
+import { registerDroplitDiscoveryTool } from "./wallet/droplitDiscovery";
 import { registerDroplitTools } from "./wallet/droplit";
 import { registerWalletGetBalanceDroplitTool } from "./wallet/getBalanceDroplit";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
@@ -48,6 +49,7 @@ export interface ToolsConfig {
 	ctx?: OneSatContext;
 	services?: OneSatServices;
 	droplitClient?: DroplitClient;
+	droplitApiUrl?: string;
 }
 
 /**
@@ -94,6 +96,11 @@ export function registerAllTools(
 	// Register utility tools
 	if (enableUtilsTools) {
 		registerUtilsTools(server);
+		const apiUrl =
+			config.droplitApiUrl ??
+			process.env.DROPLIT_API_URL ??
+			config.droplitClient?.getConfig().apiUrl;
+		if (apiUrl) registerDroplitDiscoveryTool(server, apiUrl);
 	}
 
 	// Register agent-to-blockchain tools

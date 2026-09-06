@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
 	AuthFetch,
 	type PrivateKey,
@@ -49,6 +50,11 @@ export function readDroplitSponsorConfig(
 	const siteUrl = env.DROPLIT_SITE_URL;
 	if (apiUrl === undefined && faucetName === undefined && siteUrl === undefined)
 		return undefined;
+	if (apiUrl?.trim() && faucetName === undefined) {
+		droplitApiBaseUrl(apiUrl);
+		if (siteUrl !== undefined) approvalSiteOrigin(siteUrl);
+		return undefined; // API-only configuration enables unsigned discovery.
+	}
 	if (!apiUrl?.trim() || !faucetName?.trim()) {
 		throw new Error(
 			"DROPLIT_API_URL and DROPLIT_FAUCET_NAME must both be explicitly configured",
@@ -59,6 +65,26 @@ export function readDroplitSponsorConfig(
 		faucetName,
 		...(siteUrl === undefined ? {} : { siteUrl: approvalSiteOrigin(siteUrl) }),
 	};
+}
+
+export function droplitApiBaseUrl(apiUrl: string): string {
+	const url = new URL(apiUrl);
+	const loopback =
+		url.hostname === "localhost" ||
+		url.hostname === "127.0.0.1" ||
+		url.hostname === "[::1]";
+	if (
+		url.username ||
+		url.password ||
+		url.search ||
+		url.hash ||
+		!(url.protocol === "https:" || (url.protocol === "http:" && loopback))
+	) {
+		throw new Error(
+			"Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment",
+		);
+	}
+	return url.href.replace(/\/$/, "");
 }
 
 function approvalSiteOrigin(value = "https://droplit.dev"): string {
@@ -165,22 +191,7 @@ export class DroplitClient {
 		this.siteOrigin = approvalSiteOrigin(config.siteUrl);
 		if (config.wallet && config.authKey)
 			throw new Error("Configure Droplit wallet or authKey, not both");
-		const url = new URL(config.apiUrl);
-		const loopback =
-			url.hostname === "localhost" ||
-			url.hostname === "127.0.0.1" ||
-			url.hostname === "[::1]";
-		if (
-			url.username ||
-			url.password ||
-			url.search ||
-			url.hash ||
-			!(url.protocol === "https:" || (url.protocol === "http:" && loopback))
-		) {
-			throw new Error(
-				"Droplit API requires HTTPS or HTTP loopback without credentials, query or fragment",
-			);
-		}
+		droplitApiBaseUrl(config.apiUrl);
 		if (!config.faucetName.trim())
 			throw new Error("Droplit faucet name is required");
 		this.wallet =
@@ -384,5 +395,59 @@ export class DroplitClient {
 		init: { method: string; body?: unknown },
 	): Promise<Response> {
 		return this.authed(path, init);
+	}
+}
+
+const publicSponsorsSchema = z.object({
+	sponsors: z
+		.array(
+			z.object({
+				name: z.string(),
+				slug: z.string().min(1),
+				approval_required: z.literal(true),
+			}),
+		)
+		.max(50),
+	next_cursor: z.string().min(1).nullable(),
+});
+
+/** Public catalog only: never constructs AuthFetch or touches a wallet. */
+export async function discoverDroplitSponsors(
+	apiUrl: string,
+	options: { limit?: number; after?: string } = {},
+) {
+	const limit = options.limit ?? 20;
+	if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+		throw new Error("limit must be an integer from 1 to 50");
+	const url = new URL(`${droplitApiBaseUrl(apiUrl)}/sponsors`);
+	url.searchParams.set("limit", String(limit));
+	if (options.after !== undefined) url.searchParams.set("after", options.after);
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			method: "GET",
+			redirect: "error",
+			credentials: "omit",
+			signal: AbortSignal.timeout(15000),
+		});
+	} catch {
+		throw new DroplitError(
+			"request_failed",
+			"Could not read public sponsors. Check the configured API origin.",
+		);
+	}
+	if (!response.ok)
+		throw new DroplitError(
+			"request_failed",
+			"Could not read public sponsors.",
+			response.status,
+		);
+	try {
+		return publicSponsorsSchema.parse(await response.json());
+	} catch {
+		throw new DroplitError(
+			"invalid_response",
+			"Public sponsor response was invalid.",
+		);
 	}
 }
