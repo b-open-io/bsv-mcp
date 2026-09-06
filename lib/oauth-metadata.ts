@@ -10,11 +10,16 @@ import { AUTH_SERVER_URL, OAUTH_SCOPE_NAMES, SITE_NAME } from "./site";
  * request; the bare path is still served for older clients.
  */
 
-/** Path segment of the MCP endpoint, without a leading slash. */
+/**
+ * The MCP endpoint is the site origin, so the resource has no path segment and
+ * RFC 9728 places its metadata at the bare well-known path. The legacy
+ * `/api/mcp` endpoint still answers, and its path-suffixed metadata is still
+ * served for clients configured against it.
+ */
 export const MCP_RESOURCE_PATH = "api/mcp";
 
 /** Where RFC 9728 says this resource's metadata lives. */
-export const RESOURCE_METADATA_PATH = `/.well-known/oauth-protected-resource/${MCP_RESOURCE_PATH}`;
+export const RESOURCE_METADATA_PATH = "/.well-known/oauth-protected-resource";
 
 export interface ProtectedResourceMetadata {
 	resource: string;
@@ -29,7 +34,7 @@ export function protectedResourceMetadata(
 	origin: string,
 ): ProtectedResourceMetadata {
 	return {
-		resource: `${origin}/${MCP_RESOURCE_PATH}`,
+		resource: origin,
 		authorization_servers: [AUTH_SERVER_URL],
 		scopes_supported: OAUTH_SCOPE_NAMES,
 		bearer_methods_supported: ["header"],

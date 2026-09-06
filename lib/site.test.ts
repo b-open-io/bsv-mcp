@@ -7,6 +7,7 @@ import {
 import {
 	getAppVersion,
 	MCP_ENDPOINT,
+	MCP_ENDPOINT_LEGACY,
 	MCP_PROTOCOL_LATEST,
 	MCP_PROTOCOL_SUPPORTED,
 	OAUTH_SCOPE_NAMES,
@@ -39,8 +40,15 @@ describe("urls", () => {
 		expect(SITE_URL.endsWith("/")).toBe(false);
 	});
 
-	test("mcp endpoint is derived from the site url", () => {
-		expect(MCP_ENDPOINT).toBe(`${SITE_URL}/api/mcp`);
+	test("mcp endpoint is the site origin, with nothing to append", () => {
+		// The root serves the landing page to browsers and the MCP server to
+		// MCP clients, so the connection URL is just the domain.
+		expect(MCP_ENDPOINT).toBe(SITE_URL);
+		expect(MCP_ENDPOINT.endsWith("/api/mcp")).toBe(false);
+	});
+
+	test("the original endpoint is still published for existing clients", () => {
+		expect(MCP_ENDPOINT_LEGACY).toBe(`${SITE_URL}/api/mcp`);
 	});
 });
 

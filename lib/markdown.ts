@@ -3,6 +3,7 @@ import {
 	GITHUB_URL,
 	getAppVersion,
 	MCP_ENDPOINT,
+	MCP_ENDPOINT_LEGACY,
 	MCP_PROTOCOL_LATEST,
 	MCP_PROTOCOL_SUPPORTED,
 	NPM_URL,
@@ -77,7 +78,7 @@ export function renderHomeMarkdown(): string {
 
 - Version: ${getAppVersion()}
 - MCP protocol: ${MCP_PROTOCOL_LATEST} (also accepts ${MCP_PROTOCOL_SUPPORTED.join(", ")})
-- Hosted MCP endpoint: ${MCP_ENDPOINT} (Streamable HTTP, OAuth 2.1)
+- Hosted MCP endpoint: ${MCP_ENDPOINT} (Streamable HTTP, OAuth 2.1; ${MCP_ENDPOINT_LEGACY} also answers)
 - Source: ${GITHUB_URL}
 - Package: ${NPM_URL}
 
