@@ -1,7 +1,6 @@
 import {
 	ArrowRight,
 	Bitcoin,
-	Blocks,
 	Cloud,
 	Fingerprint,
 	Github,
@@ -14,11 +13,10 @@ import {
 	ShieldCheck,
 	Terminal,
 	Wallet,
-	Wrench,
 } from "lucide-react";
 import Link from "next/link";
-import { CodeSnippet } from "@/components/landing/CodeSnippet";
 import { CopyCommand } from "@/components/landing/CopyCommand";
+import { InstallTabs } from "@/components/landing/InstallTabs";
 import { TerminalDemo } from "@/components/landing/TerminalDemo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,11 +35,11 @@ import {
 	NPM_URL,
 } from "@/lib/site";
 import {
-	clientConfig,
 	clients,
 	deployModes,
 	guarantees,
 	installCommands,
+	installTargets,
 	steps,
 	toolCategories,
 } from "@/lib/site-content";
@@ -283,26 +281,12 @@ export default function LandingPage() {
 
 					<Separator className="my-10" />
 
-					<div className="grid gap-6 lg:grid-cols-2">
-						<div className="space-y-3">
-							<p className="flex items-center gap-2 text-sm font-medium">
-								<Plug className="size-4 text-primary" />
-								Claude Code
-							</p>
-							<CopyCommand command={installCommands.claudeCode} />
-							<p className="flex items-center gap-2 pt-2 text-sm font-medium">
-								<Wrench className="size-4 text-primary" />
-								Any stdio client
-							</p>
-							<CopyCommand command={installCommands.stdio} />
-						</div>
-						<div className="space-y-3">
-							<p className="flex items-center gap-2 text-sm font-medium">
-								<Blocks className="size-4 text-primary" />
-								Cursor / Claude Desktop
-							</p>
-							<CodeSnippet code={clientConfig} />
-						</div>
+					<div className="space-y-4">
+						<p className="flex items-center gap-2 text-sm font-medium">
+							<Plug className="size-4 text-primary" />
+							Pick your client
+						</p>
+						<InstallTabs targets={installTargets} />
 					</div>
 				</div>
 			</section>
