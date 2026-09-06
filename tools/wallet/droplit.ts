@@ -53,7 +53,7 @@ export function registerDroplitTools(
 								error: "approval_required",
 								message:
 									"Ask the sponsor owner to approve this wallet. Copy the approval URL for manual review; do not auto-open or submit approval.",
-								approval_url: `https://droplit.dev${access.approval_path}`,
+								approval_url: access.approval_url,
 							}
 						: {}),
 				};

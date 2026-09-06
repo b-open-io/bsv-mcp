@@ -20,6 +20,8 @@ import {
  */
 
 export interface DroplitConfig {
+	/** Human approval site origin; defaults to https://droplit.dev. */
+	siteUrl?: string;
 	apiUrl: string;
 	faucetName: string;
 	/** Identity for the BRC-103/104 handshake. Unauthenticated without it. */
@@ -36,20 +38,46 @@ export interface FaucetAccess {
 	quotas: Array<Record<string, unknown>>;
 	unrestricted_kinds: string[];
 	approval_path: string;
+	approval_url: string;
 }
 
 export function readDroplitSponsorConfig(
 	env: Record<string, string | undefined> = process.env,
-): Pick<DroplitConfig, "apiUrl" | "faucetName"> | undefined {
+): Pick<DroplitConfig, "apiUrl" | "faucetName" | "siteUrl"> | undefined {
 	const apiUrl = env.DROPLIT_API_URL;
 	const faucetName = env.DROPLIT_FAUCET_NAME;
-	if (apiUrl === undefined && faucetName === undefined) return undefined;
+	const siteUrl = env.DROPLIT_SITE_URL;
+	if (apiUrl === undefined && faucetName === undefined && siteUrl === undefined)
+		return undefined;
 	if (!apiUrl?.trim() || !faucetName?.trim()) {
 		throw new Error(
 			"DROPLIT_API_URL and DROPLIT_FAUCET_NAME must both be explicitly configured",
 		);
 	}
-	return { apiUrl, faucetName };
+	return {
+		apiUrl,
+		faucetName,
+		...(siteUrl === undefined ? {} : { siteUrl: approvalSiteOrigin(siteUrl) }),
+	};
+}
+
+function approvalSiteOrigin(value = "https://droplit.dev"): string {
+	const url = new URL(value);
+	const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+	if (
+		url.username ||
+		url.password ||
+		url.pathname !== "/" ||
+		url.href.includes("?") ||
+		url.href.includes("#") ||
+		value.includes("\\") ||
+		!(url.protocol === "https:" || (url.protocol === "http:" && loopback))
+	) {
+		throw new Error(
+			"DROPLIT_SITE_URL requires an HTTPS or HTTP loopback origin without credentials, path, query or fragment",
+		);
+	}
+	return url.origin;
 }
 
 export class DroplitError extends Error {
@@ -130,9 +158,11 @@ export class DroplitClient {
 	 * fresh instance per call would repeat the handshake every request.
 	 */
 	private readonly authFetch?: AuthFetch;
+	private readonly siteOrigin: string;
 	private readonly wallet?: WalletInterface | ProtoWallet;
 
 	constructor(private config: DroplitConfig) {
+		this.siteOrigin = approvalSiteOrigin(config.siteUrl);
 		if (config.wallet && config.authKey)
 			throw new Error("Configure Droplit wallet or authKey, not both");
 		const url = new URL(config.apiUrl);
@@ -303,6 +333,7 @@ export class DroplitClient {
 		// Build the convenience path from our configuration and signer identity,
 		// never from an arbitrary server-supplied redirect.
 		access.approval_path = `/droplit/${encodeURIComponent(this.config.faucetName)}?tab=api&request_key=${encodeURIComponent(identity)}`;
+		access.approval_url = new URL(access.approval_path, this.siteOrigin).href;
 		return access;
 	}
 

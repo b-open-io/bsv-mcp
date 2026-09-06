@@ -884,6 +884,8 @@ BRC100_WALLET_URL=http://127.0.0.1:3321
 BRC100_WALLET_ORIGINATOR=bsv-mcp.local
 DROPLIT_API_URL=https://api.droplit.dev/droplit
 DROPLIT_FAUCET_NAME=your-sponsor-slug
+# Optional: set explicitly when the owner approval UI is hosted elsewhere.
+DROPLIT_SITE_URL=https://droplit.dev
 ```
 
 Set both sponsor values explicitly. The URL includes the server's configured
@@ -893,8 +895,15 @@ BRC-100 wallet contexts also support this sponsor pair. `1sat serve` exposes a
 wallet stack service; it is not itself a BRC-100 signer RPC endpoint.
 
 Call `droplit_getAccess` to inspect your own authorization and quotas. An
-`approval_required` response includes a `https://droplit.dev` link for manual
+`approval_required` response includes a link to `DROPLIT_SITE_URL` (default
+`https://droplit.dev`) for manual
 owner review. Do not automatically open, approve, or register to obtain access.
+The site URL must be an HTTPS origin (HTTP is allowed only for loopback),
+without credentials, a path, query, or fragment. For staging, set it to the
+trusted staging frontend origin independently of `DROPLIT_API_URL`. Approval
+links use the configured sponsor and authenticated wallet identity; a server
+response cannot redirect them to another site.
+
 Public status and public-key registration do not prove sponsor approval, and
 creating your own faucet requires funding rather than providing free credit.
 Missing quota kinds are unrestricted for authorized users; a configured zero
