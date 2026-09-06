@@ -1,9 +1,12 @@
 "use client";
 
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { BackupSection } from "@/components/onboarding/BackupSection";
 import { ConfigTabs } from "@/components/onboarding/ConfigTabs";
 import { KeySetup } from "@/components/onboarding/KeySetup";
 import { useKeyState } from "@/components/onboarding/use-key-state";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -30,12 +33,17 @@ export default function OnboardingPage() {
 
 	return (
 		<div className="min-h-screen flex items-center justify-center p-4">
-			<a
-				href="/"
-				className="fixed left-4 top-4 text-sm text-muted-foreground hover:text-foreground"
+			<Button
+				variant="ghost"
+				size="sm"
+				asChild
+				className="fixed left-4 top-4 text-muted-foreground"
 			>
-				← Home
-			</a>
+				<Link href="/">
+					<ArrowLeft />
+					Home
+				</Link>
+			</Button>
 			<div className="w-full max-w-lg space-y-6">
 				{/* Header */}
 				<div className="text-center space-y-1">

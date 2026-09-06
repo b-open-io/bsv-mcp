@@ -17,10 +17,30 @@ import {
 	Wrench,
 } from "lucide-react";
 import Link from "next/link";
+import { CodeSnippet } from "@/components/landing/CodeSnippet";
 import { CopyCommand } from "@/components/landing/CopyCommand";
+import { TerminalDemo } from "@/components/landing/TerminalDemo";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 const GITHUB_URL = "https://github.com/b-open-io/bsv-mcp";
 const NPM_URL = "https://www.npmjs.com/package/bsv-mcp";
+
+const clients = [
+	"Claude Code",
+	"Claude Desktop",
+	"Cursor",
+	"Windsurf",
+	"Any MCP client",
+];
 
 const toolCategories = [
 	{
@@ -103,47 +123,58 @@ const deployModes = [
 	},
 ];
 
-function TerminalDemo() {
+const guarantees = [
+	{
+		icon: KeyRound,
+		title: "Encrypted at rest",
+		description:
+			"AES-256-GCM with 600k PBKDF2 iterations in the bitcoin-backup format. Files are created with 0600 permissions.",
+	},
+	{
+		icon: ShieldCheck,
+		title: "No passphrase env vars",
+		description:
+			"Passphrases are entered through a temporary local web prompt, never read from the environment.",
+	},
+	{
+		icon: Fingerprint,
+		title: "Bitcoin-signed auth",
+		description:
+			"Hosted mode uses OAuth 2.1 via sigma-auth. Your public key is your identity. Nothing to register.",
+	},
+	{
+		icon: Wallet,
+		title: "External signers",
+		description:
+			"Point at a BRC-100 wallet and it stays the permission authority. Every spend is approved there.",
+	},
+];
+
+const clientConfig = `{
+  "mcpServers": {
+    "bsv-mcp": {
+      "command": "bunx",
+      "args": ["bsv-mcp@latest"]
+    }
+  }
+}`;
+
+function SectionHeading({
+	title,
+	description,
+	action,
+}: {
+	title: string;
+	description: string;
+	action?: React.ReactNode;
+}) {
 	return (
-		<div className="min-w-0 overflow-hidden rounded-xl border border-border bg-[#0b0f1a] shadow-2xl shadow-amber-500/5">
-			<div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-				<span className="size-2.5 rounded-full bg-red-500/70" />
-				<span className="size-2.5 rounded-full bg-yellow-500/70" />
-				<span className="size-2.5 rounded-full bg-green-500/70" />
-				<span className="ml-2 font-mono text-xs text-muted-foreground">
-					claude
-				</span>
+		<div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+			<div className="max-w-2xl space-y-3">
+				<h2 className="text-3xl font-bold tracking-tight">{title}</h2>
+				<p className="text-muted-foreground">{description}</p>
 			</div>
-			<div className="space-y-4 break-words p-5 font-mono text-[13px] leading-relaxed">
-				<div>
-					<span className="text-amber-400">&gt; </span>
-					<span className="text-foreground">
-						inscribe hello.svg as a 1sat ordinal and tell me the txid
-					</span>
-				</div>
-				<div className="space-y-1 text-muted-foreground">
-					<p>
-						<span className="text-emerald-400">●</span>{" "}
-						wallet_createOrdinals(file: "hello.svg", contentType:
-						"image/svg+xml")
-					</p>
-					<p className="pl-4 text-muted-foreground/70">
-						├ reading file (412 bytes)
-					</p>
-					<p className="pl-4 text-muted-foreground/70">
-						├ selecting UTXOs · fee 1 sat/kb
-					</p>
-					<p className="pl-4 text-muted-foreground/70">└ broadcast ✓</p>
-				</div>
-				<div className="text-foreground">
-					Inscribed. Outpoint{" "}
-					<span className="text-amber-300">f3a1…9c2e_0</span> — view it on{" "}
-					<span className="underline decoration-muted-foreground/40">
-						1satordinals.com
-					</span>
-					.
-				</div>
-			</div>
+			{action}
 		</div>
 	);
 }
@@ -151,68 +182,50 @@ function TerminalDemo() {
 export default function LandingPage() {
 	return (
 		<div className="relative min-h-screen overflow-x-hidden">
-			{/* Background glow */}
 			<div
 				aria-hidden
-				className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px] bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.16),transparent_60%)]"
+				className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px] bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.16),transparent_60%)]"
 			/>
 			<div
 				aria-hidden
-				className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"
+				className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(to_right,hsl(var(--border)/0.5)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.5)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"
 			/>
 
-			{/* Nav */}
 			<header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
 				<Link href="/" className="flex items-center gap-2 font-semibold">
-					<span className="flex size-7 items-center justify-center rounded-md bg-amber-500 text-black">
+					<span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
 						<Bitcoin className="size-4" />
 					</span>
 					BSV MCP
 				</Link>
-				<nav className="flex items-center gap-1 text-sm">
-					<a
-						href="#tools"
-						className="hidden rounded-md px-3 py-2 text-muted-foreground hover:text-foreground sm:block"
-					>
-						Tools
-					</a>
-					<a
-						href="#install"
-						className="hidden rounded-md px-3 py-2 text-muted-foreground hover:text-foreground sm:block"
-					>
-						Install
-					</a>
-					<a
-						href={GITHUB_URL}
-						target="_blank"
-						rel="noreferrer"
-						className="flex items-center gap-1.5 rounded-md px-3 py-2 text-muted-foreground hover:text-foreground"
-					>
-						<Github className="size-4" />
-						<span className="hidden sm:inline">GitHub</span>
-					</a>
-					<Link
-						href="/connect"
-						className="ml-2 rounded-md bg-foreground px-3.5 py-2 font-medium text-background hover:bg-foreground/90"
-					>
-						Get started
-					</Link>
+				<nav className="flex items-center gap-1">
+					<Button variant="ghost" asChild className="hidden sm:inline-flex">
+						<a href="#tools">Tools</a>
+					</Button>
+					<Button variant="ghost" asChild className="hidden sm:inline-flex">
+						<a href="#install">Install</a>
+					</Button>
+					<Button variant="ghost" asChild>
+						<a href={GITHUB_URL} target="_blank" rel="noreferrer">
+							<Github />
+							<span className="hidden sm:inline">GitHub</span>
+						</a>
+					</Button>
+					<Button asChild className="ml-2">
+						<Link href="/connect">Get started</Link>
+					</Button>
 				</nav>
 			</header>
 
-			{/* Hero */}
 			<section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
 				<div className="min-w-0 space-y-7">
-					<div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 text-xs text-muted-foreground">
-						<span className="size-1.5 rounded-full bg-emerald-400" />
+					<Badge variant="outline" className="py-1">
+						<span aria-hidden className="size-1.5 rounded-full bg-success" />
 						Open source · MCP 2025-03-26 · v0.3
-					</div>
+					</Badge>
 					<h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
 						Give your AI agent a{" "}
-						<span className="bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">
-							Bitcoin wallet
-						</span>
-						.
+						<span className="text-primary">Bitcoin wallet</span>.
 					</h1>
 					<p className="max-w-xl text-lg text-muted-foreground">
 						BSV MCP is a Model Context Protocol server that lets Claude, Cursor,
@@ -220,20 +233,18 @@ export default function LandingPage() {
 						identity, and read the blockchain. Eighty-plus tools, one install.
 					</p>
 					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-						<Link
-							href="/connect"
-							className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-500 px-5 py-2.5 text-sm font-semibold text-black hover:bg-amber-400"
-						>
-							Connect the hosted server
-							<ArrowRight className="size-4" />
-						</Link>
-						<a
-							href="#install"
-							className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card/60 px-5 py-2.5 text-sm font-medium hover:bg-accent"
-						>
-							<Terminal className="size-4" />
-							Run it locally
-						</a>
+						<Button size="xl" asChild>
+							<Link href="/connect">
+								Connect the hosted server
+								<ArrowRight />
+							</Link>
+						</Button>
+						<Button size="xl" variant="outline" asChild>
+							<a href="#install">
+								<Terminal />
+								Run it locally
+							</a>
+						</Button>
 					</div>
 					<CopyCommand
 						command="claude plugin install bsv-mcp@b-open-io"
@@ -243,232 +254,180 @@ export default function LandingPage() {
 				<TerminalDemo />
 			</section>
 
-			{/* Logos / clients */}
-			<section className="border-y border-border bg-card/30">
+			<section className="border-y bg-card/40">
 				<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-6 text-sm text-muted-foreground">
 					<span className="text-xs uppercase tracking-wider">Works with</span>
-					<span>Claude Code</span>
-					<span>Claude Desktop</span>
-					<span>Cursor</span>
-					<span>Windsurf</span>
-					<span>Any MCP client</span>
+					{clients.map((client) => (
+						<span key={client}>{client}</span>
+					))}
 				</div>
 			</section>
 
-			{/* How it works */}
 			<section className="mx-auto max-w-6xl px-6 py-20">
-				<div className="mb-10 max-w-2xl">
-					<h2 className="text-3xl font-bold tracking-tight">
-						From prompt to txid in three steps
-					</h2>
-					<p className="mt-3 text-muted-foreground">
-						No SDK to learn. The agent reads the tool schemas and does the rest.
-					</p>
-				</div>
+				<SectionHeading
+					title="From prompt to txid in three steps"
+					description="No SDK to learn. The agent reads the tool schemas and does the rest."
+				/>
 				<ol className="grid gap-6 md:grid-cols-3">
-					{steps.map((step, i) => (
-						<li
-							key={step.title}
-							className="rounded-xl border border-border bg-card/40 p-6"
-						>
-							<span className="font-mono text-xs text-amber-400">0{i + 1}</span>
-							<h3 className="mt-2 text-lg font-semibold">{step.title}</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{step.description}
-							</p>
+					{steps.map((step, index) => (
+						<li key={step.title}>
+							<Card className="h-full bg-card/60">
+								<CardHeader>
+									<span className="font-mono text-xs text-primary">
+										0{index + 1}
+									</span>
+									<CardTitle className="text-lg">{step.title}</CardTitle>
+									<CardDescription>{step.description}</CardDescription>
+								</CardHeader>
+							</Card>
 						</li>
 					))}
 				</ol>
 			</section>
 
-			{/* Tools */}
 			<section id="tools" className="mx-auto max-w-6xl px-6 pb-20">
-				<div className="mb-10 flex flex-wrap items-end justify-between gap-4">
-					<div className="max-w-2xl">
-						<h2 className="text-3xl font-bold tracking-tight">
-							Everything on-chain, as tools
-						</h2>
-						<p className="mt-3 text-muted-foreground">
-							Each category can be toggled with an environment variable. Tools
-							that need keys fail gracefully when none are configured.
-						</p>
-					</div>
-					<a
-						href={`${GITHUB_URL}#readme`}
-						target="_blank"
-						rel="noreferrer"
-						className="inline-flex items-center gap-1 text-sm text-amber-400 hover:text-amber-300"
-					>
-						Full tool reference <ArrowRight className="size-4" />
-					</a>
-				</div>
+				<SectionHeading
+					title="Everything on-chain, as tools"
+					description="Each category can be toggled with an environment variable. Tools that need keys fail gracefully when none are configured."
+					action={
+						<Button variant="link" asChild className="px-0">
+							<a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer">
+								Full tool reference
+								<ArrowRight />
+							</a>
+						</Button>
+					}
+				/>
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{toolCategories.map(({ icon: Icon, name, description }) => (
-						<div
+						<Card
 							key={name}
-							className="group rounded-xl border border-border bg-card/40 p-6 transition-colors hover:border-amber-500/40"
+							className="h-full bg-card/60 transition-colors hover:border-primary/40"
 						>
-							<div className="flex size-10 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400">
-								<Icon className="size-5" />
-							</div>
-							<h3 className="mt-4 font-semibold">{name}</h3>
-							<p className="mt-2 text-sm text-muted-foreground">
-								{description}
-							</p>
-						</div>
+							<CardHeader>
+								<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+									<Icon className="size-5" />
+								</span>
+								<CardTitle className="pt-2">{name}</CardTitle>
+								<CardDescription>{description}</CardDescription>
+							</CardHeader>
+						</Card>
 					))}
 				</div>
 			</section>
 
-			{/* Install */}
-			<section id="install" className="border-t border-border bg-card/20">
+			<section id="install" className="border-t bg-card/30">
 				<div className="mx-auto max-w-6xl px-6 py-20">
-					<div className="mb-10 max-w-2xl">
-						<h2 className="text-3xl font-bold tracking-tight">
-							Run it your way
-						</h2>
-						<p className="mt-3 text-muted-foreground">
-							The same server ships in three shapes. Pick the one that fits your
-							client and your key custody.
-						</p>
-					</div>
+					<SectionHeading
+						title="Run it your way"
+						description="The same server ships in three shapes. Pick the one that fits your client and your key custody."
+					/>
 					<div className="grid gap-4 md:grid-cols-3">
 						{deployModes.map(({ icon: Icon, title, subtitle, description }) => (
-							<div
-								key={title}
-								className="rounded-xl border border-border bg-card/40 p-6"
-							>
-								<div className="flex items-center gap-3">
-									<Icon className="size-5 text-amber-400" />
-									<div>
-										<h3 className="font-semibold">{title}</h3>
-										<p className="font-mono text-xs text-muted-foreground">
-											{subtitle}
-										</p>
+							<Card key={title} className="h-full bg-card/60">
+								<CardHeader>
+									<div className="flex items-center gap-3">
+										<Icon className="size-5 text-primary" />
+										<div>
+											<CardTitle>{title}</CardTitle>
+											<p className="font-mono text-xs text-muted-foreground">
+												{subtitle}
+											</p>
+										</div>
 									</div>
-								</div>
-								<p className="mt-4 text-sm text-muted-foreground">
-									{description}
-								</p>
-							</div>
+									<CardDescription className="pt-2">
+										{description}
+									</CardDescription>
+								</CardHeader>
+							</Card>
 						))}
 					</div>
 
-					<div className="mt-10 grid gap-6 lg:grid-cols-2">
+					<Separator className="my-10" />
+
+					<div className="grid gap-6 lg:grid-cols-2">
 						<div className="space-y-3">
 							<p className="flex items-center gap-2 text-sm font-medium">
-								<Plug className="size-4 text-amber-400" />
+								<Plug className="size-4 text-primary" />
 								Claude Code
 							</p>
 							<CopyCommand command="claude plugin install bsv-mcp@b-open-io" />
 							<p className="flex items-center gap-2 pt-2 text-sm font-medium">
-								<Wrench className="size-4 text-amber-400" />
+								<Wrench className="size-4 text-primary" />
 								Any stdio client
 							</p>
 							<CopyCommand command="bunx bsv-mcp@latest" />
 						</div>
 						<div className="space-y-3">
 							<p className="flex items-center gap-2 text-sm font-medium">
-								<Blocks className="size-4 text-amber-400" />
+								<Blocks className="size-4 text-primary" />
 								Cursor / Claude Desktop
 							</p>
-							<pre className="overflow-x-auto rounded-lg border border-border bg-black/40 p-4 font-mono text-xs leading-relaxed text-foreground">
-								{`{
-  "mcpServers": {
-    "bsv-mcp": {
-      "command": "bunx",
-      "args": ["bsv-mcp@latest"]
-    }
-  }
-}`}
-							</pre>
+							<CodeSnippet code={clientConfig} />
 						</div>
 					</div>
 				</div>
 			</section>
 
-			{/* Security */}
 			<section className="mx-auto max-w-6xl px-6 py-20">
 				<div className="grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-					<div>
+					<div className="space-y-3">
 						<h2 className="text-3xl font-bold tracking-tight">
 							Keys stay yours
 						</h2>
-						<p className="mt-3 text-muted-foreground">
+						<p className="text-muted-foreground">
 							An agent with a wallet needs guardrails. BSV MCP is built so the
 							model can act without ever seeing raw key material in a prompt.
 						</p>
 					</div>
 					<ul className="grid gap-4 sm:grid-cols-2">
-						{[
-							{
-								icon: KeyRound,
-								title: "Encrypted at rest",
-								text: "AES-256-GCM with 600k PBKDF2 iterations in the bitcoin-backup format. Files are created with 0600 permissions.",
-							},
-							{
-								icon: ShieldCheck,
-								title: "No passphrase env vars",
-								text: "Passphrases are entered through a temporary local web prompt, never read from the environment.",
-							},
-							{
-								icon: Fingerprint,
-								title: "Bitcoin-signed auth",
-								text: "Hosted mode uses OAuth 2.1 via sigma-auth. Your public key is your identity. Nothing to register.",
-							},
-							{
-								icon: Wallet,
-								title: "External signers",
-								text: "Point at a BRC-100 wallet and it stays the permission authority. Every spend is approved there.",
-							},
-						].map(({ icon: Icon, title, text }) => (
-							<li
-								key={title}
-								className="rounded-xl border border-border bg-card/40 p-5"
-							>
-								<Icon className="size-5 text-amber-400" />
-								<h3 className="mt-3 font-semibold">{title}</h3>
-								<p className="mt-1.5 text-sm text-muted-foreground">{text}</p>
+						{guarantees.map(({ icon: Icon, title, description }) => (
+							<li key={title}>
+								<Card className="h-full bg-card/60">
+									<CardHeader>
+										<Icon className="size-5 text-primary" />
+										<CardTitle className="pt-2">{title}</CardTitle>
+										<CardDescription>{description}</CardDescription>
+									</CardHeader>
+								</Card>
 							</li>
 						))}
 					</ul>
 				</div>
 			</section>
 
-			{/* CTA */}
 			<section className="mx-auto max-w-6xl px-6 pb-24">
-				<div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/15 via-card to-card p-10 text-center">
-					<h2 className="text-3xl font-bold tracking-tight">
-						Put your agent on-chain
-					</h2>
-					<p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-						Generate a key, download the backup, paste the config. You'll be
-						sending a transaction from a chat window in under two minutes.
-					</p>
-					<div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-						<Link
-							href="/connect"
-							className="inline-flex items-center justify-center gap-2 rounded-md bg-amber-500 px-5 py-2.5 text-sm font-semibold text-black hover:bg-amber-400"
-						>
-							Get started <ArrowRight className="size-4" />
-						</Link>
-						<a
-							href={GITHUB_URL}
-							target="_blank"
-							rel="noreferrer"
-							className="inline-flex items-center justify-center gap-2 rounded-md border border-border bg-background/60 px-5 py-2.5 text-sm font-medium hover:bg-accent"
-						>
-							<Github className="size-4" /> Star on GitHub
-						</a>
-					</div>
-				</div>
+				<Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-card to-card text-center">
+					<CardHeader className="items-center gap-3 p-10">
+						<CardTitle className="text-3xl font-bold tracking-tight">
+							Put your agent on-chain
+						</CardTitle>
+						<CardDescription className="mx-auto max-w-xl text-base">
+							Generate a key, download the backup, paste the config. You&apos;ll
+							be sending a transaction from a chat window in under two minutes.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="flex flex-col justify-center gap-3 pb-10 sm:flex-row">
+						<Button size="xl" asChild>
+							<Link href="/connect">
+								Get started
+								<ArrowRight />
+							</Link>
+						</Button>
+						<Button size="xl" variant="outline" asChild>
+							<a href={GITHUB_URL} target="_blank" rel="noreferrer">
+								<Github />
+								Star on GitHub
+							</a>
+						</Button>
+					</CardContent>
+				</Card>
 			</section>
 
-			{/* Footer */}
-			<footer className="border-t border-border">
+			<footer className="border-t">
 				<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-muted-foreground">
 					<p>© {new Date().getFullYear()} BSV MCP · MIT License</p>
-					<div className="flex gap-6">
+					<div className="flex flex-wrap gap-6">
 						<a
 							href={GITHUB_URL}
 							target="_blank"

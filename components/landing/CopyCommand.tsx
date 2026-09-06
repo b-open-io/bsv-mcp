@@ -2,6 +2,7 @@
 
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface CopyCommandProps {
@@ -25,26 +26,29 @@ export function CopyCommand({ command, className }: CopyCommandProps) {
 	return (
 		<div
 			className={cn(
-				"group flex items-center gap-3 rounded-lg border border-border bg-black/40 pl-4 pr-2 py-2 font-mono text-sm",
+				"flex items-center gap-3 rounded-lg border bg-muted/40 py-2 pl-4 pr-2 font-mono text-sm",
 				className,
 			)}
 		>
-			<span className="select-none text-amber-400">$</span>
+			<span aria-hidden className="select-none text-primary">
+				$
+			</span>
 			<code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-foreground">
 				{command}
 			</code>
-			<button
+			<Button
 				type="button"
+				variant="ghost"
+				size="icon"
 				onClick={copy}
-				aria-label="Copy command"
-				className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+				aria-label={copied ? "Command copied" : "Copy command"}
 			>
 				{copied ? (
-					<Check className="size-4 text-emerald-400" />
+					<Check className="text-success" />
 				) : (
-					<Copy className="size-4" />
+					<Copy className="text-muted-foreground" />
 				)}
-			</button>
+			</Button>
 		</div>
 	);
 }
