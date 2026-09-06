@@ -1,5 +1,11 @@
 # BSV MCP Server Changelog
 
+## [0.3.3] - 2026-09-06
+
+### Fixed
+- Honor `DROPLIT_SITE_URL` for sponsor approval links so staging requests reach the correct owner UI.
+- Build approval links from the configured sponsor and verified wallet identity; reject unsafe site origins.
+
 ## [0.3.2] - 2026-09-06
 
 ### Added

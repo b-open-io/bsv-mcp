@@ -87,12 +87,12 @@ test("AuthFetch uses the actual connected wallet and identity, without exposing 
 	expect(legacy.getConfig()).not.toHaveProperty("authKey");
 });
 
-async function tools() {
+async function tools(siteUrl?: string) {
 	const signer = wallet();
 	const server = new McpServer({ name: "droplit-test", version: "1" });
 	registerAllTools(server, {
 		ctx: createContext(signer),
-		droplitClient: new DroplitClient({ ...config, wallet: signer }),
+		droplitClient: new DroplitClient({ ...config, siteUrl, wallet: signer }),
 		enableBsvTools: false,
 		enableOrdinalsTools: false,
 		enableUtilsTools: false,
@@ -311,4 +311,69 @@ test("real SDK 402 payment processor cannot spend through the authentication fac
 	expect(signer.createAction).not.toHaveBeenCalled();
 	expect(signer.signAction).not.toHaveBeenCalled();
 	expect(signer.getPublicKey).toHaveBeenCalled();
+});
+
+for (const siteUrl of [
+	"https://staging.droplit.dev",
+	"http://127.0.0.1:3000",
+	"http://[::1]:3000",
+]) {
+	test(`approval links use configured site ${siteUrl} and ignore server redirects`, async () => {
+		const fetch = spyOn(AuthFetch.prototype, "fetch");
+		const { client, close } = await tools(siteUrl);
+		try {
+			for (const approval_path of [
+				"https://evil.example/x",
+				"//evil.example/x",
+				"\\\\evil.example/x",
+				"/safe/../../wrong?request_key=wrong",
+			]) {
+				fetch.mockResolvedValueOnce(
+					Response.json({
+						...access,
+						approval_path,
+						approval_url: "https://evil.example",
+					}),
+				);
+				const result = await client.callTool({
+					name: "droplit_getAccess",
+					arguments: {},
+				});
+				expect(result.structuredContent).toMatchObject({
+					approval_url: `${siteUrl}/droplit/sponsor?tab=api&request_key=${publicKey}`,
+				});
+			}
+			expect(fetch.mock.calls.every(([, init]) => init?.method === "GET")).toBe(
+				true,
+			);
+		} finally {
+			await close();
+		}
+	});
+}
+
+test("site environment is forwarded and unsafe site configuration fails before wallet access", () => {
+	expect(
+		readDroplitSponsorConfig({
+			DROPLIT_API_URL: config.apiUrl,
+			DROPLIT_FAUCET_NAME: config.faucetName,
+			DROPLIT_SITE_URL: "https://staging.droplit.dev/",
+		}),
+	).toEqual({ ...config, siteUrl: "https://staging.droplit.dev" });
+	for (const siteUrl of [
+		"",
+		"not a URL",
+		"http://evil.example",
+		"https://user:pass@droplit.dev",
+		"https://droplit.dev/path",
+		"https://droplit.dev?",
+		"https://droplit.dev#",
+		"https://droplit.dev\\evil",
+	]) {
+		const signer = wallet();
+		expect(
+			() => new DroplitClient({ ...config, siteUrl, wallet: signer }),
+		).toThrow();
+		expect(signer.getPublicKey).not.toHaveBeenCalled();
+	}
 });

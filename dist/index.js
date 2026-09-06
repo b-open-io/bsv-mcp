@@ -256042,7 +256042,7 @@ var package_default = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.2",
+  version: "0.3.3",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -284877,6 +284877,15 @@ function registerUtilsTools(server) {
 
 // utils/droplit.ts
 init_mod2();
+function approvalSiteOrigin(value2 = "https://droplit.dev") {
+  const url3 = new URL(value2);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url3.hostname);
+  if (url3.username || url3.password || url3.pathname !== "/" || url3.href.includes("?") || url3.href.includes("#") || value2.includes("\\") || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+    throw new Error("DROPLIT_SITE_URL requires an HTTPS or HTTP loopback origin without credentials, path, query or fragment");
+  }
+  return url3.origin;
+}
+
 class DroplitError extends Error {
   code;
   status;
@@ -284926,9 +284935,11 @@ function httpFailure(status, details = {}) {
 class DroplitClient {
   config;
   authFetch;
+  siteOrigin;
   wallet;
   constructor(config2) {
     this.config = config2;
+    this.siteOrigin = approvalSiteOrigin(config2.siteUrl);
     if (config2.wallet && config2.authKey)
       throw new Error("Configure Droplit wallet or authKey, not both");
     const url3 = new URL(config2.apiUrl);
@@ -285023,6 +285034,7 @@ class DroplitClient {
       throw new DroplitError("invalid_response", "Sponsor access response did not match the authenticated wallet.");
     }
     access.approval_path = `/droplit/${encodeURIComponent(this.config.faucetName)}?tab=api&request_key=${encodeURIComponent(identity6)}`;
+    access.approval_url = new URL(access.approval_path, this.siteOrigin).href;
     return access;
   }
   async fund(rawtx) {
@@ -285093,7 +285105,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
         ...!access.authorized ? {
           error: "approval_required",
           message: "Ask the sponsor owner to approve this wallet. Copy the approval URL for manual review; do not auto-open or submit approval.",
-          approval_url: `https://droplit.dev${access.approval_path}`
+          approval_url: access.approval_url
         } : {}
       };
       return {
@@ -295163,7 +295175,7 @@ var package_default2 = {
   name: "bsv-mcp",
   module: "dist/index.js",
   type: "module",
-  version: "0.3.2",
+  version: "0.3.3",
   license: "MIT",
   author: "satchmo",
   description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -298351,12 +298363,25 @@ init_mod2();
 function readDroplitSponsorConfig(env = process.env) {
   const apiUrl = env.DROPLIT_API_URL;
   const faucetName = env.DROPLIT_FAUCET_NAME;
-  if (apiUrl === undefined && faucetName === undefined)
+  const siteUrl = env.DROPLIT_SITE_URL;
+  if (apiUrl === undefined && faucetName === undefined && siteUrl === undefined)
     return;
   if (!apiUrl?.trim() || !faucetName?.trim()) {
     throw new Error("DROPLIT_API_URL and DROPLIT_FAUCET_NAME must both be explicitly configured");
   }
-  return { apiUrl, faucetName };
+  return {
+    apiUrl,
+    faucetName,
+    ...siteUrl === undefined ? {} : { siteUrl: approvalSiteOrigin2(siteUrl) }
+  };
+}
+function approvalSiteOrigin2(value2 = "https://droplit.dev") {
+  const url3 = new URL(value2);
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url3.hostname);
+  if (url3.username || url3.password || url3.pathname !== "/" || url3.href.includes("?") || url3.href.includes("#") || value2.includes("\\") || !(url3.protocol === "https:" || url3.protocol === "http:" && loopback)) {
+    throw new Error("DROPLIT_SITE_URL requires an HTTPS or HTTP loopback origin without credentials, path, query or fragment");
+  }
+  return url3.origin;
 }
 
 class DroplitError2 extends Error {
@@ -298408,9 +298433,11 @@ function httpFailure2(status, details = {}) {
 class DroplitClient2 {
   config;
   authFetch;
+  siteOrigin;
   wallet;
   constructor(config2) {
     this.config = config2;
+    this.siteOrigin = approvalSiteOrigin2(config2.siteUrl);
     if (config2.wallet && config2.authKey)
       throw new Error("Configure Droplit wallet or authKey, not both");
     const url3 = new URL(config2.apiUrl);
@@ -298505,6 +298532,7 @@ class DroplitClient2 {
       throw new DroplitError2("invalid_response", "Sponsor access response did not match the authenticated wallet.");
     }
     access.approval_path = `/droplit/${encodeURIComponent(this.config.faucetName)}?tab=api&request_key=${encodeURIComponent(identity6)}`;
+    access.approval_url = new URL(access.approval_path, this.siteOrigin).href;
     return access;
   }
   async fund(rawtx) {
