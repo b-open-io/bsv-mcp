@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-	title: "BSV MCP — Hosted Service",
+	title: "BSV MCP — Bitcoin SV tools for AI agents",
 	description:
-		"Bitcoin SV Model Context Protocol — authenticate and generate your MCP configuration.",
+		"An open source Model Context Protocol server that gives Claude, Cursor, and any MCP client a Bitcoin SV wallet: send BSV, inscribe ordinals, manage identity, and read the chain.",
 };
 
 export default function RootLayout({
