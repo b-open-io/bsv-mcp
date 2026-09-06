@@ -11,7 +11,7 @@
 	},
 	"headers": [
 		{
-			"source": "/((?!_next/).*)",
+			"source": "/(.*)",
 			"headers": [
 				{
 					"key": "Vary",
