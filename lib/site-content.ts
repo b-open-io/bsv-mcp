@@ -8,8 +8,10 @@
 export interface ToolCategory {
 	key: string;
 	name: string;
-	/** `tools/` directories whose registrations belong to this category. */
-	directories: string[];
+	/** Tool-name prefixes belonging to this category. */
+	prefixes: string[];
+	/** Individual tools that do not follow this category's prefix. */
+	tools?: string[];
 	description: string;
 }
 
@@ -17,42 +19,50 @@ export const toolCategories: ToolCategory[] = [
 	{
 		key: "wallet",
 		name: "Wallet",
-		directories: ["wallet"],
+		prefixes: ["wallet"],
+		tools: [
+			"app_wallet_data",
+			"app_sweep_scan",
+			"app_sweep_prepare",
+			"app_sweep_complete",
+		],
 		description:
 			"Send BSV, manage UTXOs, inscribe files and mint collections from a local key, a BRC-100 signer, or a Droplit-sponsored wallet.",
 	},
 	{
 		key: "ordinals",
 		name: "Ordinals",
-		directories: ["ordinals"],
+		prefixes: ["ordinals"],
+		tools: ["app_ordinals_data"],
 		description:
 			"Look up 1Sat Ordinals, browse marketplace listings, and buy or list NFTs directly from a conversation.",
 	},
 	{
 		key: "explorer",
 		name: "Explorer",
-		directories: ["bsv"],
+		prefixes: ["bsv"],
+		tools: ["app_explorer_data"],
 		description:
 			"Decode raw transactions, fetch blocks and addresses, and pull the live BSV price with built-in caching.",
 	},
 	{
 		key: "identity",
 		name: "Identity",
-		directories: ["bap"],
+		prefixes: ["bap"],
 		description:
 			"Create and manage Bitcoin Attestation Protocol (BAP) identities and sign attestations on-chain.",
 	},
 	{
 		key: "social",
 		name: "Social",
-		directories: ["bsocial"],
+		prefixes: ["bsocial", "bmap"],
 		description:
 			"Post, like, and follow on BSocial. Your agent can publish to the open social graph.",
 	},
 	{
 		key: "tokens",
 		name: "Tokens",
-		directories: ["mnee", "utils"],
+		prefixes: ["mnee", "utils"],
 		description:
 			"Check balances and transfer MNEE stablecoin, with utilities for encoding, hashing, and data conversion.",
 	},
