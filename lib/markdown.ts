@@ -13,11 +13,11 @@ import {
 	SITE_URL,
 } from "./site";
 import {
-	clientConfig,
 	clients,
 	deployModes,
 	guarantees,
 	installCommands,
+	installTargets,
 	steps,
 	toolCategories,
 } from "./site-content";
@@ -32,6 +32,31 @@ function scopeList(): string {
 	return OAUTH_SCOPES.map(
 		(scope) => `- \`${scope.name}\` — ${scope.description}`,
 	).join("\n");
+}
+
+/** Renders every documented client's install instructions. */
+function renderInstallTargets(): string {
+	return installTargets
+		.map((target) => {
+			const parts: string[] = [`### ${target.label}`];
+
+			if (target.command) {
+				parts.push(`\`\`\`bash\n${target.command}\n\`\`\``);
+			}
+			for (const alt of target.altCommands ?? []) {
+				parts.push(`${alt.label}:\n\n\`\`\`bash\n${alt.command}\n\`\`\``);
+			}
+			if (target.config) {
+				const language = target.configPath?.endsWith(".toml") ? "toml" : "json";
+				if (target.configPath) parts.push(`\`${target.configPath}\`:`);
+				parts.push(`\`\`\`${language}\n${target.config}\n\`\`\``);
+			}
+			if (target.note) parts.push(target.note);
+			parts.push(`Docs: ${target.docsUrl}`);
+
+			return parts.join("\n\n");
+		})
+		.join("\n\n");
 }
 
 export function renderHomeMarkdown(): string {
@@ -58,23 +83,7 @@ export function renderHomeMarkdown(): string {
 
 ## Install
 
-Claude Code:
-
-\`\`\`bash
-${installCommands.claudeCode}
-\`\`\`
-
-Any stdio client:
-
-\`\`\`bash
-${installCommands.stdio}
-\`\`\`
-
-Cursor or Claude Desktop:
-
-\`\`\`json
-${clientConfig}
-\`\`\`
+${renderInstallTargets()}
 
 Works with ${clients.join(", ")}.
 
