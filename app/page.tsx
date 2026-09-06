@@ -30,6 +30,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { approximateTotal, countTools, getToolCounts } from "@/lib/tool-count";
 
 const GITHUB_URL = "https://github.com/b-open-io/bsv-mcp";
 const NPM_URL = "https://www.npmjs.com/package/bsv-mcp";
@@ -42,40 +43,51 @@ const clients = [
 	"Any MCP client",
 ];
 
-const toolCategories = [
+const toolCategories: {
+	icon: typeof Wallet;
+	name: string;
+	directories: string[];
+	description: string;
+}[] = [
 	{
 		icon: Wallet,
 		name: "Wallet",
+		directories: ["wallet"],
 		description:
 			"Send BSV, manage UTXOs, inscribe files and mint collections from a local key, a BRC-100 signer, or a Droplit-sponsored wallet.",
 	},
 	{
 		icon: ImageIcon,
 		name: "Ordinals",
+		directories: ["ordinals"],
 		description:
 			"Look up 1Sat Ordinals, browse marketplace listings, and buy or list NFTs directly from a conversation.",
 	},
 	{
 		icon: Search,
 		name: "Explorer",
+		directories: ["bsv"],
 		description:
 			"Decode raw transactions, fetch blocks and addresses, and pull the live BSV price with built-in caching.",
 	},
 	{
 		icon: Fingerprint,
 		name: "Identity",
+		directories: ["bap"],
 		description:
 			"Create and manage Bitcoin Attestation Protocol (BAP) identities and sign attestations on-chain.",
 	},
 	{
 		icon: MessageSquare,
 		name: "Social",
+		directories: ["bsocial"],
 		description:
 			"Post, like, and follow on BSocial. Your agent can publish to the open social graph.",
 	},
 	{
 		icon: Bitcoin,
 		name: "Tokens",
+		directories: ["mnee", "utils"],
 		description:
 			"Check balances and transfer MNEE stablecoin, with utilities for encoding, hashing, and data conversion.",
 	},
@@ -180,6 +192,9 @@ function SectionHeading({
 }
 
 export default function LandingPage() {
+	const toolCounts = getToolCounts();
+	const headlineTotal = approximateTotal(toolCounts.total);
+
 	return (
 		<div className="relative min-h-screen overflow-x-hidden">
 			<div
@@ -230,7 +245,10 @@ export default function LandingPage() {
 					<p className="max-w-xl text-lg text-muted-foreground">
 						BSV MCP is a Model Context Protocol server that lets Claude, Cursor,
 						and any MCP client send BSV, inscribe ordinals, manage on-chain
-						identity, and read the blockchain. Eighty-plus tools, one install.
+						identity, and read the blockchain.{" "}
+						{headlineTotal
+							? `${headlineTotal} tools, one install.`
+							: "One install."}
 					</p>
 					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
 						<Button size="xl" asChild>
@@ -299,20 +317,32 @@ export default function LandingPage() {
 					}
 				/>
 				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-					{toolCategories.map(({ icon: Icon, name, description }) => (
-						<Card
-							key={name}
-							className="h-full bg-card/60 transition-colors hover:border-primary/40"
-						>
-							<CardHeader>
-								<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-									<Icon className="size-5" />
-								</span>
-								<CardTitle className="pt-2">{name}</CardTitle>
-								<CardDescription>{description}</CardDescription>
-							</CardHeader>
-						</Card>
-					))}
+					{toolCategories.map(
+						({ icon: Icon, name, directories, description }) => {
+							const count = countTools(toolCounts, directories);
+							return (
+								<Card
+									key={name}
+									className="h-full bg-card/60 transition-colors hover:border-primary/40"
+								>
+									<CardHeader>
+										<div className="flex items-start justify-between gap-3">
+											<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+												<Icon className="size-5" />
+											</span>
+											{count > 0 && (
+												<Badge variant="secondary">
+													{count} {count === 1 ? "tool" : "tools"}
+												</Badge>
+											)}
+										</div>
+										<CardTitle className="pt-2">{name}</CardTitle>
+										<CardDescription>{description}</CardDescription>
+									</CardHeader>
+								</Card>
+							);
+						},
+					)}
 				</div>
 			</section>
 
