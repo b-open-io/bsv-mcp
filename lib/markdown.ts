@@ -144,8 +144,10 @@ private keys, passwords, or wallet backups.
 3. Approve access and return to your client. No manual session token is needed.
 4. Ask: "Run bsv_status and explain which services are available."
 
-Your client must support Streamable HTTP and OAuth. Signing in does not connect
-your wallet or authorize payments. The authorization server is ${AUTH_SERVER_URL}.
+Your client must support Streamable HTTP and OAuth. Sigma verifies your account
+and consent, then gives the client a short-lived token for BSV MCP. That token
+opens the hosted endpoint; it does not connect your wallet, move funds, or
+authorize payments. The authorization server is ${AUTH_SERVER_URL}.
 
 ## Run on your computer
 

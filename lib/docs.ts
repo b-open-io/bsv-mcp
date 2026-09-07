@@ -20,6 +20,7 @@ export const docs: DocSection[] = [
 		paragraphs: [
 			"BSV MCP lets an AI assistant use Bitcoin SV tools. You can ask it to check a transaction, show your wallet balance, send a payment, or create an ordinal: content such as an image recorded on the blockchain.",
 			"Start by connecting BSV MCP to your AI client. The examples below use a server running on your computer. Hosted access is available on the connection page.",
+			"Hosted access uses Sigma Identity only for account sign-in and consent. The token opens BSV MCP's hosted endpoint; it does not attach your wallet or approve a payment.",
 		],
 		links: [
 			{
