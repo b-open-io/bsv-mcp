@@ -134,18 +134,31 @@ ${faq.map((item) => `**${item.q}**\n\n${linkBrcMarkdown(item.a)}`).join("\n\n")}
 export function renderConnectMarkdown(): string {
 	return `# Connect to ${SITE_NAME}
 
-> Generate or import a Bitcoin key and get a ready-to-paste MCP client configuration.
+Choose hosted access or run BSV MCP on your computer. This page does not collect
+private keys, passwords, or wallet backups.
 
-The hosted MCP endpoint is ${MCP_ENDPOINT}. It speaks Streamable HTTP and is an
-OAuth 2.1 protected resource, so a client must present a bearer token issued by
-${AUTH_SERVER_URL}.
+## Hosted connection
 
-## Steps
+1. Add ${MCP_ENDPOINT} as a remote MCP server in your AI client.
+2. Choose Connect or Authenticate. Your client opens Sigma Identity for OAuth authorization.
+3. Approve access and return to your client. No manual session token is needed.
+4. Ask: "Run bsv_status and explain which services are available."
 
-1. Open ${SITE_URL}/connect in a browser.
-2. Generate a new Bitcoin key, or import an existing encrypted backup.
-3. Download the backup before continuing. The key cannot be recovered without it.
-4. Copy the configuration snippet for your client.
+Your client must support Streamable HTTP and OAuth. Signing in does not connect
+your wallet or authorize payments. The authorization server is ${AUTH_SERVER_URL}.
+
+## Run on your computer
+
+Install Bun, then configure your client to launch bunx with arguments
+["bsv-mcp@latest", "--stdio"]. To start without keys, set DISABLE_WALLET_TOOLS=true
+and DISABLE_BROADCASTING=true in that server's environment. Restart your client
+and run bsv_status. A missing wallet is expected for this setup.
+
+## Add a wallet separately
+
+Use local MCP with an existing signer, or initialize an encrypted account in a
+terminal. See ${SITE_URL}/docs#wallets. Hosted MCP cannot directly reach a signer
+on your computer. Existing accounts should follow the migration instructions.
 
 ## Discovery documents
 
@@ -171,7 +184,7 @@ No page exists at \`${path}\` on ${SITE_URL}.
 ## Where to look instead
 
 - [Home](${SITE_URL}/) — what ${SITE_NAME} is, the tool catalogue, and install instructions
-- [Connect](${SITE_URL}/connect) — generate a key and an MCP client configuration
+- [Connect](${SITE_URL}/connect) — choose hosted or local setup
 - [llms.txt](${SITE_URL}/llms.txt) — machine-readable index of every documented resource
 - [Sitemap](${SITE_URL}/sitemap.xml) — every indexable URL
 - [Source](${GITHUB_URL}) — code, README and issue tracker

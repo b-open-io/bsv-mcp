@@ -35,14 +35,14 @@ export const docs: DocSection[] = [
 			{
 				title: "1. Add the server",
 				paragraphs: [
-					"Install Bun, then run the command for your client in a terminal. You only need one of these commands.",
+					"Install Bun, then run the command for your client in a terminal. These examples start without a wallet and disable broadcasting. You only need one command.",
 				],
-				code: "# Codex\ncodex mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio",
+				code: "# Codex\ncodex mcp add bsv-mcp --env DISABLE_WALLET_TOOLS=true --env DISABLE_BROADCASTING=true -- bunx bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --env DISABLE_WALLET_TOOLS=true --env DISABLE_BROADCASTING=true --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio",
 			},
 			{
 				title: "2. Connect a wallet",
 				paragraphs: [
-					"Choose one of the wallet options below before asking the assistant to use funds. The tools available to you depend on that choice and the tool groups enabled on your server.",
+					"When you need funds, choose a wallet option below, remove DISABLE_WALLET_TOOLS and DISABLE_BROADCASTING from the server configuration, and restart your client. The tools available to you depend on that choice and the tool groups enabled on your server.",
 				],
 			},
 			{

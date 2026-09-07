@@ -1,124 +1,173 @@
-"use client";
-
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Cloud, Laptop, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { BackupSection } from "@/components/onboarding/BackupSection";
-import { ConfigTabs } from "@/components/onboarding/ConfigTabs";
-import { KeySetup } from "@/components/onboarding/KeySetup";
-import { useKeyState } from "@/components/onboarding/use-key-state";
+import { CodeSnippet } from "@/components/landing/CodeSnippet";
+import { CopyCommand } from "@/components/landing/CopyCommand";
 import { Button } from "@/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MCP_ENDPOINT } from "@/lib/site";
 
-export default function OnboardingPage() {
-	const {
-		state,
-		dispatch,
-		fileInputRef,
-		generateNewKey,
-		handleFileSelect,
-		decryptBackup,
-		authenticate,
-		downloadBackup,
-		copyToClipboard,
-	} = useKeyState();
+export const metadata = { title: "Connect · BSV MCP" };
 
-	const isAuthenticated = !!state.sessionToken;
-	const stepOffset = state.source === "new" ? 1 : 0;
+const localConfig = JSON.stringify(
+	{
+		mcpServers: {
+			"bsv-mcp": {
+				command: "bunx",
+				args: ["bsv-mcp@latest", "--stdio"],
+				env: { DISABLE_WALLET_TOOLS: "true", DISABLE_BROADCASTING: "true" },
+			},
+		},
+	},
+	null,
+	2,
+);
 
+export default function ConnectPage() {
 	return (
-		<div className="min-h-screen flex items-center justify-center p-4">
-			<Button
-				variant="ghost"
-				size="sm"
-				asChild
-				className="fixed left-4 top-4 text-muted-foreground"
-			>
+		<main className="mx-auto min-h-screen max-w-3xl px-5 py-10 sm:py-16">
+			<Button variant="ghost" size="sm" asChild>
 				<Link href="/">
-					<ArrowLeft />
-					Home
+					<ArrowLeft /> Home
 				</Link>
 			</Button>
-			<div className="w-full max-w-lg space-y-6">
-				{/* Header */}
-				<div className="text-center space-y-1">
-					<h1 className="text-3xl font-bold tracking-tight">BSV MCP</h1>
-					<p className="text-muted-foreground text-sm">
-						Model Context Protocol for Bitcoin SV
-					</p>
-					<p className="text-xs text-muted-foreground/60">
-						Streamable HTTP · OAuth 2.1
-					</p>
-				</div>
-
-				{/* Auth card */}
-				<Card>
-					<CardHeader>
-						<CardTitle>Authenticate</CardTitle>
-						<CardDescription>
-							Generate a new Bitcoin key or import an existing backup to connect
-							to the hosted MCP server.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<KeySetup
-							state={state}
-							dispatch={dispatch}
-							fileInputRef={fileInputRef}
-							onGenerate={generateNewKey}
-							onFileSelect={handleFileSelect}
-							onDecrypt={decryptBackup}
-							onAuthenticate={authenticate}
-						/>
-					</CardContent>
-				</Card>
-
-				{/* Post-auth steps */}
-				{isAuthenticated && (
-					<>
-						{/* Step 1: Backup (new keys only) */}
-						{state.source === "new" && (
-							<Card>
-								<CardHeader>
-									<CardTitle>Step 1: Download Your Backup</CardTitle>
-									<CardDescription>
-										Save your private key before proceeding. You cannot recover
-										it without this file.
-									</CardDescription>
-								</CardHeader>
-								<CardContent>
-									<BackupSection onDownload={downloadBackup} />
-								</CardContent>
-							</Card>
-						)}
-
-						{/* Step 2 (or 1 for imported keys): Config */}
-						<Card>
-							<CardHeader>
-								<CardTitle>
-									Step {stepOffset + 1}: Installation &amp; Configuration
-								</CardTitle>
-								<CardDescription>
-									Choose your platform and copy the configuration snippet.
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<ConfigTabs
-									mcpUrl={state.mcpUrl}
-									sessionToken={state.sessionToken}
-									copied={state.copied}
-									onCopy={copyToClipboard}
+			<header className="mb-8 mt-8 space-y-3">
+				<h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+					Connect your AI assistant
+				</h1>
+				<p className="text-lg text-muted-foreground">
+					Choose where BSV MCP runs. You can get started without a wallet.
+				</p>
+				<p className="flex items-center gap-2 text-sm text-muted-foreground">
+					<ShieldCheck className="size-4 shrink-0" /> Keep private keys and
+					wallet backups in your wallet app or local signer.
+				</p>
+			</header>
+			<Tabs defaultValue="hosted">
+				<TabsList className="grid h-auto w-full grid-cols-2">
+					<TabsTrigger value="hosted" className="py-3">
+						<Cloud className="mr-2 size-4" /> Hosted
+					</TabsTrigger>
+					<TabsTrigger value="local" className="py-3">
+						<Laptop className="mr-2 size-4" /> On this computer
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent
+					value="hosted"
+					className="space-y-7 rounded-xl border p-5 sm:p-7"
+				>
+					<section className="space-y-3">
+						<h2 className="text-xl font-medium">
+							1. Add the server to your client
+						</h2>
+						<p className="text-muted-foreground">
+							In your AI client’s connector settings, add a remote MCP server
+							with this URL. Your client must support OAuth and Streamable HTTP.
+						</p>
+						<CopyCommand command={MCP_ENDPOINT} label="Server URL" />
+						<details>
+							<summary className="cursor-pointer text-sm font-medium">
+								Using Claude Code?
+							</summary>
+							<div className="mt-3">
+								<CopyCommand
+									command={`claude mcp add --transport http bsv-mcp ${MCP_ENDPOINT}`}
+									label="Claude Code"
 								/>
-							</CardContent>
-						</Card>
-					</>
-				)}
-			</div>
-		</div>
+							</div>
+						</details>
+					</section>
+					<section className="space-y-2">
+						<h2 className="text-xl font-medium">
+							2. Sign in through your client
+						</h2>
+						<p className="text-muted-foreground">
+							Choose Connect or Authenticate for BSV MCP. Your client opens
+							Sigma Identity in your browser. Review the requested access,
+							approve it, then return to your client. In Claude Code, open /mcp
+							to authenticate.
+						</p>
+						<p className="text-sm text-muted-foreground">
+							This signs you in to the service. It does not connect your
+							personal wallet or authorize payments.
+						</p>
+					</section>
+					<section className="space-y-2">
+						<h2 className="text-xl font-medium">3. Try a first request</h2>
+						<p className="rounded-lg bg-muted p-4">
+							“Run bsv_status and explain which services are available.”
+						</p>
+					</section>
+					<p className="text-sm text-muted-foreground">
+						If sign-in fails, check the server’s connection status in your
+						client. You can also use the local setup tab. A website cannot check
+						your client’s connection for you.
+					</p>
+				</TabsContent>
+				<TabsContent
+					value="local"
+					className="space-y-7 rounded-xl border p-5 sm:p-7"
+				>
+					<section className="space-y-2">
+						<h2 className="text-xl font-medium">1. Install Bun</h2>
+						<p className="text-muted-foreground">
+							BSV MCP runs as a local process launched by your AI client.
+							Install{" "}
+							<a className="underline" href="https://bun.sh/docs/installation">
+								Bun
+							</a>{" "}
+							first, then restart your client so it can find bunx.
+						</p>
+					</section>
+					<section className="space-y-3">
+						<h2 className="text-xl font-medium">
+							2. Add a connection without a wallet
+						</h2>
+						<p className="text-muted-foreground">
+							Merge this entry into your client’s MCP configuration. It disables
+							wallet tools and broadcasting, so startup needs no private key.
+							Restart the client after saving.
+						</p>
+						<CodeSnippet
+							code={localConfig}
+							language="json"
+							filename="MCP configuration"
+						/>
+						<p className="text-sm text-muted-foreground">
+							Claude Desktop: claude_desktop_config.json. Cursor:
+							.cursor/mcp.json. Other clients may use a different format; see{" "}
+							<Link className="underline" href="/#install">
+								client instructions
+							</Link>
+							. If bunx cannot be found, use its absolute path.
+						</p>
+					</section>
+					<section className="space-y-2">
+						<h2 className="text-xl font-medium">3. Check the connection</h2>
+						<p className="rounded-lg bg-muted p-4">
+							“Run bsv_status and explain which services are available.”
+						</p>
+						<p className="text-sm text-muted-foreground">
+							A missing wallet is expected in this setup. Public API requests
+							still need internet access.
+						</p>
+					</section>
+				</TabsContent>
+			</Tabs>
+			<section className="mt-8 space-y-3 rounded-xl border p-5 sm:p-7">
+				<h2 className="text-xl font-medium">Ready to use a wallet?</h2>
+				<p className="text-muted-foreground">
+					Use local MCP with an existing signer, or create an encrypted account
+					in your terminal. Wallet setup is separate from signing in to hosted
+					MCP. The hosted connection does not reach a signer on your computer.
+				</p>
+				<Button asChild>
+					<Link href="/docs#wallets">Set up a wallet</Link>
+				</Button>
+				<p className="text-sm text-muted-foreground">
+					Already have funds or an account? Follow the existing-wallet or
+					migration instructions before creating anything new.
+				</p>
+			</section>
+		</main>
 	);
 }
