@@ -94,3 +94,18 @@
 		color: hsl(var(--foreground));
 	}
 }
+
+@keyframes cursor-blink {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
+.cursor-blink {
+	animation: cursor-blink 1.1s steps(1) infinite;
+}

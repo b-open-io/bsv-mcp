@@ -16,6 +16,7 @@ import {
 import {
 	clients,
 	deployModes,
+	faq,
 	guarantees,
 	installCommands,
 	installTargets,
@@ -114,6 +115,10 @@ ${scopeList()}
 ## Key custody
 
 ${guarantees.map((item) => `- **${item.title}** — ${item.description}`).join("\n")}
+
+## FAQ
+
+${faq.map((item) => `**${item.q}**\n\n${item.a}`).join("\n\n")}
 
 ## More
 

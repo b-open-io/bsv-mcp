@@ -33,7 +33,7 @@ export function CopyCommand({ command, className }: CopyCommandProps) {
 			<span aria-hidden className="select-none text-primary">
 				$
 			</span>
-			<code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-foreground">
+			<code className="min-w-0 flex-1 whitespace-normal break-all text-foreground sm:overflow-x-auto sm:whitespace-nowrap">
 				{command}
 			</code>
 			<Button
