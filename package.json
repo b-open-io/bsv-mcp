@@ -83,6 +83,7 @@
 		"@gorillapool/js-junglebus": "^0.4.4",
 		"@modelcontextprotocol/ext-apps": "^1.7.5",
 		"@modelcontextprotocol/sdk": "^1.29.0",
+		"better-auth": "1.7.2",
 		"bitcoin-auth": "^0.0.8",
 		"bitcoin-backup": "^0.0.13",
 		"bmap-api-types": "0.0.9",

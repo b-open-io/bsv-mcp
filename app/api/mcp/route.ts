@@ -1,62 +1,32 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
+import { verifyHostedToken } from "@/lib/hosted-auth";
 import { RESOURCE_METADATA_PATH } from "@/lib/oauth-metadata";
 import { registerAllTools } from "@/tools";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment
 // Tools are registered dynamically based on available keys and config
 
-// Token verification function for OAuth 2.1
-// Validates opaque tokens and fetches user identity from userinfo endpoint
+// Bearer-only transport: Better Auth rejects sender-bound tokens here.
 const verifyToken = async (
 	_req: Request,
 	bearerToken?: string,
 ): Promise<AuthInfo | undefined> => {
-	if (!bearerToken) {
-		return undefined;
-	}
-
+	if (!bearerToken) return undefined;
 	try {
-		const authServer =
-			process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
-
-		// Call userinfo endpoint to get full user identity (standard OAuth/OIDC pattern)
-		const response = await fetch(`${authServer}/api/auth/oauth2/userinfo`, {
-			headers: {
-				Authorization: `Bearer ${bearerToken}`,
-			},
-		});
-
-		if (!response.ok) {
-			console.error("Token validation failed:", response.status);
-			return undefined;
-		}
-
-		const userinfo = await response.json();
-		if (typeof userinfo.sub !== "string" || !userinfo.sub) return undefined;
-
-		// Extract scopes - userinfo includes token_scope in dev mode
-		// For production, we'll need to call get-session separately or parse from id_token
-		const scopes = userinfo.token_scope
-			? userinfo.token_scope.split(" ")
-			: ["openid", "profile"];
-
+		const claims = await verifyHostedToken(bearerToken);
 		return {
 			token: bearerToken,
-			clientId: userinfo.sub || "unknown",
-			scopes,
-			// Store user identity for tools to access
-			extra: {
-				userId: userinfo.sub,
-				pubkey: userinfo.pubkey,
-				bapId: userinfo.bap_id,
-				bitcoinAddress: userinfo.bitcoin_address,
-				email: userinfo.email,
-			},
+			clientId:
+				typeof claims.client_id === "string"
+					? claims.client_id
+					: String(claims.azp ?? ""),
+			scopes: typeof claims.scope === "string" ? claims.scope.split(" ") : [],
+			expiresAt: claims.exp,
+			extra: { userId: claims.sub },
 		};
-	} catch (error) {
-		console.error("Token validation error:", error);
+	} catch {
 		return undefined;
 	}
 };
