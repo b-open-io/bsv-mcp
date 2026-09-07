@@ -22190,7 +22190,7 @@ function K3(Z, $, J, X) {
 function N3(Z, $, J, X, V) {
   return Z.registerResource($, J, { mimeType: p, ...X }, V);
 }
-var r, F, q = "2026-01-26", z2 = "ui/notifications/tool-input-partial", v, K, QQ, ZQ, $Q, I, P, w, JQ, Y, j, XQ, H, _, A, f, u, E, VQ, O, DQ, d, h, LQ, WQ, BQ, R, m, GQ, dQ, KQ, NQ, YQ, U, T, k, jQ, FQ, M, qQ, C = "ui/resourceUri", p = "text/html;profile=mcp-app", c;
+var r, F, q = "2026-01-26", z2 = "ui/notifications/tool-input-partial", v, K, QQ, ZQ, $Q, I, P, w, JQ, Y, j, XQ, H, _, A, f, u, E, VQ, O, DQ, d, h, LQ, WQ, BQ, R, m, GQ, dQ, KQ, NQ, YQ, U, T, k, jQ, FQ, M, qQ, C = "ui/resourceUri", p = "text/html;profile=mcp-app", c, TQ = "io.modelcontextprotocol/ui";
 var init_server = __esm(() => {
   init_protocol();
   init_types2();
@@ -31395,6 +31395,7 @@ var init_package = __esm(() => {
       "@gorillapool/js-junglebus": "^0.4.4",
       "@modelcontextprotocol/ext-apps": "^1.7.5",
       "@modelcontextprotocol/sdk": "^1.29.0",
+      "better-auth": "1.7.2",
       "bitcoin-auth": "^0.0.8",
       "bitcoin-backup": "^0.0.13",
       "bmap-api-types": "0.0.9",
@@ -160388,7 +160389,7 @@ var init_mod6 = __esm(() => {
   init_kvstore3();
 });
 
-// node_modules/@noble/hashes/cryptoNode.js
+// node_modules/bip39/node_modules/@noble/hashes/cryptoNode.js
 var require_cryptoNode = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.crypto = undefined;
@@ -160396,7 +160397,7 @@ var require_cryptoNode = __commonJS((exports) => {
   exports.crypto = nc && typeof nc === "object" && "webcrypto" in nc ? nc.webcrypto : nc && typeof nc === "object" && ("randomBytes" in nc) ? nc : undefined;
 });
 
-// node_modules/@noble/hashes/utils.js
+// node_modules/bip39/node_modules/@noble/hashes/utils.js
 var require_utils2 = __commonJS((exports) => {
   /*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) */
   Object.defineProperty(exports, "__esModule", { value: true });
@@ -160633,7 +160634,7 @@ var require_utils2 = __commonJS((exports) => {
   }
 });
 
-// node_modules/@noble/hashes/_md.js
+// node_modules/bip39/node_modules/@noble/hashes/_md.js
 var require__md = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.SHA512_IV = exports.SHA384_IV = exports.SHA224_IV = exports.SHA256_IV = exports.HashMD = undefined;
@@ -160809,7 +160810,7 @@ var require__md = __commonJS((exports) => {
   ]);
 });
 
-// node_modules/@noble/hashes/_u64.js
+// node_modules/bip39/node_modules/@noble/hashes/_u64.js
 var require__u64 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.toBig = exports.shrSL = exports.shrSH = exports.rotrSL = exports.rotrSH = exports.rotrBL = exports.rotrBH = exports.rotr32L = exports.rotr32H = exports.rotlSL = exports.rotlSH = exports.rotlBL = exports.rotlBH = exports.add5L = exports.add5H = exports.add4L = exports.add4H = exports.add3L = exports.add3H = undefined;
@@ -160902,7 +160903,7 @@ var require__u64 = __commonJS((exports) => {
   exports.default = u64;
 });
 
-// node_modules/@noble/hashes/sha2.js
+// node_modules/bip39/node_modules/@noble/hashes/sha2.js
 var require_sha2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.sha512_224 = exports.sha512_256 = exports.sha384 = exports.sha512 = exports.sha224 = exports.sha256 = exports.SHA512_256 = exports.SHA512_224 = exports.SHA384 = exports.SHA512 = exports.SHA224 = exports.SHA256 = undefined;
@@ -161372,7 +161373,7 @@ var require_sha2 = __commonJS((exports) => {
   exports.sha512_224 = (0, utils_ts_1.createHasher)(() => new SHA512_224);
 });
 
-// node_modules/@noble/hashes/sha256.js
+// node_modules/bip39/node_modules/@noble/hashes/sha256.js
 var require_sha256 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.sha224 = exports.SHA224 = exports.sha256 = exports.SHA256 = undefined;
@@ -161383,7 +161384,7 @@ var require_sha256 = __commonJS((exports) => {
   exports.sha224 = sha2_ts_1.sha224;
 });
 
-// node_modules/@noble/hashes/sha512.js
+// node_modules/bip39/node_modules/@noble/hashes/sha512.js
 var require_sha512 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.sha512_256 = exports.SHA512_256 = exports.sha512_224 = exports.SHA512_224 = exports.sha384 = exports.SHA384 = exports.sha512 = exports.SHA512 = undefined;
@@ -161398,7 +161399,7 @@ var require_sha512 = __commonJS((exports) => {
   exports.sha512_256 = sha2_ts_1.sha512_256;
 });
 
-// node_modules/@noble/hashes/hmac.js
+// node_modules/bip39/node_modules/@noble/hashes/hmac.js
 var require_hmac = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.hmac = exports.HMAC = undefined;
@@ -161474,7 +161475,7 @@ var require_hmac = __commonJS((exports) => {
   exports.hmac.create = (hash2, key) => new HMAC4(hash2, key);
 });
 
-// node_modules/@noble/hashes/pbkdf2.js
+// node_modules/bip39/node_modules/@noble/hashes/pbkdf2.js
 var require_pbkdf2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.pbkdf2 = pbkdf25;
@@ -333467,8 +333468,11 @@ function createConfiguredServer(opts) {
       prompts: {},
       resources: {},
       tools: {},
+      extensions: {
+        [TQ]: { version: "0.1" }
+      },
       experimental: {
-        "io.modelcontextprotocol/ui": { version: "0.1" }
+        [TQ]: { version: "0.1" }
       }
     },
     instructions: `
@@ -333495,8 +333499,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
   }, async () => {
     return {
       content: [{ type: "text", text: "BSV Dashboard opened" }],
-      structuredContent: { view: "dashboard", ready: true },
-      _meta: { viewUUID: crypto.randomUUID() }
+      structuredContent: { view: "dashboard", ready: true }
     };
   });
   K3(server2, "app_explorer_data", {
@@ -333551,8 +333554,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
                 height: jbData.block_height
               } : null
             }
-          },
-          _meta: { viewUUID: crypto.randomUUID() }
+          }
         };
       } catch (err) {
         return {
@@ -333562,8 +333564,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
               text: `Error: ${err instanceof Error ? err.message : String(err)}`
             }
           ],
-          structuredContent: { error: String(err) },
-          _meta: { viewUUID: crypto.randomUUID() }
+          structuredContent: { error: String(err) }
         };
       }
     }
@@ -333581,8 +333582,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
           ],
           structuredContent: {
             addressInfo: { balance, history }
-          },
-          _meta: { viewUUID: crypto.randomUUID() }
+          }
         };
       } catch (err) {
         return {
@@ -333592,8 +333592,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
               text: `Error: ${err instanceof Error ? err.message : String(err)}`
             }
           ],
-          structuredContent: { error: String(err) },
-          _meta: { viewUUID: crypto.randomUUID() }
+          structuredContent: { error: String(err) }
         };
       }
     }
@@ -333610,8 +333609,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `BSV price: $${price.toFixed(2)}`
           }
         ],
-        structuredContent: { price, chainInfo },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { price, chainInfo }
       };
     } catch (err) {
       return {
@@ -333621,8 +333619,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });
@@ -333644,8 +333641,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
         ],
         structuredContent: {
           error: "No wallet configured. Set PRIVATE_KEY_WIF or generate keys."
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     }
     try {
@@ -333701,8 +333697,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
           address,
           utxos,
           price
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     } catch (err) {
       return {
@@ -333712,8 +333707,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });
@@ -333744,8 +333738,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
           listings,
           total: listings.length,
           contentBaseUrl: contentUrl(services2.baseUrl)
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     } catch (err) {
       return {
@@ -333755,8 +333748,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });
@@ -333840,8 +333832,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
           ordinals: ordinals3,
           bsv21Tokens,
           totalFundingSats
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     } catch (err) {
       return {
@@ -333851,8 +333842,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });
@@ -333880,8 +333870,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: "BRC-100 wallet context not available"
           }
         ],
-        structuredContent: { error: "No wallet context" },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: "No wallet context" }
       };
     }
     try {
@@ -333960,8 +333949,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
           txHex,
           reference: createResult.signableTransaction.reference,
           inputsToSign
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     } catch (err) {
       return {
@@ -333971,8 +333959,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });
@@ -333998,8 +333985,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: "BRC-100 wallet context not available"
           }
         ],
-        structuredContent: { error: "No wallet context" },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: "No wallet context" }
       };
     }
     try {
@@ -334021,8 +334007,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
         structuredContent: {
           txid: signResult.txid,
           success: true
-        },
-        _meta: { viewUUID: crypto.randomUUID() }
+        }
       };
     } catch (err) {
       return {
@@ -334032,8 +334017,7 @@ function registerMcpAppTools(server2, wallet5, ctx) {
             text: `Error: ${err instanceof Error ? err.message : String(err)}`
           }
         ],
-        structuredContent: { error: String(err) },
-        _meta: { viewUUID: crypto.randomUUID() }
+        structuredContent: { error: String(err) }
       };
     }
   });

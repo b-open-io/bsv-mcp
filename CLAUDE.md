@@ -345,7 +345,7 @@ const result = await client.callTool({ name: "tool_name", arguments: {} });
 - **Tool Loading**: Tools conditionally loaded based on key availability
 - **Three Deployment Modes**: Local (with keys), Droplit API (remote wallet), Hosted (CloudFlare)
 - **Storage Formats**: Encrypted .bep (preferred) vs legacy JSON (deprecated)
-- **MCP App Views**: Tool results include a `viewUUID` field that MCP App clients use to render interactive dashboard tabs (Explorer, Wallet, Ordinals)
+- **MCP App Views**: `bsv_dashboard` opens the interactive dashboard (Explorer, Wallet, Ordinals) via the `ui://bsv-mcp/app.html` resource; results carry text plus structured content so plain clients still render
 
 ## Future Development Roadmap
 

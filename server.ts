@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import path, { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	EXTENSION_ID,
 	RESOURCE_MIME_TYPE,
 	registerAppResource,
 	registerAppTool,
@@ -79,8 +80,11 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 				prompts: {},
 				resources: {},
 				tools: {},
+				extensions: {
+					[EXTENSION_ID]: { version: "0.1" },
+				},
 				experimental: {
-					"io.modelcontextprotocol/ui": { version: "0.1" },
+					[EXTENSION_ID]: { version: "0.1" },
 				},
 			},
 			instructions: `
@@ -167,7 +171,6 @@ function registerMcpAppTools(
 			return {
 				content: [{ type: "text" as const, text: "BSV Dashboard opened" }],
 				structuredContent: { view: "dashboard", ready: true },
-				_meta: { viewUUID: crypto.randomUUID() },
 			};
 		},
 	);
@@ -244,7 +247,6 @@ function registerMcpAppTools(
 									: null,
 							},
 						},
-						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				} catch (err) {
 					return {
@@ -255,7 +257,6 @@ function registerMcpAppTools(
 							},
 						],
 						structuredContent: { error: String(err) },
-						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				}
 			}
@@ -281,7 +282,6 @@ function registerMcpAppTools(
 						structuredContent: {
 							addressInfo: { balance, history },
 						},
-						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				} catch (err) {
 					return {
@@ -292,7 +292,6 @@ function registerMcpAppTools(
 							},
 						],
 						structuredContent: { error: String(err) },
-						_meta: { viewUUID: crypto.randomUUID() },
 					};
 				}
 			}
@@ -315,7 +314,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { price, chainInfo },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -326,7 +324,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -357,7 +354,6 @@ function registerMcpAppTools(
 						error:
 							"No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 
@@ -427,7 +423,6 @@ function registerMcpAppTools(
 						utxos,
 						price,
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -438,7 +433,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -479,7 +473,6 @@ function registerMcpAppTools(
 						total: listings.length,
 						contentBaseUrl: contentUrl(services.baseUrl),
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -490,7 +483,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -627,7 +619,6 @@ function registerMcpAppTools(
 						bsv21Tokens,
 						totalFundingSats,
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -638,7 +629,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -689,7 +679,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: "No wallet context" },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 
@@ -789,7 +778,6 @@ function registerMcpAppTools(
 						reference: createResult.signableTransaction.reference,
 						inputsToSign,
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -800,7 +788,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
@@ -848,7 +835,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: "No wallet context" },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 
@@ -874,7 +860,6 @@ function registerMcpAppTools(
 						txid: signResult.txid,
 						success: true,
 					},
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			} catch (err) {
 				return {
@@ -885,7 +870,6 @@ function registerMcpAppTools(
 						},
 					],
 					structuredContent: { error: String(err) },
-					_meta: { viewUUID: crypto.randomUUID() },
 				};
 			}
 		},
