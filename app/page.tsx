@@ -95,11 +95,7 @@ export default function LandingPage() {
 		<div className="relative min-h-screen overflow-x-hidden">
 			<div
 				aria-hidden
-				className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px] bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.16),transparent_60%)]"
-			/>
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(to_right,hsl(var(--border)/0.5)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.5)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]"
+				className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.1),transparent_60%)]"
 			/>
 
 			<header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
@@ -122,55 +118,44 @@ export default function LandingPage() {
 							<span className="hidden sm:inline">GitHub</span>
 						</a>
 					</Button>
-					<Button asChild className="ml-2">
+					<Button asChild className="ml-2 hidden sm:inline-flex">
 						<Link href="/connect">Get started</Link>
 					</Button>
 				</nav>
 			</header>
 
-			<section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
-				<div className="min-w-0 space-y-7">
-					<div className="flex flex-wrap items-center gap-2">
-						<Badge variant="outline" className="py-1">
-							<span aria-hidden className="size-1.5 rounded-full bg-success" />
-							Open source
-						</Badge>
-						<Badge variant="outline" className="py-1">
-							MCP protocol {MCP_PROTOCOL_LATEST}
-						</Badge>
-						<Badge variant="outline" className="py-1">
-							v{getAppVersion()}
-						</Badge>
-					</div>
+			<section className="mx-auto grid max-w-6xl items-center gap-10 px-6 pb-16 pt-8 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:pb-20 lg:pt-20">
+				<div className="min-w-0 space-y-6">
 					<h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
 						Give your AI agent a{" "}
 						<span className="text-primary">Bitcoin wallet</span>.
 					</h1>
-					<p className="max-w-xl text-lg text-muted-foreground">
-						BSV MCP is a Model Context Protocol server that lets Claude, Cursor,
-						and any MCP client send BSV, inscribe ordinals, manage on-chain
-						identity, and read the blockchain.{" "}
-						{headlineTotal
-							? `${headlineTotal} tools, one install.`
-							: "One install."}
+					<p className="max-w-xl text-base text-muted-foreground sm:text-lg">
+						An open source MCP server that lets Claude, Cursor, and any MCP
+						client send BSV, inscribe ordinals, and read the chain.{" "}
+						{headlineTotal ? `${headlineTotal} tools, one install.` : ""}
 					</p>
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
 						<Button size="xl" asChild>
 							<Link href="/connect">
 								Connect the hosted server
 								<ArrowRight />
 							</Link>
 						</Button>
-						<Button size="xl" variant="outline" asChild>
+						<Button
+							variant="link"
+							asChild
+							className="h-auto justify-start px-0 sm:justify-center"
+						>
 							<a href="#install">
 								<Terminal />
-								Run it locally
+								Or run it locally
 							</a>
 						</Button>
 					</div>
 					<CopyCommand
 						command={installCommands.claudeCode}
-						className="max-w-xl"
+						className="hidden max-w-xl sm:flex"
 					/>
 				</div>
 				<TerminalDemo />
@@ -351,7 +336,10 @@ export default function LandingPage() {
 
 			<footer className="border-t">
 				<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-muted-foreground">
-					<p>© {new Date().getFullYear()} BSV MCP · MIT License</p>
+					<p>
+						© {new Date().getFullYear()} BSV MCP · MIT License · v
+						{getAppVersion()} · MCP protocol {MCP_PROTOCOL_LATEST}
+					</p>
 					<div className="flex flex-wrap gap-6">
 						<a
 							href={GITHUB_URL}
