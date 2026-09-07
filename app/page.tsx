@@ -99,10 +99,15 @@ export default function LandingPage() {
 			/>
 
 			<header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-				<Link href="/" className="flex items-center gap-2 font-semibold">
-					<span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-						<Bitcoin className="size-4" />
-					</span>
+				<Link
+					href="/"
+					className="flex items-center gap-2 font-mono font-semibold tracking-tight"
+				>
+					<Bitcoin
+						className="size-6 text-primary"
+						strokeWidth={2.5}
+						aria-hidden
+					/>
 					BSV MCP
 				</Link>
 				<nav className="flex items-center gap-1">
