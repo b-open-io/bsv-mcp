@@ -1,18 +1,19 @@
 import {
 	ArrowRight,
 	Bitcoin,
+	Check,
 	Cloud,
 	Fingerprint,
 	Github,
 	Image as ImageIcon,
 	KeyRound,
 	MessageSquare,
-	Plug,
 	Search,
 	Server,
 	ShieldCheck,
 	Terminal,
 	Wallet,
+	X,
 } from "lucide-react";
 import Link from "next/link";
 import { CopyCommand } from "@/components/landing/CopyCommand";
@@ -27,7 +28,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import {
 	GITHUB_URL,
 	getAppVersion,
@@ -37,10 +37,12 @@ import {
 import {
 	clients,
 	deployModes,
+	faq,
 	guarantees,
+	hero,
 	installCommands,
 	installTargets,
-	steps,
+	problem,
 	toolCategories,
 } from "@/lib/site-content";
 import { approximateTotal, countTools, getToolCounts } from "@/lib/tool-count";
@@ -67,22 +69,49 @@ const guaranteeIconFor: Record<string, typeof Wallet> = {
 	"external-signer": Wallet,
 };
 
+/** Uppercase mono label above a section title, `#`-prefixed like a shell comment. */
+function Eyebrow({ children }: { children: React.ReactNode }) {
+	return (
+		<p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
+			<span className="text-primary">#</span> {children}
+		</p>
+	);
+}
+
 function SectionHeading({
+	eyebrow,
 	title,
 	description,
 	action,
 }: {
+	eyebrow: string;
 	title: string;
-	description: string;
+	description?: string;
 	action?: React.ReactNode;
 }) {
 	return (
 		<div className="mb-10 flex flex-wrap items-end justify-between gap-4">
 			<div className="max-w-2xl space-y-3">
+				<Eyebrow>{eyebrow}</Eyebrow>
 				<h2 className="text-3xl font-bold tracking-tight">{title}</h2>
-				<p className="text-muted-foreground">{description}</p>
+				{description ? (
+					<p className="text-muted-foreground">{description}</p>
+				) : null}
 			</div>
 			{action}
+		</div>
+	);
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+	return (
+		<div className="space-y-1">
+			<p className="font-mono text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+				{value}
+			</p>
+			<p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+				{label}
+			</p>
 		</div>
 	);
 }
@@ -90,116 +119,150 @@ function SectionHeading({
 export default function LandingPage() {
 	const toolCounts = getToolCounts();
 	const headlineTotal = approximateTotal(toolCounts.total);
+	const version = getAppVersion();
 
 	return (
 		<div className="relative min-h-screen overflow-x-hidden">
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.1),transparent_60%)]"
-			/>
-
-			<header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-				<Link href="/" className="flex items-center gap-2 font-semibold">
-					<span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-						<Bitcoin className="size-4" />
-					</span>
+			<header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+				<Link
+					href="/"
+					className="flex items-center gap-2 font-mono font-semibold tracking-tight"
+				>
+					<Bitcoin
+						className="size-6 text-primary"
+						strokeWidth={2.5}
+						aria-hidden
+					/>
 					BSV MCP
 				</Link>
-				<nav className="flex items-center gap-1">
+				<nav className="flex items-center gap-1 font-mono text-sm">
 					<Button variant="ghost" asChild className="hidden sm:inline-flex">
-						<a href="#tools">Tools</a>
+						<a href="#tools">/tools</a>
 					</Button>
 					<Button variant="ghost" asChild className="hidden sm:inline-flex">
-						<a href="#install">Install</a>
+						<a href="#install">/install</a>
+					</Button>
+					<Button variant="ghost" asChild className="hidden sm:inline-flex">
+						<a href="#faq">/faq</a>
 					</Button>
 					<Button variant="ghost" asChild>
 						<a href={GITHUB_URL} target="_blank" rel="noreferrer">
 							<Github />
-							<span className="hidden sm:inline">GitHub</span>
+							<span className="hidden sm:inline">github</span>
 						</a>
-					</Button>
-					<Button asChild className="ml-2 hidden sm:inline-flex">
-						<Link href="/connect">Get started</Link>
 					</Button>
 				</nav>
 			</header>
 
-			<section className="mx-auto grid max-w-6xl items-center gap-10 px-6 pb-16 pt-8 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-12 lg:pb-20 lg:pt-20">
-				<div className="min-w-0 space-y-6">
-					<h1 className="text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
-						Give your AI agent a{" "}
-						<span className="text-primary">Bitcoin wallet</span>.
+			{/* Hero: header answers "what is this" alone; the sub carries the proof;
+			    the install command is the lowest-labour action a developer can take. */}
+			<section className="mx-auto max-w-5xl px-6 pb-14 pt-10 sm:pt-16 lg:pt-24">
+				<div className="mx-auto max-w-3xl space-y-6 text-center">
+					<Eyebrow>
+						{hero.eyebrow}
+						{headlineTotal ? ` · ${headlineTotal} tools` : ""} · v{version}
+					</Eyebrow>
+					<h1 className="text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
+						The Bitcoin SV wallet for{" "}
+						<span className="font-mono tracking-tight text-primary">
+							MCP clients
+						</span>
+						.
 					</h1>
-					<p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-						An open source MCP server that lets Claude, Cursor, and any MCP
-						client send BSV, inscribe ordinals, and read the chain.{" "}
-						{headlineTotal ? `${headlineTotal} tools, one install.` : ""}
+					<p className="mx-auto max-w-2xl text-base text-muted-foreground sm:text-lg">
+						{hero.sub}
 					</p>
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-						<Button size="xl" asChild>
-							<Link href="/connect">
-								Connect the hosted server
-								<ArrowRight />
-							</Link>
-						</Button>
-						<Button
-							variant="link"
-							asChild
-							className="h-auto justify-start px-0 sm:justify-center"
-						>
-							<a href="#install">
-								<Terminal />
-								Or run it locally
-							</a>
-						</Button>
+					<div className="mx-auto max-w-xl space-y-3 pt-2">
+						<CopyCommand command={installCommands.claudeCode} />
+						<div className="flex flex-col justify-center gap-3 sm:flex-row">
+							<Button size="xl" asChild>
+								<Link href="/connect">
+									Connect the hosted server
+									<ArrowRight />
+								</Link>
+							</Button>
+							<Button size="xl" variant="outline" asChild>
+								<a href={GITHUB_URL} target="_blank" rel="noreferrer">
+									<Github />
+									Clone source
+								</a>
+							</Button>
+						</div>
 					</div>
-					<CopyCommand
-						command={installCommands.claudeCode}
-						className="hidden max-w-xl sm:flex"
-					/>
 				</div>
-				<TerminalDemo />
+
+				<div className="mx-auto mt-14 max-w-3xl">
+					<TerminalDemo />
+				</div>
 			</section>
 
+			{/* Trust: numbers instead of logos, since this is an individual-oriented tool. */}
 			<section className="border-y bg-card/40">
-				<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-6 text-sm text-muted-foreground">
-					<span className="text-xs uppercase tracking-wider">Works with</span>
-					{clients.map((client) => (
-						<span key={client}>{client}</span>
-					))}
+				<div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 px-6 py-10 sm:grid-cols-4">
+					<Stat value={String(toolCounts.total)} label="tools" />
+					<Stat value="MIT" label="open source" />
+					<Stat
+						value={String(installTargets.length - 1)}
+						label="clients documented"
+					/>
+					<Stat value={MCP_PROTOCOL_LATEST} label="mcp protocol" />
 				</div>
 			</section>
 
-			<section className="mx-auto max-w-6xl px-6 py-20">
+			{/* Problem before solution. */}
+			<section className="mx-auto max-w-5xl px-6 py-20">
 				<SectionHeading
-					title="From prompt to txid in three steps"
-					description="No SDK to learn. The agent reads the tool schemas and does the rest."
+					eyebrow="why"
+					title="Wallet code is the part of every agent nobody wants to write."
 				/>
-				<ol className="grid gap-6 md:grid-cols-3">
-					{steps.map((step, index) => (
-						<li key={step.title}>
-							<Card className="h-full bg-card/60">
-								<CardHeader>
-									<span className="font-mono text-xs text-primary">
-										0{index + 1}
-									</span>
-									<CardTitle className="text-lg">{step.title}</CardTitle>
-									<CardDescription>{step.description}</CardDescription>
-								</CardHeader>
-							</Card>
-						</li>
-					))}
-				</ol>
+				<div className="grid gap-4 md:grid-cols-2">
+					<Card className="bg-card/60">
+						<CardHeader>
+							<CardTitle className="font-mono text-sm uppercase tracking-wider text-muted-foreground">
+								without
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<ul className="space-y-3">
+								{problem.without.map((line) => (
+									<li key={line} className="flex gap-3 text-sm">
+										<X className="mt-0.5 size-4 shrink-0 text-destructive" />
+										<span className="text-muted-foreground">{line}</span>
+									</li>
+								))}
+							</ul>
+						</CardContent>
+					</Card>
+					<Card className="border-primary/40 bg-card/60">
+						<CardHeader>
+							<CardTitle className="font-mono text-sm uppercase tracking-wider text-primary">
+								with bsv-mcp
+							</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<ul className="space-y-3">
+								{problem.with.map((line) => (
+									<li key={line} className="flex gap-3 text-sm">
+										<Check className="mt-0.5 size-4 shrink-0 text-success" />
+										<span>{line}</span>
+									</li>
+								))}
+							</ul>
+						</CardContent>
+					</Card>
+				</div>
 			</section>
 
-			<section id="tools" className="mx-auto max-w-6xl px-6 pb-20">
+			{/* Tools: features tied back to the value prop, each with its live count. */}
+			<section id="tools" className="mx-auto max-w-5xl px-6 pb-20">
 				<SectionHeading
-					title="Everything on-chain, as tools"
+					eyebrow="tools"
+					title="Everything on-chain, as tools your agent can call."
 					description="Each category can be toggled with an environment variable. Tools that need keys fail gracefully when none are configured."
 					action={
-						<Button variant="link" asChild className="px-0">
+						<Button variant="link" asChild className="px-0 font-mono">
 							<a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer">
-								Full tool reference
+								full reference
 								<ArrowRight />
 							</a>
 						</Button>
@@ -212,18 +275,16 @@ export default function LandingPage() {
 						return (
 							<Card
 								key={name}
-								className="h-full bg-card/60 transition-colors hover:border-primary/40"
+								className="h-full bg-card/60 transition-colors hover:border-primary/50"
 							>
 								<CardHeader>
 									<div className="flex items-start justify-between gap-3">
-										<span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-											<Icon className="size-5" />
-										</span>
-										{count > 0 && (
-											<Badge variant="secondary">
+										<Icon className="size-5 text-primary" />
+										{count > 0 ? (
+											<Badge variant="secondary" className="font-mono">
 												{count} {count === 1 ? "tool" : "tools"}
 											</Badge>
-										)}
+										) : null}
 									</div>
 									<CardTitle className="pt-2">{name}</CardTitle>
 									<CardDescription>{description}</CardDescription>
@@ -234,10 +295,12 @@ export default function LandingPage() {
 				</div>
 			</section>
 
+			{/* Install: the same server three ways, then the exact config per client. */}
 			<section id="install" className="border-t bg-card/30">
-				<div className="mx-auto max-w-6xl px-6 py-20">
+				<div className="mx-auto max-w-5xl px-6 py-20">
 					<SectionHeading
-						title="Run it your way"
+						eyebrow="install"
+						title="Run it your way."
 						description="The same server ships in three shapes. Pick the one that fits your client and your key custody."
 					/>
 					<div className="grid gap-4 md:grid-cols-3">
@@ -264,81 +327,96 @@ export default function LandingPage() {
 						})}
 					</div>
 
-					<Separator className="my-10" />
-
-					<div className="space-y-4">
-						<p className="flex items-center gap-2 text-sm font-medium">
-							<Plug className="size-4 text-primary" />
-							Pick your client
-						</p>
+					<div className="mt-12 space-y-4">
+						<Eyebrow>pick your client</Eyebrow>
 						<InstallTabs targets={installTargets} />
 					</div>
+
+					<p className="mt-8 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+						works with {clients.join(" · ")}
+					</p>
 				</div>
 			</section>
 
-			<section className="mx-auto max-w-6xl px-6 py-20">
-				<div className="grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-					<div className="space-y-3">
-						<h2 className="text-3xl font-bold tracking-tight">
-							Keys stay yours
-						</h2>
-						<p className="text-muted-foreground">
-							An agent with a wallet needs guardrails. BSV MCP is built so the
-							model can act without ever seeing raw key material in a prompt.
-						</p>
+			{/* Key custody: the objection every wallet has to answer. */}
+			<section className="mx-auto max-w-5xl px-6 py-20">
+				<SectionHeading
+					eyebrow="keys"
+					title="Your keys never end up in a prompt."
+					description="An agent with a wallet needs guardrails. The model can act without ever seeing raw key material."
+				/>
+				<ul className="grid gap-4 sm:grid-cols-2">
+					{guarantees.map(({ key, title, description }) => {
+						const Icon = guaranteeIconFor[key];
+						return (
+							<li key={key}>
+								<Card className="h-full bg-card/60">
+									<CardHeader>
+										<Icon className="size-5 text-primary" />
+										<CardTitle className="pt-2">{title}</CardTitle>
+										<CardDescription>{description}</CardDescription>
+									</CardHeader>
+								</Card>
+							</li>
+						);
+					})}
+				</ul>
+			</section>
+
+			{/* FAQ: the questions a developer asks before installing anything. */}
+			<section id="faq" className="mx-auto max-w-5xl px-6 pb-20">
+				<SectionHeading eyebrow="faq" title="Before you install." />
+				<dl className="divide-y border-y">
+					{faq.map((item) => (
+						<div
+							key={item.q}
+							className="grid gap-2 py-6 md:grid-cols-[1fr_2fr] md:gap-8"
+						>
+							<dt className="font-semibold">{item.q}</dt>
+							<dd className="text-sm text-muted-foreground">{item.a}</dd>
+						</div>
+					))}
+				</dl>
+			</section>
+
+			{/* Final CTA on a distinct band, for readers who scroll to the end before deciding. */}
+			<section className="mx-auto max-w-5xl px-6 pb-24">
+				<div className="rounded-lg bg-primary px-8 py-12 text-primary-foreground sm:px-12">
+					<div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+						<div className="space-y-2">
+							<p className="font-mono text-xs uppercase tracking-[0.2em] opacity-70">
+								# ship
+							</p>
+							<h2 className="text-3xl font-bold tracking-tight">
+								Put your agent on-chain.
+							</h2>
+							<p className="max-w-md opacity-80">
+								One command. Your first transaction from a chat window in under
+								two minutes.
+							</p>
+						</div>
+						<div className="flex flex-col gap-3 sm:flex-row">
+							<Button
+								size="xl"
+								variant="secondary"
+								asChild
+								className="bg-primary-foreground text-primary hover:bg-primary-foreground/90"
+							>
+								<Link href="/connect">
+									Connect the hosted server
+									<ArrowRight />
+								</Link>
+							</Button>
+						</div>
 					</div>
-					<ul className="grid gap-4 sm:grid-cols-2">
-						{guarantees.map(({ key, title, description }) => {
-							const Icon = guaranteeIconFor[key];
-							return (
-								<li key={key}>
-									<Card className="h-full bg-card/60">
-										<CardHeader>
-											<Icon className="size-5 text-primary" />
-											<CardTitle className="pt-2">{title}</CardTitle>
-											<CardDescription>{description}</CardDescription>
-										</CardHeader>
-									</Card>
-								</li>
-							);
-						})}
-					</ul>
 				</div>
-			</section>
-
-			<section className="mx-auto max-w-6xl px-6 pb-24">
-				<Card className="overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-card to-card text-center">
-					<CardHeader className="items-center gap-3 p-10">
-						<CardTitle className="text-3xl font-bold tracking-tight">
-							Put your agent on-chain
-						</CardTitle>
-						<CardDescription className="mx-auto max-w-xl text-base">
-							Generate a key, download the backup, paste the config. You&apos;ll
-							be sending a transaction from a chat window in under two minutes.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="flex flex-col justify-center gap-3 pb-10 sm:flex-row">
-						<Button size="xl" asChild>
-							<Link href="/connect">
-								Get started
-								<ArrowRight />
-							</Link>
-						</Button>
-						<Button size="xl" variant="outline" asChild>
-							<a href={GITHUB_URL} target="_blank" rel="noreferrer">
-								<Github />
-								Star on GitHub
-							</a>
-						</Button>
-					</CardContent>
-				</Card>
 			</section>
 
 			<footer className="border-t">
-				<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-muted-foreground">
+				<div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-8 font-mono text-xs text-muted-foreground">
 					<p>
-						© {new Date().getFullYear()} BSV MCP · MIT License · v
-						{getAppVersion()} · MCP protocol {MCP_PROTOCOL_LATEST}
+						© {new Date().getFullYear()} bsv-mcp · MIT · v{version} · mcp{" "}
+						{MCP_PROTOCOL_LATEST}
 					</p>
 					<div className="flex flex-wrap gap-6">
 						<a
@@ -347,7 +425,7 @@ export default function LandingPage() {
 							rel="noreferrer"
 							className="hover:text-foreground"
 						>
-							GitHub
+							github
 						</a>
 						<a
 							href={NPM_URL}
@@ -358,15 +436,23 @@ export default function LandingPage() {
 							npm
 						</a>
 						<a
+							href={`${GITHUB_URL}/blob/master/CHANGELOG.md`}
+							target="_blank"
+							rel="noreferrer"
+							className="hover:text-foreground"
+						>
+							changelog
+						</a>
+						<a
 							href="https://modelcontextprotocol.io"
 							target="_blank"
 							rel="noreferrer"
 							className="hover:text-foreground"
 						>
-							MCP spec
+							mcp spec
 						</a>
 						<Link href="/connect" className="hover:text-foreground">
-							Hosted service
+							hosted
 						</Link>
 					</div>
 				</div>

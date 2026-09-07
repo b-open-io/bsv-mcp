@@ -285,3 +285,75 @@ export const installTargets: InstallTarget[] = [
 		docsUrl: "https://modelcontextprotocol.io",
 	},
 ];
+
+/**
+ * Hero copy. The headline must answer "what is this" on its own; the sub
+ * carries the specifics that make it believable.
+ */
+export const hero = {
+	eyebrow: "open source",
+	headline: "The Bitcoin SV wallet for MCP clients.",
+	sub: "Tools that let Claude, Cursor or any agent send BSV, inscribe ordinals and read the chain. No SDK code. One command, hosted or local.",
+};
+
+/** Problem before solution: what an agent developer does without this. */
+export const problem = {
+	without: [
+		"Hand-wire the SDK into every agent you build",
+		"Manage keys, UTXOs and fees yourself",
+		"Re-implement broadcasting for each client",
+	],
+	with: [
+		"One MCP server, every client",
+		"Keys encrypted at rest or held by your own signer",
+		"Ask in plain language, get a txid",
+	],
+};
+
+/** The walkthrough shown as one terminal session. */
+export const replay = [
+	{
+		label: "install",
+		lines: [
+			"$ claude plugin install bsv-mcp@b-open-io",
+			"✓ bsv-mcp registered",
+		],
+	},
+	{
+		label: "ask",
+		lines: ["> inscribe hello.svg as a 1sat ordinal and tell me the txid"],
+	},
+	{
+		label: "tool call",
+		lines: [
+			'● wallet_createOrdinals(file: "hello.svg", contentType: "image/svg+xml")',
+			"  ├ reading file (412 bytes)",
+			"  ├ selecting UTXOs · fee 1 sat/kb",
+			"  └ broadcast ✓",
+		],
+	},
+	{
+		label: "result",
+		lines: ["Inscribed. Outpoint f3a1…9c2e_0 — view it on 1satordinals.com"],
+	},
+];
+
+/** The objections a developer raises before installing anything. */
+export const faq = [
+	{
+		q: "Does it work with my client?",
+		a: "Anything that speaks MCP. Claude Code, Claude Desktop, Cursor, Codex, Grok Build and opencode are documented above with their exact config; any other stdio client runs it with bunx bsv-mcp@latest.",
+	},
+	{
+		q: "Where are my keys?",
+		a: "Locally, encrypted with AES-256-GCM in the bitcoin-backup format and created with 0600 permissions. Or nowhere near this server: point it at a BRC-100 signer and that wallet stays the permission authority for every spend.",
+	},
+	{
+		q: "Is it maintained?",
+		a: "Yes. The version and protocol revision in the footer are read from the release, not typed in, and the changelog on GitHub is the record of what shipped.",
+	},
+	{
+		q: "Can I read the code first?",
+		a: "All of it. MIT licensed, on GitHub, with the tool catalogue generated from the running server so the numbers on this page cannot drift from the code.",
+	},
+];
