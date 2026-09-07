@@ -51,7 +51,7 @@ bunx bsv-mcp@latest wallet_migrate --source legacy --account default
 bunx bsv-mcp@latest wallet_migrate --source sigma-lab --account sigma-lab
 ```
 
-The legacy source is `~/.bsv-mcp/keys.json`. The lab source is `~/.local/share/sigma-brc169-lab/root.wif` and `wallet.db`. The lab migration preserves `storageIdentityKey: sigma-brc169-lab` and the `1sat` deposit prefix. Legacy migration preserves `storageIdentityKey: bsv-mcp`. A legacy database stored elsewhere must be preserved separately before adopting the account; the migration does not guess its location.
+The legacy source is `~/.bsv-mcp/keys.json`. The lab source is `~/.local/share/sigma-brc169-lab/root.wif` and `wallet.db`. The lab migration preserves `storageIdentityKey: sigma-brc169-lab` and the `1sat` deposit prefix. Legacy migration preserves `storageIdentityKey: bsv-mcp` and the previous remote-storage setting (the 1Sat wallet endpoint unless overridden). A legacy database stored elsewhere must be preserved separately before adopting the account; the migration does not guess its location.
 
 Verify the encrypted account and database and make a backup before rerunning with `--erase-source`. That option overwrites and removes the source plaintext file after confirmation. Overwriting cannot guarantee erasure from SSDs, APFS snapshots, backups or other copies. It does not modify experiment scripts or delete their directories. Repeating migration with the same identity does not replace the account.
 

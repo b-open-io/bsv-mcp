@@ -163,9 +163,11 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 		});
 		expect(copied.query("SELECT n FROM retained").get()).toEqual({ n: 9956 });
 		copied.close();
-		expect(
-			statSync(join(accounts, "sigma-lab", "wallet-main.db")).mode & 0o777,
-		).toBe(0o600);
+		rmSync(join(accounts, "sigma-lab", "wallet-main.db"));
+		await expect(
+			migrateAccount("sigma-lab", "sigma-lab", password, accounts, source),
+		).rejects.toThrow("Incomplete migration destination");
+		expect(existsSync(join(source, "root.wif"))).toBe(true);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

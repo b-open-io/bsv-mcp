@@ -331245,9 +331245,16 @@ function erasePlaintext(file2) {
 async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join5(homedir2(), ".bsv-mcp") : join5(homedir2(), ".local/share/sigma-brc169-lab")) {
   const sourceFile = join5(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
   const target = accountDir(name, root);
+  const expectedStorage = source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab";
+  const verifyDestination = () => {
+    const config3 = readAccount(name, root);
+    if (!config3 || config3.storageIdentityKey !== expectedStorage || config3.chain !== "main" || source === "sigma-lab" && !existsSync5(join5(target, "wallet-main.db")))
+      throw new Error("Incomplete migration destination; source will not be erased. Preserve it and repair the account first.");
+  };
   if (!existsSync5(sourceFile)) {
     if (existsSync5(join5(target, "keys.bep"))) {
       await new SecureKeyManager({ keyDir: target }).loadEncryptedKeys(password);
+      verifyDestination();
       return { name, alreadyMigrated: true };
     }
     throw new Error("Migration source does not exist");
@@ -331270,11 +331277,15 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
     }).loadEncryptedKeys(password);
     if (old.payPk?.toWif() !== keys.payPk.toWif() || old.xprv !== keys.xprv || old.identityPk?.toWif() !== keys.identityPk?.toWif())
       throw new Error("Destination contains a different identity; no files changed");
+    verifyDestination();
     return { name, alreadyMigrated: true };
   }
   const config2 = {
     chain: "main",
-    storageIdentityKey: source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab",
+    storageIdentityKey: expectedStorage,
+    ...source === "legacy" ? {
+      activeRemote: backendUrl("REMOTE_STORAGE_URL", `${onesatUrl("main")}/1sat/wallet`)
+    } : {},
     address: source === "sigma-lab" ? PublicKey.fromString((await new ProtoWallet_default(keys.payPk).getPublicKey({
       protocolID: P1SAT_PROTOCOL,
       keyID: "1sat 0",
@@ -331396,6 +331407,7 @@ var init_accountCommands = __esm(() => {
   init_accountStore();
   init_accounts();
   init_accountStore();
+  init_backends();
   init_keyManager();
 });
 

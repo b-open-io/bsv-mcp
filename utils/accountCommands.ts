@@ -27,6 +27,7 @@ import {
 
 export { createAccount } from "./accountStore";
 
+import { backendUrl, onesatUrl } from "./backends";
 import { SecureKeyManager } from "./keyManager";
 import { confirm, newPassword, terminalInput } from "./terminal";
 
@@ -59,11 +60,25 @@ export async function migrateAccount(
 		source === "legacy" ? "keys.json" : "root.wif",
 	);
 	const target = accountDir(name, root);
+	const expectedStorage = source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab";
+	const verifyDestination = () => {
+		const config = readAccount(name, root);
+		if (
+			!config ||
+			config.storageIdentityKey !== expectedStorage ||
+			config.chain !== "main" ||
+			(source === "sigma-lab" && !existsSync(join(target, "wallet-main.db")))
+		)
+			throw new Error(
+				"Incomplete migration destination; source will not be erased. Preserve it and repair the account first.",
+			);
+	};
 	if (!existsSync(sourceFile)) {
 		if (existsSync(join(target, "keys.bep"))) {
 			await new SecureKeyManager({ keyDir: target }).loadEncryptedKeys(
 				password,
 			);
+			verifyDestination();
 			return { name, alreadyMigrated: true };
 		}
 		throw new Error("Migration source does not exist");
@@ -94,11 +109,20 @@ export async function migrateAccount(
 			throw new Error(
 				"Destination contains a different identity; no files changed",
 			);
+		verifyDestination();
 		return { name, alreadyMigrated: true };
 	}
 	const config: AccountConfig = {
 		chain: "main",
-		storageIdentityKey: source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab",
+		storageIdentityKey: expectedStorage,
+		...(source === "legacy"
+			? {
+					activeRemote: backendUrl(
+						"REMOTE_STORAGE_URL",
+						`${onesatUrl("main")}/1sat/wallet`,
+					),
+				}
+			: {}),
 		address:
 			source === "sigma-lab"
 				? PublicKey.fromString(
