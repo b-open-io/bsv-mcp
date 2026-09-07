@@ -39,12 +39,12 @@ export default function DocsPage() {
 								{section.title}
 							</a>
 						))}
-						<a
+						<Link
 							href="/docs.md"
 							className="block pt-4 font-mono text-xs text-primary"
 						>
 							Read as Markdown ↗
-						</a>
+						</Link>
 					</nav>
 				</aside>
 				<main className="min-w-0 max-w-3xl">

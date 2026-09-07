@@ -37,7 +37,18 @@ export function InstallTabs({ targets }: InstallTabsProps) {
 					value={target.key}
 					className="space-y-3 pt-4"
 				>
-					{target.command ? <CopyCommand command={target.command} /> : null}
+					{target.command ? (
+						<CopyCommand command={target.command} label={target.label} />
+					) : null}
+
+					{target.altCommands?.map((alt) => (
+						<div key={alt.command} className="space-y-1.5">
+							<p className="font-mono text-xs text-muted-foreground">
+								{alt.label}
+							</p>
+							<CopyCommand command={alt.command} label={target.label} />
+						</div>
+					))}
 
 					{target.config ? (
 						<div className="space-y-2">
@@ -46,7 +57,13 @@ export function InstallTabs({ targets }: InstallTabsProps) {
 									{target.configPath}
 								</p>
 							) : null}
-							<CodeSnippet code={target.config} />
+							<CodeSnippet
+								code={target.config}
+								language={
+									target.configPath?.endsWith(".toml") ? "toml" : "json"
+								}
+								filename={target.configPath ?? `${target.label} config`}
+							/>
 						</div>
 					) : null}
 

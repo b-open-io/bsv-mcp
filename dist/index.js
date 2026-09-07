@@ -31405,6 +31405,7 @@ var init_package = __esm(() => {
       mnee: "^3.1.0",
       "satoshi-token": "^0.0.7",
       "schema-dts": "^1.1.5",
+      shiki: "^4.4.3",
       "sigma-protocol": "^0.1.9",
       zod: "4.4.3"
     },

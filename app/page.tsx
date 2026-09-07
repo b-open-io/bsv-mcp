@@ -265,10 +265,10 @@ export default function LandingPage() {
 					description="Counts describe the release catalog. Your available tools depend on wallet mode and enabled categories; see the docs for setup."
 					action={
 						<Button variant="link" asChild className="px-0 font-mono">
-							<a href="/docs#tools">
+							<Link href="/docs#tools">
 								full reference
 								<ArrowRight />
-							</a>
+							</Link>
 						</Button>
 					}
 				/>

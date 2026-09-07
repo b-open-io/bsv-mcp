@@ -106,7 +106,7 @@ export const deployModes = [
 		title: "Hosted",
 		subtitle: "bsvmcp.com",
 		description:
-			"Authenticate with a Bitcoin signature and get a ready-to-paste config. Nothing to run.",
+			"Add the hosted URL to your AI client and authorize access through Sigma Identity.",
 	},
 ];
 
@@ -309,34 +309,6 @@ export const problem = {
 		"Ask in plain language, get a txid",
 	],
 };
-
-/** The walkthrough shown as one terminal session. */
-export const replay = [
-	{
-		label: "install",
-		lines: [
-			"$ claude plugin install bsv-mcp@b-open-io",
-			"✓ bsv-mcp registered",
-		],
-	},
-	{
-		label: "ask",
-		lines: ["> inscribe hello.svg as a 1sat ordinal and tell me the txid"],
-	},
-	{
-		label: "tool call",
-		lines: [
-			'● wallet_createOrdinals(dataB64: "…", contentType: "image/svg+xml")',
-			"  ├ content prepared as base64",
-			"  ├ selecting UTXOs · estimating fee",
-			"  └ broadcast ✓",
-		],
-	},
-	{
-		label: "result",
-		lines: ["Inscribed. Outpoint f3a1…9c2e_0 — view it on 1satordinals.com"],
-	},
-];
 
 /** The objections a developer raises before installing anything. */
 export const faq = [

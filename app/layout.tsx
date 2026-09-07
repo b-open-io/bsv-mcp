@@ -59,7 +59,7 @@ export const metadata: Metadata = {
 		locale: "en_US",
 	},
 	twitter: {
-		card: "summary_large_image",
+		card: "summary",
 		title: `${SITE_NAME} — ${SITE_TAGLINE}`,
 		description: SITE_DESCRIPTION,
 	},
@@ -123,7 +123,7 @@ export default function RootLayout({
 					type="application/ld+json"
 					// biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD must be inlined as a script body.
 					dangerouslySetInnerHTML={{
-						__html: JSON.stringify(structuredData()),
+						__html: JSON.stringify(structuredData()).replace(/</g, "\\u003c"),
 					}}
 				/>
 				{children}

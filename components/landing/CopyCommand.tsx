@@ -1,54 +1,42 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Terminal } from "lucide-react";
+import {
+	CodeBlock,
+	CodeBlockActions,
+	CodeBlockCopyButton,
+	CodeBlockFilename,
+	CodeBlockHeader,
+	CodeBlockTitle,
+} from "@/components/ai-elements/code-block";
 import { cn } from "@/lib/utils";
 
 interface CopyCommandProps {
 	command: string;
+	label?: string;
 	className?: string;
 }
 
-export function CopyCommand({ command, className }: CopyCommandProps) {
-	const [copied, setCopied] = useState(false);
-
-	async function copy() {
-		try {
-			await navigator.clipboard.writeText(command);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 1500);
-		} catch {
-			// Clipboard unavailable (insecure context); nothing to do.
-		}
-	}
-
+/**
+ * One shell command per block: Shiki-highlighted bash with a copy button,
+ * in the ai-elements CodeBlock API shape.
+ */
+export function CopyCommand({ command, label, className }: CopyCommandProps) {
 	return (
-		<div
-			className={cn(
-				"flex items-center gap-3 rounded-lg border bg-muted/40 py-2 pl-4 pr-2 font-mono text-sm",
-				className,
-			)}
+		<CodeBlock
+			code={command}
+			language="bash"
+			className={cn("bg-muted/40", className)}
 		>
-			<span aria-hidden className="select-none text-primary">
-				$
-			</span>
-			<code className="min-w-0 flex-1 whitespace-normal break-all text-foreground sm:overflow-x-auto sm:whitespace-nowrap">
-				{command}
-			</code>
-			<Button
-				type="button"
-				variant="ghost"
-				size="icon"
-				onClick={copy}
-				aria-label={copied ? "Command copied" : "Copy command"}
-			>
-				{copied ? (
-					<Check className="text-success" />
-				) : (
-					<Copy className="text-muted-foreground" />
-				)}
-			</Button>
-		</div>
+			<CodeBlockHeader>
+				<CodeBlockTitle>
+					<Terminal size={14} aria-hidden />
+					<CodeBlockFilename>{label ?? "terminal"}</CodeBlockFilename>
+				</CodeBlockTitle>
+				<CodeBlockActions>
+					<CodeBlockCopyButton />
+				</CodeBlockActions>
+			</CodeBlockHeader>
+		</CodeBlock>
 	);
 }
