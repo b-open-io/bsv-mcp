@@ -59,13 +59,8 @@ describe("oauth scopes", () => {
 		}
 	});
 
-	test("declares the bsv-specific least-privilege scopes", () => {
-		for (const name of [
-			"bsv:tools",
-			"bsv:wallet",
-			"bsv:ordinals",
-			"bsv:tokens",
-		]) {
+	test("declares the supported identity scopes", () => {
+		for (const name of ["openid", "profile", "email", "offline_access"]) {
 			expect(OAUTH_SCOPE_NAMES).toContain(name);
 		}
 	});

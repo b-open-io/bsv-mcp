@@ -22,22 +22,19 @@ const verifyToken = async (
 			process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
 		// Call userinfo endpoint to get full user identity (standard OAuth/OIDC pattern)
-		const response = await fetch(`${authServer}/api/oauth/userinfo`, {
+		const response = await fetch(`${authServer}/api/auth/oauth2/userinfo`, {
 			headers: {
 				Authorization: `Bearer ${bearerToken}`,
 			},
 		});
 
 		if (!response.ok) {
-			console.error(
-				"Token validation failed:",
-				response.status,
-				await response.text(),
-			);
+			console.error("Token validation failed:", response.status);
 			return undefined;
 		}
 
 		const userinfo = await response.json();
+		if (typeof userinfo.sub !== "string" || !userinfo.sub) return undefined;
 
 		// Extract scopes - userinfo includes token_scope in dev mode
 		// For production, we'll need to call get-session separately or parse from id_token

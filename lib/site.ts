@@ -81,19 +81,6 @@ export const OAUTH_SCOPES: { name: string; description: string }[] = [
 		name: "offline_access",
 		description: "Refresh access without re-prompting the user.",
 	},
-	{
-		name: "bsv:tools",
-		description: "Call read-only blockchain and utility tools.",
-	},
-	{
-		name: "bsv:wallet",
-		description: "Read wallet state and create signed transactions.",
-	},
-	{
-		name: "bsv:ordinals",
-		description: "Read, inscribe, list and buy 1Sat Ordinals.",
-	},
-	{ name: "bsv:tokens", description: "Read and transfer token balances." },
 ];
 
 export const OAUTH_SCOPE_NAMES = OAUTH_SCOPES.map((scope) => scope.name);
