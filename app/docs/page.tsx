@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { BundledLanguage } from "shiki";
+import { CodeSnippet } from "@/components/landing/CodeSnippet";
 import { GitHubStars } from "@/components/landing/GitHubStars";
 import { BrcReferences } from "@/lib/brc";
 import { docs } from "@/lib/docs";
@@ -11,6 +13,21 @@ export const metadata: Metadata = {
 		"Install BSV MCP, connect a wallet, configure 1Sat services, and use payments, ordinals and identity tools.",
 	alternates: { canonical: "/docs" },
 };
+
+/**
+ * Docs snippets carry no language tag: JSON payloads start with `{` (or a
+ * `//` comment), everything else is shell / env text.
+ */
+function DocsCode({ code }: { code: string }) {
+	const trimmed = code.trimStart();
+	const language: BundledLanguage =
+		trimmed.startsWith("{") || trimmed.startsWith("[")
+			? "json"
+			: trimmed.startsWith("//")
+				? "jsonc"
+				: "bash";
+	return <CodeSnippet code={code} language={language} filename={language} />;
+}
 
 export default function DocsPage() {
 	return (
@@ -72,11 +89,7 @@ export default function DocsPage() {
 									<BrcReferences text={paragraph} />
 								</p>
 							))}
-							{section.code && (
-								<pre className="overflow-x-auto rounded-lg border bg-card p-5 text-xs leading-6">
-									<code>{section.code}</code>
-								</pre>
-							)}
+							{section.code && <DocsCode code={section.code} />}
 							{section.topics?.map((topic) => (
 								<div key={topic.title} className="space-y-4 pt-5">
 									<h3 className="text-lg font-semibold">{topic.title}</h3>
@@ -88,11 +101,7 @@ export default function DocsPage() {
 											<BrcReferences text={paragraph} />
 										</p>
 									))}
-									{topic.code && (
-										<pre className="overflow-x-auto rounded-lg border bg-card p-5 text-xs leading-6">
-											<code>{topic.code}</code>
-										</pre>
-									)}
+									{topic.code && <DocsCode code={topic.code} />}
 								</div>
 							))}
 							{section.links && (
