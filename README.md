@@ -4,6 +4,18 @@ BSV MCP connects your AI assistant to Bitcoin SV. Ask it to check a transaction,
 
 [Documentation](https://bsvmcp.com/docs) · [Connect hosted](https://bsvmcp.com/connect) · [npm](https://www.npmjs.com/package/bsv-mcp) · [Issues](https://github.com/b-open-io/bsv-mcp/issues)
 
+## Install in ChatGPT desktop or Codex
+
+In Plugins, choose **Add marketplace** and enter `b-open-io/claude-plugins`.
+Leave Git ref and Sparse paths blank. Select **BSV MCP** in the bOpen marketplace
+and install it. Authenticate through Sigma Identity when prompted, then start a
+new chat and ask: “Run bsv_status and explain which services are available.”
+
+The plugin uses hosted MCP, so you do not need Bun or a local wallet. Signing in
+does not authorize spending or connect a wallet on your computer. For wallet
+operations, use the local setup below. If you already have a manual BSV MCP
+connection, choose which connection to use to avoid duplicate tools.
+
 ## Quick start
 
 Install [Bun](https://bun.sh). Set up an encrypted account with `bunx bsv-mcp@latest init`, or connect an existing signer as described in [wallet setup](https://bsvmcp.com/docs#wallets). Then register the server:
