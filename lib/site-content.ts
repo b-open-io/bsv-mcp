@@ -322,7 +322,7 @@ export const faq = [
 	},
 	{
 		q: "Is it maintained?",
-		a: "Yes. The version and protocol revision in the footer are read from the release, not typed in, and the changelog on GitHub is the record of what shipped.",
+		a: "Yes. The changelog on GitHub is the record of what shipped.",
 	},
 	{
 		q: "Can I read the code first?",

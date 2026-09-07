@@ -33,8 +33,6 @@ import {
 import { BrcReferences } from "@/lib/brc";
 import {
 	GITHUB_URL,
-	getAppVersion,
-	MCP_PROTOCOL_LATEST,
 	NPM_URL,
 } from "@/lib/site";
 import {
@@ -124,7 +122,6 @@ function Stat({ value, label }: { value: string; label: string }) {
 export default function LandingPage() {
 	const toolCounts = getToolCounts();
 	const headlineTotal = approximateTotal(toolCounts.total);
-	const version = getAppVersion();
 
 	return (
 		<div className="relative min-h-screen overflow-x-hidden">
@@ -164,7 +161,7 @@ export default function LandingPage() {
 				<div className="mx-auto max-w-3xl space-y-6 text-center">
 					<Eyebrow>
 						{hero.eyebrow}
-						{headlineTotal ? ` · ${headlineTotal} tools` : ""} · v{version}
+						{headlineTotal ? ` · ${headlineTotal} tools` : ""}
 					</Eyebrow>
 					<h1 className="text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
 						The Bitcoin SV wallet for{" "}
@@ -202,14 +199,13 @@ export default function LandingPage() {
 
 			{/* Trust: numbers instead of logos, since this is an individual-oriented tool. */}
 			<section className="border-y bg-card/40">
-				<div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 px-6 py-10 sm:grid-cols-4">
+				<div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 px-6 py-10 sm:grid-cols-3">
 					<Stat value={String(toolCounts.total)} label="tools" />
 					<Stat value="MIT" label="open source" />
 					<Stat
 						value={String(installTargets.length - 1)}
 						label="clients documented"
 					/>
-					<Stat value={MCP_PROTOCOL_LATEST} label="mcp protocol" />
 				</div>
 			</section>
 
@@ -424,10 +420,7 @@ export default function LandingPage() {
 
 			<footer className="border-t">
 				<div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-8 font-mono text-xs text-muted-foreground">
-					<p>
-						© {new Date().getFullYear()} bsv-mcp · MIT · v{version} · mcp{" "}
-						{MCP_PROTOCOL_LATEST}
-					</p>
+					<p>© {new Date().getFullYear()} bsv-mcp · MIT</p>
 					<div className="flex flex-wrap gap-6">
 						<a
 							href={GITHUB_URL}
