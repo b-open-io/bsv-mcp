@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 
-const trafficLights = ["bg-chart-3", "bg-chart-1", "bg-chart-2"];
+const trafficLights = ["bg-chart-3", "bg-warning", "bg-chart-2"];
 
 export function TerminalDemo() {
 	return (
