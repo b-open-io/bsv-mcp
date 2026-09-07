@@ -47,7 +47,8 @@ markdown by sending \`Accept: text/markdown\`, or by appending \`.md\` to the pa
 
 - [Home](${SITE_URL}/index.md): what ${SITE_NAME} is, the tool catalogue, install instructions and deployment modes
 - [Connect](${SITE_URL}/connect.md): generate or import a Bitcoin key and get a client configuration
-- [README](${GITHUB_URL}#readme): full installation and configuration reference
+- [Documentation](${SITE_URL}/docs.md): wallet setup, backend configuration, tools, sponsorship, delegation and troubleshooting
+- [README](${GITHUB_URL}#readme): quick start and source
 - [Changelog](${GITHUB_URL}/blob/master/CHANGELOG.md): release history
 
 ## API
@@ -63,7 +64,7 @@ ${scopes}
 ## Tools
 
 ${categories}
-${total ? `\nTools registered by default: ${total}.\n` : ""}
+${total ? `\nTools in the release catalog (availability depends on configuration): ${total}.\n` : ""}
 ## Optional
 
 - [Source](${GITHUB_URL}): issue tracker and contribution guide

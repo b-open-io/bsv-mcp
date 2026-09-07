@@ -1,5 +1,3 @@
-import os from "node:os";
-import path from "node:path";
 import { BAP_KEY_ID, BAP_PROTOCOL_ID } from "@1sat/actions";
 import {
 	Utils as BSVUtils,
@@ -15,6 +13,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { BAP } from "bsv-bap";
 import { z } from "zod";
+import { accountDir } from "../../utils/accounts";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import { SecureKeyManager } from "../../utils/keyManager";
 import { BAP_PREFIX } from "../constants";
@@ -25,8 +24,7 @@ import { fetchPaymentUtxos } from "../wallet/fetchPaymentUtxos";
 // Get toArray from BSV SDK Utils
 const { toArray } = BSVUtils;
 
-const KEY_DIR = path.join(os.homedir(), ".bsv-mcp");
-const KEY_FILE_PATH = path.join(KEY_DIR, "keys.json");
+const KEY_DIR = accountDir();
 
 const bapGenerateArgsSchema = z.object({
 	alternateName: z
@@ -58,7 +56,13 @@ async function generateBapKeys(
 	txid?: string;
 	rawTx?: string;
 }> {
-	const keyManager = new SecureKeyManager({ keyDir: KEY_DIR });
+	if (!process.env.BSV_MCP_PASSWORD || process.env.BSV_MCP_PASSWORD.length < 8)
+		return {
+			success: false,
+			error:
+				"Unlock the selected encrypted account with BSV_MCP_PASSWORD before creating an identity",
+		};
+	const keyManager = new SecureKeyManager();
 	let tempXprv = "";
 	let _identityPk: string;
 	let payPkToPreserve: PrivateKey | undefined;
@@ -89,7 +93,7 @@ async function generateBapKeys(
 				const jsonError = match ? match[0] : "JSON Parse error";
 				return {
 					success: false,
-					error: `Could not read or parse keys.json: ${jsonError}`,
+					error: `Could not read or parse the selected encrypted account: ${jsonError}`,
 				};
 			}
 
@@ -105,8 +109,8 @@ async function generateBapKeys(
 			);
 			const errorMessage =
 				source === "none"
-					? "keys.json not found. Payment Private Key (payPk) is required."
-					: "Payment Private Key (payPk) does not exist in keys.json.";
+					? "the selected encrypted account not found. Payment Private Key (payPk) is required."
+					: "Payment Private Key (payPk) does not exist in the selected encrypted account.";
 			return {
 				success: false,
 				error: errorMessage,
@@ -121,7 +125,8 @@ async function generateBapKeys(
 			);
 			return {
 				success: false,
-				error: "BAP Master Key (xprv) already exists in keys.json.",
+				error:
+					"BAP Master Key (xprv) already exists in the selected encrypted account.",
 			};
 		}
 
@@ -131,15 +136,9 @@ async function generateBapKeys(
 			);
 			return {
 				success: false,
-				error: "BAP Identity Key (identityPk) already exists in keys.json.",
+				error:
+					"BAP Identity Key (identityPk) already exists in the selected encrypted account.",
 			};
-		}
-
-		const status = keyManager.getStatus();
-		if (source === "legacy" && !status.hasEncrypted) {
-			console.warn(
-				"WARN: Using unencrypted keys. Run the server again to encrypt them.",
-			);
 		}
 	} catch (fileError) {
 		console.error("ERROR: Failed to read keys from secure storage:", fileError);
@@ -189,17 +188,7 @@ async function generateBapKeys(
 		};
 
 		await keyManager.saveKeys(updatedKeys);
-		const status = keyManager.getStatus();
-
-		if (status.hasEncrypted) {
-			console.error(
-				`INFO: BAP HD Master Key and initial Identity Key have been generated and saved (encrypted) to ${KEY_DIR}/keys.bep`,
-			);
-		} else {
-			console.error(
-				`INFO: BAP HD Master Key and initial Identity Key have been generated and saved to ${KEY_FILE_PATH}`,
-			);
-		}
+		console.error(`INFO: Identity saved encrypted to ${KEY_DIR}/keys.bep`);
 
 		// Create the ID registration transaction output
 		// BAP ID format: OP_0 OP_RETURN <BAP_PREFIX> "ID" <identity_key> <root_address> <current_address>

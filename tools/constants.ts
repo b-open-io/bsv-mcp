@@ -1,3 +1,4 @@
+import { backendUrl, contentUrl } from "../utils/backends";
 /**
  * Constants for BSV MCP Tools
  */
@@ -33,8 +34,7 @@ export const PUBLIC_URL = process.env.PUBLIC_URL || "";
 export const BMAP_URL =
 	process.env.PUBLIC_BMAP_URL || "https://bmap-api-production.up.railway.app";
 
-export const ORDFS_URL =
-	process.env.PUBLIC_ORDFS_URL || "https://ordfs.network";
+export const ORDFS_URL = contentUrl();
 export const YOURS_INSTALL_URL =
 	"https://chromewebstore.google.com/detail/yours-wallet/mlbnicldlpdimbjdcncnklfempedeipj";
 
@@ -42,5 +42,11 @@ export const YOURS_INSTALL_URL =
 // 	process.env.PUBLIC_BSOCIAL_API_URL ||
 // 	"https://bsocial-overlay-production.up.railway.app/api/v1";
 
-export const BSOCIAL_API_URL = "https://sigma.1sat.app/1sat/bap";
-export const V5_API_URL = "https://ordinals.1sat.app/v5";
+export const BSOCIAL_API_URL = backendUrl(
+	"BSOCIAL_API_URL",
+	"https://sigma.1sat.app/1sat/bap",
+);
+export const V5_API_URL = backendUrl(
+	"V5_API_URL",
+	"https://ordinals.1sat.app/v5",
+);

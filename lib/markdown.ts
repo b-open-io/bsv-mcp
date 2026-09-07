@@ -1,3 +1,5 @@
+import { linkBrcMarkdown } from "./brc";
+import { renderDocsMarkdown } from "./docs";
 import {
 	AUTH_SERVER_URL,
 	GITHUB_URL,
@@ -69,7 +71,7 @@ export function renderHomeMarkdown(): string {
 		.map((category) => {
 			const count = countTools(counts, category.key);
 			const suffix = count > 0 ? ` (${count} tools)` : "";
-			return `### ${category.name}${suffix}\n\n${category.description}`;
+			return `### ${category.name}${suffix}\n\n${linkBrcMarkdown(category.description)}`;
 		})
 		.join("\n\n");
 
@@ -91,17 +93,17 @@ Works with ${clients.join(", ")}.
 
 ## How it works
 
-${steps.map((step, index) => `${index + 1}. **${step.title}** — ${step.description}`).join("\n")}
+${steps.map((step, index) => `${index + 1}. **${step.title}** — ${linkBrcMarkdown(step.description)}`).join("\n")}
 
 ## Tools
 
 ${categories}
 
-${total ? `Total tools registered by default: ${total}.` : ""}
+${total ? `Tools in the release catalog (availability depends on configuration): ${total}.` : ""}
 
 ## Deployment modes
 
-${deployModes.map((mode) => `- **${mode.title}** (${mode.subtitle}) — ${mode.description}`).join("\n")}
+${deployModes.map((mode) => `- **${mode.title}** (${mode.subtitle}) — ${linkBrcMarkdown(mode.description)}`).join("\n")}
 
 ## Authentication and scopes
 
@@ -114,14 +116,15 @@ ${scopeList()}
 
 ## Key custody
 
-${guarantees.map((item) => `- **${item.title}** — ${item.description}`).join("\n")}
+${guarantees.map((item) => `- **${item.title}** — ${linkBrcMarkdown(item.description)}`).join("\n")}
 
 ## FAQ
 
-${faq.map((item) => `**${item.q}**\n\n${item.a}`).join("\n\n")}
+${faq.map((item) => `**${item.q}**\n\n${linkBrcMarkdown(item.a)}`).join("\n\n")}
 
 ## More
 
+- Documentation: ${SITE_URL}/docs
 - Connect and generate a config: ${SITE_URL}/connect
 - Machine-readable index: ${SITE_URL}/llms.txt
 - Sitemap: ${SITE_URL}/sitemap.xml
@@ -185,4 +188,5 @@ No page exists at \`${path}\` on ${SITE_URL}.
 export const markdownPages: Record<string, () => string> = {
 	"/": renderHomeMarkdown,
 	"/connect": renderConnectMarkdown,
+	"/docs": renderDocsMarkdown,
 };

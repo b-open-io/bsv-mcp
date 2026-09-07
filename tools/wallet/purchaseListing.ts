@@ -2,6 +2,7 @@ import type { OneSatContext } from "@1sat/actions";
 import { buyBsv21, buyOrdinal } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { legacyOrdinalsUrl } from "../../utils/backends";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import {
 	MARKET_FEE_PERCENTAGE,
@@ -56,7 +57,7 @@ export function registerPurchaseListingTool(
 
 					if (!tokenAmount) {
 						const response = await fetch(
-							`https://ordinals.gorillapool.io/api/txos/${listingOutpoint}?script=true`,
+							`${legacyOrdinalsUrl()}/txos/${listingOutpoint}?script=true`,
 						);
 						if (!response.ok) {
 							throw new Error(

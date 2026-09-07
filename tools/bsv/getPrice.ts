@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { explorerFetch, explorerUrl } from "../../utils/backends";
 
 // Define cache duration (5 minutes in milliseconds)
 const PRICE_CACHE_DURATION = 5 * 60 * 1000;
@@ -20,9 +21,9 @@ async function getBsvPriceWithCache(): Promise<number> {
 	}
 
 	// If no valid cache, fetch new price
-	const res = await fetch(
-		"https://api.whatsonchain.com/v1/bsv/main/exchangerate",
-	);
+	const res = await explorerFetch(`${explorerUrl("main")}/exchangerate`, {
+		signal: AbortSignal.timeout(10_000),
+	});
 	if (!res.ok) throw new Error("Failed to fetch price");
 
 	const data = (await res.json()) as {
@@ -32,7 +33,7 @@ async function getBsvPriceWithCache(): Promise<number> {
 	};
 
 	const price = Number(data.rate);
-	if (Number.isNaN(price) || price <= 0)
+	if (!Number.isFinite(price) || price <= 0)
 		throw new Error("Invalid price received");
 
 	// Update cache

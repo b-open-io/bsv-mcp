@@ -1,9 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+	DroplitError,
 	discoverDroplitSponsors,
 	droplitApiBaseUrl,
-	DroplitError,
 } from "../../utils/droplit";
 import { createSuccessResponse } from "../utils/errorHandler";
 

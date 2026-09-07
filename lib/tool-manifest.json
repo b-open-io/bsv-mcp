@@ -17,6 +17,7 @@
 		"bsv_decodeTransaction",
 		"bsv_explore",
 		"bsv_getPrice",
+		"bsv_status",
 		"mnee_getBalance",
 		"mnee_parseTx",
 		"mnee_sendMnee",
@@ -39,6 +40,7 @@
 		"wallet_discoverByIdentityKey",
 		"wallet_encrypt",
 		"wallet_gatherCollectionInfo",
+		"wallet_generate",
 		"wallet_getAddress",
 		"wallet_getBalance",
 		"wallet_getBsv21Balances",
@@ -49,8 +51,10 @@
 		"wallet_getOrdinals",
 		"wallet_getPublicKey",
 		"wallet_getVersion",
+		"wallet_import",
 		"wallet_internalizeAction",
 		"wallet_isAuthenticated",
+		"wallet_list",
 		"wallet_listActions",
 		"wallet_listCertificates",
 		"wallet_listOrdinal",
@@ -65,6 +69,7 @@
 		"wallet_refreshUtxos",
 		"wallet_relinquishCertificate",
 		"wallet_relinquishOutput",
+		"wallet_remove",
 		"wallet_revealCounterpartyKeyLinkage",
 		"wallet_revealDelegation",
 		"wallet_revealSpecificKeyLinkage",
@@ -77,8 +82,11 @@
 		"wallet_sweepOrdinals",
 		"wallet_transferOrdToken",
 		"wallet_unlockBsv",
+		"wallet_use",
 		"wallet_verifyHmac",
 		"wallet_verifySignature",
-		"wallet_waitForAuthentication"
+		"wallet_waitForAuthentication",
+		"x402_payQuote",
+		"x402_request"
 	]
 }

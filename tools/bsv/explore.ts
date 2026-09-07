@@ -1,11 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-
-// Base URL for WhatsOnChain API
-const WOC_API_BASE_URL = "https://api.whatsonchain.com/v1/bsv";
+import {
+	configuredChain,
+	explorerFetch,
+	explorerUrl,
+} from "../../utils/backends";
 
 /**
- * WhatsOnChain API endpoints available for exploration
+ * configured explorer API endpoints available for exploration
  */
 enum ExploreEndpoint {
 	// Chain endpoints
@@ -38,19 +40,14 @@ enum ExploreEndpoint {
 	HEALTH = "health",
 }
 
-enum Network {
-	MAIN = "main",
-	TEST = "test",
-}
-
 // Schema for the bsv_explore tool arguments
 const exploreArgsSchema = z.object({
 	endpoint: z
 		.nativeEnum(ExploreEndpoint)
-		.describe("WhatsOnChain API endpoint to call"),
+		.describe("configured explorer API endpoint to call"),
 	network: z
-		.nativeEnum(Network)
-		.default(Network.MAIN)
+		.enum(["main", "test"])
+		.default(configuredChain())
 		.describe("Network to use (main or test)"),
 
 	// Parameters for specific endpoints
@@ -101,7 +98,7 @@ const exploreArgsSchema = z.object({
 export function registerExploreTool(server: McpServer): void {
 	server.tool(
 		"bsv_explore",
-		"Explore Bitcoin SV blockchain data using the WhatsOnChain API. Access multiple data types:\n\n" +
+		"Explore Bitcoin SV blockchain data using the configured explorer API. Access multiple data types:\n\n" +
 			"CHAIN DATA:\n" +
 			"- chain_info: Network stats, difficulty, and chain work\n" +
 			"- chain_tips: Current chain tips including heights and states\n" +
@@ -196,7 +193,7 @@ export function registerExploreTool(server: McpServer): void {
 				}
 
 				// Build API URL based on the selected endpoint
-				let apiUrl = `${WOC_API_BASE_URL}/${params.network}`;
+				let apiUrl = explorerUrl(params.network);
 
 				switch (params.endpoint) {
 					case ExploreEndpoint.CHAIN_INFO:
@@ -271,8 +268,9 @@ export function registerExploreTool(server: McpServer): void {
 
 				// Special handling for bulk_tx_details which requires a POST request
 				if (params.endpoint === ExploreEndpoint.BULK_TX_DETAILS) {
-					const response = await fetch(apiUrl, {
+					const response = await explorerFetch(apiUrl, {
 						method: "POST",
+						signal: AbortSignal.timeout(10_000),
 						headers: {
 							"Content-Type": "application/json",
 						},
@@ -300,7 +298,9 @@ export function registerExploreTool(server: McpServer): void {
 				}
 
 				// For all other endpoints, use GET request
-				const response = await fetch(apiUrl);
+				const response = await explorerFetch(apiUrl, {
+					signal: AbortSignal.timeout(10_000),
+				});
 				if (!response.ok) {
 					let errorMsg = `API error: ${response.status} ${response.statusText}`;
 					// Provide helpful tips for specific error codes
@@ -329,7 +329,11 @@ export function registerExploreTool(server: McpServer): void {
 					throw new Error(errorMsg);
 				}
 
-				const result = await response.json();
+				const result =
+					params.endpoint === ExploreEndpoint.HEALTH ||
+					params.endpoint === ExploreEndpoint.TX_RAW
+						? await response.text()
+						: await response.json();
 
 				return {
 					content: [

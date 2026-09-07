@@ -5,9 +5,13 @@ import type {
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { backendUrl } from "../../utils/backends";
 
 // API endpoint for the A2B Overlay service
-const OVERLAY_API_URL = "https://a2b-overlay-production.up.railway.app/v1";
+const OVERLAY_API_URL = backendUrl(
+	"A2B_API_URL",
+	"https://a2b-overlay-production.up.railway.app/v1",
+);
 
 type A2BDiscoveryItem = {
 	txid: string;

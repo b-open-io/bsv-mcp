@@ -6,6 +6,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
 	return [
 		{
+			url: `${SITE_URL}/docs`,
+			lastModified,
+			changeFrequency: "weekly",
+			priority: 0.9,
+		},
+		{
+			url: `${SITE_URL}/docs.md`,
+			lastModified,
+			changeFrequency: "weekly",
+			priority: 0.5,
+		},
+		{
 			url: `${SITE_URL}/`,
 			lastModified,
 			changeFrequency: "weekly",

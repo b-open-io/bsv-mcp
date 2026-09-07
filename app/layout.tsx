@@ -87,7 +87,7 @@ function structuredData(): WithContext<SoftwareApplication> {
 		operatingSystem: "macOS, Linux, Windows",
 		softwareVersion: getAppVersion(),
 		license: "https://opensource.org/licenses/MIT",
-		codeRepository: GITHUB_URL,
+		sameAs: GITHUB_URL,
 		offers: {
 			"@type": "Offer",
 			price: "0",

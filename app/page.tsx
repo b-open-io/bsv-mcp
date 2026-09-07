@@ -17,7 +17,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { CopyCommand } from "@/components/landing/CopyCommand";
+import { GitHubStars } from "@/components/landing/GitHubStars";
 import { InstallTabs } from "@/components/landing/InstallTabs";
+import { MobileMenu } from "@/components/landing/MobileMenu";
 import { TerminalDemo } from "@/components/landing/TerminalDemo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { BrcReferences } from "@/lib/brc";
 import {
 	GITHUB_URL,
 	getAppVersion,
@@ -95,7 +98,9 @@ function SectionHeading({
 				<Eyebrow>{eyebrow}</Eyebrow>
 				<h2 className="text-3xl font-bold tracking-tight">{title}</h2>
 				{description ? (
-					<p className="text-muted-foreground">{description}</p>
+					<p className="text-muted-foreground">
+						<BrcReferences text={description} />
+					</p>
 				) : null}
 			</div>
 			{action}
@@ -123,7 +128,7 @@ export default function LandingPage() {
 
 	return (
 		<div className="relative min-h-screen overflow-x-hidden">
-			<header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+			<header className="relative mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
 				<Link
 					href="/"
 					className="flex items-center gap-2 font-mono font-semibold tracking-tight"
@@ -145,12 +150,11 @@ export default function LandingPage() {
 					<Button variant="ghost" asChild className="hidden sm:inline-flex">
 						<a href="#faq">/faq</a>
 					</Button>
-					<Button variant="ghost" asChild>
-						<a href={GITHUB_URL} target="_blank" rel="noreferrer">
-							<Github />
-							<span className="hidden sm:inline">github</span>
-						</a>
+					<Button variant="ghost" asChild className="hidden sm:inline-flex">
+						<Link href="/docs">/docs</Link>
 					</Button>
+					<MobileMenu />
+					<GitHubStars url={GITHUB_URL} />
 				</nav>
 			</header>
 
@@ -258,10 +262,10 @@ export default function LandingPage() {
 				<SectionHeading
 					eyebrow="tools"
 					title="Everything on-chain, as tools your agent can call."
-					description="Each category can be toggled with an environment variable. Tools that need keys fail gracefully when none are configured."
+					description="Counts describe the release catalog. Your available tools depend on wallet mode and enabled categories; see the docs for setup."
 					action={
 						<Button variant="link" asChild className="px-0 font-mono">
-							<a href={`${GITHUB_URL}#readme`} target="_blank" rel="noreferrer">
+							<a href="/docs#tools">
 								full reference
 								<ArrowRight />
 							</a>
@@ -287,7 +291,9 @@ export default function LandingPage() {
 										) : null}
 									</div>
 									<CardTitle className="pt-2">{name}</CardTitle>
-									<CardDescription>{description}</CardDescription>
+									<CardDescription>
+										<BrcReferences text={description} />
+									</CardDescription>
 								</CardHeader>
 							</Card>
 						);
@@ -319,7 +325,7 @@ export default function LandingPage() {
 											</div>
 										</div>
 										<CardDescription className="pt-2">
-											{description}
+											<BrcReferences text={description} />
 										</CardDescription>
 									</CardHeader>
 								</Card>
@@ -354,7 +360,9 @@ export default function LandingPage() {
 									<CardHeader>
 										<Icon className="size-5 text-primary" />
 										<CardTitle className="pt-2">{title}</CardTitle>
-										<CardDescription>{description}</CardDescription>
+										<CardDescription>
+											<BrcReferences text={description} />
+										</CardDescription>
 									</CardHeader>
 								</Card>
 							</li>
@@ -373,7 +381,9 @@ export default function LandingPage() {
 							className="grid gap-2 py-6 md:grid-cols-[1fr_2fr] md:gap-8"
 						>
 							<dt className="font-semibold">{item.q}</dt>
-							<dd className="text-sm text-muted-foreground">{item.a}</dd>
+							<dd className="text-sm text-muted-foreground">
+								<BrcReferences text={item.a} />
+							</dd>
 						</div>
 					))}
 				</dl>
@@ -391,8 +401,8 @@ export default function LandingPage() {
 								Put your agent on-chain.
 							</h2>
 							<p className="max-w-md opacity-80">
-								One command. Your first transaction from a chat window in under
-								two minutes.
+								Connect a wallet, check your balance, and make your first
+								request from a chat window.
 							</p>
 						</div>
 						<div className="flex flex-col gap-3 sm:flex-row">

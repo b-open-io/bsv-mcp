@@ -1,311 +1,179 @@
-/**
- * Secure key management using bitcoin-backup
- * Provides encrypted storage for BSV MCP keys with backward compatibility
- */
-
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { PrivateKey } from "@bsv/sdk";
+import { HD, PrivateKey } from "@bsv/sdk";
+import { decryptBackup, encryptBackup, type WifBackup } from "bitcoin-backup";
 import {
-	decryptBackup,
-	encryptBackup,
-	isLegacyBackup,
-	type OneSatBackup,
-} from "bitcoin-backup";
+	accountDir,
+	accountName,
+	regularPath,
+	secureDirectory,
+} from "./accounts";
 
-/**
- * Key storage interface
- */
 export interface KeyStore {
 	payPk?: PrivateKey;
 	identityPk?: PrivateKey;
 	xprv?: string;
 }
-
-/**
- * Configuration for key manager
- */
 export interface KeyManagerConfig {
 	keyDir?: string;
 }
-
-/**
- * Options for saveKeys
- */
 export interface SaveKeysOptions {
 	passphrase?: string;
-	forceUnencrypted?: boolean;
 }
-
-/**
- * Secure key manager with encryption support
- *
- * Features:
- * - Encrypted key storage using bitcoin-backup (opt-in, requires explicit passphrase)
- * - Backward compatibility with legacy JSON format
- * - Never auto-prompts for passphrases
- */
 export class SecureKeyManager {
-	private readonly keyDir: string;
-	private readonly legacyFile: string;
-	private readonly encryptedFile: string;
-	private readonly backupFile: string;
-
+	readonly keyDir: string;
 	constructor(config: KeyManagerConfig = {}) {
-		this.keyDir = config.keyDir || path.join(os.homedir(), ".bsv-mcp");
-		this.legacyFile = path.join(this.keyDir, "keys.json");
-		this.encryptedFile = path.join(this.keyDir, "keys.bep");
-		this.backupFile = path.join(this.keyDir, "keys.bep.backup");
+		this.keyDir = config.keyDir ?? accountDir();
 	}
-
-	/**
-	 * Load keys without prompting for a passphrase.
-	 *
-	 * - If passphrase is provided AND keys.bep exists → decrypt with it
-	 * - If no passphrase AND keys.bep exists → log and fall through to legacy
-	 * - If keys.json exists → load silently
-	 * - Otherwise → return empty KeyStore
-	 */
-	async loadKeys(passphrase?: string): Promise<{
-		keys: KeyStore;
-		source: "encrypted" | "legacy" | "none";
-	}> {
-		// Try encrypted format if passphrase provided
-		if (passphrase && this.hasEncryptedBackup()) {
-			const keys = await this.loadEncryptedKeys(passphrase);
-			return { keys, source: "encrypted" };
+	get encryptedFile() {
+		return path.join(this.keyDir, "keys.bep");
+	}
+	get legacyFile() {
+		return path.join(this.keyDir, "keys.json");
+	}
+	async loadKeys(
+		passphrase = process.env.BSV_MCP_PASSWORD,
+	): Promise<{ keys: KeyStore; source: "encrypted" | "none" }> {
+		regularPath(this.keyDir, true);
+		if (this.hasEncryptedBackup()) {
+			if (!passphrase)
+				throw new Error(
+					`Password required for ${this.encryptedFile}. Set BSV_MCP_PASSWORD or use bsv-mcp signer-serve in a terminal.`,
+				);
+			return {
+				keys: await this.loadEncryptedKeys(passphrase),
+				source: "encrypted",
+			};
 		}
-
-		// Encrypted file exists but no passphrase — skip silently with a log
-		if (this.hasEncryptedBackup() && !passphrase) {
-			console.error(
-				"Encrypted keys found (keys.bep). Provide a passphrase via loadKeys(passphrase) to decrypt, or use keys.json / PRIVATE_KEY_WIF instead.",
+		if (this.hasLegacyKeys())
+			throw new Error(
+				`Legacy plaintext keys require migration. Run bsv-mcp wallet_migrate --account ${accountName()}.`,
 			);
-		}
-
-		// Try legacy format
-		if (this.hasLegacyKeys()) {
-			const keys = this.loadLegacyKeys();
-			return { keys, source: "legacy" };
-		}
-
-		// No keys found
 		return { keys: {}, source: "none" };
 	}
-
-	/**
-	 * Save keys.
-	 *
-	 * - If options.passphrase provided → encrypt and save to keys.bep
-	 * - Otherwise → save plaintext to keys.json
-	 */
-	async saveKeys(keys: KeyStore, options: SaveKeysOptions = {}): Promise<void> {
-		if (options.passphrase) {
-			await this.saveEncryptedKeys(keys, options.passphrase);
-			return;
-		}
-
-		this.saveLegacyKeys(keys);
-	}
-
-	/**
-	 * Load keys from legacy JSON format
-	 */
+	/** Legacy files are read only by the explicit migration command. Never fall back at startup. */
 	loadLegacyKeys(): KeyStore {
+		regularPath(this.legacyFile);
 		try {
-			const content = fs.readFileSync(this.legacyFile, "utf8");
-			const data = JSON.parse(content);
-
-			return {
-				payPk: data.payPk ? PrivateKey.fromWif(data.payPk) : undefined,
-				identityPk: data.identityPk
-					? PrivateKey.fromWif(data.identityPk)
-					: undefined,
-				xprv: data.xprv,
-			};
-		} catch (error) {
-			throw new Error(`Failed to load legacy keys: ${error}`);
+			return decodeKeys(JSON.parse(fs.readFileSync(this.legacyFile, "utf8")));
+		} catch {
+			throw new Error("Cannot read legacy keys; source file was not changed");
 		}
 	}
-
-	/**
-	 * Save keys in legacy JSON format
-	 */
-	saveLegacyKeys(keys: KeyStore): void {
-		const data = {
-			payPk: keys.payPk?.toWif(),
-			identityPk: keys.identityPk?.toWif(),
-			xprv: keys.xprv,
-		};
-
-		fs.mkdirSync(this.keyDir, { recursive: true, mode: 0o700 });
-		fs.writeFileSync(this.legacyFile, JSON.stringify(data, null, 2), {
-			mode: 0o600,
-		});
-	}
-
-	/**
-	 * Load keys from encrypted backup
-	 */
 	async loadEncryptedKeys(passphrase: string): Promise<KeyStore> {
-		const encrypted = fs.readFileSync(this.encryptedFile, "utf8");
-		const decrypted = await decryptBackup(encrypted, passphrase);
-
-		// Check if it's a OneSatBackup (our format)
-		if ("payPk" in decrypted && "identityPk" in decrypted) {
-			const backup = decrypted as OneSatBackup;
-			// Also check for xprv in legacy file if it exists
-			let xprv: string | undefined;
-			if (fs.existsSync(this.legacyFile)) {
-				try {
-					const legacyData = JSON.parse(
-						fs.readFileSync(this.legacyFile, "utf8"),
-					);
-					xprv = legacyData.xprv;
-				} catch (_e) {
-					// Ignore legacy file errors
-				}
-			}
-			return {
-				payPk: backup.payPk ? PrivateKey.fromWif(backup.payPk) : undefined,
-				identityPk: backup.identityPk
-					? PrivateKey.fromWif(backup.identityPk)
-					: undefined,
-				xprv,
-			};
+		regularPath(this.encryptedFile);
+		try {
+			return decodeEncryptedKeys(
+				fs.readFileSync(this.encryptedFile, "utf8"),
+				passphrase,
+			);
+		} catch {
+			throw new Error(
+				"Cannot unlock account; check the password and encrypted backup",
+			);
 		}
-
-		// BapMasterBackup is a union: the legacy shape carries xprv, the type-42
-		// shape carries rootPk and has no xprv to hand back. Narrow with the
-		// library's guard rather than casting the union, which cannot be read
-		// through safely.
-		if (isLegacyBackup(decrypted)) {
-			return {
-				payPk: undefined,
-				identityPk: undefined,
-				xprv: decrypted.xprv,
-			};
-		}
-
-		throw new Error("Unknown backup format");
 	}
-
-	/**
-	 * Save keys in encrypted format
-	 */
-	async saveEncryptedKeys(keys: KeyStore, passphrase: string): Promise<void> {
-		// We use OneSatBackup format which includes all our keys
-		const data: OneSatBackup = {
-			payPk: keys.payPk?.toWif() || "",
-			identityPk: keys.identityPk?.toWif() || "",
-			ordPk: "", // We don't use ordinals key, but it's required by the type
-			label: "BSV MCP Keys",
-			createdAt: new Date().toISOString(),
-		};
-
-		// If we have xprv, store it separately in the legacy JSON alongside encrypted keys
-		// since OneSatBackup doesn't support xprv
-		if (keys.xprv) {
-			const legacyData = {
-				xprv: keys.xprv,
+	async saveKeys(keys: KeyStore, options: SaveKeysOptions = {}) {
+		const password = options.passphrase ?? process.env.BSV_MCP_PASSWORD;
+		if (!password || password.length < 8)
+			throw new Error(
+				"An encryption password of at least 8 characters is required; plaintext saving is disabled",
+			);
+		if (!keys.payPk) throw new Error("A payment key is required");
+		// WifBackup remains CLI-compatible; optional legacy identity material stays inside encryption.
+		const data: WifBackup & { bsvMcp: { identityPk?: string; xprv?: string } } =
+			{
+				wif: keys.payPk.toWif(),
+				bsvMcp: { identityPk: keys.identityPk?.toWif(), xprv: keys.xprv },
+				label: "BSV MCP account",
+				createdAt: new Date().toISOString(),
 			};
-			fs.mkdirSync(this.keyDir, { recursive: true, mode: 0o700 });
-			fs.writeFileSync(this.legacyFile, JSON.stringify(legacyData, null, 2), {
-				mode: 0o600,
-			});
-		}
-
-		const encrypted = await encryptBackup(data, passphrase);
-
-		// Create backup of existing file
-		if (fs.existsSync(this.encryptedFile)) {
-			fs.copyFileSync(this.encryptedFile, this.backupFile);
-		}
-
-		fs.mkdirSync(this.keyDir, { recursive: true, mode: 0o700 });
-		fs.writeFileSync(this.encryptedFile, encrypted, { mode: 0o600 });
+		const encrypted = await encryptBackup(data, password);
+		const verified = decodeKeys(await decryptBackup(encrypted, password));
+		if (
+			verified.payPk?.toWif() !== data.wif ||
+			verified.xprv !== keys.xprv ||
+			verified.identityPk?.toWif() !== data.bsvMcp.identityPk
+		)
+			throw new Error("Encrypted backup verification failed");
+		secureDirectory(this.keyDir);
+		regularPath(this.encryptedFile);
+		const temp = path.join(this.keyDir, `.keys-${crypto.randomUUID()}.bep`);
+		fs.writeFileSync(temp, encrypted, { mode: 0o600, flag: "wx" });
+		fs.renameSync(temp, this.encryptedFile);
 	}
-
-	/**
-	 * Check if encrypted backup exists
-	 */
-	hasEncryptedBackup(): boolean {
+	async saveEncryptedKeys(keys: KeyStore, passphrase: string) {
+		await this.saveKeys(keys, { passphrase });
+	}
+	hasEncryptedBackup() {
+		regularPath(this.encryptedFile);
 		return fs.existsSync(this.encryptedFile);
 	}
-
-	/**
-	 * Check if legacy keys exist
-	 */
-	hasLegacyKeys(): boolean {
+	hasLegacyKeys() {
+		regularPath(this.legacyFile);
 		return fs.existsSync(this.legacyFile);
 	}
-
-	/**
-	 * Get status of key storage
-	 */
-	getStatus(): {
-		hasEncrypted: boolean;
-		hasLegacy: boolean;
-		isSecure: boolean;
-	} {
+	getStatus() {
 		const hasEncrypted = this.hasEncryptedBackup();
 		const hasLegacy = this.hasLegacyKeys();
-
-		return {
-			hasEncrypted,
-			hasLegacy,
-			isSecure: hasEncrypted && !hasLegacy,
-		};
+		return { hasEncrypted, hasLegacy, isSecure: hasEncrypted && !hasLegacy };
 	}
 }
-
-/**
- * Default key manager instance
- */
+function decodeKeys(value: unknown): KeyStore {
+	const raw = value as Record<string, unknown>;
+	const data = {
+		...raw,
+		...(raw.bsvMcp as Record<string, unknown> | undefined),
+	};
+	const wif = data.wif ?? data.payPk;
+	if (typeof wif !== "string" || !wif)
+		throw new Error("Backup has no payment key");
+	if (
+		data.xprv !== undefined &&
+		(typeof data.xprv !== "string" || !HD.fromString(data.xprv).privKey)
+	)
+		throw new Error("Invalid identity backup");
+	return {
+		payPk: PrivateKey.fromWif(wif),
+		identityPk: data.identityPk
+			? PrivateKey.fromWif(String(data.identityPk))
+			: undefined,
+		xprv: data.xprv as string | undefined,
+	};
+}
 export const keyManager = new SecureKeyManager();
-
-/**
- * Initialize keys with secure storage support
- *
- * This is a wrapper around the key manager for easier migration
- * from the existing initializeKeys function
- */
-export async function initializeSecureKeys(): Promise<{
-	payPk?: PrivateKey;
-	identityPk?: PrivateKey;
-	xprv?: string;
-	source: "env" | "encrypted" | "legacy" | "generated" | "none";
-}> {
-	// Check environment first (maintains compatibility)
-	const privateKeyWifEnv = process.env.PRIVATE_KEY_WIF;
-	if (privateKeyWifEnv) {
+export async function initializeSecureKeys(
+	manager = new SecureKeyManager(),
+	env: Record<string, string | undefined> = process.env,
+) {
+	if (env.PRIVATE_KEY_WIF !== undefined) {
 		try {
-			const payPk = PrivateKey.fromWif(privateKeyWifEnv);
-			console.error("Using PRIVATE_KEY_WIF from environment");
 			return {
-				payPk,
-				source: "env",
+				payPk: PrivateKey.fromWif(env.PRIVATE_KEY_WIF),
+				identityPk: env.IDENTITY_KEY_WIF
+					? PrivateKey.fromWif(env.IDENTITY_KEY_WIF)
+					: undefined,
+				xprv: undefined,
+				source: "env" as const,
 			};
-		} catch (_error) {
-			console.error("Invalid PRIVATE_KEY_WIF format");
+		} catch {
+			throw new Error(
+				"Invalid PRIVATE_KEY_WIF or IDENTITY_KEY_WIF; no fallback wallet was loaded",
+			);
 		}
 	}
+	const result = await manager.loadKeys(env.BSV_MCP_PASSWORD);
+	if (!result.keys.payPk)
+		throw new Error(
+			`No key found at ${manager.encryptedFile}. Run bsv-mcp init --account ${accountName()} in a terminal, or configure BRC100_WALLET_URL. For public reads only, set DISABLE_WALLET_TOOLS=true.`,
+		);
+	return { ...result.keys, source: result.source };
+}
 
-	// Try loading from secure storage
+export async function decodeEncryptedKeys(encrypted: string, password: string) {
 	try {
-		const { keys, source } = await keyManager.loadKeys();
-		if (keys.payPk || keys.xprv) {
-			const sourceMap = {
-				encrypted: "encrypted" as const,
-				legacy: "legacy" as const,
-				none: "none" as const,
-			};
-			return { ...keys, source: sourceMap[source] || "none" };
-		}
-	} catch (error) {
-		console.error("Failed to load keys:", error);
+		return decodeKeys(await decryptBackup(encrypted, password));
+	} catch {
+		throw new Error("Cannot unlock backup; check the password and format");
 	}
-
-	return { source: "none" };
 }

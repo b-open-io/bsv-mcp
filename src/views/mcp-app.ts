@@ -389,17 +389,21 @@ function renderWallet(data: Record<string, unknown>) {
 }
 
 // ── Ordinals ─────────────────────────────────────────────────────────────────
-async function loadOrdinalsData() {
+let ordinalContentBase = "";
+async function loadOrdinalsData(query?: string) {
 	el("ordinals-grid").innerHTML =
 		`<div class="empty-state" style="grid-column:1/-1">loading...</div>`;
 	try {
 		const result = await app.callServerTool({
 			name: "app_ordinals_data",
-			arguments: {},
+			arguments: { query },
 		});
 		if (result?.structuredContent) {
+			const data = result.structuredContent as Record<string, unknown>;
+			if (data.error) throw new Error(String(data.error));
 			ordinalsLoaded = true;
-			renderOrdinals(result.structuredContent as Record<string, unknown>);
+			ordinalContentBase = String(data.contentBaseUrl ?? "");
+			renderOrdinals(data);
 		}
 	} catch (err) {
 		el("ordinals-grid").innerHTML =
@@ -409,61 +413,18 @@ async function loadOrdinalsData() {
 
 function renderOrdinals(data: Record<string, unknown>) {
 	const listings = data.listings as Array<Record<string, unknown>> | undefined;
-	const total = data.total as number | undefined;
-
-	el("ordinals-count").textContent =
-		total != null
-			? String(total)
-			: listings?.length
-				? String(listings.length)
-				: "0";
-
-	const grid = el("ordinals-grid");
-	if (!listings || listings.length === 0) {
-		grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">No inscriptions found</div>`;
-		return;
-	}
-
-	grid.innerHTML = listings.slice(0, 12).map(renderOrdinalCard).join("");
-
-	// Wire up search
-	const searchInput = document.getElementById(
-		"ordinals-search-input",
-	) as HTMLInputElement;
-	if (searchInput) {
-		searchInput.addEventListener("keydown", async (e) => {
-			if (e.key !== "Enter") return;
-			const query = searchInput.value.trim();
-			if (!query) return;
-			grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">searching...</div>`;
-			try {
-				const res = await app.callServerTool({
-					name: "app_ordinals_data",
-					arguments: { query },
-				});
-				if (res?.structuredContent) {
-					const d = res.structuredContent as Record<string, unknown>;
-					const results = (d.results ?? d.listings) as
-						| Array<Record<string, unknown>>
-						| undefined;
-					const found = d.total as number | undefined;
-					el("ordinals-count").textContent =
-						found != null ? String(found) : String(results?.length ?? 0);
-					if (results && results.length > 0) {
-						grid.innerHTML = results
-							.slice(0, 12)
-							.map(renderOrdinalCard)
-							.join("");
-					} else {
-						grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">No results found</div>`;
-					}
-				}
-			} catch (err) {
-				grid.innerHTML = `<div class="error-box" style="grid-column:1/-1">${esc(String(err))}</div>`;
-			}
-		});
-	}
+	el("ordinals-count").textContent = String(listings?.length ?? 0);
+	el("ordinals-grid").innerHTML = listings?.length
+		? listings.map(renderOrdinalCard).join("")
+		: `<div class="empty-state" style="grid-column:1/-1">No listings found</div>`;
 }
+
+el("ordinals-search-input").addEventListener("keydown", (event) => {
+	if ((event as KeyboardEvent).key === "Enter") {
+		const query = (event.target as HTMLInputElement).value.trim();
+		void loadOrdinalsData(query || undefined);
+	}
+});
 
 // ── Sweep ────────────────────────────────────────────────────────────────────
 type SweepState =
@@ -860,21 +821,15 @@ function renderSweepComplete() {
 }
 
 function renderOrdinalCard(item: Record<string, unknown>): string {
-	const origin = item.origin as Record<string, unknown> | undefined;
 	const data = item.data as Record<string, unknown> | undefined;
-	const listData = data?.list as Record<string, unknown> | undefined;
-	const inscData = origin?.data as Record<string, unknown> | undefined;
-	const insc = inscData?.insc as Record<string, unknown> | undefined;
-	const file = insc?.file as Record<string, unknown> | undefined;
-	const outpoint = String(item.outpoint ?? origin?.outpoint ?? "");
-	const txid = outpoint.split("_")[0] ?? outpoint;
-	const mime = String(file?.type ?? "");
-	const isImage = mime.startsWith("image/");
-	const price = listData?.price as number | undefined;
-	const name = String(
-		(inscData as Record<string, unknown> | undefined)?.name ??
-			truncateMid(outpoint, 8),
-	);
+	const listing = data?.ordlock as Record<string, unknown> | undefined;
+	const outpoint = String(item.outpoint ?? "");
+	const origin = String(listing?.origin ?? outpoint);
+	const mime = String(listing?.content_type ?? "");
+	const isImage =
+		mime.startsWith("image/") && /^https?:\/\//.test(ordinalContentBase);
+	const price = listing?.price as number | undefined;
+	const name = String(listing?.name ?? truncateMid(outpoint, 8));
 	const isListed = price != null;
 
 	return `
@@ -882,7 +837,7 @@ function renderOrdinalCard(item: Record<string, unknown>): string {
 			<div class="ordinal-preview">
 				${
 					isImage
-						? `<img src="https://ordfs.network/${esc(txid)}" alt="inscription" loading="lazy" />`
+						? `<img src="${esc(ordinalContentBase)}/${esc(encodeURIComponent(origin))}" alt="inscription" loading="lazy" />`
 						: `<span class="ordinal-placeholder">${mime ? esc(mime.split("/")[1] ?? mime) : "?"}</span>`
 				}
 				${isListed ? `<div class="listed-badge">Listed</div>` : ""}

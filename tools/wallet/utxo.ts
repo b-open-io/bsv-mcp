@@ -1,10 +1,11 @@
 import { Transaction } from "@bsv/sdk";
+import { junglebusUrl } from "../../utils/backends";
 import { arrayBufferToUint8Array } from "../../utils/buffer";
 
 export async function getTransactionById(
 	txid: string,
 ): Promise<Transaction | null> {
-	const url = `https://junglebus.gorillapool.io/v1/transaction/${txid}`;
+	const url = `${junglebusUrl()}/transaction/${txid}`;
 	try {
 		const response = await fetch(url);
 		if (!response.ok) {
@@ -34,7 +35,7 @@ export async function getTransactionById(
 export async function getBeefTransactionById(
 	txid: string,
 ): Promise<Transaction | null> {
-	const url = `https://junglebus.gorillapool.io/v1/transaction/beef/${txid}`;
+	const url = `${junglebusUrl()}/transaction/beef/${txid}`;
 	try {
 		// console.error("URL:", url);
 		const response = await fetch(url);

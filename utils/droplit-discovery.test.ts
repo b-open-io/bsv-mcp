@@ -5,9 +5,12 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerDroplitDiscoveryTool } from "../tools/wallet/droplitDiscovery";
 import { discoverDroplitSponsors, readDroplitSponsorConfig } from "./droplit";
+
 const api = "https://api.example.test/prefix";
 const body = {
-	sponsors: [{ name: "Example", slug: "example", approval_required: true }],
+	sponsors: [
+		{ name: "Example", slug: "example", approval_required: true as const },
+	],
 	next_cursor: null,
 };
 afterEach(() => mock.restore());

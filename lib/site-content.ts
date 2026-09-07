@@ -40,7 +40,7 @@ export const toolCategories: ToolCategory[] = [
 	{
 		key: "explorer",
 		name: "Explorer",
-		prefixes: ["bsv"],
+		prefixes: ["bsv", "x402"],
 		tools: ["app_explorer_data"],
 		description:
 			"Decode raw transactions, fetch blocks and addresses, and pull the live BSV price with built-in caching.",
@@ -77,7 +77,7 @@ export const steps = [
 	{
 		title: "Connect a key",
 		description:
-			"Bring a WIF, point at an existing BRC-100 wallet, or let the server generate an encrypted key on first run.",
+			"Connect an existing BRC-100 wallet or initialize a named encrypted account in a local terminal.",
 	},
 	{
 		title: "Ask",
@@ -92,7 +92,7 @@ export const deployModes = [
 		title: "Local",
 		subtitle: "stdio transport",
 		description:
-			"Runs on your machine with keys encrypted at rest. The default for Claude Code and desktop clients.",
+			"Runs on your machine with an external signer or local keys. Optional encrypted key storage; see the wallet setup docs.",
 	},
 	{
 		key: "http",
@@ -115,7 +115,7 @@ export const guarantees = [
 		key: "encrypted",
 		title: "Encrypted at rest",
 		description:
-			"AES-256-GCM with 600k PBKDF2 iterations in the bitcoin-backup format. Files are created with 0600 permissions.",
+			"Local accounts use encrypted bitcoin-backup files. Missing keys stop startup; the server never generates a replacement.",
 	},
 	{
 		key: "no-env-passphrase",
@@ -149,14 +149,14 @@ export const clients = [
 
 export const installCommands = {
 	claudeCode: "claude plugin install bsv-mcp@b-open-io",
-	stdio: "bunx bsv-mcp@latest",
+	stdio: "bunx bsv-mcp@latest --stdio",
 };
 
 export const clientConfig = `{
   "mcpServers": {
     "bsv-mcp": {
       "command": "bunx",
-      "args": ["bsv-mcp@latest"]
+      "args": ["bsv-mcp@latest", "--stdio"]
     }
   }
 }`;
@@ -184,14 +184,14 @@ const STDIO_JSON = `{
   "mcpServers": {
     "bsv-mcp": {
       "command": "bunx",
-      "args": ["bsv-mcp@latest"]
+      "args": ["bsv-mcp@latest", "--stdio"]
     }
   }
 }`;
 
 const STDIO_TOML = `[mcp_servers.bsv-mcp]
 command = "bunx"
-args = ["bsv-mcp@latest"]`;
+args = ["bsv-mcp@latest", "--stdio"]`;
 
 /**
  * Per-client install instructions.
@@ -211,7 +211,7 @@ export const installTargets: InstallTarget[] = [
 			{
 				label: "Or register the local server yourself",
 				command:
-					"claude mcp add --transport stdio bsv-mcp -- bunx bsv-mcp@latest",
+					"claude mcp add --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio",
 			},
 			{
 				label: "Or use the hosted server",
@@ -241,7 +241,7 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "codex",
 		label: "Codex",
-		command: "codex mcp add bsv-mcp -- bunx bsv-mcp@latest",
+		command: "codex mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
 		configPath: "~/.codex/config.toml",
 		config: STDIO_TOML,
 		note: "The command and the config file are equivalent. Codex reads TOML, not JSON.",
@@ -250,7 +250,7 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "grok",
 		label: "Grok Build",
-		command: "grok mcp add bsv-mcp -- bunx bsv-mcp@latest",
+		command: "grok mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
 		altCommands: [
 			{
 				label: "Or use the hosted server",
@@ -270,7 +270,7 @@ export const installTargets: InstallTarget[] = [
   "mcp": {
     "bsv-mcp": {
       "type": "local",
-      "command": ["bunx", "bsv-mcp@latest"],
+      "command": ["bunx", "bsv-mcp@latest", "--stdio"],
       "enabled": true
     }
   }
@@ -280,7 +280,7 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "other",
 		label: "Any MCP client",
-		command: "bunx bsv-mcp@latest",
+		command: "bunx bsv-mcp@latest --stdio",
 		note: "Any client that speaks MCP over stdio can run the server directly. For Streamable HTTP, point it at https://bsvmcp.com and authenticate with OAuth 2.1.",
 		docsUrl: "https://modelcontextprotocol.io",
 	},
@@ -326,9 +326,9 @@ export const replay = [
 	{
 		label: "tool call",
 		lines: [
-			'● wallet_createOrdinals(file: "hello.svg", contentType: "image/svg+xml")',
-			"  ├ reading file (412 bytes)",
-			"  ├ selecting UTXOs · fee 1 sat/kb",
+			'● wallet_createOrdinals(dataB64: "…", contentType: "image/svg+xml")',
+			"  ├ content prepared as base64",
+			"  ├ selecting UTXOs · estimating fee",
 			"  └ broadcast ✓",
 		],
 	},
@@ -342,11 +342,11 @@ export const replay = [
 export const faq = [
 	{
 		q: "Does it work with my client?",
-		a: "Anything that speaks MCP. Claude Code, Claude Desktop, Cursor, Codex, Grok Build and opencode are documented above with their exact config; any other stdio client runs it with bunx bsv-mcp@latest.",
+		a: "Anything that speaks MCP. Claude Code, Claude Desktop, Cursor, Codex, Grok Build and opencode are documented above with their exact config; any other stdio client runs it with bunx bsv-mcp@latest --stdio.",
 	},
 	{
 		q: "Where are my keys?",
-		a: "Locally, encrypted with AES-256-GCM in the bitcoin-backup format and created with 0600 permissions. Or nowhere near this server: point it at a BRC-100 signer and that wallet stays the permission authority for every spend.",
+		a: "Use an external BRC-100 signer or a named encrypted account. Run init in a local terminal and back up the account before funding it.",
 	},
 	{
 		q: "Is it maintained?",
@@ -354,6 +354,6 @@ export const faq = [
 	},
 	{
 		q: "Can I read the code first?",
-		a: "All of it. MIT licensed, on GitHub, with the tool catalogue generated from the running server so the numbers on this page cannot drift from the code.",
+		a: "All of it. MIT licensed, on GitHub. The tool count is a release snapshot; available tools depend on your wallet mode and enabled categories.",
 	},
 ];

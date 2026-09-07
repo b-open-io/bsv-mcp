@@ -1,5 +1,5 @@
 import type { OneSatContext } from "@1sat/actions";
-import type { OneSatServices } from "@1sat/wallet-remote";
+import type { OneSatServices } from "@1sat/client";
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { DroplitClient } from "../utils/droplit";
@@ -7,11 +7,14 @@ import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
 import { registerBsocialTools } from "./bsocial";
 import { registerBsvTools } from "./bsv";
+import { registerStatusTool } from "./bsv/status";
+import { registerX402Tools } from "./bsv/x402";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
-import { registerDroplitDiscoveryTool } from "./wallet/droplitDiscovery";
+import { registerAccountTools } from "./wallet/accounts";
 import { registerDroplitTools } from "./wallet/droplit";
+import { registerDroplitDiscoveryTool } from "./wallet/droplitDiscovery";
 import { registerWalletGetBalanceDroplitTool } from "./wallet/getBalanceDroplit";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
 import { registerSetupDroplitTools } from "./wallet/setupDroplit";
@@ -39,6 +42,7 @@ export interface ToolsConfig {
 	enableBapTools?: boolean;
 	enableBsocialTools?: boolean;
 	enableWalletTools?: boolean;
+	enableAccountTools?: boolean;
 	enableMneeTools?: boolean;
 	identityPk?: PrivateKey;
 	payPk?: PrivateKey;
@@ -86,11 +90,13 @@ export function registerAllTools(
 	// Register BSV-related tools
 	if (enableBsvTools) {
 		registerBsvTools(server);
+		registerStatusTool(server, config);
+		registerX402Tools(server, config);
 	}
 
 	// Register Ordinals-related tools
 	if (enableOrdinalsTools) {
-		registerOrdinalsTools(server, config.ctx);
+		registerOrdinalsTools(server, config.ctx?.services ?? config.services);
 	}
 
 	// Register utility tools
@@ -126,6 +132,8 @@ export function registerAllTools(
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
+		if (config.enableAccountTools === true && !process.env.BRC100_WALLET_URL)
+			registerAccountTools(server);
 		if (config.droplitClient)
 			registerDroplitTools(
 				server,

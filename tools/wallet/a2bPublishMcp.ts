@@ -20,13 +20,17 @@ import type {
 import { createOrdinals } from "js-1sat-ord";
 import { z } from "zod";
 import packageJson from "../../package.json";
+import { backendUrl } from "../../utils/backends";
 import { V5Broadcaster } from "../../utils/broadcaster";
 import type { Wallet } from "./wallet";
 
 const { toArray, toBase64 } = Utils;
 
 // API endpoint for the A2B Overlay service
-const OVERLAY_API_URL = "https://a2b-overlay-production.up.railway.app/v1";
+const OVERLAY_API_URL = backendUrl(
+	"A2B_API_URL",
+	"https://a2b-overlay-production.up.railway.app/v1",
+);
 
 // Schema for the MCP tool configuration
 export const McpConfigSchema = z.object({

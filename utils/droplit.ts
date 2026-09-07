@@ -1,10 +1,10 @@
-import { z } from "zod";
 import {
 	AuthFetch,
 	type PrivateKey,
 	ProtoWallet,
 	type WalletInterface,
 } from "@bsv/sdk";
+import { z } from "zod";
 
 /**
  * Client for the Droplit faucet API (droplit-server, api.droplit.dev).

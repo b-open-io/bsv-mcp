@@ -1,5 +1,27 @@
 # BSV MCP Server Changelog
 
+## [0.4.0] - 2026-09-07
+
+### Breaking changes
+- Missing or invalid local keys now stop startup. Initialize an encrypted named account or configure an external signer; legacy plaintext files require explicit migration.
+- Account passwords use `BSV_MCP_PASSWORD`. New keys are never saved as plaintext.
+
+### Added
+- Generic `x402_request` and `x402_payQuote` tools for BSV services, with quote approval, a total spending limit and protection against duplicate payment attempts.
+- Named encrypted accounts, account management tools and terminal commands, migration with SQLite snapshots, and a local `signer-serve` wrapper.
+- Server status and 1Sat capability checks, website documentation and a live GitHub star count.
+
+### Changed
+- Use configurable 1Sat services for marketplace and inscription reads. Default the mainnet explorer to BananaBlocks, with a vendor-neutral `EXPLORER_API_URL` setting.
+- Keep per-service x402 credentials optional and scoped to their HTTPS origin.
+- Move setup and workflow details out of the README and into the documentation. Link BRC references to Beersy.
+- Align wallet dependencies with the 1Sat CLI runtime and isolate each account's database.
+
+### Security
+- Remove startup key generation, plaintext fallback and plaintext identity-key writes. Secret import stays in a local terminal or encrypted backup.
+- Keep signer credentials out of the MCP child environment. Require human approval for account changes and signer transaction requests.
+- Register the tool manifest with an in-memory test wallet, without touching real keys or wallet storage.
+
 ## [0.3.4] - 2026-09-06
 
 ### Added

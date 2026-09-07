@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -6,14 +6,13 @@ import {
 	createContext,
 	deriveDepositAddresses,
 	type OneSatContext,
-	syncMessages,
 } from "@1sat/actions";
+import { OneSatServices as ExternalServices } from "@1sat/client";
 import {
 	createNodeWallet,
 	type NodeWalletResult,
 	type OneSatServices,
 } from "@1sat/wallet-node";
-import { OneSatServices as ExternalServices } from "@1sat/wallet-remote";
 import {
 	HTTPWalletJSON,
 	PrivateKey,
@@ -21,6 +20,13 @@ import {
 	type WalletInterface,
 } from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
+import {
+	accountDir,
+	readAccount,
+	regularPath,
+	secureDirectory,
+} from "./accounts";
+import { backendUrl, onesatUrl } from "./backends";
 import type { ExternalWalletConfig } from "./externalWalletConfig";
 import { redactKeyMaterial } from "./redact";
 import {
@@ -29,8 +35,6 @@ import {
 } from "./spendingApproval.ts";
 
 export { setSpendingApprovalServerInstance } from "./spendingApproval.ts";
-
-const DEFAULT_REMOTE_STORAGE_URL = "https://api.1sat.app/1sat/wallet";
 
 /**
  * The originator that bypasses every permission check in
@@ -85,12 +89,27 @@ export async function initWallet(
 	privateKeyWif: string,
 	chain: "main" | "test" = "main",
 ): Promise<WalletInitResult> {
+	const config = readAccount();
+	if (config && process.env.BSV_CHAIN && process.env.BSV_CHAIN !== config.chain)
+		throw new Error("BSV_CHAIN conflicts with the selected account network");
+	const dataDir = accountDir();
+	secureDirectory(dataDir);
+	const filename = join(dataDir, `wallet-${chain}.db`);
+	regularPath(filename);
+	const oldMask = process.umask(0o077);
 	const result = await createNodeWallet({
 		privateKey: PrivateKey.fromWif(privateKeyWif),
 		chain,
-		activeRemote: process.env.REMOTE_STORAGE_URL ?? DEFAULT_REMOTE_STORAGE_URL,
-		storageIdentityKey: "bsv-mcp",
-	});
+		activeRemote: process.env.REMOTE_STORAGE_URL
+			? backendUrl("REMOTE_STORAGE_URL", "")
+			: config?.activeRemote,
+		storageIdentityKey: config?.storageIdentityKey ?? "bsv-mcp",
+		storage: { provider: "bun-sqlite", filename },
+		backups: config?.backups,
+		skipInitialMonitor: true,
+		servicesBaseUrl: onesatUrl(chain),
+	}).finally(() => process.umask(oldMask));
+	chmodSync(filename, 0o600);
 
 	const wpm = new WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
 		seekProtocolPermissionsForSigning: false,
@@ -120,32 +139,18 @@ export async function initWallet(
 			handleSpendingAuthorization(request, wpm),
 	);
 
-	const dataDir = join(homedir(), ".bsv-mcp");
-
 	const ctx = createContext(wpm, {
 		services: result.services,
 		chain,
 		dataDir,
-		debug: true,
+		isBaseWallet: true,
 		log: (entry) => writeAuditLog(dataDir, entry),
 	});
 
 	const { derivations } = await deriveDepositAddresses.execute(ctx, {
-		prefix: MCP_ADDRESS_PREFIX,
+		prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
 	});
 	const depositAddress = derivations[0].address;
-
-	// Sync incoming paymail payments from message box
-	syncMessages
-		.execute(ctx, {})
-		.then((r) => {
-			if (r.processed > 0) {
-				console.log(`[wallet] synced ${r.processed} message box payments`);
-			}
-		})
-		.catch((err) => {
-			console.error("[wallet] message box sync failed:", err);
-		});
 
 	activeResult = result;
 
@@ -198,7 +203,7 @@ export async function initExternalWallet(
 		);
 	}
 	// These are API clients only: construction does not provision wallet storage.
-	const services = new ExternalServices(chain, process.env.ONESAT_API_URL);
+	const services = new ExternalServices(chain, onesatUrl(chain));
 	const dataDir = join(homedir(), ".bsv-mcp");
 	const ctx = createContext(wallet, {
 		services,

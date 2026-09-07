@@ -1,30 +1,55 @@
-import type { OneSatContext } from "@1sat/actions";
+import type { OneSatServices } from "@1sat/client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { errorToToolResult, successResult } from "../../utils/errors";
 
-/**
- * Register the inscription search tool (stub — awaiting 1sat-stack implementation)
- */
 export function registerSearchInscriptionsTool(
 	server: McpServer,
-	_ctx?: OneSatContext,
+	services: OneSatServices,
 ): void {
-	server.tool(
+	server.registerTool(
 		"ordinals_searchInscriptions",
-		"Search for inscriptions by various criteria. Currently awaiting 1sat-stack search API implementation.",
-		{},
-		async () => {
-			return {
-				content: [
-					{
-						type: "text",
-						text: JSON.stringify({
-							error: "Inscription search API not yet available on 1sat-stack",
-							status: "not_implemented",
-						}),
-					},
-				],
-				isError: true,
-			};
+		{
+			description:
+				"Search indexed outputs by 1Sat event/topic/owner key (e.g. own:ADDRESS). Returns inscription and MAP metadata when indexed. This is an index-key search, not free-text search; use marketListings.q for listing names.",
+			inputSchema: {
+				key: z
+					.string()
+					.trim()
+					.min(1)
+					.max(300)
+					.describe("Index key, e.g. own:ADDRESS, ev:EVENT, or tp:TOPIC"),
+				limit: z.number().int().min(1).max(100).default(20),
+				from: z
+					.number()
+					.finite()
+					.nonnegative()
+					.optional()
+					.describe("Last result's score for the next page"),
+			},
+			annotations: {
+				readOnlyHint: true,
+				idempotentHint: true,
+				openWorldHint: true,
+			},
+		},
+		async ({ key, limit, from }) => {
+			try {
+				const results = await services.txo.search(key, {
+					tags: ["insc", "origin", "map"],
+					limit,
+					from,
+					rev: true,
+					unspent: true,
+				});
+				const data = {
+					results,
+					nextFrom: results.length === limit ? results.at(-1)?.score : null,
+				};
+				return { ...successResult(data), structuredContent: data };
+			} catch (error) {
+				return errorToToolResult(error);
+			}
 		},
 	);
 }

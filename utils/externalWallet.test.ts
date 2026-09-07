@@ -355,14 +355,14 @@ describe("external signer initialization", () => {
 			realTimeout(10),
 		);
 		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-			(_input, init) =>
+			((_input, init) =>
 				new Promise((_resolve, reject) => {
 					const signal = init?.signal;
 					if (!signal) throw new Error("Missing timeout signal");
 					signal.addEventListener("abort", () => reject(signal.reason), {
 						once: true,
 					});
-				}),
+				})) as typeof fetch,
 		);
 		await expect(initExternalWallet(config)).rejects.toThrow(
 			"External BRC-100 signer readiness failed",

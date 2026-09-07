@@ -24,6 +24,7 @@ const nextConfig = {
 		return [
 			{ source: "/index.md", destination: "/md" },
 			{ source: "/connect.md", destination: "/md/connect" },
+			{ source: "/docs.md", destination: "/md/docs" },
 		];
 	},
 	// Next.js 16 uses Turbopack by default in development

@@ -1,14 +1,15 @@
 import { Utils } from "@bsv/sdk";
 import type { Utxo } from "js-1sat-ord";
+import { explorerFetch, explorerUrl } from "../../utils/backends";
 import { V5_API_URL } from "../constants";
 import { getBeefTransactionById } from "./utxo";
 
 const { toHex, toArray } = Utils;
 
 /**
- * Type definition for WhatsOnChain UTXO response
+ * Type definition for explorer UTXO response
  */
-interface WhatsOnChainUtxo {
+interface ExplorerUtxo {
 	tx_hash: string;
 	tx_pos: number;
 	value: number;
@@ -32,23 +33,23 @@ export async function fetchPaymentUtxos(
 	}
 
 	try {
-		// Fetch UTXOs from WhatsOnChain API
-		const response = await fetch(
-			`https://api.whatsonchain.com/v1/bsv/main/address/${address}/unspent`,
+		// Fetch UTXOs from explorer API
+		const response = await explorerFetch(
+			`${explorerUrl()}/address/${address}/unspent`,
 		);
 
 		if (!response.ok) {
 			console.error(
-				`WhatsOnChain API error: ${response.status} ${response.statusText}`,
+				`explorer API error: ${response.status} ${response.statusText}`,
 			);
 			return undefined;
 		}
 
-		const data = (await response.json()) as WhatsOnChainUtxo[];
+		const data = (await response.json()) as ExplorerUtxo[];
 
 		// Validate response format
 		if (!Array.isArray(data)) {
-			console.error("Invalid response format from WhatsOnChain API");
+			console.error("Invalid response format from explorer API");
 			return undefined;
 		}
 
@@ -57,7 +58,7 @@ export async function fetchPaymentUtxos(
 
 		// Process each UTXO
 		const utxos: (Utxo | null)[] = await Promise.all(
-			data.map(async (utxo: WhatsOnChainUtxo) => {
+			data.map(async (utxo: ExplorerUtxo) => {
 				// Get the transaction hex to extract the correct script
 				const tx = await getBeefTransactionById(utxo.tx_hash);
 				const script = tx?.outputs[utxo.tx_pos]?.lockingScript.toHex();

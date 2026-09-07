@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { renderDocsMarkdown } from "./docs";
 import {
 	markdownPages,
 	renderConnectMarkdown,
@@ -58,9 +59,33 @@ describe("not found markdown", () => {
 
 describe("markdownPages", () => {
 	test("covers the routes middleware can rewrite", () => {
-		expect(Object.keys(markdownPages).sort()).toEqual(["/", "/connect"]);
+		expect(Object.keys(markdownPages).sort()).toEqual([
+			"/",
+			"/connect",
+			"/docs",
+		]);
 		for (const render of Object.values(markdownPages)) {
 			expect(render().length).toBeGreaterThan(100);
 		}
 	});
+});
+
+test("documentation keeps task examples with their headings", () => {
+	const doc = renderDocsMarkdown();
+	const start = doc.indexOf("### Browse listings and recent sales");
+	const end = doc.indexOf("### Find assets belonging to an address");
+	expect(start).toBeGreaterThan(0);
+	expect(end).toBeGreaterThan(start);
+	expect(doc.slice(start, end)).toContain('{"q":"cat","limit":20}');
+	expect(doc).toContain("## Advanced tool settings");
+});
+
+test("BRC references link to Beersy without changing environment names", () => {
+	const doc = renderDocsMarkdown();
+	expect(doc).toContain("[BRC-169](https://www.beersy.dev/brc/169)");
+	expect(doc).toContain("[BRC-100](https://www.beersy.dev/brc/100)");
+	expect(doc).toContain("BRC100_WALLET_URL");
+	expect(renderHomeMarkdown()).toContain(
+		"[BRC-100](https://www.beersy.dev/brc/100)",
+	);
 });

@@ -1,4 +1,4 @@
-import type { OneSatContext } from "@1sat/actions";
+import type { OneSatServices } from "@1sat/client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -7,7 +7,7 @@ import { z } from "zod";
  */
 export function registerGetTokenByIdOrTickerTool(
 	server: McpServer,
-	ctx?: OneSatContext,
+	services: OneSatServices,
 ): void {
 	server.tool(
 		"ordinals_getTokenByIdOrTicker",
@@ -17,15 +17,17 @@ export function registerGetTokenByIdOrTickerTool(
 		},
 		async ({ id }) => {
 			try {
-				if (!ctx?.services) {
+				if (!services) {
 					throw new Error("OneSat services not available");
 				}
 
-				if (!/^[0-9a-f]{64}_\d+$/i.test(id)) {
-					throw new Error("Invalid token ID format. Expected 'txid_vout'");
+				if (!/^[0-9a-f]{64}[._]\d+$/i.test(id)) {
+					throw new Error(
+						"Invalid token ID format. Expected 'txid.vout' or 'txid_vout'",
+					);
 				}
 
-				const data = await ctx.services.bsv21.getTokenDetails(id);
+				const data = await services.bsv21.getTokenDetails(id.replace("_", "."));
 
 				return {
 					content: [

@@ -1,4 +1,10 @@
-import { ArrowRight, FileText, Github, Home, Map } from "lucide-react";
+import {
+	ArrowRight,
+	FileText,
+	Github,
+	Home,
+	Map as MapIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +51,7 @@ const destinations = [
 	},
 	{
 		href: "/sitemap.xml",
-		icon: Map,
+		icon: MapIcon,
 		title: "Sitemap",
 		description: "Every indexable URL on this site.",
 		external: false,

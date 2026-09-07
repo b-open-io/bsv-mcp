@@ -6,6 +6,7 @@ import type {
 	ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { junglebusUrl } from "../../utils/backends";
 
 // Schema for decode transaction arguments
 export const decodeTransactionArgsSchema = z.object({
@@ -92,9 +93,7 @@ async function fetchJungleBusData(
 	txid: string,
 ): Promise<JungleBusTransactionResponse | null> {
 	try {
-		const response = await fetch(
-			`https://junglebus.gorillapool.io/v1/transaction/get/${txid}`,
-		);
+		const response = await fetch(`${junglebusUrl()}/transaction/get/${txid}`);
 		if (!response.ok) {
 			console.error(
 				`JungleBus API error: ${response.status} ${response.statusText}`,
@@ -286,9 +285,7 @@ export function registerDecodeTransactionTool(server: McpServer): void {
  */
 async function getCurrentBlockHeight(): Promise<number> {
 	try {
-		const response = await fetch(
-			"https://junglebus.gorillapool.io/v1/network/info",
-		);
+		const response = await fetch(`${junglebusUrl()}/network/info`);
 		if (!response.ok) {
 			return 0;
 		}

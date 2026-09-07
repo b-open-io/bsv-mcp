@@ -1,4 +1,4 @@
-import type { OneSatContext } from "@1sat/actions";
+import type { OneSatServices } from "@1sat/client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -7,25 +7,31 @@ import { z } from "zod";
  */
 export function registerGetInscriptionTool(
 	server: McpServer,
-	ctx?: OneSatContext,
+	services: OneSatServices,
 ): void {
 	server.tool(
 		"ordinals_getInscription",
 		"Retrieves metadata for an inscription by its outpoint. Returns content type, file info, origin, MAP data, and sequence info.",
 		{
-			outpoint: z.string().describe("Outpoint in format 'txid_vout'"),
+			outpoint: z
+				.string()
+				.describe("Outpoint in format 'txid.vout' or 'txid_vout'"),
 		},
 		async ({ outpoint }) => {
 			try {
-				if (!ctx?.services) {
+				if (!services) {
 					throw new Error("OneSat services not available");
 				}
 
-				if (!/^[0-9a-f]{64}_\d+$/i.test(outpoint)) {
-					throw new Error("Invalid outpoint format. Expected 'txid_vout'");
+				if (!/^[0-9a-f]{64}[._]\d+$/i.test(outpoint)) {
+					throw new Error(
+						"Invalid outpoint format. Expected 'txid.vout' or 'txid_vout'",
+					);
 				}
 
-				const data = await ctx.services.ordfs.getMetadata(outpoint);
+				const data = await services.ordfs.getMetadata(
+					outpoint.replace("_", "."),
+				);
 
 				return {
 					content: [
