@@ -31,10 +31,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { BrcReferences } from "@/lib/brc";
-import {
-	GITHUB_URL,
-	NPM_URL,
-} from "@/lib/site";
+import { GITHUB_URL, NPM_URL } from "@/lib/site";
 import {
 	clients,
 	deployModes,
