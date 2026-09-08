@@ -5,13 +5,12 @@ import {
 	copyFile,
 	link,
 	mkdir,
-	mkdtemp,
 	open,
 	readFile,
 	rename,
 	rm,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, sep } from "node:path";
 import { HD, PrivateKey } from "@bsv/sdk";
 import {
 	type AccountConfig,
@@ -24,6 +23,7 @@ import {
 import { decodeEncryptedKeys } from "./keyManager";
 import {
 	changeProjectRoleBindings,
+	projectRoleBindingsSchema,
 	type ProjectKeyRole,
 	type ProjectRoleBindings,
 } from "./projectRoleBindings";
@@ -31,6 +31,18 @@ import {
 	loadProjectRoleBindings,
 	saveProjectRoleBindings,
 } from "./projectRoleBindingsStore";
+import {
+	prepareProjectRoleSelection,
+	type ProjectRoleCandidate,
+	type ProjectRoleSelectionRequest,
+} from "./projectRoleSelection";
+import {
+	canonicalMigrationPath,
+	type MigrationJournal,
+	migrationJournalPaths,
+	readMigrationJournal,
+	writeMigrationJournal,
+} from "./vaultMigrationJournal";
 import type {
 	MigrationPreview,
 	VaultMigrationBackend,
@@ -82,10 +94,37 @@ export interface AccountVaultMigrationOptions {
 	vaultPath: string;
 	accountsDirectory?: string;
 	/** Explicit role choices; no key role is inferred from labels or entry flags. */
-	roleAssignments: Partial<Record<ProjectKeyRole, "payment" | "identity">>;
+	roleAssignments?: Partial<Record<ProjectKeyRole, "payment" | "identity">>;
 	loadModule?: () => Promise<unknown>;
 	now?: () => number;
 }
+function roleCandidates(prepared: Prepared): ProjectRoleCandidate[] {
+	return Object.entries(prepared.entries).flatMap(([candidateId, entry]) =>
+		entry?.publicKey
+			? [
+					{
+						candidateId,
+						label:
+							candidateId === "payment"
+								? "Imported payment key"
+								: "Imported identity key",
+						accountId: prepared.accountName,
+						key: {
+							vaultId: prepared.vault.toDocument().id,
+							entryId: entry.id,
+							expectedPublicKey: entry.publicKey,
+						},
+						keyUseContract: "direct-v1" as const,
+						supportedRoles:
+							candidateId === "payment"
+								? (["payments", "one-sat"] as const)
+								: (["identity-signing", "encryption"] as const),
+					},
+				]
+			: [],
+	);
+}
+
 interface LocalCredentials {
 	sourcePassphrase: string;
 	destinationPassphrase: string;
@@ -140,7 +179,8 @@ function sameDestination(
 ) {
 	return (
 		destination.accountName === prepared.accountName &&
-		resolve(destination.vaultPath) === prepared.session.vaultPath &&
+		canonicalMigrationPath(destination.vaultPath) ===
+			prepared.session.vaultPath &&
 		destination.vaultEntryId === prepared.session.vaultEntryId &&
 		(destination.expectedPublicKey === undefined ||
 			destination.expectedPublicKey === prepared.session.publicKey)
@@ -160,18 +200,24 @@ export async function createAccountVaultMigrationBackend(
 			"PROJECT_REQUIRED",
 			"Configure an explicit project root, project ID and absolute Vault path.",
 		);
-	const projectRoot = options.projectRoot;
+	const projectRoot = canonicalMigrationPath(options.projectRoot);
 	const expectedProjectId = options.expectedProjectId;
 	const roleAssignments = Object.freeze({ ...options.roleAssignments });
-	const vaultPath = resolve(options.vaultPath);
-	const root = options.accountsDirectory ?? accountsRoot();
+	const vaultPath = canonicalMigrationPath(options.vaultPath);
+	const root = canonicalMigrationPath(
+		options.accountsDirectory ?? accountsRoot(),
+	);
 	if (!isAbsolute(root))
 		throw failure(
 			"PROJECT_REQUIRED",
 			"The account directory must be an explicit absolute path.",
 		);
 	const now = options.now ?? Date.now;
-	if (vaultPath.startsWith(`${resolve(root)}${sep}`))
+	if (
+		vaultPath === root ||
+		vaultPath === dirname(vaultPath) ||
+		vaultPath.startsWith(`${root}${sep}`)
+	)
 		throw failure(
 			"INVALID_DESTINATION",
 			"The Vault destination must be outside the original account directory tree.",
@@ -295,7 +341,7 @@ export async function createAccountVaultMigrationBackend(
 						"SOURCE_UNSUPPORTED",
 						"Choose the same existing encrypted named account as source and destination.",
 					);
-				if (resolve(input.vaultPath) !== vaultPath)
+				if (canonicalMigrationPath(input.vaultPath) !== vaultPath)
 					throw failure(
 						"INVALID_DESTINATION",
 						"Choose the locally configured Vault destination.",
@@ -412,11 +458,6 @@ export async function createAccountVaultMigrationBackend(
 							"This account has no standalone identity key for the selected role.",
 						);
 				}
-				if (Object.keys(roleAssignments).length === 0)
-					throw failure(
-						"ROLE_SELECTION_REQUIRED",
-						"Choose at least one project key role before cutover.",
-					);
 				const projectConfig = await loadProjectRoleBindings(
 					projectRoot,
 					expectedProjectId,
@@ -486,7 +527,18 @@ export async function createAccountVaultMigrationBackend(
 			const databases = [...prepared.sourceHashes.keys()].filter((name) =>
 				name.includes(".db"),
 			);
-			const preview: MigrationPreview = {
+			const preview: MigrationPreview & {
+				projectRoles: {
+					current: unknown;
+					projectId: string;
+					candidates: ProjectRoleCandidate[];
+				};
+			} = {
+				projectRoles: {
+					current: prepared.projectConfig,
+					projectId: expectedProjectId,
+					candidates: roleCandidates(prepared),
+				},
 				source: {
 					account: prepared.accountName,
 					location: "account",
@@ -527,6 +579,25 @@ export async function createAccountVaultMigrationBackend(
 				);
 			if (prepared.busy)
 				throw failure("MIGRATION_BUSY", "This migration is already running.");
+			const selectionRequest = (
+				input as typeof input & { roleSelection?: ProjectRoleSelectionRequest }
+			).roleSelection;
+			if (!selectionRequest && Object.keys(roleAssignments).length === 0)
+				throw failure(
+					"ROLE_SELECTION_REQUIRED",
+					"Choose explicit project key roles before cutover.",
+				);
+			if (selectionRequest)
+				prepareProjectRoleSelection(
+					prepared.projectConfig,
+					roleCandidates(prepared),
+					selectionRequest,
+					{
+						createBindingId: () => randomUUID(),
+						now: new Date(now()).toISOString(),
+						expectedProjectId,
+					},
+				);
 			prepared.busy = true;
 			const outcome = { activationAttempted: false } as {
 				activationAttempted: boolean;
@@ -534,6 +605,33 @@ export async function createAccountVaultMigrationBackend(
 			};
 			outcomes.set(input.sessionId, outcome);
 			let stageDirectory: string | undefined;
+			const journal: MigrationJournal = {
+				version: 1,
+				sessionId: input.sessionId,
+				projectRoot,
+				projectId: expectedProjectId,
+				vaultPath,
+				accountName: prepared.accountName,
+				phase: "prepared",
+				sourceHashes: Object.fromEntries(prepared.sourceHashes),
+				beforeVaultHash: prepared.vaultBefore
+					? digest(prepared.vaultBefore)
+					: null,
+				beforeConfigHash:
+					prepared.projectConfig === null
+						? null
+						: digest(JSON.stringify(prepared.projectConfig)),
+				preserved: {
+					identity: true,
+					addresses: true,
+					databases: [...prepared.sourceHashes.keys()].filter((name) =>
+						name.includes(".db"),
+					),
+					vaultEntries: prepared.originalEntries.map((entry) =>
+						String(entry.id),
+					),
+				},
+			};
 			let lockHandle: Awaited<ReturnType<typeof open>> | undefined;
 			const lockPath = `${vaultPath}.lock`;
 			const progress = (
@@ -549,9 +647,14 @@ export async function createAccountVaultMigrationBackend(
 				regularPath(lockPath);
 				lockHandle = await open(lockPath, "wx", 0o600);
 				await lockHandle.writeFile(
-					JSON.stringify({ pid: process.pid, at: now() }),
+					JSON.stringify({
+						pid: process.pid,
+						at: now(),
+						sessionId: input.sessionId,
+					}),
 				);
 				await lockHandle.sync();
+				await writeMigrationJournal(journal);
 				regularPath(vaultPath);
 				const actual = existsSync(vaultPath) ? await readFile(vaultPath) : null;
 				if (
@@ -569,9 +672,11 @@ export async function createAccountVaultMigrationBackend(
 					0,
 					"Preserving the original encrypted account and destination.",
 				);
-				stageDirectory = await mkdtemp(
-					join(dirname(vaultPath), ".vault-migration-"),
-				);
+				stageDirectory = migrationJournalPaths(
+					vaultPath,
+					input.sessionId,
+				).stageDirectory;
+				await mkdir(stageDirectory, { mode: 0o700 });
 				await chmod(stageDirectory, 0o700);
 				const backup = join(stageDirectory, "source-keys.bep");
 				const backupHandle = await open(backup, "wx", 0o600);
@@ -683,11 +788,33 @@ export async function createAccountVaultMigrationBackend(
 						};
 					},
 				);
-				const next = changeProjectRoleBindings(base, {
-					expectedProjectId: expectedProjectId,
-					expectedRevision: base.revision,
-					changes,
-				});
+				const selection = (
+					input as typeof input & {
+						roleSelection?: ProjectRoleSelectionRequest;
+					}
+				).roleSelection;
+				const next = selection
+					? prepareProjectRoleSelection(
+							prepared.projectConfig,
+							roleCandidates(prepared),
+							selection,
+							{
+								createBindingId: () => randomUUID(),
+								now: new Date(now()).toISOString(),
+								expectedProjectId,
+							},
+						)
+					: changeProjectRoleBindings(base, {
+							expectedProjectId: expectedProjectId,
+							expectedRevision: base.revision,
+							changes,
+						});
+				journal.nextProjectConfig = projectRoleBindingsSchema.parse(
+					prepared.projectRevision === null ? { ...next, revision: 0 } : next,
+				);
+				journal.stagedVaultHash = digest(await readFile(stage));
+				journal.phase = "stage-verified";
+				await writeMigrationJournal(journal);
 				const latest = await loadProjectRoleBindings(
 					projectRoot,
 					expectedProjectId,
@@ -704,12 +831,16 @@ export async function createAccountVaultMigrationBackend(
 					"Activating the verified encrypted Vault; original account files stay in place.",
 				);
 				outcome.activationAttempted = true;
+				journal.phase = "activation-pending";
+				await writeMigrationJournal(journal);
 				if (prepared.vaultBefore) await rename(stage, vaultPath);
 				else {
 					await link(stage, vaultPath);
 					await rm(stage);
 				}
 				await syncDirectory(dirname(vaultPath));
+				journal.phase = "vault-activated";
+				await writeMigrationJournal(journal);
 				// A failed config CAS leaves a verified encrypted Vault and every original
 				// source intact. Do not overwrite either side to guess at rollback.
 				current(input.sessionId);
@@ -721,6 +852,23 @@ export async function createAccountVaultMigrationBackend(
 						expectedRevision: prepared.projectRevision,
 					},
 				);
+				journal.phase = "bindings-committed";
+				await writeMigrationJournal(journal);
+				if (
+					digest(await readFile(vaultPath)) !== journal.stagedVaultHash ||
+					JSON.stringify(
+						await loadProjectRoleBindings(projectRoot, expectedProjectId),
+					) !== JSON.stringify(journal.nextProjectConfig)
+				)
+					throw failure(
+						"POST_COMMIT_CHANGED",
+						"Migration state changed after activation. Preserve the recovery files and reconcile before retrying.",
+					);
+				checkSource(prepared);
+				journal.phase = "complete";
+				await writeMigrationJournal(journal);
+				await rm(stageDirectory, { recursive: true });
+				await syncDirectory(dirname(vaultPath));
 				const result = {
 					completed: true as const,
 					verified: true as const,
@@ -759,11 +907,67 @@ export async function createAccountVaultMigrationBackend(
 			if (outcome?.result)
 				return { status: "complete", result: outcome.result };
 			const prepared = sessions.get(input.sessionId);
-			if (!prepared || prepared.busy || !outcome || outcome.activationAttempted)
-				return { status: "unknown" };
-			assertRequest(prepared, input);
-			checkSource(prepared);
-			return { status: "safe-to-retry" };
+			if (prepared?.busy) return { status: "unknown" };
+			if (prepared) assertRequest(prepared, input);
+			if (
+				input.source.location !== "account" ||
+				input.source.account !== input.destination.accountName ||
+				canonicalMigrationPath(input.destination.vaultPath) !== vaultPath ||
+				input.destination.vaultEntryId !== "new"
+			)
+				throw failure(
+					"INVALID_SELECTION",
+					"Recovery must use the same project, account and Vault destination.",
+				);
+			const recovered = readMigrationJournal({
+				projectRoot,
+				projectId: expectedProjectId,
+				vaultPath,
+				sessionId: input.sessionId,
+				accountName: input.source.account,
+			});
+			if (!recovered) return { status: "unknown" };
+			const sourceDir = accountDir(recovered.accountName, root);
+			regularPath(sourceDir, true);
+			for (const [name, hash] of Object.entries(recovered.sourceHashes)) {
+				const path = join(sourceDir, name);
+				regularPath(path);
+				if (!existsSync(path) || digest(readFileSync(path)) !== hash)
+					return { status: "unknown" };
+			}
+			regularPath(vaultPath);
+			const actualVaultHash = existsSync(vaultPath)
+				? digest(readFileSync(vaultPath))
+				: null;
+			const config = await loadProjectRoleBindings(
+				projectRoot,
+				expectedProjectId,
+			);
+			if (
+				recovered.stagedVaultHash &&
+				actualVaultHash === recovered.stagedVaultHash &&
+				recovered.nextProjectConfig &&
+				JSON.stringify(config) === JSON.stringify(recovered.nextProjectConfig)
+			)
+				return {
+					status: "complete",
+					result: {
+						completed: true,
+						verified: true,
+						accountName: recovered.accountName,
+						preserved: recovered.preserved,
+					},
+				};
+			const actualConfigHash =
+				config === null ? null : digest(JSON.stringify(config));
+			if (
+				!existsSync(`${vaultPath}.lock`) &&
+				actualVaultHash === recovered.beforeVaultHash &&
+				actualConfigHash === recovered.beforeConfigHash &&
+				["prepared", "stage-verified"].includes(recovered.phase)
+			)
+				return { status: "safe-to-retry" };
+			return { status: "unknown" };
 		},
 		lock: close,
 	};

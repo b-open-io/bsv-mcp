@@ -1064,6 +1064,12 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 export async function main() {
 	// Check for help or info commands that don't need authentication
 	const args = process.argv.slice(2);
+	if (args[0] === "vault-setup") {
+		if (args.length !== 1) throw new Error("vault-setup does not accept arguments; configure the explicit project and Vault through environment settings");
+		const { runConfiguredVaultSetup } = await import("./utils/vaultSetupBootstrap");
+		await runConfiguredVaultSetup();
+		return;
+	}
 	if (await runAccountCommand(args)) return;
 	if (args.includes("--help") || args.includes("-h") || args.includes("help")) {
 		console.log(`
