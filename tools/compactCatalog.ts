@@ -226,6 +226,8 @@ function categoryEnabled(
 }
 
 function captureConfig(config: ToolsConfig) {
+	const externalWallet =
+		config.externalWallet ?? config.ctx?.isBaseWallet === false;
 	const bsv = categoryEnabled(config, "bsv_read")
 		? captureRegistrations((server) => {
 				registerBsvTools(server);
@@ -247,6 +249,7 @@ function captureConfig(config: ToolsConfig) {
 			? captureRegistrations((server) =>
 					registerWalletTools(server, config.wallet, {
 						ctx: config.ctx,
+						allowWholeWalletBalance: !externalWallet,
 					}),
 				)
 			: new Map<string, CapturedTool>();
@@ -456,10 +459,14 @@ function walletCapabilityReason(
 	config: ToolsConfig,
 	operation: string,
 ): string {
+	const externalWallet =
+		config.externalWallet ?? config.ctx?.isBaseWallet === false;
 	if (!categoryEnabled(config, "wallet_read"))
 		return "wallet category is disabled";
 	if (config.integratedWallet?.isDroplitMode)
 		return "normal wallet reads are unavailable in Droplit mode";
+	if (externalWallet && operation === "wallet_getBalance")
+		return "whole-wallet balance is unavailable in external signer mode";
 	if (!config.wallet && !config.ctx) return "wallet is not configured";
 	if (
 		BRC100_WALLET_READS.includes(

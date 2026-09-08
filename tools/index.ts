@@ -40,6 +40,8 @@ import type { Wallet } from "./wallet/wallet";
  */
 export interface ToolsConfig {
 	localAccountAvailable?: boolean;
+	/** True when the connected wallet is owned by an external signer. */
+	externalWallet?: boolean;
 	/** Explicit server-side catalog selection; full remains the default. */
 	toolCatalog?: ToolCatalogProfile;
 	vaultMigration?: VaultMigrationStatus;
@@ -157,6 +159,8 @@ export function registerAllTools(
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
+		const externalWallet =
+			config.externalWallet ?? config.ctx?.isBaseWallet === false;
 		if (config.enableAccountTools === true && !process.env.BRC100_WALLET_URL)
 			registerAccountTools(server);
 		if (config.droplitClient)
@@ -180,6 +184,7 @@ export function registerAllTools(
 			// Register normal wallet tools
 			const walletToolOptions = {
 				ctx: config.ctx,
+				allowWholeWalletBalance: !externalWallet,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);
 		}

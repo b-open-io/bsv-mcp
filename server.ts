@@ -100,6 +100,7 @@ type McpAppToolsConfig = {
 	wallet?: Wallet;
 	ctx?: import("@1sat/actions").OneSatContext;
 	services?: import("@1sat/client").OneSatServices;
+	externalWallet?: boolean;
 	enableBsvTools?: boolean;
 	enableOrdinalsTools?: boolean;
 	enableWalletTools?: boolean;
@@ -239,6 +240,9 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 	const appServices = config.ctx?.services ?? config.services;
 	const walletAvailable =
 		!config.droplitMode && Boolean(config.ctx || config.wallet);
+	const externalWallet =
+		config.externalWallet ?? config.ctx?.isBaseWallet === false;
+	const wholeWalletBalanceAvailable = walletAvailable && !externalWallet;
 	const sweepPrepareAvailable = Boolean(
 		config.ctx &&
 			appServices &&
@@ -442,7 +446,7 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 	}
 
 	// App-only: fetch wallet data (uses BRC-100 context to match direct tools)
-	if (walletToolsEnabled && walletAvailable) {
+	if (walletToolsEnabled && wholeWalletBalanceAvailable) {
 		registerAppTool(
 			server,
 			"app_wallet_data",
@@ -1479,6 +1483,7 @@ Authentication:
 					!!externalWallet,
 					CONFIG.useDroplitApi,
 				),
+				externalWallet: !!externalWallet,
 				enableAccountTools: !externalWallet && !CONFIG.useDroplitApi,
 				enableBsvTools: effectiveConfig.loadBsvTools,
 				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,

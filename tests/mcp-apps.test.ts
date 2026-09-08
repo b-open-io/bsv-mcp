@@ -212,7 +212,10 @@ test("app_sweep_complete honors the environment guard through registration", asy
 			);
 			expect(calls).toHaveLength(0);
 		},
-		{ ctx, disableBroadcasting: false },
+		{
+			ctx,
+			disableBroadcasting: false,
+		},
 	);
 });
 
@@ -248,7 +251,11 @@ test("app_sweep_complete forwards the reference and spends when enabled", async 
 					},
 				]);
 			},
-			{ ctx, disableBroadcasting: false },
+			{
+				ctx,
+				externalWallet: !isBaseWallet,
+				disableBroadcasting: false,
+			},
 		);
 	}
 });
@@ -288,8 +295,14 @@ test("v2 app tools follow wallet, context, and category capabilities", async () 
 	expect(localNames).not.toContain("app_sweep_prepare");
 	expect(localNames).not.toContain("app_sweep_complete");
 
-	const externalNames = await appToolNames({});
-	for (const name of APP_TOOL_NAMES) expect(externalNames).toContain(name);
+	const embeddedNames = await appToolNames({ externalWallet: false });
+	for (const name of APP_TOOL_NAMES) expect(embeddedNames).toContain(name);
+
+	const externalNames = await appToolNames({ externalWallet: true });
+	expect(externalNames).not.toContain("app_wallet_data");
+	for (const name of ["app_sweep_prepare", "app_sweep_complete"]) {
+		expect(externalNames).toContain(name);
+	}
 
 	const droplitNames = await appToolNames({
 		integratedWallet: fakeDroplit,
