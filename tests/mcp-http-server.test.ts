@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -31,6 +32,40 @@ type ChildResult = {
 	code: number | null;
 	signal: NodeJS.Signals | null;
 };
+
+// Exact CORS surface advertised by the live Bun.serve handler in server.ts:
+// Access-Control-Allow-Methods, Access-Control-Allow-Headers and
+// Access-Control-Expose-Headers. Compared case-insensitively through
+// headerTokens, which lowercases every token.
+const EXPECTED_ALLOW_METHODS = ["get", "post", "delete", "options"];
+const EXPECTED_ALLOW_HEADERS = [
+	"content-type",
+	"authorization",
+	"mcp-session-id",
+	"last-event-id",
+	"mcp-protocol-version",
+	"mcp-method",
+	"mcp-name",
+];
+const EXPECTED_EXPOSE_HEADERS = [
+	"mcp-session-id",
+	"mcp-protocol-version",
+	"mcp-method",
+	"mcp-name",
+];
+
+function expectCompleteCors(response: Response) {
+	expect(response.headers.get("access-control-allow-origin")).toBe("*");
+	const methods = headerTokens(response, "access-control-allow-methods");
+	expect(methods).toEqual(expect.arrayContaining(EXPECTED_ALLOW_METHODS));
+	expect(methods).toHaveLength(EXPECTED_ALLOW_METHODS.length);
+	const allowed = headerTokens(response, "access-control-allow-headers");
+	expect(allowed).toEqual(expect.arrayContaining(EXPECTED_ALLOW_HEADERS));
+	expect(allowed).toHaveLength(EXPECTED_ALLOW_HEADERS.length);
+	const exposed = headerTokens(response, "access-control-expose-headers");
+	expect(exposed).toEqual(expect.arrayContaining(EXPECTED_EXPOSE_HEADERS));
+	expect(exposed).toHaveLength(EXPECTED_EXPOSE_HEADERS.length);
+}
 
 function delay(ms: number) {
 	return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -238,17 +273,7 @@ describe("self-hosted Bun Streamable HTTP transport", () => {
 		});
 
 		expect(response.status).toBe(200);
-		expect(response.headers.get("access-control-allow-origin")).toBe("*");
-		expect(headerTokens(response, "access-control-allow-methods")).toContain(
-			"post",
-		);
-		expect(headerTokens(response, "access-control-allow-headers")).toEqual(
-			expect.arrayContaining([
-				"content-type",
-				"mcp-protocol-version",
-				"mcp-method",
-			]),
-		);
+		expectCompleteCors(response);
 		const message = await responseJson(response);
 		expect(message.id).toBe(1);
 		expect(message.error).toBeUndefined();
@@ -331,6 +356,8 @@ describe("self-hosted Bun Streamable HTTP transport", () => {
 					"Mcp-Session-Id": sessionId as string,
 				},
 			});
+			expect(closed.status).toBe(200);
+			expectCompleteCors(closed);
 			await closed.arrayBuffer();
 		}
 	});
@@ -346,17 +373,7 @@ describe("self-hosted Bun Streamable HTTP transport", () => {
 			},
 		});
 		expect(preflight.status).toBe(204);
-		expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
-		expect(headerTokens(preflight, "access-control-allow-methods")).toEqual(
-			expect.arrayContaining(["post", "options"]),
-		);
-		expect(headerTokens(preflight, "access-control-allow-headers")).toEqual(
-			expect.arrayContaining([
-				"content-type",
-				"mcp-protocol-version",
-				"mcp-method",
-			]),
-		);
+		expectCompleteCors(preflight);
 		await preflight.arrayBuffer();
 
 		for (const method of ["PUT", "PATCH"]) {
@@ -365,9 +382,274 @@ describe("self-hosted Bun Streamable HTTP transport", () => {
 				headers: { Accept: "application/json, text/event-stream" },
 			});
 			expect(response.status, `${method} should be rejected`).toBe(405);
+			expect(response.headers.get("allow")).toContain("GET");
 			expect(response.headers.get("allow")).toContain("POST");
-			expect(response.headers.get("access-control-allow-origin")).toBe("*");
+			expect(response.headers.get("allow")).toContain("DELETE");
+			expectCompleteCors(response);
 			await response.arrayBuffer();
 		}
+	});
+
+	test("terminates a legacy session with DELETE and rejects session reuse", async () => {
+		const initialize = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json, text/event-stream",
+				"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 10,
+				method: "initialize",
+				params: {
+					protocolVersion: LEGACY_PROTOCOL_VERSION,
+					capabilities: {},
+					clientInfo: {
+						name: "bsv-mcp-http-regression",
+						version: "1.0.0",
+					},
+				},
+			}),
+		});
+		const sessionId = initialize.headers.get("mcp-session-id");
+		expect(initialize.status).toBe(200);
+		expect(sessionId).toBeTruthy();
+		const initialized = await responseJson(initialize);
+		expect(initialized.id).toBe(10);
+		expect(initialized.error).toBeUndefined();
+
+		let deleted = false;
+		const sessionHeaders = {
+			"Content-Type": "application/json",
+			Accept: "application/json, text/event-stream",
+			"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+			"Mcp-Session-Id": sessionId as string,
+		};
+		try {
+			const closed = await fetch(`${server.origin}/mcp`, {
+				method: "DELETE",
+				headers: {
+					Accept: "application/json, text/event-stream",
+					"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+					"Mcp-Session-Id": sessionId as string,
+				},
+			});
+			expect(closed.status).toBe(200);
+			expectCompleteCors(closed);
+			await closed.arrayBuffer();
+			deleted = true;
+
+			const reuse = await fetch(`${server.origin}/mcp`, {
+				method: "POST",
+				headers: sessionHeaders,
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 11,
+					method: "tools/list",
+					params: {},
+				}),
+			});
+			expect(reuse.status).toBe(404);
+			expect(reuse.headers.get("access-control-allow-origin")).toBe("*");
+			expect(headerTokens(reuse, "access-control-expose-headers")).toEqual(
+				expect.arrayContaining(EXPECTED_EXPOSE_HEADERS),
+			);
+			const reused = await responseJson(reuse);
+			expect(reused.error?.code).toBe(-32001);
+			expect(String(reused.error?.message)).toContain("Session not found");
+
+			const deletedAgain = await fetch(`${server.origin}/mcp`, {
+				method: "DELETE",
+				headers: {
+					Accept: "application/json, text/event-stream",
+					"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+					"Mcp-Session-Id": sessionId as string,
+				},
+			});
+			expect(deletedAgain.status).toBe(404);
+			await deletedAgain.arrayBuffer();
+
+			const unknown = await fetch(`${server.origin}/mcp`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json, text/event-stream",
+					"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+					"Mcp-Session-Id": randomUUID(),
+				},
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: 12,
+					method: "tools/list",
+					params: {},
+				}),
+			});
+			expect(unknown.status).toBe(404);
+			const unknownBody = await responseJson(unknown);
+			expect(unknownBody.error?.code).toBe(-32001);
+			expect(String(unknownBody.error?.message)).toContain("Session not found");
+		} finally {
+			if (!deleted) {
+				const cleanup = await fetch(`${server.origin}/mcp`, {
+					method: "DELETE",
+					headers: {
+						Accept: "application/json, text/event-stream",
+						"Mcp-Protocol-Version": LEGACY_PROTOCOL_VERSION,
+						"Mcp-Session-Id": sessionId as string,
+					},
+				}).catch(() => undefined);
+				await cleanup?.arrayBuffer().catch(() => {});
+			}
+		}
+	});
+
+	test("rejects malformed modern protocol metadata on the live endpoint", async () => {
+		const modernHeaders = {
+			"Content-Type": "application/json",
+			Accept: "application/json, text/event-stream",
+			"Mcp-Protocol-Version": MODERN_PROTOCOL_VERSION,
+			"Mcp-Method": "tools/list",
+		};
+
+		// Missing Mcp-Method header while the body names tools/list.
+		const missingMethod = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json, text/event-stream",
+				"Mcp-Protocol-Version": MODERN_PROTOCOL_VERSION,
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 21,
+				method: "tools/list",
+				params: { _meta: modernEnvelope },
+			}),
+		});
+		expect(missingMethod.status).toBe(400);
+		expectCompleteCors(missingMethod);
+		const missingMethodBody = await responseJson(missingMethod);
+		expect(missingMethodBody.id).toBe(21);
+		expect(missingMethodBody.error?.code).toBe(-32020);
+		expect(String(missingMethodBody.error?.message)).toContain("Mcp-Method");
+
+		// Modern protocol-version header without the required per-request envelope.
+		const withoutEnvelope = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: modernHeaders,
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 22,
+				method: "tools/list",
+				params: {},
+			}),
+		});
+		expect(withoutEnvelope.status).toBe(400);
+		expect(withoutEnvelope.headers.get("access-control-allow-origin")).toBe(
+			"*",
+		);
+		const withoutEnvelopeBody = await responseJson(withoutEnvelope);
+		expect(withoutEnvelopeBody.id).toBe(22);
+		expect(withoutEnvelopeBody.error?.code).toBe(-32602);
+		expect(String(withoutEnvelopeBody.error?.message)).toContain("envelope");
+
+		// Malformed envelope: the protocol-version claim must be a string.
+		const badEnvelope = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: modernHeaders,
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 23,
+				method: "tools/list",
+				params: {
+					_meta: {
+						"io.modelcontextprotocol/protocolVersion": 123,
+					},
+				},
+			}),
+		});
+		expect(badEnvelope.status).toBe(400);
+		expect(badEnvelope.headers.get("access-control-allow-origin")).toBe("*");
+		const badEnvelopeBody = await responseJson(badEnvelope);
+		expect(badEnvelopeBody.id).toBe(23);
+		expect(badEnvelopeBody.error?.code).toBe(-32602);
+		expect(String(badEnvelopeBody.error?.message)).toContain("envelope");
+
+		// Wrong media type for a modern request.
+		const wrongContentType = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "text/plain",
+				Accept: "application/json, text/event-stream",
+				"Mcp-Protocol-Version": MODERN_PROTOCOL_VERSION,
+				"Mcp-Method": "tools/list",
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 24,
+				method: "tools/list",
+				params: { _meta: modernEnvelope },
+			}),
+		});
+		expect(wrongContentType.status).toBe(415);
+		expect(wrongContentType.headers.get("access-control-allow-origin")).toBe(
+			"*",
+		);
+		const wrongContentTypeBody = await responseJson(wrongContentType);
+		expect(wrongContentTypeBody.error?.code).toBe(-32000);
+		expect(String(wrongContentTypeBody.error?.message)).toContain(
+			"Unsupported Media Type",
+		);
+
+		// JSON-RPC batches may not contain modern requests.
+		const batch = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: modernHeaders,
+			body: JSON.stringify([
+				{
+					jsonrpc: "2.0",
+					id: 25,
+					method: "tools/list",
+					params: { _meta: modernEnvelope },
+				},
+			]),
+		});
+		expect(batch.status).toBe(400);
+		expect(batch.headers.get("access-control-allow-origin")).toBe("*");
+		const batchBody = await responseJson(batch);
+		expect(batchBody.error?.code).toBe(-32600);
+		expect(String(batchBody.error?.message)).toContain("batch");
+
+		// The legacy initialize handshake must not carry a modern header.
+		const modernInitialize = await fetch(`${server.origin}/mcp`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json, text/event-stream",
+				"Mcp-Protocol-Version": MODERN_PROTOCOL_VERSION,
+			},
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: 26,
+				method: "initialize",
+				params: {
+					protocolVersion: LEGACY_PROTOCOL_VERSION,
+					capabilities: {},
+					clientInfo: {
+						name: "bsv-mcp-http-regression",
+						version: "1.0.0",
+					},
+				},
+			}),
+		});
+		expect(modernInitialize.status).toBe(400);
+		expect(modernInitialize.headers.get("access-control-allow-origin")).toBe(
+			"*",
+		);
+		const modernInitializeBody = await responseJson(modernInitialize);
+		expect(modernInitializeBody.id).toBe(26);
+		expect(modernInitializeBody.error?.code).toBe(-32020);
+		expect(String(modernInitializeBody.error?.message)).toContain("initialize");
 	});
 });
