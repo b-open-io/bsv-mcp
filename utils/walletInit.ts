@@ -32,6 +32,7 @@ import { backendUrl, onesatUrl } from "./backends";
 import {
 	EMBEDDED_OWNER_ORIGINATOR,
 	withEmbeddedOwnerDefaultBasketRead,
+	withEmbeddedMcpOriginator,
 	withEmbeddedOwnerDerivation,
 } from "./embeddedOwnerRead";
 import {
@@ -191,7 +192,10 @@ export async function initWallet(
 				),
 		);
 
-		const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
+		const wallet = withEmbeddedOwnerDefaultBasketRead(
+			withEmbeddedMcpOriginator(wpm),
+			ADMIN_ORIGINATOR,
+		);
 		const ctx = Object.assign(
 			createContext(wallet, {
 				services: result.services,

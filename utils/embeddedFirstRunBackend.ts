@@ -58,6 +58,10 @@ export interface EmbeddedFirstRunBackendOptions {
 }
 
 export interface EmbeddedFirstRunCreateInput {
+	existingKey?: {
+		vaultId: string;
+		payment: { entryId: string; publicKey: string };
+	};
 	accountName: string;
 	password: string;
 	passwordConfirmation: string;
@@ -274,6 +278,9 @@ export function createEmbeddedFirstRunBackend(
 		input: EmbeddedFirstRunCreateInput,
 	): Promise<EmbeddedFirstRunResult> => {
 		const { name, password } = validateInput(input);
+		const existingKey = input.existingKey
+			? structuredClone(input.existingKey)
+			: undefined;
 		const accountsDirectory = resolveAccountsDirectory();
 		try {
 			await mkdir(accountsDirectory, { recursive: true, mode: 0o700 });
@@ -298,7 +305,9 @@ export function createEmbeddedFirstRunBackend(
 					});
 				};
 				try {
-					if (existsSync(vaultPath)) {
+					if (existingKey) {
+						receipt = existingKey;
+					} else if (existsSync(vaultPath)) {
 						// Existing Vaults are append-only: import a newly-generated
 						// payment key under the supplied Vault password.
 						receipt = await importPayment();

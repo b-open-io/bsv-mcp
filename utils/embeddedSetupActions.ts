@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createEmbeddedVaultIo } from "./embeddedVaultIo";
 import { accountNameSchema, readAccount } from "./accounts";
 import { createEmbeddedFirstRunBackend } from "./embeddedFirstRunBackend";
 import { createEmbeddedImportBackend } from "./embeddedImportBackend";
@@ -60,13 +61,7 @@ export function createEmbeddedSetupActions(options: {
 	});
 	let busy = false;
 	let completed = false;
-	async function exclusive(
-		action: () => Promise<{
-			accountName: string;
-			address: string;
-			ready: boolean;
-		}>,
-	) {
+	async function exclusive<T>(action: () => Promise<T>) {
 		if (busy || completed)
 			throw new Error(
 				"This setup session has already completed or is busy. Reopen setup to continue.",
@@ -105,6 +100,43 @@ export function createEmbeddedSetupActions(options: {
 		};
 	}
 	return {
+		vaultKeys: (body) =>
+			exclusive(async () => {
+				const { password } = z
+					.object({ password: z.string().min(1) })
+					.parse(body);
+				return createEmbeddedVaultIo({ vaultPath: options.vaultPath }).listKeys(
+					password,
+				);
+			}),
+		linkKey: (body) =>
+			exclusive(async () => {
+				const input = z
+					.object({
+						accountName: accountNameSchema,
+						password: z.string().min(8),
+						vaultId: z.string().min(1),
+						entryId: z.string().min(1),
+						publicKey: z.string().regex(/^(02|03)[0-9a-fA-F]{64}$/),
+					})
+					.parse(body);
+				const saved = await creator.create({
+					accountName: input.accountName,
+					password: input.password,
+					passwordConfirmation: input.password,
+					confirmation: "CREATE_NEW_CONFIRMED",
+					existingKey: {
+						vaultId: input.vaultId,
+						payment: { entryId: input.entryId, publicKey: input.publicKey },
+					},
+				});
+				return {
+					accountName: saved.accountName,
+					address: saved.address,
+					ready: false,
+					saved: true,
+				};
+			}),
 		create: (body) =>
 			exclusive(async () => {
 				const input = createInput.parse(body);

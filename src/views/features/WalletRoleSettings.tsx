@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { VaultKeyPicker } from "./VaultKeyPicker";
 import type {
 	WalletRole,
 	WalletRoleDefaults,
@@ -36,6 +37,8 @@ export function WalletRoleSettings({
 	const [defaults, setDefaults] = useState<WalletRoleDefaults>({});
 	const [error, setError] = useState("");
 	const [pending, setPending] = useState(false);
+	const [showVaultKeys, setShowVaultKeys] = useState(false);
+	const [revision, setRevision] = useState(0);
 	useEffect(() => {
 		fetch("/api/embedded/roles", {
 			headers: { Authorization: `Bearer ${token}` },
@@ -57,7 +60,7 @@ export function WalletRoleSettings({
 				});
 			})
 			.catch((error) => setError(error.message));
-	}, [token]);
+	}, [token, revision]);
 	async function save() {
 		if (!settings || pending) return;
 		setPending(true);
@@ -94,11 +97,24 @@ export function WalletRoleSettings({
 				description="Keep all your keys in one Vault. Choose which key each role uses; project MCP settings can override individual roles."
 			/>
 			{error && <Notice tone="error">{error}</Notice>}
+			{showVaultKeys ? (
+				<VaultKeyPicker
+					token={token}
+					onLinked={() => {
+						setShowVaultKeys(false);
+						setRevision((value) => value + 1);
+					}}
+				/>
+			) : (
+				<Button variant="secondary" onClick={() => setShowVaultKeys(true)}>
+					Choose another key from Vault
+				</Button>
+			)}
 			<Surface>
 				<div className="surface-body">
 					<p>
-						Import more wallets at any time. Choosing a default does not move
-						keys or funds.
+						Import several wallets before unlocking. Choosing a default does not
+						move keys or funds.
 					</p>
 					{roles.map((role) => (
 						<label className="field-label" key={role.id}>

@@ -225,7 +225,7 @@ export function FirstRun({
 				</>
 			) : choice === "welcome" ? (
 				<div className="setup-choices">
-					{boundAccounts.length > 0 && (
+					{(boundAccounts.length > 0 || vaultExists) && (
 						<Button onClick={() => navigate("roles")}>
 							Choose default keys
 						</Button>

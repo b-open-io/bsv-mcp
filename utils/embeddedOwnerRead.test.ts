@@ -374,3 +374,102 @@ test("real WPM spending approval returns a signable action without broadcast", a
 	expect(result.signableTransaction?.reference).toBe("cmVm");
 	expect(calls).toEqual(["createAction", "listOutputs"]);
 });
+
+test("default MCP originator is non-admin and still reaches the spending gate", async () => {
+	const { withEmbeddedMcpOriginator, EMBEDDED_MCP_ORIGINATOR } = await import(
+		"./embeddedOwnerRead"
+	);
+	const calls: unknown[][] = [];
+	const wallet = withEmbeddedMcpOriginator({
+		createAction: async (...args: unknown[]) => {
+			calls.push(args);
+			throw new Error("spending approval required");
+		},
+	} as unknown as WalletInterface);
+	expect(EMBEDDED_MCP_ORIGINATOR).not.toBe(ADMIN_ORIGINATOR);
+	await expect(wallet.createAction({ description: "test" })).rejects.toThrow(
+		"spending approval required",
+	);
+	expect(calls[0]?.[1]).toBe(EMBEDDED_MCP_ORIGINATOR);
+	await expect(
+		wallet.createAction({ description: "test" }, "explicit.client"),
+	).rejects.toThrow("spending approval required");
+	expect(calls[1]?.[1]).toBe("explicit.client");
+});
+
+test("real wallet permissions settle accept, decline, and cancel through an MCP connection", async () => {
+	const { withEmbeddedMcpOriginator } = await import("./embeddedOwnerRead");
+	const { handleSpendingAuthorization } = await import("./spendingApproval");
+	for (const decision of [
+		"accept",
+		"decline",
+		"cancel",
+		"unsupported",
+	] as const) {
+		const { calls, manager } = makeSpendingManager();
+		const wallet = withEmbeddedOwnerDefaultBasketRead(
+			withEmbeddedMcpOriginator(manager),
+			ADMIN_ORIGINATOR,
+		);
+		const server = new McpServer({ name: "spending-gate-test", version: "1" });
+		manager.bindCallback(
+			"onSpendingAuthorizationRequested",
+			(request: SpendingRequest) =>
+				handleSpendingAuthorization(request, manager, server),
+		);
+		server.registerTool(
+			"synthetic_spend",
+			{ description: "Unfunded approval test" },
+			async () => {
+				try {
+					await wallet.createAction(spendingActionArgs());
+					return { content: [{ type: "text" as const, text: "approved" }] };
+				} catch {
+					return {
+						content: [{ type: "text" as const, text: "denied" }],
+						isError: true,
+					};
+				}
+			},
+		);
+		const client = new Client(
+			{ name: "spending-gate-client", version: "1" },
+			{
+				capabilities:
+					decision === "unsupported" ? {} : { elicitation: { form: {} } },
+			},
+		);
+		let prompts = 0;
+		if (decision !== "unsupported")
+			client.setRequestHandler("elicitation/create", async (request) => {
+				prompts++;
+				expect(request.params.message).toContain("1000 satoshis");
+				return {
+					action: decision,
+					...(decision === "accept" ? { content: { approved: true } } : {}),
+				};
+			});
+		const [clientTransport, serverTransport] =
+			InMemoryTransport.createLinkedPair();
+		try {
+			await Promise.all([
+				server.connect(serverTransport),
+				client.connect(clientTransport),
+			]);
+			const result = await client.callTool({
+				name: "synthetic_spend",
+				arguments: {},
+			});
+			expect(result.isError === true).toBe(decision !== "accept");
+			expect(prompts).toBe(decision === "unsupported" ? 0 : 1);
+			expect(calls).toEqual(
+				decision === "accept"
+					? ["createAction", "listOutputs"]
+					: ["createAction", "listOutputs", "abortAction"],
+			);
+		} finally {
+			await client.close();
+			await server.close();
+		}
+	}
+});

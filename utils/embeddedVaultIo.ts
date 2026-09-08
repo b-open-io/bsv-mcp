@@ -72,7 +72,13 @@ export interface EmbeddedVaultIoOptions {
 	now?: () => number;
 }
 
+export interface EmbeddedVaultKeyList {
+	vaultId: string;
+	keys: Array<EmbeddedVaultEntryReceipt & { label: string }>;
+}
+
 export interface EmbeddedVaultIo {
+	listKeys(password: string): Promise<EmbeddedVaultKeyList>;
 	create(input: EmbeddedVaultCreateInput): Promise<EmbeddedVaultReceipt>;
 	importKeys(input: EmbeddedVaultImportInput): Promise<EmbeddedVaultReceipt>;
 	/** Returns trusted in-memory keys. Never serialize, log, or expose them. */
@@ -99,7 +105,7 @@ interface VaultHandle {
 		entries: VaultEntryFull[];
 		settings: { revealEnabled: boolean };
 	};
-	list(): { id: string; kind: string; publicKey?: string }[];
+	list(): { id: string; kind: string; publicKey?: string; label?: string }[];
 	get(id: string): { id: string; kind: string; publicKey?: string };
 	unlock(reason: string, ttlSeconds?: number): void;
 	lock(): void;
@@ -749,6 +755,40 @@ export function createEmbeddedVaultIo(
 	};
 
 	return {
+		async listKeys(password: string): Promise<EmbeddedVaultKeyList> {
+			if (typeof password !== "string" || !password)
+				throw failure("UNLOCK_FAILED");
+			const module = await loadVaultModule(loadModule);
+			const canonical = resolveCanonical();
+			let vault: VaultHandle | undefined;
+			try {
+				vault = await module.openVault(
+					canonical,
+					new module.PassphraseProvider(password),
+				);
+				const vaultId = vault.toDocument().id;
+				const keys = vault
+					.list()
+					.flatMap((entry) =>
+						KEY_KINDS.has(entry.kind) &&
+						typeof entry.publicKey === "string" &&
+						COMPRESSED_PUBKEY.test(entry.publicKey)
+							? [
+									{
+										entryId: entry.id,
+										publicKey: entry.publicKey,
+										label: entry.label ?? "Vault key",
+									},
+								]
+							: [],
+					);
+				return { vaultId, keys };
+			} catch {
+				throw failure("UNLOCK_FAILED");
+			} finally {
+				vault?.lock();
+			}
+		},
 		async create(
 			input: EmbeddedVaultCreateInput,
 		): Promise<EmbeddedVaultReceipt> {

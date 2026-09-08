@@ -4,6 +4,9 @@
 
 ### Added
 
+- Select existing private/WIF Vault entries and link them to local accounts
+  without modifying the encrypted Vault.
+
 - Import multiple wallets into one Vault and choose global payment, identity,
   and ordinals keys, with independent overrides in native project MCP settings.
 
@@ -20,6 +23,9 @@
   `wallet_createOrdinals` requests `signWithBAP`.
 
 ### Changed
+
+- Supply a non-administrator MCP originator for local SDK calls that omit it,
+  preserving spending approval while allowing key and signing operations.
 
 - Restrict the hosted Next.js MCP route to public reads, regardless of key
   environment variables, and answer unauthenticated CORS preflight at both

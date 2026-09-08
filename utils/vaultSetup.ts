@@ -35,6 +35,17 @@ export type AvailableSetupTool = {
 	description?: string;
 };
 export interface EmbeddedSetupActions {
+	vaultKeys?(
+		body: Record<string, unknown>,
+	): Promise<import("./embeddedVaultIo").EmbeddedVaultKeyList>;
+	linkKey?(
+		body: Record<string, unknown>,
+	): Promise<{
+		accountName: string;
+		address: string;
+		ready: boolean;
+		saved: boolean;
+	}>;
 	unlock?(body: Record<string, unknown>): Promise<{
 		accountName: string;
 		address: string;
@@ -203,13 +214,17 @@ export async function startVaultSetup(
 					return;
 				}
 				const action =
-					apiPath === "/api/embedded/create"
-						? "create"
-						: apiPath === "/api/embedded/import"
-							? "import"
-							: apiPath === "/api/embedded/unlock"
-								? "unlock"
-								: undefined;
+					apiPath === "/api/embedded/vault-keys"
+						? "vaultKeys"
+						: apiPath === "/api/embedded/link-key"
+							? "linkKey"
+							: apiPath === "/api/embedded/create"
+								? "create"
+								: apiPath === "/api/embedded/import"
+									? "import"
+									: apiPath === "/api/embedded/unlock"
+										? "unlock"
+										: undefined;
 				if (!action) {
 					res.writeHead(404).end();
 					return;

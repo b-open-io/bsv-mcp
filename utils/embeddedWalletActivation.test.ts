@@ -60,6 +60,7 @@ function withHome(root: string): void {
 
 function fakeIo(counters: { unlock: number; lock: number }): EmbeddedVaultIo {
 	return {
+		listKeys: async () => ({ vaultId: "fixture", keys: [] }),
 		create: async () => binding(),
 		importKeys: async () => binding(),
 		unlock: async ({ password, binding: receipt }) => {

@@ -65,3 +65,22 @@ export function withEmbeddedOwnerDerivation(
 		},
 	}) as WalletInterface;
 }
+
+/** Stable local MCP caller. It must never equal the permission manager administrator. */
+export const EMBEDDED_MCP_ORIGINATOR = "local.bsv-mcp.client";
+
+/** Supply the missing SDK originator without bypassing spending authorization. */
+export function withEmbeddedMcpOriginator(
+	wallet: WalletInterface,
+): WalletInterface {
+	return new Proxy(wallet, {
+		get(target, property) {
+			const value = Reflect.get(target, property, target);
+			if (typeof value !== "function") return value;
+			return (...args: unknown[]) => {
+				if (args[1] === undefined) args[1] = EMBEDDED_MCP_ORIGINATOR;
+				return Reflect.apply(value, target, args);
+			};
+		},
+	});
+}

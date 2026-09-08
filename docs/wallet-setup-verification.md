@@ -51,3 +51,18 @@ resource metadata for an unauthenticated POST. Synthetic signed JWTs also
 verified live Bun session isolation across two independently valid principals.
 These checks do not establish deployed OAuth login or current MCP App host
 acceptance.
+
+The existing-key picker follow-up passed 681 tests with 4 opt-in skips and
+0 failures (3,666 assertions). The real encrypted-Vault integration verifies
+wrong-password and key-pin rejection, account overwrite refusal, byte-exact
+Vault preservation, distinct role public keys, and identity signature creation
+and verification without an administrator caller identity. Browser verification
+started with a Vault containing an unlinked key and no accounts, linked the key,
+saved defaults, unlocked, and completed an MCP address read with 78 tools.
+
+The real wallet permission manager was exercised over an MCP connection with
+synthetic transaction storage: acceptance returned a signable action; decline,
+cancel, and a client without form elicitation aborted the action. No funded
+transaction was signed or broadcast. TypeScript and production bundle builds
+passed. Current desktop-host acceptance still requires reconnecting the client
+so it launches the rebuilt executable.

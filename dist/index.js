@@ -101504,7 +101504,21 @@ function withEmbeddedOwnerDerivation(wallet, ownerOriginator) {
     }
   });
 }
-var DEFAULT_BASKET = "default", EMBEDDED_OWNER_ORIGINATOR;
+function withEmbeddedMcpOriginator(wallet) {
+  return new Proxy(wallet, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== "function")
+        return value;
+      return (...args) => {
+        if (args[1] === undefined)
+          args[1] = EMBEDDED_MCP_ORIGINATOR;
+        return Reflect.apply(value, target, args);
+      };
+    }
+  });
+}
+var DEFAULT_BASKET = "default", EMBEDDED_OWNER_ORIGINATOR, EMBEDDED_MCP_ORIGINATOR = "local.bsv-mcp.client";
 var init_embeddedOwnerRead = __esm(() => {
   EMBEDDED_OWNER_ORIGINATOR = Symbol("bsv-mcp.embedded-owner-originator");
 });
@@ -158596,7 +158610,7 @@ async function startVaultSetup(options = {}) {
           res.writeHead(405, { Allow: "POST" }).end();
           return;
         }
-        const action = apiPath === "/api/embedded/create" ? "create" : apiPath === "/api/embedded/import" ? "import" : apiPath === "/api/embedded/unlock" ? "unlock" : undefined;
+        const action = apiPath === "/api/embedded/vault-keys" ? "vaultKeys" : apiPath === "/api/embedded/link-key" ? "linkKey" : apiPath === "/api/embedded/create" ? "create" : apiPath === "/api/embedded/import" ? "import" : apiPath === "/api/embedded/unlock" ? "unlock" : undefined;
         if (!action) {
           res.writeHead(404).end();
           return;
@@ -294181,6 +294195,29 @@ function createEmbeddedVaultIo(options) {
     }
   };
   return {
+    async listKeys(password) {
+      if (typeof password !== "string" || !password)
+        throw failure("UNLOCK_FAILED");
+      const module = await loadVaultModule(loadModule);
+      const canonical = resolveCanonical();
+      let vault;
+      try {
+        vault = await module.openVault(canonical, new module.PassphraseProvider(password));
+        const vaultId = vault.toDocument().id;
+        const keys = vault.list().flatMap((entry) => KEY_KINDS.has(entry.kind) && typeof entry.publicKey === "string" && COMPRESSED_PUBKEY.test(entry.publicKey) ? [
+          {
+            entryId: entry.id,
+            publicKey: entry.publicKey,
+            label: entry.label ?? "Vault key"
+          }
+        ] : []);
+        return { vaultId, keys };
+      } catch {
+        throw failure("UNLOCK_FAILED");
+      } finally {
+        vault?.lock();
+      }
+    },
     async create(input) {
       const password = assertPassword(input?.password);
       assertConfirmation(password, input?.passwordConfirmation);
@@ -294732,6 +294769,7 @@ function createEmbeddedFirstRunBackend(options) {
   };
   const create = async (input) => {
     const { name, password } = validateInput(input);
+    const existingKey = input.existingKey ? structuredClone(input.existingKey) : undefined;
     const accountsDirectory = resolveAccountsDirectory();
     try {
       await mkdir3(accountsDirectory, { recursive: true, mode: 448 });
@@ -294754,7 +294792,9 @@ function createEmbeddedFirstRunBackend(options) {
           });
         };
         try {
-          if (existsSync9(vaultPath)) {
+          if (existingKey) {
+            receipt = existingKey;
+          } else if (existsSync9(vaultPath)) {
             receipt = await importPayment();
           } else {
             try {
@@ -295926,7 +295966,7 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
       encryptWalletMetadata: true
     });
     wpm.bindCallback("onSpendingAuthorizationRequested", (request) => handleSpendingAuthorization(request, wpm, undefined, options.sessionSignal));
-    const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
+    const wallet = withEmbeddedOwnerDefaultBasketRead(withEmbeddedMcpOriginator(wpm), ADMIN_ORIGINATOR);
     const ctx = Object.assign(createContext(wallet, {
       services: result.services,
       chain,
@@ -296286,6 +296326,35 @@ function createEmbeddedSetupActions(options) {
     };
   }
   return {
+    vaultKeys: (body) => exclusive(async () => {
+      const { password } = object2({ password: string2().min(1) }).parse(body);
+      return createEmbeddedVaultIo({ vaultPath: options.vaultPath }).listKeys(password);
+    }),
+    linkKey: (body) => exclusive(async () => {
+      const input = object2({
+        accountName: accountNameSchema,
+        password: string2().min(8),
+        vaultId: string2().min(1),
+        entryId: string2().min(1),
+        publicKey: string2().regex(/^(02|03)[0-9a-fA-F]{64}$/)
+      }).parse(body);
+      const saved = await creator.create({
+        accountName: input.accountName,
+        password: input.password,
+        passwordConfirmation: input.password,
+        confirmation: "CREATE_NEW_CONFIRMED",
+        existingKey: {
+          vaultId: input.vaultId,
+          payment: { entryId: input.entryId, publicKey: input.publicKey }
+        }
+      });
+      return {
+        accountName: saved.accountName,
+        address: saved.address,
+        ready: false,
+        saved: true
+      };
+    }),
     create: (body) => exclusive(async () => {
       const input = createInput.parse(body);
       const saved = await creator.create(input);
@@ -296336,6 +296405,7 @@ function createEmbeddedSetupActions(options) {
 var createInput, unlockInput, importInput;
 var init_embeddedSetupActions = __esm(() => {
   init_zod();
+  init_embeddedVaultIo();
   init_accounts();
   init_embeddedFirstRunBackend();
   init_embeddedImportBackend();
