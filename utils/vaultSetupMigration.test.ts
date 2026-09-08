@@ -83,14 +83,10 @@ test("local migration routes expose capability state and complete only after exp
 		const headers = { Authorization: `Bearer ${url.hash.slice(1)}` };
 		const page = await fetch(url.origin);
 		const pageText = await page.text();
-		expect(pageText).toContain("Choose a Vault destination");
-		expect(pageText).toContain("MIGRATE_AND_SWITCH");
 		expect(pageText).not.toContain("privateKey");
 		const csp = page.headers.get("content-security-policy") ?? "";
-		const nonce = csp.match(/script-src 'nonce-([^']+)'/)?.[1];
-		expect(nonce).toBeTruthy();
-		expect(pageText).toContain(`<script nonce="${nonce}">`);
-		expect(pageText).toContain(`<style nonce="${nonce}">`);
+		expect(csp).toContain("script-src 'self'");
+		expect(csp).not.toContain("unsafe-inline");
 		const capabilities = await fetch(
 			`${url.origin}/api/migration/capabilities`,
 			{ headers },

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
+import { localUiAssetsDirectory, readLocalUiAsset } from "./localUiAssets";
 import { inspectMigration, type MigrationInventory } from "./vaultMigration";
-import { renderVaultMigrationPage } from "./vaultMigrationPage";
 import {
 	isConflictResolution,
 	type VaultMigrationBackend,
@@ -30,6 +30,8 @@ export async function startVaultSetup(
 	options: {
 		inspect?: () => MigrationInventory;
 		timeoutMs?: number;
+		/** Trusted local asset directory override for packaging tests and embedders. */
+		assetsDirectory?: string;
 		/** Explicit adapter used by tests and embedders. */
 		migrationBackend?: VaultMigrationBackend;
 		/** Trusted local bootstrap; evaluated before the server starts listening. */
@@ -52,7 +54,7 @@ export async function startVaultSetup(
 		}
 	}
 	const token = randomBytes(32).toString("hex");
-	const pageNonce = randomBytes(18).toString("base64");
+	const assetsDirectory = options.assetsDirectory ?? localUiAssetsDirectory();
 	let origin = "";
 	let wizard: VaultMigrationWizard | undefined;
 	const server = createServer(async (req, res) => {
@@ -61,7 +63,7 @@ export async function startVaultSetup(
 		res.setHeader("Referrer-Policy", "no-referrer");
 		res.setHeader(
 			"Content-Security-Policy",
-			`default-src 'none'; script-src 'nonce-${pageNonce}'; style-src 'nonce-${pageNonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'`,
+			"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
 		);
 		if (
 			req.headers.host !== new URL(origin).host ||
@@ -70,27 +72,31 @@ export async function startVaultSetup(
 			res.writeHead(403).end();
 			return;
 		}
-		if (req.url === "/") {
-			if (req.method !== "GET") {
-				res.writeHead(405, { Allow: "GET" }).end();
+		const requestPath = req.url?.split("?", 1)[0];
+		if (requestPath === "/" || requestPath?.startsWith("/assets/")) {
+			if (req.method !== "GET" && req.method !== "HEAD") {
+				res.writeHead(405, { Allow: "GET, HEAD" }).end();
 				return;
 			}
-			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(
-				renderVaultMigrationPage({
-					backendAvailable: migrationBackend?.available,
-					nonce: pageNonce,
-				}),
-			);
-			return;
-		}
-		if (req.url === "/setup.js") {
-			if (req.method !== "GET") {
-				res.writeHead(405, { Allow: "GET" }).end();
+			const asset = readLocalUiAsset(req.url ?? "/", assetsDirectory);
+			if (!asset) {
+				res
+					.writeHead(requestPath === "/" ? 503 : 404, {
+						"Content-Type": "text/plain; charset=utf-8",
+					})
+					.end(
+						requestPath === "/"
+							? "The local setup UI is unavailable. Rebuild or reinstall bsv-mcp, then reopen setup."
+							: "Not found",
+					);
 				return;
 			}
 			res
-				.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" })
-				.end("");
+				.writeHead(200, {
+					"Content-Type": asset.contentType,
+					"Content-Length": asset.body.byteLength,
+				})
+				.end(req.method === "HEAD" ? undefined : asset.body);
 			return;
 		}
 		const apiPath = req.url?.split("?", 1)[0];

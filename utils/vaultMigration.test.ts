@@ -109,7 +109,7 @@ test("local preview restricts inventory to the capability and origin and never a
 		expect(result.headers.get("cache-control")).toBe("no-store");
 		expect((await result.json()).migrationRequired).toBe(false);
 		const page = await fetch(url.origin);
-		expect(await page.text()).toContain("Migration is not yet enabled");
+		expect(await page.text()).not.toContain(url.hash.slice(1));
 		expect(page.headers.get("content-security-policy")).toContain(
 			"frame-ancestors 'none'",
 		);
