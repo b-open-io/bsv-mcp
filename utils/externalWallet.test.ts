@@ -4,9 +4,11 @@ import * as nodeWallet from "@1sat/wallet-node";
 import { PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
+import { createConfiguredServer } from "../server";
 import { registerAllTools } from "../tools";
 import {
 	initializeKeysForWalletMode,
+	isExternalWalletContext,
 	readExternalWalletConfig,
 } from "./externalWalletConfig";
 import { SecureKeyManager } from "./keyManager";
@@ -428,6 +430,62 @@ describe("external signer initialization", () => {
 				(await result.wallet.getPublicKey({ identityKey: true })).publicKey,
 			).toBe(identityKey);
 		} finally {
+			await signer.stop(true);
+		}
+	});
+	it("marks the external context before direct server-factory registration", async () => {
+		const signer = Bun.serve({
+			hostname: "127.0.0.1",
+			port: 0,
+			async fetch(req) {
+				if (new URL(req.url).pathname === "/getPublicKey")
+					return Response.json({ publicKey: identityKey });
+				await req.arrayBuffer();
+				return Response.json({ message: "unexpected call" }, { status: 500 });
+			},
+		});
+		let configured: ReturnType<typeof createConfiguredServer> | undefined;
+		let client: Client | undefined;
+		try {
+			const result = await initExternalWallet({
+				...config,
+				url: `http://127.0.0.1:${signer.port}`,
+			});
+			// The SDK action-routing flag remains untouched. The separate marker is
+			// what lets a factory recognize external custody safely.
+			expect(result.ctx.isBaseWallet).toBe(true);
+			expect(isExternalWalletContext(result.ctx)).toBe(true);
+
+			configured = createConfiguredServer({
+				toolsConfig: {
+					ctx: result.ctx,
+					enableBsvTools: false,
+					enableOrdinalsTools: false,
+					enableUtilsTools: false,
+					enableBapTools: false,
+					enableBsocialTools: false,
+					enableMneeTools: false,
+					enableWalletTools: true,
+					disableBroadcasting: false,
+				},
+				ctx: result.ctx,
+				loadPrompts: false,
+				loadResources: false,
+			});
+			client = new Client({ name: "external-factory-test", version: "1.0.0" });
+			const [clientTransport, serverTransport] =
+				InMemoryTransport.createLinkedPair();
+			await configured.connect(serverTransport);
+			await client.connect(clientTransport);
+			const names = (await client.listTools()).tools.map((tool) => tool.name);
+			expect(names).not.toContain("wallet_getBalance");
+			expect(names).not.toContain("app_wallet_data");
+			expect(names).toContain("app_sweep_prepare");
+			expect(names).toContain("app_sweep_complete");
+		} finally {
+			await client?.close();
+			await configured?.close();
+			await destroyWallet();
 			await signer.stop(true);
 		}
 	});

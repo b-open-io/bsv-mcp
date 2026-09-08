@@ -5,6 +5,7 @@ import type {
 	ToolAnnotations,
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { isExternalWalletContext } from "../utils/externalWalletConfig";
 import { registerBsvTools } from "./bsv";
 import { registerStatusTool } from "./bsv/status";
 import type { ToolsConfig } from "./index";
@@ -227,7 +228,8 @@ function categoryEnabled(
 
 function captureConfig(config: ToolsConfig) {
 	const externalWallet =
-		config.externalWallet ?? config.ctx?.isBaseWallet === false;
+		config.externalWallet ??
+		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
 	const bsv = categoryEnabled(config, "bsv_read")
 		? captureRegistrations((server) => {
 				registerBsvTools(server);
@@ -460,7 +462,8 @@ function walletCapabilityReason(
 	operation: string,
 ): string {
 	const externalWallet =
-		config.externalWallet ?? config.ctx?.isBaseWallet === false;
+		config.externalWallet ??
+		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
 	if (!categoryEnabled(config, "wallet_read"))
 		return "wallet category is disabled";
 	if (config.integratedWallet?.isDroplitMode)

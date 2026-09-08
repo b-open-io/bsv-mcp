@@ -27,7 +27,10 @@ import {
 	secureDirectory,
 } from "./accounts";
 import { backendUrl, onesatUrl } from "./backends";
-import type { ExternalWalletConfig } from "./externalWalletConfig";
+import {
+	type ExternalWalletConfig,
+	markExternalWalletContext,
+} from "./externalWalletConfig";
 import { redactKeyMaterial } from "./redact";
 import {
 	handleSpendingAuthorization,
@@ -209,12 +212,14 @@ export async function initExternalWallet(
 	// These are API clients only: construction does not provision wallet storage.
 	const services = new ExternalServices(chain, onesatUrl(chain));
 	const dataDir = join(homedir(), ".bsv-mcp");
-	const ctx = createContext(wallet, {
-		services,
-		chain,
-		dataDir,
-		log: (entry) => writeAuditLog(dataDir, entry),
-	});
+	const ctx = markExternalWalletContext(
+		createContext(wallet, {
+			services,
+			chain,
+			dataDir,
+			log: (entry) => writeAuditLog(dataDir, entry),
+		}),
+	);
 	// This connection owns no signer resources. Never destroy the remote wallet.
 	const destroy = async () => {};
 	activeResult = { destroy };

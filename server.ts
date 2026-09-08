@@ -53,6 +53,7 @@ import { assertBroadcastAllowed } from "./utils/broadcastGuard";
 import { DroplitClient, readDroplitSponsorConfig } from "./utils/droplit";
 import {
 	initializeKeysForWalletMode,
+	isExternalWalletContext,
 	readExternalWalletConfig,
 } from "./utils/externalWalletConfig";
 import {
@@ -241,7 +242,8 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 	const walletAvailable =
 		!config.droplitMode && Boolean(config.ctx || config.wallet);
 	const externalWallet =
-		config.externalWallet ?? config.ctx?.isBaseWallet === false;
+		config.externalWallet ??
+		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
 	const wholeWalletBalanceAvailable = walletAvailable && !externalWallet;
 	const sweepPrepareAvailable = Boolean(
 		config.ctx &&

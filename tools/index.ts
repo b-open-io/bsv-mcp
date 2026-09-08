@@ -3,6 +3,7 @@ import type { OneSatServices } from "@1sat/client";
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
+import { isExternalWalletContext } from "../utils/externalWalletConfig";
 import { registerBapTools } from "./bap";
 import { registerBapGetIdTool } from "./bap/getId";
 import { registerBsocialTools } from "./bsocial";
@@ -160,7 +161,9 @@ export function registerAllTools(
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
 		const externalWallet =
-			config.externalWallet ?? config.ctx?.isBaseWallet === false;
+			config.externalWallet ??
+			(isExternalWalletContext(config.ctx) ||
+				config.ctx?.isBaseWallet === false);
 		if (config.enableAccountTools === true && !process.env.BRC100_WALLET_URL)
 			registerAccountTools(server);
 		if (config.droplitClient)
