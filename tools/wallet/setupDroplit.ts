@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
 	createErrorResponse,
@@ -53,10 +53,13 @@ export function registerSetupDroplitTools(
 	server: McpServer,
 	integratedWallet: IntegratedWallet,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_registerDroplitKey",
-		"Registers public authentication material. Registration does not grant sponsor access; a sponsor owner must approve the wallet separately.",
-		{},
+		{
+			description:
+				"Registers public authentication material. Registration does not grant sponsor access; a sponsor owner must approve the wallet separately.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				const { apiUrl, publicKeyHex } = await requireDroplit(integratedWallet);
@@ -78,28 +81,31 @@ export function registerSetupDroplitTools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_createDroplitFaucet",
-		"Creates a faucet owned by this wallet which must be funded before use. This does not provide free credit or approval for another sponsor.",
 		{
-			faucetName: z
-				.string()
-				.min(1)
-				.describe("Identifier for the new faucet; must be unique"),
-			fixedDropSats: z
-				.number()
-				.int()
-				.positive()
-				.optional()
-				.describe(
-					"Satoshis paid out per tap. Server default applies if unset.",
-				),
-			maxConsolidationInputs: z
-				.number()
-				.int()
-				.positive()
-				.optional()
-				.describe("Cap on inputs the faucet consolidates in one transaction"),
+			description:
+				"Creates a faucet owned by this wallet which must be funded before use. This does not provide free credit or approval for another sponsor.",
+			inputSchema: z.object({
+				faucetName: z
+					.string()
+					.min(1)
+					.describe("Identifier for the new faucet; must be unique"),
+				fixedDropSats: z
+					.number()
+					.int()
+					.positive()
+					.optional()
+					.describe(
+						"Satoshis paid out per tap. Server default applies if unset.",
+					),
+				maxConsolidationInputs: z
+					.number()
+					.int()
+					.positive()
+					.optional()
+					.describe("Cap on inputs the faucet consolidates in one transaction"),
+			}),
 		},
 		async ({ faucetName, fixedDropSats, maxConsolidationInputs }) => {
 			try {
@@ -133,10 +139,13 @@ export function registerSetupDroplitTools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_checkDroplitFaucetStatus",
-		"Reads public faucet balance and payout settings. This is not proof of caller authorization; use droplit_getAccess for that.",
-		{},
+		{
+			description:
+				"Reads public faucet balance and payout settings. This is not proof of caller authorization; use droplit_getAccess for that.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				const { client } = await requireDroplit(integratedWallet);

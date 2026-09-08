@@ -1,11 +1,9 @@
 import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { BSOCIAL_API_URL } from "../constants";
 import type { IdentityData, SigmaIdentityProfile } from "./types";
@@ -70,19 +68,19 @@ export function registerBapGetIdTool(
 	server: McpServer,
 	identityPk?: PrivateKey, // Accept the global identityPk
 ) {
-	server.tool(
+	server.registerTool(
 		"bap_getId",
-		"Retrieves a Bitcoin Attestation Protocol (BAP) identity profile using an idKey (Paymail or public key). If no idKey is provided, it attempts to use the server's configured identity key.",
-		{ ...bapGetIdArgsSchema.shape },
-		async (
-			{ idKey },
-			extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{
+			description:
+				"Retrieves a Bitcoin Attestation Protocol (BAP) identity profile using an idKey (Paymail or public key). If no idKey is provided, it attempts to use the server's configured identity key.",
+			inputSchema: bapGetIdArgsSchema,
+		},
+		async ({ idKey }, ctx: ServerContext): Promise<CallToolResult> => {
 			let targetIdKey = idKey;
 
 			if (!targetIdKey) {
 				// First priority: Use authenticated user's BAP ID from OAuth session
-				const authExtra = extra.authInfo?.extra;
+				const authExtra = ctx.http?.authInfo?.extra;
 				const authBapId = authExtra?.bapId;
 				const authPubkey = authExtra?.pubkey;
 				if (typeof authBapId === "string") {

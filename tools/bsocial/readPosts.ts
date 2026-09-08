@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import type {
 	ApiResponse,
 	BapIdentity,
@@ -195,10 +194,13 @@ function formatPost(
  * Register the read posts tool with the MCP server
  */
 export function registerReadPostsTool(server: McpServer) {
-	server.tool(
+	server.registerTool(
 		"bsocial_readPosts",
-		"Read social posts from the BSV blockchain using BMAP API. Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-		{ ...readPostsArgsSchema.shape },
+		{
+			description:
+				"Read social posts from the BSV blockchain using BMAP API. Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
+			inputSchema: readPostsArgsSchema,
+		},
 		async ({ bapId, txid, limit, page, feed }): Promise<CallToolResult> => {
 			try {
 				const result = await readSocialPosts({

@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { sendAllBsv } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -14,10 +14,12 @@ export function registerSendAllBsvTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_sendAllBsv",
-		"Send all BSV in the wallet to a single recipient",
-		{ ...sendAllBsvArgsSchema.shape },
+		{
+			description: "Send all BSV in the wallet to a single recipient",
+			inputSchema: sendAllBsvArgsSchema,
+		},
 		async ({ destination }) => {
 			if (!ctx) {
 				return {

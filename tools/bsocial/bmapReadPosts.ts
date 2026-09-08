@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { BMAP_URL } from "../constants";
 
@@ -107,10 +106,13 @@ export async function readBmapPosts(args: BmapReadPostsArgs): Promise<{
  * Register the BMAP read posts tool with the MCP server
  */
 export function registerBmapReadPostsTool(server: McpServer) {
-	server.tool(
+	server.registerTool(
 		"bmap_readPosts",
-		"Read social posts from the BMAP API (query layer). Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-		{ ...bmapReadPostsArgsSchema.shape },
+		{
+			description:
+				"Read social posts from the BMAP API (query layer). Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
+			inputSchema: bmapReadPostsArgsSchema,
+		},
 		async ({
 			bapId,
 			txid,

@@ -1,5 +1,5 @@
 import type { OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
 	RevelationError,
@@ -16,7 +16,7 @@ export function registerRevealDelegationTool(
 		{
 			description:
 				"Receive the human owner's BRC-169 certificate handoff, acquire and prove it with this connected agent wallet, and reveal its restrictions to the specified Sigma verifier. Imports a certificate and activates its existing delegation. Never pays, broadcasts, follows redirects, or retries an ambiguous POST. The subject keyring stays with the wallet.",
-			inputSchema: {
+			inputSchema: z.object({
 				sigmaOrigin: z
 					.string()
 					.max(2048)
@@ -29,7 +29,7 @@ export function registerRevealDelegationTool(
 					.describe(
 						"JSON package copied by the owner: certificate, subjectKeyring, revealTo, revelationPath",
 					),
-			},
+			}),
 			annotations: {
 				readOnlyHint: false,
 				destructiveHint: false,

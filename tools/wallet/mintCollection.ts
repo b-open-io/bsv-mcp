@@ -1,8 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Utils } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import type {
 	ChangeResult,
 	CollectionItemSubTypeData,
@@ -105,7 +104,7 @@ function generateItemTraits(
 				const valueIndex = itemIndex % possibleValues.length;
 				traits.push({
 					name: traitName as string, // Object.entries always produces string keys
-					value: possibleValues[valueIndex],
+					value: possibleValues[valueIndex]!,
 				});
 			}
 		}
@@ -115,10 +114,13 @@ function generateItemTraits(
 }
 
 export function registerMintCollectionTool(server: McpServer, wallet: Wallet) {
-	server.tool(
+	server.registerTool(
 		"wallet_mintCollection",
-		"Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.",
-		{ ...mintCollectionArgsSchema.shape },
+		{
+			description:
+				"Mint a collection of ordinals from a folder of images with proper metadata. This tool creates a collection inscription first, then mints each image as a collection item with the appropriate metadata linking it to the collection.",
+			inputSchema: mintCollectionArgsSchema,
+		},
 		async ({
 			folderPath,
 			collectionName,

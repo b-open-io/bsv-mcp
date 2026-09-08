@@ -1,14 +1,8 @@
 import type { PrivateKey } from "@bsv/sdk";
 import { Utils } from "@bsv/sdk";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type {
-	ClientNotification,
-	ClientRequest,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import { Client } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type {
 	ChangeResult,
 	CreateOrdinalsConfig,
@@ -120,13 +114,7 @@ async function fetchMcpMetadata(
 	// console.log(`Fetching MCP metadata by running: ${command} ${args.join(' ')}`);
 
 	let transport: StdioClientTransport | undefined;
-	let client:
-		| Client<
-				ClientRequest,
-				ServerRequest,
-				ClientNotification | ServerNotification
-		  >
-		| undefined;
+	let client: Client | undefined;
 
 	try {
 		// Create a transport to the MCP server
@@ -198,10 +186,13 @@ export function registerA2bPublishMcpTool(
 	identityPk: PrivateKey | undefined,
 	config: { disableBroadcasting: boolean },
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_a2bPublishMcp",
-		"Publish an MCP tool configuration record on-chain via Ordinal inscription. This creates a permanent, immutable, and discoverable tool definition that can be accessed by other MCP servers. The tool is published as a JSON inscription with metadata and optional digital signatures for authenticity verification.",
-		{ ...a2bPublishMcpArgsSchema.shape },
+		{
+			description:
+				"Publish an MCP tool configuration record on-chain via Ordinal inscription. This creates a permanent, immutable, and discoverable tool definition that can be accessed by other MCP servers. The tool is published as a JSON inscription with metadata and optional digital signatures for authenticity verification.",
+			inputSchema: a2bPublishMcpArgsSchema,
+		},
 		async ({
 			toolName,
 			command,

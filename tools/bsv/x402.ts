@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { readServices } from "../../utils/backends";
 import { errorToToolResult, successResult } from "../../utils/errors";
@@ -56,7 +56,7 @@ export function registerX402Tools(server: McpServer, config: ToolsConfig) {
 		{
 			description:
 				"Request any HTTPS service without automatically paying. Returns the response if free, or a BSV payment quote for approval. POST/PUT/PATCH/DELETE may execute if the service does not require payment. Use auth=brc31 for BSV-authenticated/BRC-105 services. No API key required by the client; optional service credentials are scoped by X402_SERVICE_HEADERS. Supports BRC-105, bound BRC-120 with OP_TRUE nonces, and compact bsv-tx-v1 challenges.",
-			inputSchema: {
+			inputSchema: z.object({
 				url: z.string().url(),
 				method: z
 					.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
@@ -71,7 +71,7 @@ export function registerX402Tools(server: McpServer, config: ToolsConfig) {
 					.describe(
 						"BRC-120 header names bound by the service; defaults to supplied request headers",
 					),
-			},
+			}),
 			annotations: {
 				readOnlyHint: false,
 				destructiveHint: true,
@@ -86,10 +86,10 @@ export function registerX402Tools(server: McpServer, config: ToolsConfig) {
 		{
 			description:
 				"Pay a previously quoted BSV service request from the connected wallet, then return its response. Only call after authorization for the service, amount, and total limit including mining fees. Reuses the stored URL, method, body and credentials. Wallet permission checks apply. Does not automatically pay changed terms or retry a failed payment.",
-			inputSchema: {
+			inputSchema: z.object({
 				quoteId: z.string().uuid(),
 				maxTotalSats: z.number().int().positive().max(2_100_000_000_000_000),
-			},
+			}),
 			annotations: {
 				readOnlyHint: false,
 				destructiveHint: true,

@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
 	configuredChain,
@@ -96,36 +96,39 @@ const exploreArgsSchema = z.object({
  * @param server The MCP server instance
  */
 export function registerExploreTool(server: McpServer): void {
-	server.tool(
+	server.registerTool(
 		"bsv_explore",
-		"Explore Bitcoin SV blockchain data using the configured explorer API. Access multiple data types:\n\n" +
-			"CHAIN DATA:\n" +
-			"- chain_info: Network stats, difficulty, and chain work\n" +
-			"- chain_tips: Current chain tips including heights and states\n" +
-			"- circulating_supply: Current BSV circulating supply\n" +
-			"- peer_info: Connected peer statistics\n\n" +
-			"BLOCK DATA:\n" +
-			"- block_by_hash: Complete block data via hash (requires blockHash parameter)\n" +
-			"- block_by_height: Complete block data via height (requires blockHeight parameter)\n" +
-			"- tag_count_by_height: Stats on tag count for a specific block via height (requires blockHeight parameter)\n" +
-			"- block_headers: Retrieves the last 10 block headers\n" +
-			"- block_pages: Retrieves pages of transaction IDs for large blocks (requires blockHash and optional pageNumber)\n\n" +
-			"STATS DATA:\n" +
-			"- block_stats_by_height: Block statistics for a specific height (requires blockHeight parameter)\n" +
-			"- block_miner_stats: Block mining statistics for a time period (optional days parameter, default 7)\n" +
-			"- miner_summary_stats: Summary of mining statistics (optional days parameter, default 7)\n\n" +
-			"TRANSACTION DATA:\n" +
-			"- tx_by_hash: Detailed transaction data (requires txHash parameter)\n" +
-			"- tx_raw: Raw transaction hex data (requires txHash parameter)\n" +
-			"- tx_receipt: Transaction receipt (requires txHash parameter)\n" +
-			"- bulk_tx_details: Bulk transaction details (requires txids parameter as array of transaction hashes)\n\n" +
-			"ADDRESS DATA:\n" +
-			"- address_history: Transaction history for address (requires address parameter, optional limit)\n" +
-			"- address_utxos: Unspent outputs for address (requires address parameter)\n\n" +
-			"NETWORK:\n" +
-			"- health: API health check\n\n" +
-			"Use the appropriate parameters for each endpoint type and specify 'main' or 'test' network.",
-		exploreArgsSchema.shape,
+		{
+			description:
+				"Explore Bitcoin SV blockchain data using the configured explorer API. Access multiple data types:\n\n" +
+				"CHAIN DATA:\n" +
+				"- chain_info: Network stats, difficulty, and chain work\n" +
+				"- chain_tips: Current chain tips including heights and states\n" +
+				"- circulating_supply: Current BSV circulating supply\n" +
+				"- peer_info: Connected peer statistics\n\n" +
+				"BLOCK DATA:\n" +
+				"- block_by_hash: Complete block data via hash (requires blockHash parameter)\n" +
+				"- block_by_height: Complete block data via height (requires blockHeight parameter)\n" +
+				"- tag_count_by_height: Stats on tag count for a specific block via height (requires blockHeight parameter)\n" +
+				"- block_headers: Retrieves the last 10 block headers\n" +
+				"- block_pages: Retrieves pages of transaction IDs for large blocks (requires blockHash and optional pageNumber)\n\n" +
+				"STATS DATA:\n" +
+				"- block_stats_by_height: Block statistics for a specific height (requires blockHeight parameter)\n" +
+				"- block_miner_stats: Block mining statistics for a time period (optional days parameter, default 7)\n" +
+				"- miner_summary_stats: Summary of mining statistics (optional days parameter, default 7)\n\n" +
+				"TRANSACTION DATA:\n" +
+				"- tx_by_hash: Detailed transaction data (requires txHash parameter)\n" +
+				"- tx_raw: Raw transaction hex data (requires txHash parameter)\n" +
+				"- tx_receipt: Transaction receipt (requires txHash parameter)\n" +
+				"- bulk_tx_details: Bulk transaction details (requires txids parameter as array of transaction hashes)\n\n" +
+				"ADDRESS DATA:\n" +
+				"- address_history: Transaction history for address (requires address parameter, optional limit)\n" +
+				"- address_utxos: Unspent outputs for address (requires address parameter)\n\n" +
+				"NETWORK:\n" +
+				"- health: API health check\n\n" +
+				"Use the appropriate parameters for each endpoint type and specify 'main' or 'test' network.",
+			inputSchema: exploreArgsSchema,
+		},
 		async (params) => {
 			try {
 				// Validate required parameters for specific endpoints

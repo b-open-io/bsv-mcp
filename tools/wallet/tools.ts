@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import type { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
 import { registerBrc100Tools } from "./brc100";
 import { registerCancelListingTool } from "./cancelListing";

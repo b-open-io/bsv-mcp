@@ -1,15 +1,18 @@
 /**
  * Common tool registration utilities for the BSV MCP server
  */
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	CallToolResult,
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
 import type { z } from "zod";
 
 export interface ToolConfig<TArgs = Record<string, unknown>> {
 	name: string;
 	description: string;
 	schema: z.ZodSchema<TArgs>;
-	handler: (args: TArgs) => Promise<ToolResponse>;
+	handler: (args: TArgs, ctx: ServerContext) => Promise<ToolResponse>;
 }
 
 export type ToolResponse = CallToolResult;
@@ -24,9 +27,9 @@ export function registerTool<TArgs = Record<string, unknown>>(
 	server.registerTool(
 		config.name,
 		{ description: config.description, inputSchema: config.schema },
-		async (args) => {
+		async (args, ctx: ServerContext) => {
 			try {
-				return await config.handler(args as TArgs);
+				return await config.handler(args as TArgs, ctx);
 			} catch (error) {
 				return {
 					content: [

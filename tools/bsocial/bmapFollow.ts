@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { BMAP_URL } from "../constants";
 
@@ -80,10 +79,13 @@ export async function readBmapFollows(args: BmapReadFollowsArgs): Promise<{
  * Register the BMAP read follows tool with the MCP server
  */
 export function registerBmapReadFollowsTool(server: McpServer) {
-	server.tool(
+	server.registerTool(
 		"bmap_readFollows",
-		"Read follow relationships from the BMAP API. Shows who a user is following or who follows them.",
-		{ ...bmapReadFollowsArgsSchema.shape },
+		{
+			description:
+				"Read follow relationships from the BMAP API. Shows who a user is following or who follows them.",
+			inputSchema: bmapReadFollowsArgsSchema,
+		},
 		async ({ bapId, type, limit, page }): Promise<CallToolResult> => {
 			try {
 				const result = await readBmapFollows({ bapId, type, limit, page });

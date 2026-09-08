@@ -1,10 +1,5 @@
 import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import type { MneeInterface } from "mnee";
 import { z } from "zod";
 
@@ -16,14 +11,14 @@ export function registerGetBalanceTool(
 	server: McpServer,
 	mnee: MneeInterface,
 ): void {
-	server.tool(
+	server.registerTool(
 		"mnee_getBalance",
-		"Retrieves the current MNEE token balance for the wallet. Returns the balance in MNEE tokens.",
-		{},
-		async (
-			_params,
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{
+			description:
+				"Retrieves the current MNEE token balance for the wallet. Returns the balance in MNEE tokens.",
+			inputSchema: z.object({}),
+		},
+		async (_params, _extra: ServerContext) => {
 			try {
 				// Get private key from wallet
 				const privateKeyWif = process.env.PRIVATE_KEY_WIF;

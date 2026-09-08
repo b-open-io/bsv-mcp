@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { createAccount } from "../../utils/accountStore";
 import {
@@ -47,7 +47,7 @@ export function registerAccountTools(server: McpServer) {
 		{
 			description:
 				"List named local accounts by public address. Does not unlock wallets, reveal keys or contact a service.",
-			inputSchema: {},
+			inputSchema: z.object({}),
 			annotations: { readOnlyHint: true, idempotentHint: true },
 		},
 		async () => run(async () => ({ accounts: listAccounts() })),
@@ -59,13 +59,13 @@ export function registerAccountTools(server: McpServer) {
 				description: importing
 					? "Import an encrypted bitcoin-backup WIF account after human approval. Never provide a plaintext key or password. BSV_MCP_PASSWORD must already be configured locally; use the terminal wallet_import command for a WIF."
 					: "Explicitly create a named encrypted account after human approval. Requires BSV_MCP_PASSWORD configured locally. Returns only its public address; back up keys.bep and config.json before funding.",
-				inputSchema: {
+				inputSchema: z.object({
 					name: accountNameSchema,
 					chain: z.enum(["main", "test"]),
 					...(importing
 						? { encryptedBackup: z.string().max(1024 * 1024) }
 						: {}),
-				},
+				}),
 			},
 			async (input) =>
 				run(async () => {
@@ -101,7 +101,7 @@ export function registerAccountTools(server: McpServer) {
 		{
 			description:
 				"Validate an account and give its restart configuration. Does not replace the wallet of a running session or modify client settings.",
-			inputSchema: { name: accountNameSchema },
+			inputSchema: z.object({ name: accountNameSchema }),
 			annotations: { readOnlyHint: true, idempotentHint: true },
 		},
 		async ({ name }) =>
@@ -119,11 +119,11 @@ export function registerAccountTools(server: McpServer) {
 		{
 			description:
 				"Remove a local account only with force, backup confirmation and human approval. Fund absence cannot be proven across all derived addresses. Cannot remove the active account; never sweeps funds.",
-			inputSchema: {
+			inputSchema: z.object({
 				name: accountNameSchema,
 				force: z.boolean().default(false),
 				backupConfirmed: z.boolean().default(false),
-			},
+			}),
 			annotations: { destructiveHint: true },
 		},
 		async ({ name, force, backupConfirmed }) =>

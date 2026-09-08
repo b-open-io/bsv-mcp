@@ -1,6 +1,5 @@
 import { Utils } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { B_PREFIX, MAP_PREFIX } from "../constants";
 import { signOpReturnWithAIP } from "../utils/aip";
@@ -128,10 +127,13 @@ export async function createSocialPost(
  * Register the social post tool with the MCP server
  */
 export function registerCreatePostTool(server: McpServer, wallet: Wallet) {
-	server.tool(
+	server.registerTool(
 		"bsocial_createPost",
-		"Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
-		{ ...createPostArgsSchema.shape },
+		{
+			description:
+				"Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
+			inputSchema: createPostArgsSchema,
+		},
 		async ({
 			content,
 			contentType,

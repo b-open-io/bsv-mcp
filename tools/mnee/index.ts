@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import Mnee from "mnee";
 import { registerGetBalanceTool } from "./getBalance";
 import { registerParseTxTool } from "./parseTx";

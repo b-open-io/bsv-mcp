@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { BMAP_URL } from "../constants";
 
@@ -70,10 +69,13 @@ export async function readBmapLikes(args: BmapReadLikesArgs): Promise<{
  * Register the BMAP read likes tool with the MCP server
  */
 export function registerBmapReadLikesTool(server: McpServer) {
-	server.tool(
+	server.registerTool(
 		"bmap_readLikes",
-		"Read likes and reactions for a specific post from the BMAP API. Shows who liked the post and what emoji reactions were used.",
-		{ ...bmapReadLikesArgsSchema.shape },
+		{
+			description:
+				"Read likes and reactions for a specific post from the BMAP API. Shows who liked the post and what emoji reactions were used.",
+			inputSchema: bmapReadLikesArgsSchema,
+		},
 		async ({ txid, limit, page }): Promise<CallToolResult> => {
 			try {
 				const result = await readBmapLikes({ txid, limit, page });

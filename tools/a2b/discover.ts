@@ -1,9 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { backendUrl } from "../../utils/backends";
 
@@ -122,13 +117,16 @@ function _formatSearchResults(data: unknown, queryType: string): string {
  * Registers the a2b_discover tool for on-chain agent discovery
  */
 export function registerA2bDiscoverTool(server: McpServer) {
-	server.tool(
+	server.registerTool(
 		"a2b_discover",
-		"Search on-chain agent and MCP tool records. Use 'agent' to search for agents, 'tool' to search for MCP tools.",
-		{ ...a2bDiscoverArgsSchema.shape },
+		{
+			description:
+				"Search on-chain agent and MCP tool records. Use 'agent' to search for agents, 'tool' to search for MCP tools.",
+			inputSchema: a2bDiscoverArgsSchema,
+		},
 		async (
 			{ queryType, query, limit, offset, fromBlock, toBlock },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: ServerContext,
 		) => {
 			try {
 				const params = new URLSearchParams();

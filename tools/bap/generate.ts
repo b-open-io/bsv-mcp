@@ -9,8 +9,7 @@ import {
 	type PrivateKey,
 	Transaction,
 } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { BAP } from "bsv-bap";
 import { z } from "zod";
 import { accountDir } from "../../utils/accounts";
@@ -400,10 +399,13 @@ export function registerBapGenerateTool(
 	server: McpServer,
 	config?: { disableBroadcasting?: boolean },
 ) {
-	server.tool(
+	server.registerTool(
 		"bap_generate",
-		"Generates a BAP HD master key AND derives the first identity key if no BAP keys (xprv or identityPk) exist. Saves keys to secure storage. Attempts on-chain registration using payPk (honors DISABLE_BROADCASTING). Optionally takes alternateName and description for the profile.",
-		{ ...bapGenerateArgsSchema.shape },
+		{
+			description:
+				"Generates a BAP HD master key AND derives the first identity key if no BAP keys (xprv or identityPk) exist. Saves keys to secure storage. Attempts on-chain registration using payPk (honors DISABLE_BROADCASTING). Optionally takes alternateName and description for the profile.",
+			inputSchema: bapGenerateArgsSchema,
+		},
 		async ({ alternateName, description }): Promise<CallToolResult> => {
 			try {
 				const result = await generateBapKeys({

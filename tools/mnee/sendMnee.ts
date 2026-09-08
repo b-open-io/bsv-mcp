@@ -1,10 +1,8 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
 import type Mnee from "mnee";
 import type { SendMNEE, TransferResponse } from "mnee";
 import { z } from "zod";
@@ -44,13 +42,15 @@ function formatUSD(amount: number): string {
  * Registers the mnee_sendMnee tool for sending MNEE tokens
  */
 export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
-	server.tool(
+	server.registerTool(
 		"mnee_sendMnee",
-		"Send MNEE tokens to a specified address",
-		{ ...sendMneeArgsSchema.shape },
+		{
+			description: "Send MNEE tokens to a specified address",
+			inputSchema: sendMneeArgsSchema,
+		},
 		async (
 			{ address, amount, currency },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: ServerContext,
 		): Promise<CallToolResult> => {
 			try {
 				assertBroadcastAllowed("mnee_sendMnee");

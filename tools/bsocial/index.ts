@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Wallet } from "../wallet/wallet";
 import { registerBmapReadFollowsTool } from "./bmapFollow";
 import { registerBmapReadLikesTool } from "./bmapLikes";

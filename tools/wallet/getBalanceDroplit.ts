@@ -1,4 +1,5 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import type { DroplitClient } from "../../utils/droplit";
 
 /**
@@ -8,10 +9,12 @@ export function registerWalletGetBalanceDroplitTool(
 	server: McpServer,
 	droplitClient: DroplitClient,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_getBalance",
-		"Gets the current balance of the wallet (Droplit mode)",
-		{},
+		{
+			description: "Gets the current balance of the wallet (Droplit mode)",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				const status = await droplitClient.getFaucetStatus();

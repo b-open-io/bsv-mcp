@@ -1,7 +1,7 @@
 import type { OneSatContext } from "@1sat/actions";
 import { sweepBsv21 } from "@1sat/actions";
 import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import { redactKeyMaterial, redactUnknown } from "../../utils/redact";
@@ -25,10 +25,13 @@ export function registerSweepBsv21Tool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_sweepBsv21",
-		"Sweep BSV21 tokens from an external WIF private key into the wallet",
-		{ ...sweepBsv21Schema.shape },
+		{
+			description:
+				"Sweep BSV21 tokens from an external WIF private key into the wallet",
+			inputSchema: sweepBsv21Schema,
+		},
 		async ({ inputs, wif }) => {
 			if (!ctx) {
 				return {

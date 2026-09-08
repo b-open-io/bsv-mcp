@@ -1,5 +1,6 @@
 import { deriveDepositAddresses, type OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 
 const MCP_ADDRESS_PREFIX = "mcp";
 
@@ -10,10 +11,13 @@ export function registerGetAddressTool(
 	server: McpServer,
 	ctx?: OneSatContext,
 ): void {
-	server.tool(
+	server.registerTool(
 		"wallet_getAddress",
-		"Retrieves the wallet's BRC-29 deposit address derived for MCP. This address can receive BSV, ordinals, or tokens via external payments.",
-		{},
+		{
+			description:
+				"Retrieves the wallet's BRC-29 deposit address derived for MCP. This address can receive BSV, ordinals, or tokens via external payments.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				if (!ctx) {
@@ -29,7 +33,7 @@ export function registerGetAddressTool(
 						{
 							type: "text",
 							text: JSON.stringify({
-								address: derivations[0].address,
+								address: derivations[0]!.address,
 								status: "ok",
 							}),
 						},

@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { sendBsv } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { toSatoshi } from "satoshi-token";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
@@ -29,10 +29,13 @@ export function registerSendBsvTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_sendBsv",
-		"Send BSV to one or more recipients by address or paymail. Supports BSV and USD amounts with automatic conversion.",
-		{ ...sendBsvArgsSchema.shape },
+		{
+			description:
+				"Send BSV to one or more recipients by address or paymail. Supports BSV and USD amounts with automatic conversion.",
+			inputSchema: sendBsvArgsSchema,
+		},
 		async ({ recipients }) => {
 			if (!ctx) {
 				return {

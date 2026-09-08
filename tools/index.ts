@@ -1,7 +1,7 @@
 import type { OneSatContext } from "@1sat/actions";
 import type { OneSatServices } from "@1sat/client";
 import type { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
 import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";

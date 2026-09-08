@@ -1,7 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { inscribe } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -30,10 +29,13 @@ export function registerCreateOrdinalsTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_createOrdinals",
-		"Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
-		{ ...createOrdinalsArgsSchema.shape },
+		{
+			description:
+				"Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
+			inputSchema: createOrdinalsArgsSchema,
+		},
 		async ({
 			dataB64,
 			contentType,

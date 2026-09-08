@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import { type DroplitClient, DroplitError } from "../../utils/droplit";
@@ -35,7 +35,7 @@ export function registerDroplitTools(
 		{
 			description:
 				"Read this connected wallet's sponsor authorization and quotas. If unauthorized, a human sponsor owner must approve the wallet manually. Does not create, fund, or approve anything.",
-			inputSchema: {},
+			inputSchema: z.object({}),
 			annotations: {
 				readOnlyHint: true,
 				destructiveHint: false,
@@ -72,10 +72,10 @@ export function registerDroplitTools(
 		{
 			description:
 				"Submit one sponsored data transaction. Subject to sponsor approval and quotas. An unknown outcome requires checking transaction history before retrying.",
-			inputSchema: {
+			inputSchema: z.object({
 				data: z.array(z.string()).min(1),
 				encoding: z.enum(["hex", "utf8"]),
-			},
+			}),
 			annotations: {
 				readOnlyHint: false,
 				destructiveHint: true,
@@ -98,12 +98,12 @@ export function registerDroplitTools(
 		{
 			description:
 				"Submit one raw transaction for sponsor funding and broadcast. Subject to sponsor approval and quotas. Unknown outcomes must be reconciled before retrying.",
-			inputSchema: {
+			inputSchema: z.object({
 				rawtx: z
 					.string()
 					.min(2)
 					.regex(/^(?:[0-9a-fA-F]{2})+$/, "Expected raw transaction hex"),
-			},
+			}),
 			annotations: {
 				readOnlyHint: false,
 				destructiveHint: true,
