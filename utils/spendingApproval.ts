@@ -12,6 +12,9 @@ type SpendingPermissionManager = Pick<
 	"grantPermission" | "denyPermission"
 >;
 
+/** The part of an MCP server used by the legacy push-style approval path. */
+export type SpendingApprovalServer = Pick<McpServer, "server">;
+
 let serverInstance: McpServer | null = null;
 
 /**
@@ -54,6 +57,7 @@ function denialMessage(
 export async function handleSpendingAuthorization(
 	request: SpendingPermissionRequest,
 	permissionsManager: SpendingPermissionManager,
+	serverOverride?: SpendingApprovalServer,
 ): Promise<void> {
 	let approved = false;
 	let denialReason = "approval was not granted";
@@ -61,13 +65,24 @@ export async function handleSpendingAuthorization(
 	try {
 		if (!request.spending) {
 			denialReason = "the request did not include spending details";
-		} else if (!serverInstance) {
+		} else if (!serverOverride && !serverInstance) {
 			denialReason = "the MCP server is unavailable";
-		} else if (!serverInstance.server.getClientCapabilities()?.elicitation) {
-			denialReason = "the MCP client does not support elicitation";
 		} else {
+			const approvalServer = serverOverride ?? serverInstance;
+			// The v1/v2 SDK checks the form sub-capability before sending
+			// elicitation/create. Checking the same advertised capability here
+			// avoids treating `{ elicitation: {} }` as approval authority.
+			if (!approvalServer?.server.getClientCapabilities()?.elicitation?.form) {
+				denialReason = "the MCP client does not support form elicitation";
+				throw new Error(denialReason);
+			}
 			const amount = request.spending.satoshis;
-			const response = await serverInstance.server.elicitInput({
+			if (!Number.isSafeInteger(amount) || amount < 0) {
+				denialReason = "the requested amount is invalid";
+				throw new Error(denialReason);
+			}
+			const response = await approvalServer.server.elicitInput({
+				mode: "form",
 				message: [
 					`Approve spending exactly ${amount} satoshis?`,
 					formatSpendingSummary(request),

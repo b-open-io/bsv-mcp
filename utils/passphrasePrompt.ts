@@ -15,7 +15,6 @@ import { createServer } from "node:http";
 import { platform } from "node:os";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 // Global lock to prevent multiple simultaneous prompts
 const LOCK_DIR = join(process.env.HOME || "", ".bsv-mcp");
@@ -33,21 +32,22 @@ export function setServerInstance(server: McpServer): void {
 
 /**
  * Detect if we're running in MCP stdio mode by checking the actual transport
- * This uses the official MCP SDK approach with fallback to environment detection
+ * The stdio entry point owns the transport lifecycle in SDK v2. This helper
+ * therefore only trusts an explicit transport selection (or a server transport
+ * whose constructor identifies the legacy stdio transport).
  */
 function _isStdioMode(): boolean {
-	// Primary: Check environment variable (set by MCP inspector and other clients)
-	if (process.env.TRANSPORT === "stdio") {
+	if (
+		process.argv.includes("--stdio") ||
+		process.env.TRANSPORT?.toLowerCase() === "stdio"
+	) {
 		return true;
 	}
 
-	// Secondary: If we have access to the server instance, check its transport
-	if (serverInstance?.server?.transport) {
-		return serverInstance.server.transport instanceof StdioServerTransport;
-	}
-
-	// Fallback: check if stdout is being used for JSON-RPC (not a TTY)
-	return process.stdout.isTTY === false;
+	// Kept for callers using the v1 connect(transport) lifecycle. Avoid an
+	// instanceof import so this remains compatible with the v2 package split.
+	return serverInstance?.server?.transport?.constructor?.name ===
+		"StdioServerTransport";
 }
 
 /**
