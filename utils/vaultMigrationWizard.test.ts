@@ -3,6 +3,7 @@ import type { MigrationInventory, MigrationSource } from "./vaultMigration";
 import {
 	CUTOVER_CONFIRMATION,
 	type MigrationPreview,
+	type ProjectRoleSelectionRequest,
 	type VaultMigrationBackend,
 	type VaultMigrationDestination,
 	VaultMigrationWizard,
@@ -242,6 +243,94 @@ test("cutover emits progress and requires the exact confirmation phrase", async 
 	state = await wizard.cutover();
 	expect(state.phase).toBe("complete");
 	expect(progress).toContain("Verifying addresses");
+});
+
+test("project roles require all explicit references and forward only the selection DTO", async () => {
+	let submitted: ProjectRoleSelectionRequest | undefined;
+	const roles = {
+		projectId: "project-a",
+		current: null,
+		candidates: [
+			{
+				candidateId: "candidate-payment",
+				label: "Payment key",
+				supportedRoles: ["payments" as const],
+			},
+		],
+	};
+	const wizard = await selectedWizard(
+		backend({
+			preview: async () => ({ ...preview(), projectRoles: roles }),
+			cutover: async (input) => {
+				submitted = input.roleSelection;
+				return {
+					completed: true,
+					verified: true,
+					accountName: "legacy",
+					preserved: {
+						identity: true,
+						addresses: true,
+						databases: [],
+						vaultEntries: [],
+					},
+				};
+			},
+		}),
+	);
+	await wizard.unlock("passphrase");
+	let state = wizard.confirmCutover(CUTOVER_CONFIRMATION);
+	expect(state.error?.code).toBe("invalid-selection");
+	state = wizard.confirmCutover(CUTOVER_CONFIRMATION, {
+		expectedProjectId: "project-a",
+		expectedRevision: null,
+		roleAssignments: {
+			"identity-signing": "unassigned",
+			payments: "select:candidate-payment",
+			"one-sat": "unassigned",
+			encryption: "unassigned",
+		},
+	});
+	expect(state.cutoverConfirmed).toBe(true);
+	state = await wizard.cutover();
+	expect(state.phase).toBe("complete");
+	expect(submitted?.roleAssignments.payments).toBe("select:candidate-payment");
+	const strict = await selectedWizard(
+		backend({ preview: async () => ({ ...preview(), projectRoles: roles }) }),
+	);
+	await strict.unlock("passphrase");
+	const forged = strict.confirmCutover(CUTOVER_CONFIRMATION, {
+		expectedProjectId: "project-a",
+		expectedRevision: null,
+		roleAssignments: {
+			"identity-signing": "unassigned",
+			payments: "select:candidate-payment",
+			"one-sat": "unassigned",
+			encryption: "unassigned",
+		},
+		privateKey: "must-not-be-accepted",
+	});
+	expect(forged.error?.code).toBe("invalid-selection");
+});
+
+test("trusted no-effect marker keeps a failed cutover retryable", async () => {
+	const wizard = await selectedWizard(
+		backend({
+			cutover: async () => {
+				const error = new Error("Destination unavailable");
+				Object.assign(error, { code: "PRECONDITION_FAILED", noEffect: true });
+				throw error;
+			},
+		}),
+	);
+	await wizard.unlock("passphrase");
+	wizard.confirmCutover(CUTOVER_CONFIRMATION);
+	const state = await wizard.cutover();
+	expect(state.phase).toBe("error");
+	expect(state.error).toMatchObject({
+		code: "backend-error",
+		retryable: true,
+		noEffect: true,
+	});
 });
 
 test("expiry, locking, interruption, retry, and recovery are visible states", async () => {

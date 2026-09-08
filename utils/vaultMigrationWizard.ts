@@ -1,5 +1,44 @@
 import type { MigrationInventory, MigrationSource } from "./vaultMigration";
 
+export const PROJECT_KEY_ROLES = [
+	"identity-signing",
+	"payments",
+	"one-sat",
+	"encryption",
+] as const;
+export type ProjectKeyRole = (typeof PROJECT_KEY_ROLES)[number];
+export type ProjectRoleChoice =
+	| "unassigned"
+	| `keep:${string}`
+	| `select:${string}`;
+export type ProjectRoleAssignments = Readonly<
+	Record<ProjectKeyRole, ProjectRoleChoice>
+>;
+
+/** Browser-submitted role references. The backend resolves candidate IDs. */
+export interface ProjectRoleSelectionRequest {
+	expectedProjectId: string;
+	expectedRevision: number | null;
+	roleAssignments: ProjectRoleAssignments;
+}
+
+/** Public, non-secret role candidate metadata supplied by the trusted backend. */
+export interface MigrationProjectRoleCandidate {
+	candidateId: string;
+	label: string;
+	supportedRoles: readonly ProjectKeyRole[];
+	unavailableReason?: string;
+	publicDerivationLabel?: string;
+}
+
+/** Public project role snapshot. Key material is resolved by the backend. */
+export interface MigrationProjectRoles {
+	projectId: string;
+	/** Full bindings are retained on the trusted server; the UI receives a sanitized projection. */
+	current: unknown;
+	candidates: readonly MigrationProjectRoleCandidate[];
+}
+
 /**
  * The text entered in the unlock field is deliberately absent from every
  * wizard object.  Callers should pass it only to `unlock` from a local UI and
@@ -81,6 +120,7 @@ export interface MigrationPreview {
 		vaultEntries: "retain" | "conflict" | "unknown";
 	};
 	conflicts: readonly MigrationConflict[];
+	projectRoles?: MigrationProjectRoles;
 }
 
 export interface MigrationProgress {
@@ -96,6 +136,7 @@ export interface VaultMigrationCutoverRequest {
 	destination: VaultMigrationDestination;
 	confirmation: typeof CUTOVER_CONFIRMATION;
 	resolutions: Readonly<Record<string, MigrationConflictResolution>>;
+	roleSelection?: ProjectRoleSelectionRequest;
 }
 
 export interface VaultMigrationCutoverResult {
@@ -182,6 +223,8 @@ export interface MigrationWizardError {
 		| "backend-error";
 	message: string;
 	retryable: boolean;
+	/** Set only by a trusted backend when it proves no destination write occurred. */
+	noEffect?: true;
 }
 
 export interface MigrationWizardState {
@@ -197,6 +240,7 @@ export interface MigrationWizardState {
 		"sessionId" | "expiresAt" | "vaultEntryId" | "publicKey"
 	>;
 	preview?: MigrationPreview;
+	roleSelection?: ProjectRoleSelectionRequest;
 	cutoverConfirmed: boolean;
 	progress?: MigrationProgress;
 	result?: VaultMigrationCutoverResult;
@@ -274,6 +318,7 @@ export class VaultMigrationWizard {
 			destination: undefined,
 			session: undefined,
 			preview: undefined,
+			roleSelection: undefined,
 			cutoverConfirmed: false,
 			error: undefined,
 		});
@@ -304,6 +349,7 @@ export class VaultMigrationWizard {
 			destination: { ...destination },
 			session: undefined,
 			preview: undefined,
+			roleSelection: undefined,
 			cutoverConfirmed: false,
 			error: undefined,
 		});
@@ -483,7 +529,10 @@ export class VaultMigrationWizard {
 		return this.snapshot();
 	}
 
-	confirmCutover(confirmation: string): MigrationWizardState {
+	confirmCutover(
+		confirmation: string,
+		roleSelection?: unknown,
+	): MigrationWizardState {
 		if (
 			this.state.phase === "cutover" ||
 			this.state.phase === "complete" ||
@@ -508,8 +557,29 @@ export class VaultMigrationWizard {
 				"Resolve every existing Vault conflict before continuing.",
 				false,
 			);
+		let selectedRoles: ProjectRoleSelectionRequest | undefined;
+		if (this.state.preview.projectRoles) {
+			selectedRoles = parseProjectRoleSelection(roleSelection);
+			if (!selectedRoles)
+				return this.fail(
+					"invalid-selection",
+					"Choose an explicit project role for each key before continuing.",
+					false,
+				);
+			const roles = this.state.preview.projectRoles;
+			if (
+				selectedRoles.expectedProjectId !== roles.projectId ||
+				selectedRoles.expectedRevision !== projectRoleRevision(roles.current)
+			)
+				return this.fail(
+					"invalid-selection",
+					"The project role inventory changed. Reload the preview before continuing.",
+					true,
+				);
+		}
 		if (!this.sessionIsActive()) return this.expire();
 		this.update({
+			roleSelection: selectedRoles,
 			cutoverConfirmed: true,
 			phase: "ready",
 			status: "idle",
@@ -583,6 +653,9 @@ export class VaultMigrationWizard {
 					destination: this.state.destination,
 					confirmation: CUTOVER_CONFIRMATION,
 					resolutions,
+					...(this.state.roleSelection
+						? { roleSelection: this.state.roleSelection }
+						: {}),
 				},
 				(progress) => {
 					const safeProgress = sanitizeProgress(progress);
@@ -619,6 +692,7 @@ export class VaultMigrationWizard {
 			).toLowerCase();
 			if (code.includes("expire") || code.includes("lock"))
 				return this.failFromError(error);
+			if (isNoEffectFailure(error)) return this.failFromError(error);
 			return this.interrupt(
 				"Cutover status is unknown. Check the local backup and Vault entries before retrying.",
 			);
@@ -639,6 +713,7 @@ export class VaultMigrationWizard {
 			phase: "locked",
 			status: "blocked",
 			session: undefined,
+			roleSelection: undefined,
 			cutoverConfirmed: false,
 		});
 		return this.snapshot();
@@ -689,6 +764,7 @@ export class VaultMigrationWizard {
 					status: "idle",
 					session: undefined,
 					preview: undefined,
+					roleSelection: undefined,
 					progress: undefined,
 					cutoverConfirmed: false,
 					error: undefined,
@@ -728,6 +804,7 @@ export class VaultMigrationWizard {
 			status: this.state.backend.available ? "idle" : "blocked",
 			session: undefined,
 			preview: undefined,
+			roleSelection: undefined,
 			progress: undefined,
 			cutoverConfirmed: false,
 			error: undefined,
@@ -746,6 +823,7 @@ export class VaultMigrationWizard {
 			phase: "expired",
 			status: "blocked",
 			session: undefined,
+			roleSelection: undefined,
 			cutoverConfirmed: false,
 			error: {
 				code: "expired",
@@ -760,11 +838,17 @@ export class VaultMigrationWizard {
 		code: MigrationWizardError["code"],
 		message: string,
 		retryable: boolean,
+		noEffect = false,
 	): MigrationWizardState {
 		this.update({
 			phase: code === "backend-unavailable" ? this.state.phase : "error",
 			status: code === "backend-unavailable" ? "blocked" : "failed",
-			error: { code, message, retryable },
+			error: {
+				code,
+				message,
+				retryable,
+				...(noEffect ? { noEffect: true as const } : {}),
+			},
 		});
 		return this.snapshot();
 	}
@@ -774,8 +858,10 @@ export class VaultMigrationWizard {
 			code?: unknown;
 			name?: unknown;
 			message?: unknown;
+			noEffect?: unknown;
 		};
 		const code = String(value.code ?? value.name ?? "").toLowerCase();
+		const noEffect = value.noEffect === true;
 		if (code.includes("expire")) return this.expire();
 		if (code.includes("lock")) {
 			this.update({
@@ -805,7 +891,7 @@ export class VaultMigrationWizard {
 			)
 				? "Vault migration failed. No cutover was confirmed."
 				: rawMessage.slice(0, 500);
-		return this.fail("backend-error", message, true);
+		return this.fail("backend-error", message, true, noEffect);
 	}
 
 	private update(patch: Partial<MigrationWizardState>) {
@@ -837,6 +923,57 @@ export function isDestination(
 		(item.expectedPublicKey === undefined ||
 			typeof item.expectedPublicKey === "string")
 	);
+}
+
+/** Strictly validates browser role references; key material is never accepted. */
+export function parseProjectRoleSelection(
+	value: unknown,
+): ProjectRoleSelectionRequest | undefined {
+	if (!isRecord(value)) return undefined;
+	if (
+		Object.keys(value).length !== 3 ||
+		!["expectedProjectId", "expectedRevision", "roleAssignments"].every((key) =>
+			Object.hasOwn(value, key),
+		)
+	)
+		return undefined;
+	if (
+		typeof value.expectedProjectId !== "string" ||
+		value.expectedProjectId.length === 0 ||
+		value.expectedProjectId.length > 128
+	)
+		return undefined;
+	const expectedRevision = value.expectedRevision;
+	if (
+		expectedRevision !== null &&
+		(typeof expectedRevision !== "number" ||
+			!Number.isSafeInteger(expectedRevision) ||
+			expectedRevision < 0)
+	)
+		return undefined;
+	const assignments = value.roleAssignments;
+	if (!isRecord(assignments)) return undefined;
+	if (
+		Object.keys(assignments).length !== PROJECT_KEY_ROLES.length ||
+		!PROJECT_KEY_ROLES.every((role) => Object.hasOwn(assignments, role))
+	)
+		return undefined;
+	const safeAssignments = {} as Record<ProjectKeyRole, ProjectRoleChoice>;
+	for (const role of PROJECT_KEY_ROLES) {
+		const choice = assignments[role];
+		if (
+			typeof choice !== "string" ||
+			(choice !== "unassigned" &&
+				!/^(?:keep|select):[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(choice))
+		)
+			return undefined;
+		safeAssignments[role] = choice as ProjectRoleChoice;
+	}
+	return {
+		expectedProjectId: value.expectedProjectId,
+		expectedRevision,
+		roleAssignments: safeAssignments,
+	};
 }
 
 function isSession(value: unknown): value is VaultMigrationSession {
@@ -921,6 +1058,11 @@ function sanitizePreview(value: unknown): MigrationPreview | undefined {
 				: {}),
 		});
 	}
+	let projectRoles: MigrationProjectRoles | undefined;
+	if (Object.hasOwn(item, "projectRoles")) {
+		projectRoles = sanitizeProjectRoles(item.projectRoles);
+		if (!projectRoles) return undefined;
+	}
 	return {
 		source: {
 			account: source.account,
@@ -948,6 +1090,98 @@ function sanitizePreview(value: unknown): MigrationPreview | undefined {
 			vaultEntries: preservation.vaultEntries,
 		},
 		conflicts,
+		...(projectRoles ? { projectRoles } : {}),
+	};
+}
+
+function sanitizeProjectRoles(
+	value: unknown,
+): MigrationProjectRoles | undefined {
+	if (!isRecord(value) || typeof value.projectId !== "string") return undefined;
+	if (
+		value.projectId.length === 0 ||
+		value.projectId.length > 128 ||
+		!Array.isArray(value.candidates)
+	)
+		return undefined;
+	const current = value.current;
+	let safeCurrent: MigrationProjectRoles["current"];
+	if (current === null) safeCurrent = null;
+	else {
+		if (!isRecord(current)) return undefined;
+		if (
+			typeof current.projectId !== "string" ||
+			current.projectId !== value.projectId ||
+			typeof current.revision !== "number" ||
+			!Number.isSafeInteger(current.revision) ||
+			current.revision < 0 ||
+			!isRecord(current.current)
+		)
+			return undefined;
+		const assignments = {} as Record<ProjectKeyRole, string | null>;
+		for (const role of PROJECT_KEY_ROLES) {
+			const selected = current.current[role];
+			if (selected !== null && typeof selected !== "string") return undefined;
+			assignments[role] = selected;
+		}
+		safeCurrent = {
+			projectId: current.projectId,
+			revision: current.revision,
+			current: assignments,
+		};
+	}
+	const candidates: MigrationProjectRoleCandidate[] = [];
+	const ids = new Set<string>();
+	for (const candidate of value.candidates) {
+		if (
+			!isRecord(candidate) ||
+			typeof candidate.candidateId !== "string" ||
+			!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(candidate.candidateId) ||
+			ids.has(candidate.candidateId) ||
+			typeof candidate.label !== "string" ||
+			!Array.isArray(candidate.supportedRoles) ||
+			!candidate.supportedRoles.every((role) =>
+				PROJECT_KEY_ROLES.includes(role as ProjectKeyRole),
+			)
+		)
+			return undefined;
+		ids.add(candidate.candidateId);
+		candidates.push({
+			candidateId: candidate.candidateId,
+			label: candidate.label.slice(0, 200),
+			supportedRoles: [
+				...new Set(candidate.supportedRoles as ProjectKeyRole[]),
+			],
+			...(typeof candidate.unavailableReason === "string"
+				? { unavailableReason: candidate.unavailableReason.slice(0, 300) }
+				: {}),
+			...(typeof candidate.publicDerivationLabel === "string"
+				? {
+						publicDerivationLabel: candidate.publicDerivationLabel.slice(
+							0,
+							200,
+						),
+					}
+				: {}),
+		});
+	}
+	return { projectId: value.projectId, current: safeCurrent, candidates };
+}
+
+function projectRoleRevision(value: unknown): number | null {
+	return isRecord(value) &&
+		typeof value.revision === "number" &&
+		Number.isSafeInteger(value.revision) &&
+		value.revision >= 0
+		? value.revision
+		: null;
+}
+
+function cloneProjectRoleCurrent(value: unknown): unknown {
+	if (!isRecord(value)) return value;
+	return {
+		...value,
+		...(isRecord(value.current) ? { current: { ...value.current } } : {}),
 	};
 }
 
@@ -1009,6 +1243,11 @@ function sanitizeProgress(value: unknown): MigrationProgress | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Only an explicit backend discriminant can prove that retrying is harmless. */
+function isNoEffectFailure(value: unknown): value is { noEffect: true } {
+	return isRecord(value) && value.noEffect === true;
 }
 
 function stringArray(value: unknown): value is string[] {
@@ -1097,6 +1336,29 @@ function cloneState(state: MigrationWizardState): MigrationWizardState {
 					conflicts: state.preview.conflicts.map((conflict) => ({
 						...conflict,
 					})),
+					...(state.preview.projectRoles
+						? {
+								projectRoles: {
+									...state.preview.projectRoles,
+									current: cloneProjectRoleCurrent(
+										state.preview.projectRoles.current,
+									),
+									candidates: state.preview.projectRoles.candidates.map(
+										(candidate) => ({
+											...candidate,
+											supportedRoles: [...candidate.supportedRoles],
+										}),
+									),
+								},
+							}
+						: {}),
+				}
+			: undefined,
+		roleSelection: state.roleSelection
+			? {
+					expectedProjectId: state.roleSelection.expectedProjectId,
+					expectedRevision: state.roleSelection.expectedRevision,
+					roleAssignments: { ...state.roleSelection.roleAssignments },
 				}
 			: undefined,
 		progress: state.progress ? { ...state.progress } : undefined,

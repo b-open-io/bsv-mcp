@@ -9,15 +9,48 @@ import {
 	VaultMigrationWizard,
 } from "./vaultMigrationWizard";
 
+function unavailableMigrationBackend(): VaultMigrationBackend {
+	const reason =
+		"The local Vault migration backend could not be initialized. Check the Vault package and project configuration, then reopen setup.";
+	const unavailable = async (): Promise<never> => {
+		throw new Error(reason);
+	};
+	return {
+		available: false,
+		unavailableReason: reason,
+		beginUnlock: unavailable,
+		preview: unavailable,
+		cutover: unavailable,
+		lock: async () => {},
+	};
+}
+
 /** Local setup flow. Inventory is read-only; cutover requires an explicit backend. */
 export async function startVaultSetup(
 	options: {
 		inspect?: () => MigrationInventory;
 		timeoutMs?: number;
-		/** Optional local adapter. Omit until verified Vault integration is ready. */
+		/** Explicit adapter used by tests and embedders. */
 		migrationBackend?: VaultMigrationBackend;
+		/** Trusted local bootstrap; evaluated before the server starts listening. */
+		migrationBackendFactory?: () => Promise<VaultMigrationBackend>;
 	} = {},
 ) {
+	if (options.migrationBackend && options.migrationBackendFactory)
+		throw new Error(
+			"Provide either migrationBackend or migrationBackendFactory, not both.",
+		);
+	let migrationBackend = options.migrationBackend;
+	if (!migrationBackend && options.migrationBackendFactory) {
+		try {
+			const candidate = await options.migrationBackendFactory();
+			if (!candidate || typeof candidate.available !== "boolean")
+				throw new Error("invalid backend");
+			migrationBackend = candidate;
+		} catch {
+			migrationBackend = unavailableMigrationBackend();
+		}
+	}
 	const token = randomBytes(32).toString("hex");
 	const pageNonce = randomBytes(18).toString("base64");
 	let origin = "";
@@ -44,7 +77,7 @@ export async function startVaultSetup(
 			}
 			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(
 				renderVaultMigrationPage({
-					backendAvailable: options.migrationBackend?.available,
+					backendAvailable: migrationBackend?.available,
 					nonce: pageNonce,
 				}),
 			);
@@ -84,11 +117,11 @@ export async function startVaultSetup(
 			}
 			res.writeHead(200, { "Content-Type": "application/json" }).end(
 				JSON.stringify({
-					available: options.migrationBackend?.available === true,
+					available: migrationBackend?.available === true,
 					reason:
-						options.migrationBackend?.available === true
+						migrationBackend?.available === true
 							? undefined
-							: (options.migrationBackend?.unavailableReason ??
+							: (migrationBackend?.unavailableReason ??
 								"Vault migration is unavailable until the local Vault backend is enabled."),
 				}),
 			);
@@ -109,9 +142,9 @@ export async function startVaultSetup(
 			const current = () =>
 				(wizard ??= new VaultMigrationWizard({
 					inventory: (options.inspect ?? inspectMigration)(),
-					backend: options.migrationBackend,
+					backend: migrationBackend,
 				}));
-			if (!options.migrationBackend?.available) {
+			if (!migrationBackend?.available) {
 				res.writeHead(503, { "Content-Type": "application/json" }).end(
 					JSON.stringify({
 						error: "Vault migration backend is unavailable.",
@@ -200,6 +233,7 @@ export async function startVaultSetup(
 				const confirmation = body.confirmation;
 				const confirmed = current().confirmCutover(
 					typeof confirmation === "string" ? confirmation : "",
+					body.roleSelection,
 				);
 				if (confirmed.error) return writeWizardError(res, confirmed);
 				const result = await current().cutover();
@@ -324,7 +358,7 @@ function writeJson(
 
 function writeWizardError(
 	response: import("node:http").ServerResponse,
-	state: { error?: { code: string; message: string } },
+	state: { error?: { code: string; message: string; noEffect?: true } },
 ) {
 	const code = state.error?.code ?? "backend-error";
 	const status =
@@ -336,6 +370,7 @@ function writeWizardError(
 	response.writeHead(status, { "Content-Type": "application/json" }).end(
 		JSON.stringify({
 			error: state.error?.message ?? "Vault migration failed.",
+			...(state.error?.noEffect === true ? { noEffect: true } : {}),
 		}),
 	);
 }

@@ -167,3 +167,93 @@ test("local migration routes return unavailable instead of pretending to migrate
 		await setup.close();
 	}
 });
+
+test("local setup initializes a trusted backend factory before listening", async () => {
+	let initialized = false;
+	const setup = await startVaultSetup({
+		inspect: () => inventory,
+		migrationBackendFactory: async () => {
+			initialized = true;
+			return fakeBackend();
+		},
+	});
+	try {
+		expect(initialized).toBe(true);
+		const url = new URL(setup.url);
+		const result = await fetch(`${url.origin}/api/migration/capabilities`, {
+			headers: { Authorization: `Bearer ${url.hash.slice(1)}` },
+		});
+		expect(await result.json()).toMatchObject({ available: true });
+	} finally {
+		await setup.close();
+	}
+});
+
+test("failed backend factory is unavailable with a sanitized actionable reason", async () => {
+	const setup = await startVaultSetup({
+		migrationBackendFactory: async () => {
+			throw new Error("sourcePassphrase secret");
+		},
+	});
+	try {
+		const url = new URL(setup.url);
+		const result = await fetch(`${url.origin}/api/migration/capabilities`, {
+			headers: { Authorization: `Bearer ${url.hash.slice(1)}` },
+		});
+		const body = await result.json();
+		expect(body.available).toBe(false);
+		expect(body.reason).toContain("project configuration");
+		expect(JSON.stringify(body)).not.toContain("sourcePassphrase");
+	} finally {
+		await setup.close();
+	}
+});
+
+test("setup rejects ambiguous backend injection", async () => {
+	await expect(
+		startVaultSetup({
+			migrationBackend: fakeBackend(),
+			migrationBackendFactory: async () => fakeBackend(),
+		}),
+	).rejects.toThrow("either migrationBackend or migrationBackendFactory");
+});
+
+test("setup preserves the trusted no-effect recovery marker", async () => {
+	const backend = fakeBackend();
+	backend.cutover = async () => {
+		const error = new Error("Destination precondition failed");
+		Object.assign(error, { code: "PRECONDITION_FAILED", noEffect: true });
+		throw error;
+	};
+	const setup = await startVaultSetup({
+		inspect: () => inventory,
+		migrationBackend: backend,
+	});
+	try {
+		const url = new URL(setup.url);
+		const headers = { Authorization: `Bearer ${url.hash.slice(1)}` };
+		const unlocked = await fetch(`${url.origin}/api/migration/unlock`, {
+			method: "POST",
+			headers: { ...headers, "Content-Type": "application/json" },
+			body: JSON.stringify({
+				source,
+				destination,
+				sourcePassphrase: "local-secret",
+				destinationPassphrase: "destination-secret",
+			}),
+		});
+		const sessionId = (await unlocked.json()).session.sessionId;
+		const failed = await fetch(`${url.origin}/api/migration/cutover`, {
+			method: "POST",
+			headers: { ...headers, "Content-Type": "application/json" },
+			body: JSON.stringify({ sessionId, confirmation: "MIGRATE_AND_SWITCH" }),
+		});
+		expect(failed.status).toBe(409);
+		expect(await failed.json()).toMatchObject({
+			noEffect: true,
+			error: "Destination precondition failed",
+		});
+	} finally {
+		await setup.close();
+	}
+});
