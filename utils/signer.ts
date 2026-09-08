@@ -77,7 +77,7 @@ export async function serveSigner(name: string) {
 	const filename = join(dir, `wallet-${config.chain}.db`);
 	regularPath(filename);
 	const previousMask = process.umask(0o077);
-	const result = await createNodeWallet({
+	const nodeWalletConfig = {
 		privateKey: keys.payPk,
 		chain: config.chain,
 		storageIdentityKey: config.storageIdentityKey,
@@ -86,7 +86,15 @@ export async function serveSigner(name: string) {
 		backups: config.backups,
 		servicesBaseUrl: onesatUrl(config.chain),
 		skipInitialMonitor: true,
-	}).finally(() => process.umask(previousMask));
+		// @1sat/wallet-node forwards this opt-out to @1sat/wallet's core
+		// factory. Keep storage available while preventing implicit billing.
+		autoStoragePayments: false,
+	} as Parameters<typeof createNodeWallet>[0] & {
+		autoStoragePayments: false;
+	};
+	const result = await createNodeWallet(nodeWalletConfig).finally(() =>
+		process.umask(previousMask),
+	);
 	if (existsSync(filename)) chmodSync(filename, 0o600);
 	if (existsSync(join(dir, ".env"))) {
 		await result.destroy();

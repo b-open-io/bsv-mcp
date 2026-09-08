@@ -137,6 +137,7 @@ export async function initWallet(
 		backups: storageConfig.backups,
 		skipInitialMonitor: true,
 		servicesBaseUrl: onesatUrl(chain),
+		autoStoragePayments: false,
 		onStoragePaymentRequired: denyStoragePayment,
 	} as Parameters<typeof createNodeWallet>[0] & {
 		onStoragePaymentRequired: typeof denyStoragePayment;
