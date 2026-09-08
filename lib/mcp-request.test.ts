@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	isMcpCorsPreflight,
 	isMcpRequest,
 	isModernMcpRequest,
 	MODERN_MCP_PROTOCOL_VERSION,
@@ -124,5 +125,68 @@ describe("isMcpRequest", () => {
 				headers({ "content-type": "application/json-patch+json" }),
 			),
 		).toBe(false);
+	});
+});
+
+describe("isMcpCorsPreflight", () => {
+	const preflight = (requested: string) =>
+		headers({
+			origin: "https://app.example.com",
+			"access-control-request-method": "POST",
+			"access-control-request-headers": requested,
+		});
+
+	test("claims a POST preflight that requests MCP or auth headers", () => {
+		expect(
+			isMcpCorsPreflight("OPTIONS", preflight("authorization, content-type")),
+		).toBe(true);
+		expect(
+			isMcpCorsPreflight(
+				"OPTIONS",
+				preflight("mcp-protocol-version, mcp-method"),
+			),
+		).toBe(true);
+		expect(isMcpRequest("OPTIONS", preflight("mcp-session-id"))).toBe(true);
+	});
+
+	test("recognizes GET and DELETE preflight with authorization", () => {
+		for (const method of ["GET", "DELETE"])
+			expect(
+				isMcpCorsPreflight(
+					"OPTIONS",
+					headers({
+						"access-control-request-method": method,
+						"access-control-request-headers": "authorization",
+					}),
+				),
+			).toBe(true);
+	});
+
+	test("ignores ordinary browser OPTIONS traffic", () => {
+		const browser =
+			"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+		expect(isMcpCorsPreflight("OPTIONS", headers({}))).toBe(false);
+		expect(isMcpCorsPreflight("OPTIONS", headers({ accept: browser }))).toBe(
+			false,
+		);
+		expect(
+			isMcpCorsPreflight(
+				"OPTIONS",
+				headers({
+					"access-control-request-method": "POST",
+					"access-control-request-headers": "x-custom-thing",
+				}),
+			),
+		).toBe(false);
+		expect(
+			isMcpCorsPreflight(
+				"OPTIONS",
+				headers({
+					"access-control-request-method": "PUT",
+					"access-control-request-headers": "authorization",
+				}),
+			),
+		).toBe(false);
+		expect(isMcpRequest("OPTIONS", headers({ accept: browser }))).toBe(false);
 	});
 });

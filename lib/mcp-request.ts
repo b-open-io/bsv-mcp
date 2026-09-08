@@ -87,9 +87,48 @@ export function isMcpRequest(method: string, headers: Headers): boolean {
 		case "DELETE":
 			// Ending a session.
 			return true;
+		case "OPTIONS":
+			// A browser CORS preflight for the MCP endpoint.
+			return isMcpCorsPreflight(method, headers);
 		default:
 			return false;
 	}
+}
+
+/**
+ * Headers a browser MCP client preflight asks permission to send. Kept
+ * explicit so ordinary browser OPTIONS traffic is never claimed.
+ */
+const MCP_PREFLIGHT_REQUEST_HEADERS: readonly string[] = [
+	"last-event-id",
+	"mcp-session-id",
+	"mcp-protocol-version",
+	"mcp-method",
+	"mcp-name",
+	"authorization",
+	"content-type",
+];
+
+/**
+ * True for a CORS preflight of an MCP request: an OPTIONS that advertises a
+ * POST, GET, or DELETE preflight and requests MCP, auth, or JSON headers. Conservative by
+ * design: an OPTIONS without an MCP method target, or one that asks for none of
+ * these headers, remains page routing.
+ */
+export function isMcpCorsPreflight(method: string, headers: Headers): boolean {
+	if (method.toUpperCase() !== "OPTIONS") return false;
+	const requestedMethod = (headers.get("access-control-request-method") ?? "")
+		.trim()
+		.toUpperCase();
+	if (!["POST", "GET", "DELETE"].includes(requestedMethod)) return false;
+	const requestedHeaders = (headers.get("access-control-request-headers") ?? "")
+		.split(",")
+		.map((name) => name.trim().toLowerCase())
+		.filter((name) => name.length > 0);
+	if (requestedHeaders.length === 0) return false;
+	return requestedHeaders.some((name) =>
+		MCP_PREFLIGHT_REQUEST_HEADERS.includes(name),
+	);
 }
 
 /** Where MCP requests are actually handled. */

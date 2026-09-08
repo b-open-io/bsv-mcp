@@ -3,18 +3,12 @@ import { AUTH_SERVER_URL, OAUTH_SCOPE_NAMES, SITE_NAME } from "./site";
 /**
  * OAuth 2.0 Protected Resource Metadata (RFC 9728).
  *
- * The resource identifier is the MCP endpoint itself, not the site origin,
- * because that is the URI clients send as the RFC 8707 `resource` parameter.
- * RFC 9728 §3.1 then places the metadata at
- * `/.well-known/oauth-protected-resource/api/mcp`, which is what MCP clients
- * request; the bare path is still served for older clients.
- */
-
-/**
- * The MCP endpoint is the site origin, so the resource has no path segment and
- * RFC 9728 places its metadata at the bare well-known path. The legacy
- * `/api/mcp` endpoint still answers, and its path-suffixed metadata is still
- * served for clients configured against it.
+ * The canonical MCP endpoint is the site origin (`MCP_ENDPOINT = SITE_URL`),
+ * so the resource identifier is the origin itself — the exact URI clients send
+ * as the RFC 8707 `resource` parameter. A path-less resource takes the bare
+ * well-known path, and the legacy `/api/mcp` endpoint keeps a path-suffixed
+ * metadata alias that serves the same canonical resource for clients
+ * configured against it.
  */
 export const MCP_RESOURCE_PATH = "api/mcp";
 

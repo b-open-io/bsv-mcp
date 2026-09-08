@@ -6,11 +6,11 @@ import {
 } from "@/lib/oauth-metadata";
 
 /**
- * RFC 9728 metadata at the bare well-known path.
+ * Canonical RFC 9728 metadata at the bare well-known path.
  *
- * MCP clients following the spec request the path-suffixed form handled by the
- * sibling catch-all route. This one stays for clients that request the bare
- * path, and for anything still pointing at the previous location.
+ * The resource is the site origin, so there is no path segment to insert.
+ * The legacy `/api/mcp` alias in the sibling catch-all route serves the same
+ * canonical resource for clients configured against it.
  */
 export async function GET(request: NextRequest) {
 	return NextResponse.json(protectedResourceMetadata(request.nextUrl.origin), {

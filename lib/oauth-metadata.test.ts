@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { NextRequest } from "next/server";
+import { GET as aliasMetadata } from "../app/.well-known/oauth-protected-resource/[...path]/route";
+import { GET as bareMetadata } from "../app/.well-known/oauth-protected-resource/route";
 import {
 	MCP_RESOURCE_PATH,
 	protectedResourceMetadata,
@@ -44,5 +47,29 @@ describe("protected resource metadata", () => {
 	test("uses the caller's origin so previews describe themselves", () => {
 		const preview = protectedResourceMetadata("https://preview.example.com");
 		expect(preview.resource).toBe("https://preview.example.com");
+	});
+
+	test("canonical root and legacy alias serve the same resource", async () => {
+		const origin = "https://preview.example.com";
+		const bare = await bareMetadata(
+			new NextRequest(`${origin}/.well-known/oauth-protected-resource`),
+		);
+		expect(bare.status).toBe(200);
+		expect(((await bare.json()) as { resource: string }).resource).toBe(origin);
+
+		const alias = await aliasMetadata(
+			new NextRequest(`${origin}/.well-known/oauth-protected-resource/api/mcp`),
+			{ params: Promise.resolve({ path: ["api", "mcp"] }) },
+		);
+		expect(alias.status).toBe(200);
+		expect(((await alias.json()) as { resource: string }).resource).toBe(
+			origin,
+		);
+
+		const unknown = await aliasMetadata(
+			new NextRequest(`${origin}/.well-known/oauth-protected-resource/other`),
+			{ params: Promise.resolve({ path: ["other"] }) },
+		);
+		expect(unknown.status).toBe(404);
 	});
 });

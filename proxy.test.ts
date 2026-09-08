@@ -63,4 +63,24 @@ describe("root MCP routing", () => {
 		);
 		expect(rewriteFor("/", "text/html").path).toBe(null);
 	});
+
+	test("rewrites a root CORS preflight for MCP to the handler", () => {
+		expect(
+			rewriteFor("/", "*/*", "OPTIONS", {
+				origin: "https://app.example.com",
+				"access-control-request-method": "POST",
+				"access-control-request-headers": "authorization, content-type",
+			}).path,
+		).toBe("https://bsvmcp.test/api/mcp");
+	});
+
+	test("leaves an ordinary browser OPTIONS on page routing", () => {
+		expect(rewriteFor("/", "text/html", "OPTIONS").path).toBe(null);
+		expect(
+			rewriteFor("/", "*/*", "OPTIONS", {
+				"access-control-request-method": "PUT",
+				"access-control-request-headers": "authorization",
+			}).path,
+		).toBe(null);
+	});
 });

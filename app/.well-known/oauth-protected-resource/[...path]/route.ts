@@ -7,13 +7,9 @@ import {
 } from "@/lib/oauth-metadata";
 
 /**
- * RFC 9728 §3.1 metadata for a resource that lives under a path.
- *
- * For the resource `https://host/api/mcp`, clients insert the resource path
- * into the well-known URL and request
- * `https://host/.well-known/oauth-protected-resource/api/mcp`. Without this
- * route that request 404s and a client cannot discover the authorization
- * server, which is where Claude's connector flow stops.
+ * Legacy RFC 9728 §3.1 metadata alias for clients configured against
+ * `/api/mcp`. It serves the same canonical root resource as the bare
+ * well-known path; only the request path differs.
  */
 export async function GET(
 	request: NextRequest,

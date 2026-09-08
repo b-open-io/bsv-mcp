@@ -149,7 +149,7 @@ test("hosted adapter guards modern writes while preserving reads and auth", asyn
 		{
 			required: true,
 			requiredScopes: [],
-			resourceMetadataPath: "/.well-known/oauth-protected-resource/api/mcp",
+			resourceMetadataPath: "/.well-known/oauth-protected-resource",
 		},
 	);
 
