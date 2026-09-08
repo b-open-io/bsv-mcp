@@ -215,7 +215,7 @@ describe.skipIf(!actual)(
 						"one-sat": "select:payment",
 						encryption: "select:identity",
 					},
-				};
+				} as const;
 				for (const forged of [
 					{ ...roleSelection, accountId: "attacker-account" },
 					{ ...roleSelection, key: candidate.key },
@@ -233,7 +233,7 @@ describe.skipIf(!actual)(
 							payments: "select:identity",
 						},
 					},
-				]) {
+				] as const) {
 					await expect(
 						backend.cutover({
 							sessionId: session.sessionId,
