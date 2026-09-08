@@ -24,9 +24,15 @@ import {
 	accountDir,
 	readAccount,
 	regularPath,
+	resolveStorageConfig,
 	secureDirectory,
 } from "./accounts";
 import { backendUrl, onesatUrl } from "./backends";
+import {
+	EMBEDDED_OWNER_ORIGINATOR,
+	withEmbeddedOwnerDefaultBasketRead,
+	withEmbeddedOwnerDerivation,
+} from "./embeddedOwnerRead";
 import {
 	type ExternalWalletConfig,
 	markExternalWalletContext,
@@ -36,6 +42,7 @@ import {
 	handleSpendingAuthorization,
 	type SpendingPermissionRequest,
 } from "./spendingApproval.ts";
+import { denyStoragePayment } from "./storagePayment";
 
 export { setSpendingApprovalServerInstance } from "./spendingApproval.ts";
 
@@ -100,18 +107,30 @@ export async function initWallet(
 	const filename = join(dataDir, `wallet-${chain}.db`);
 	regularPath(filename);
 	const oldMask = process.umask(0o077);
-	const result = await createNodeWallet({
+	const storageConfig = resolveStorageConfig(
+		config,
+		process.env.REMOTE_STORAGE_URL
+			? backendUrl("REMOTE_STORAGE_URL", "")
+			: undefined,
+	);
+	const nodeWalletConfig = {
 		privateKey: PrivateKey.fromWif(privateKeyWif),
 		chain,
-		activeRemote: process.env.REMOTE_STORAGE_URL
-			? backendUrl("REMOTE_STORAGE_URL", "")
-			: config?.activeRemote,
+		activeRemote: storageConfig.activeRemote,
 		storageIdentityKey: config?.storageIdentityKey ?? "bsv-mcp",
 		storage: { provider: "bun-sqlite", filename },
-		backups: config?.backups,
+		backups: storageConfig.backups,
 		skipInitialMonitor: true,
 		servicesBaseUrl: onesatUrl(chain),
-	}).finally(() => process.umask(oldMask));
+		// @1sat/wallet-node forwards this field to @1sat/wallet's core factory,
+		// although its published NodeWalletConfig type currently omits it.
+		onStoragePaymentRequired: denyStoragePayment,
+	} as Parameters<typeof createNodeWallet>[0] & {
+		onStoragePaymentRequired: typeof denyStoragePayment;
+	};
+	const result = await createNodeWallet(nodeWalletConfig).finally(() =>
+		process.umask(oldMask),
+	);
 	chmodSync(filename, 0o600);
 
 	const wpm = new WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
@@ -142,15 +161,24 @@ export async function initWallet(
 			handleSpendingAuthorization(request, wpm),
 	);
 
-	const ctx = createContext(wpm, {
-		services: result.services,
-		chain,
-		dataDir,
-		isBaseWallet: true,
-		log: (entry) => writeAuditLog(dataDir, entry),
-	});
+	const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
 
-	const { derivations } = await deriveDepositAddresses.execute(ctx, {
+	const ctx = Object.assign(
+		createContext(wallet, {
+			services: result.services,
+			chain,
+			dataDir,
+			isBaseWallet: true,
+			log: (entry) => writeAuditLog(dataDir, entry),
+		}),
+		{ [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR },
+	);
+
+	const internalCtx = {
+		...ctx,
+		wallet: withEmbeddedOwnerDerivation(ctx.wallet, ADMIN_ORIGINATOR),
+	};
+	const { derivations } = await deriveDepositAddresses.execute(internalCtx, {
 		prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
 	});
 	const depositAddress = derivations[0]?.address;
@@ -162,7 +190,7 @@ export async function initWallet(
 	activeResult = result;
 
 	return {
-		wallet: wpm,
+		wallet,
 		services: result.services,
 		ctx,
 		depositAddress,

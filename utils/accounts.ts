@@ -19,6 +19,8 @@ export const accountNameSchema = z
 		/^[a-z0-9][a-z0-9_-]{0,63}$/,
 		"Use 1–64 lowercase letters, digits, underscores or hyphens",
 	);
+/** Default active wallet-storage provider for newly-created embedded accounts. */
+export const DEFAULT_STORAGE_REMOTE_URL = "https://wallet.1sat.app";
 const remote = z
 	.string()
 	.url()
@@ -48,6 +50,34 @@ export const accountConfigSchema = z
 	})
 	.strict();
 export type AccountConfig = z.infer<typeof accountConfigSchema>;
+
+/**
+ * Resolve the storage topology passed to the One Sat wallet factory.
+ *
+ * `REMOTE_STORAGE_URL` is a deployment override and is deliberately kept out
+ * of the account file. A URL listed as both active and backup would otherwise
+ * be connected twice by the SDK, so remove the active URL from the backup
+ * list here. This function is pure so config behavior can be tested without
+ * creating a wallet or making an authenticated request.
+ */
+export function resolveStorageConfig(
+	config: Pick<AccountConfig, "activeRemote" | "backups"> | undefined,
+	activeRemoteOverride?: string,
+): Pick<AccountConfig, "activeRemote" | "backups"> {
+	const validate = (url: string) => {
+		if (!remote.safeParse(url).success)
+			throw new Error("Wallet storage URL must be HTTPS or loopback HTTP");
+		return url;
+	};
+	const activeRemote =
+		activeRemoteOverride === undefined
+			? config?.activeRemote
+			: validate(activeRemoteOverride);
+	const backups = config?.backups
+		?.map(validate)
+		.filter((url) => url !== activeRemote);
+	return { activeRemote, backups };
+}
 export function accountsRoot() {
 	const base = join(homedir(), ".bsv-mcp");
 	regularPath(base, true);
@@ -135,6 +165,7 @@ export function newAccountConfig(
 		chain,
 		address,
 		storageIdentityKey: `bsv-mcp-${randomBytes(16).toString("hex")}`,
+		...(chain === "main" ? { activeRemote: DEFAULT_STORAGE_REMOTE_URL } : {}),
 		depositPrefix: "mcp",
 	};
 }
