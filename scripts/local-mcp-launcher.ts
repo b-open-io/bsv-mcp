@@ -50,6 +50,8 @@ export interface LocalMcpLaunchOptions {
 	runtimePassword?: string;
 	externalWalletUrl?: string;
 	externalOriginator?: string;
+	externalPublicKey?: string;
+	externalRoles?: string;
 	serverBinary?: string;
 	bunExecutable?: string;
 	/** Must be outside this checkout. Defaults to an OS temporary directory. */
@@ -75,6 +77,7 @@ const SAFE_INHERITED_ENV = [
 	"LANG",
 	"LC_ALL",
 	"TZ",
+	"MCP_TOOL_CATALOG",
 ] as const;
 
 /**
@@ -85,6 +88,8 @@ const SAFE_INHERITED_ENV = [
 export const CONFLICTING_WALLET_ENV = [
 	"BRC100_WALLET_URL",
 	"BRC100_WALLET_ORIGINATOR",
+	"BRC100_WALLET_PUBLIC_KEY",
+	"BRC100_WALLET_ROLES",
 	"PRIVATE_KEY_WIF",
 	"IDENTITY_KEY_WIF",
 	"BSV_MCP_ACCOUNT",
@@ -282,11 +287,13 @@ export function buildLaunchPlan(
 				);
 	const env = safeInheritedEnvironment(baseEnv, homeDirectory);
 	env.DISABLE_BROADCASTING =
-		options.disableBroadcasting === false ? "false" : "true";
+		(options.disableBroadcasting ?? baseEnv.DISABLE_BROADCASTING !== "false")
+			? "true"
+			: "false";
 	const project = resolveProjectConfig(options);
-	if (project && options.mode !== "project")
+	if (project && options.mode === "embedded")
 		throw new Error(
-			"Project selectors require the project launcher mode; choose external, embedded, or project explicitly",
+			"Project selectors require project or external launcher mode",
 		);
 	if (project) {
 		env.BSV_MCP_PROJECT_ROOT = project.projectRoot;
@@ -311,18 +318,28 @@ export function buildLaunchPlan(
 			"External mode requires BRC100_WALLET_URL in the launcher's runtime environment",
 		);
 		const originator =
-			options.externalOriginator ??
-			baseEnv.BRC100_WALLET_ORIGINATOR ??
-			"bsv-mcp.local";
+			options.externalOriginator ?? baseEnv.BRC100_WALLET_ORIGINATOR;
 		// Reuse the server's validation so the launcher cannot make a malformed
 		// signer registration look ready.
 		const config = readExternalWalletConfig({
+			...env,
 			BRC100_WALLET_URL: url,
 			BRC100_WALLET_ORIGINATOR: originator,
+			BRC100_WALLET_PUBLIC_KEY:
+				options.externalPublicKey ?? baseEnv.BRC100_WALLET_PUBLIC_KEY,
+			BRC100_WALLET_ROLES: options.externalRoles ?? baseEnv.BRC100_WALLET_ROLES,
 		});
 		if (!config) throw new Error("External signer configuration is missing");
 		env.BRC100_WALLET_URL = config.url;
 		env.BRC100_WALLET_ORIGINATOR = config.originator;
+		if (config.expectedPublicKey)
+			env.BRC100_WALLET_PUBLIC_KEY = config.expectedPublicKey;
+		if (config.roles) env.BRC100_WALLET_ROLES = JSON.stringify(config.roles);
+		if (baseEnv.BSV_CHAIN !== undefined) {
+			if (!["main", "test"].includes(baseEnv.BSV_CHAIN))
+				throw new Error("BSV_CHAIN must be main or test");
+			env.BSV_CHAIN = baseEnv.BSV_CHAIN;
+		}
 	} else {
 		const name = options.accountName ?? baseEnv.BSV_MCP_ACCOUNT ?? "default";
 		const home = resolve(options.homeDirectory ?? homedir());

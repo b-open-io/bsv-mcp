@@ -1,3 +1,4 @@
+import { MCP_PRIMARY_PROTOCOL } from "../utils/mcpProtocol";
 /**
  * Detects a Model Context Protocol request so the site root can serve both the
  * landing page and the MCP server.
@@ -9,7 +10,7 @@
  */
 
 /** The first protocol revision using stateless, header-routed requests. */
-export const MODERN_MCP_PROTOCOL_VERSION = "2026-07-28";
+export const MODERN_MCP_PROTOCOL_VERSION = MCP_PRIMARY_PROTOCOL;
 
 /** Headers only an MCP client sends. */
 const MCP_HEADERS = [

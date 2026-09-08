@@ -150,18 +150,19 @@ describe("built MCP wallet modes", () => {
 		try {
 			expect(external.fixture.stubSigner).toBeDefined();
 			expect(embedded.fixture.stubSigner).toBeUndefined();
-			expect(external.running.stderr()).toContain(
-				"External BRC-100 signer ready",
-			);
-			expect(external.running.stderr()).not.toContain(
-				"Custom Wallet initialized successfully",
-			);
-			expect(embedded.running.stderr()).toContain(
-				"Custom Wallet initialized successfully",
-			);
-			expect(embedded.running.stderr()).not.toContain(
-				"External BRC-100 signer ready",
-			);
+			const externalKey = await external.running.client.callTool({
+				name: "wallet_getPublicKey",
+				arguments: { identityKey: true },
+			});
+			const embeddedKey = await embedded.running.client.callTool({
+				name: "wallet_getPublicKey",
+				arguments: { identityKey: true },
+			});
+			expect(externalKey.isError).not.toBe(true);
+			expect(embeddedKey.isError).not.toBe(true);
+			expect(
+				jsonFromResult<{ publicKey: string }>(externalKey).publicKey,
+			).not.toBe(jsonFromResult<{ publicKey: string }>(embeddedKey).publicKey);
 
 			const signerRequests = external.fixture.stubSigner?.requests ?? [];
 			expect(signerRequests.map((request) => request.path)).toContain(

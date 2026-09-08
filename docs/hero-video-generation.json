@@ -1,0 +1,15 @@
+{
+  "request_id": "486bc112-ab97-9029-8046-f23a0751b02e",
+  "prompt": "Animate this exact astronomical image into a very slow, serene cinematic living photograph for a website hero. Locked-off camera. Keep the central spherical planet, perfectly circular concentric rings, composition, scale, position, colors, and near-black background completely stable. Only natural fine solar plasma and wisps within the golden corona gently drift and curl, with sparse delicate starlight twinkling. Motion clearly visible but very slow and restrained. No wobbling, no geometric distortion, no pulsating ring shape, no zoom, no camera rotation, no explosion, no new objects, no text. Preserve the reference image faithfully. TRUE SEAMLESS CYCLIC LOOP: the supplied first and last frames are identical. Maintain identical planet and ring radii at EVERY moment, not just the endpoints. Absolutely no expansion followed by shrinking, no breathing or zoom. Only fine plasma filaments slowly circulate along the existing corona with continuous motion across the loop boundary. Keep motion velocity consistent through the first and last frame. No end pause, no reset, no fade. The animation should repeat indefinitely without a detectable cut. Silent.",
+  "model": "grok-imagine-video-1.5",
+  "image": "public/artwork/concentric-eclipse.webp",
+  "last_frame": "same as image",
+  "generated_duration": 10,
+  "resolution": "720p",
+  "outputs": [
+    "public/artwork/grok-eclipse-loop.webm",
+    "public/artwork/grok-eclipse-loop.mp4"
+  ],
+  "loop_finishing": "Take seconds 1\u201310 and overlap the final 0.916667s with seconds 0\u20131, ending before the first complete loop frame. No geometric effects or reverse playback.",
+  "status": "mounted in homepage"
+}

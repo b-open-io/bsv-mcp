@@ -133,7 +133,10 @@ test("configured stdio startup exposes the selected compact catalog", async () =
 		},
 		stderr: "pipe",
 	});
-	const client = new Client({ name: "compact-stdio-test", version: "1.0.0" });
+	const client = new Client(
+		{ name: "compact-stdio-test", version: "1.0.0" },
+		{ versionNegotiation: { mode: "auto" } },
+	);
 	try {
 		await client.connect(transport);
 		const { tools } = await client.listTools();

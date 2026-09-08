@@ -293,7 +293,9 @@ function captureConfig(config: ToolsConfig) {
 					}),
 				)
 			: new Map<string, CapturedTool>();
-	const peerPaymentsCtx = config.ctx;
+	const peerPaymentsCtx = config.roleContexts
+		? config.roleContexts.payments
+		: config.ctx;
 	const peerPayments =
 		categoryEnabled(config, "wallet_payments") &&
 		peerPaymentsCtx &&

@@ -5,7 +5,9 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
 import { isExternalWalletContext } from "../utils/externalWalletConfig";
 import { PEER_PAYMENT_MESSAGEBOX_HOST } from "../utils/peerPaymentReceive";
+import type { WalletRoleContexts } from "../utils/walletRoles";
 import { registerBapTools } from "./bap";
+import { registerContextBapTools } from "./bap/context";
 import { registerBapGetIdTool } from "./bap/getId";
 import { registerBsocialTools } from "./bsocial";
 import { registerBsvTools } from "./bsv";
@@ -79,11 +81,7 @@ export interface ToolsConfig {
 	integratedWallet?: IntegratedWallet;
 	disableBroadcasting?: boolean; // For wallet tools
 	ctx?: OneSatContext;
-	roleContexts?: {
-		payments: OneSatContext;
-		identity?: OneSatContext;
-		ordinals?: OneSatContext;
-	};
+	roleContexts?: WalletRoleContexts;
 	services?: OneSatServices;
 	droplitClient?: DroplitClient;
 	droplitApiUrl?: string;
@@ -166,7 +164,17 @@ export function registerAllTools(
 				config.integratedWallet?.isDroplitMode !== true,
 			wallet: config.wallet,
 		};
-		if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
+		const identityContext = config.roleContexts
+			? config.roleContexts.identity
+			: config.ctx;
+		if (!config.bapPublicOnly && identityContext) {
+			registerBapGetIdTool(server);
+			registerContextBapTools(
+				server,
+				identityContext,
+				config.disableBroadcasting,
+			);
+		} else if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
 			registerBapTools(server, bapConfig);
 		} else {
 			registerBapGetIdTool(server, config.identityPk);
@@ -176,7 +184,13 @@ export function registerAllTools(
 	// Register BSocial tools. Public reads do not require a wallet; the
 	// registration family keeps the post-writing tool wallet-gated.
 	if (enableBsocialTools) {
-		registerBsocialTools(server, { wallet: config.wallet });
+		registerBsocialTools(server, {
+			wallet: config.wallet,
+			identityContext: config.roleContexts
+				? config.roleContexts.identity
+				: config.ctx,
+			disableBroadcasting: config.disableBroadcasting,
+		});
 	}
 
 	// Register Wallet tools themselves
@@ -215,20 +229,23 @@ export function registerAllTools(
 			registerWalletTools(server, config.wallet, walletToolOptions);
 		}
 		// PeerPay receive is embedded-wallet only: it needs the BRC-100 ctx,
-		// never registers for external signer or Droplit modes, stays out of
-		// project payments-only sessions until the role adapter is reviewed,
+		// never registers for external signer or Droplit modes, requires an
+		// assigned payment role,
 		// and performs no polling or network calls at registration time.
 		// There is no separate host configuration, so the adapter default
 		// applies.
+		const paymentContext = config.roleContexts
+			? config.roleContexts.payments
+			: config.ctx;
 		if (
-			config.ctx &&
+			paymentContext &&
 			!externalWallet &&
 			config.integratedWallet?.isDroplitMode !== true &&
 			config.walletScope !== "payments"
 		) {
 			registerPeerPaymentsTool(
 				server,
-				config.ctx,
+				paymentContext,
 				PEER_PAYMENT_MESSAGEBOX_HOST,
 				externalWallet,
 			);

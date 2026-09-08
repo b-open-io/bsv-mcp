@@ -226,10 +226,13 @@ export async function runWalletMode(
 	transport.stderr?.on("data", (chunk: Buffer | string) => {
 		stderr += chunk.toString();
 	});
-	const client = new Client({
-		name: `synthetic-${fixture.mode}-client`,
-		version: "1.0.0",
-	});
+	const client = new Client(
+		{
+			name: `synthetic-${fixture.mode}-client`,
+			version: "1.0.0",
+		},
+		{ versionNegotiation: { mode: "auto" } },
+	);
 	try {
 		await client.connect(transport);
 	} catch (error) {

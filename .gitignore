@@ -62,3 +62,4 @@ todo.md
 wallet.db
 wallet.db-shm
 wallet.db-wal
+.env*

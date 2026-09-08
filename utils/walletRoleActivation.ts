@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
-import { newAccountConfig, readAccount } from "./accounts";
+import { readAccount } from "./accounts";
 import { createEmbeddedVaultIo } from "./embeddedVaultIo";
 import { initWallet, type WalletInitResult } from "./walletInit";
+import { walletStorageForKey } from "./walletKeyStorage";
 import { getWalletRoleSettings, type WalletRole } from "./walletRoleDefaults";
 
 /** Unlock selected Vault entries independently; never reuse one key's database for another. */
@@ -45,21 +45,12 @@ export async function activateWalletRoles(
 					});
 					if (!keys.payPk)
 						throw new Error("The selected Vault key could not be unlocked.");
-					const isolated = `key-${createHash("sha256").update(`${binding.vaultId}:${ref.entryId}`).digest("hex").slice(0, 24)}`;
-					const keyAddress = keys.payPk.toAddress(
-						account.chain === "test" ? [0x6f] : [0x00],
-					);
 					const result = await initWallet(keys.payPk, account.chain, {
-						accountName: kind === "payment" ? accountName : isolated,
+						...walletStorageForKey(
+							accountName,
+							keys.payPk.toPublicKey().toString(),
+						),
 						trackActive: false,
-						...(kind === "identity"
-							? {
-									accountConfig: {
-										...newAccountConfig(account.chain, keyAddress),
-										storageIdentityKey: isolated,
-									},
-								}
-							: {}),
 					});
 					opened.set(selected, result);
 				} finally {

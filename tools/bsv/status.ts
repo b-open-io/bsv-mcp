@@ -32,7 +32,7 @@ export function registerStatusTool(
 				openWorldHint: true,
 			},
 		},
-		async ({ checkServices }) => {
+		async ({ checkServices }, ctx) => {
 			const chain = config.ctx?.chain ?? configuredChain();
 			const base =
 				config.ctx?.services?.baseUrl ??
@@ -75,6 +75,10 @@ export function registerStatusTool(
 			};
 			const data = {
 				version: packageJson.version,
+				mcp: {
+					protocolVersion: ctx.mcpReq.envelope ? Reflect.get(ctx.mcpReq.envelope, "io.modelcontextprotocol/protocolVersion") ?? null : null,
+					requestFormat: ctx.mcpReq.envelope ? "modern" : "legacy",
+				},
 				chain,
 				security: {
 					vaultMigration,

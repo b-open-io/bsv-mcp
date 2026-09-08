@@ -62,7 +62,7 @@ codex mcp add bsv-mcp-embedded \
   --env BSV_MCP_ACCOUNT=default \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts embedded
 
-# Codex: project-bound Vault payments role
+# Codex: project-bound Vault roles
 codex mcp add bsv-mcp-project \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts project \
   --project-root /absolute/path/to/project --project-id project.example
@@ -108,25 +108,31 @@ Ask your agent: **“Run bsv_status, then show my wallet balance.”**
 
 ## MCP protocol compatibility
 
-The MCP SDK v2 and protocol migration is currently unreleased. The default
-connection remains an ordinary 2025 handshake, so existing stdio clients and
-2025 hosted clients remain the compatibility target. The server negotiates a
-supported 2025 protocol date with each client. Protocol revision
-`2026-07-28` is a separate opt-in: modern HTTP clients must send the protocol,
-method, and operation headers required by that revision, and do not use an MCP
-session ID.
-The package/API upgrade alone does not change the wire protocol selected by a
-client.
+Protocol revision `2026-07-28` is preferred, with supported 2025 clients
+accepted automatically on stdio and HTTP. No compatibility override is needed.
+Set `MCP_LEGACY_COMPATIBILITY=false` only to require modern clients. This
+setting also passes through the local launcher. The installed desktop client
+was verified using legacy requests; modern support is tested separately.
 
-Modern discovery and tool transport are available. Approval-dependent modern
-mutations remain unsupported pending approved request-scoped adapters. The
-central guard now rejects those requests before their callbacks run, and
-policy/wire tests cover that denial. Codex v0.153.4 acceptance verified a wire
-initialize selecting `2025-06-18`, `tools/list`, and a dashboard `tools/call`
-returning `ready: true`; modern Codex acceptance remains unverified because the
-installed client selects a 2025 protocol. The intended modern read scope is
-limited to reviewed, allowlisted read-only calls. Use a supported 2025
-connection with form elicitation for the approval flow.
+Modern clients support wallet operations and request-scoped approval. Approval
+continuations retain the original operation and bind to its authenticated user,
+arguments, and expiry. Decline, cancellation, or session revocation stops the
+operation; replaying a continuation does not repeat a transaction. A client
+without form elicitation cannot approve a spend. External wallets retain their
+own signer permission flow. The hosted route exposes public reads only.
+
+For the split SDK v2 client:
+
+```ts
+const client = new Client(
+  { name: "my-app", version: "1" },
+  { versionNegotiation: { mode: "auto" }, capabilities: { elicitation: { form: {} } } },
+);
+```
+
+Register a real human approval handler before using approval-dependent tools.
+Older installed Codex clients may require the explicit compatibility setting;
+this does not constitute modern client acceptance.
 
 The full tool catalog remains the default and is capability-derived: wallet
 mode, enabled modules, account context, and the selected profile determine what
@@ -154,11 +160,31 @@ When setup is needed, `wallet_onboarding` opens the private browser flow to
 create, import, or unlock it. The selected account's database and storage
 configuration remain in use. The launcher's existing-account embedded mode
 still supplies `BSV_MCP_PASSWORD` at runtime.
-Project mode opens only the explicitly assigned `payments` role from the
-project's local Vault bindings. It requires paired project selectors and
-`BSV_MCP_PASSWORD` at runtime; set `VAULT_PATH` when the installed Vault module
-does not provide a default path. Identity, encryption, and OneSat asset roles
-are not exposed by this initial payments-only surface.
+Project mode opens every explicitly assigned role: `payments`,
+`identity-signing`, `one-sat`, and `encryption`. It requires paired project
+selectors and `BSV_MCP_PASSWORD` at runtime; set `VAULT_PATH` when the Vault
+module does not provide a default path. Bindings pin the selected public key
+and support direct keys, BRC-42 children, and BRC-157/Yours profile leaves.
+Changing the project binding or expiring its session revokes captured handles.
+Derived keys have separate storage; selecting the account's payment root keeps
+its existing database and deposit prefix.
+
+BRC-100 tools accept `walletRole` (`payments`, `identity`, `ordinals`, or
+`encryption`). Method defaults select the matching role, and sign/abort action
+continuations retain their originating wallet and authenticated user. An
+unassigned role fails rather than borrowing another key. BAP tools use the
+identity wallet for publication, rotation, attestations, and profiles without
+exporting an xprv. That wallet also funds those transactions and retains BAP
+records. Signed BSocial posts and SIGMA inscriptions use the configured identity.
+
+External registrations can use the same project root/ID pair to derive an
+isolated permission origin, without a Vault password. Optional
+`BRC100_WALLET_PUBLIC_KEY` pins the signer identity. `BRC100_WALLET_ROLES` is a
+JSON object selecting independent role endpoints and public-key pins; see
+[external signer configuration](docs/external-signer.md). The source launcher
+accepts `external --project-root /absolute/project --project-id project.example`.
+It defaults to disabled broadcasting; set `DISABLE_BROADCASTING=false` in its
+runtime environment to enable transaction tools with the signer's approval.
 
 Each mode has its own process environment and should be registered as a separate
 server when you need to switch between them. The hosted plugin is a third path:
@@ -167,8 +193,8 @@ it does not read a wallet on your computer.
 Embedded wallets can list pending PeerPay payments and receive a selected
 payment with `wallet_peerPayments`. Receiving requires a message ID and
 acknowledges the message only after the wallet accepts it. These operations do
-not pay MessageBox service fees. External signers, Droplit, and project
-payments-only sessions do not expose this tool.
+not pay MessageBox service fees. External signers and Droplit do not expose this tool. Project sessions require
+an assigned payment role.
 
 ## Find a skill
 
@@ -223,7 +249,7 @@ Experimental software; APIs may change. Keep a wallet backup. If a transaction r
 ## Preparing a release package
 
 Run `bun run pack:release /tmp` to build and create the release tarball. Install
-or publish that tarball, for example `npm publish /tmp/bsv-mcp-0.4.0.tgz`,
+or publish that tarball, for example `bun publish /tmp/bsv-mcp-0.5.0.tgz`,
 after completing the release checks and selecting the release version.
 Do not publish directly from the checkout: its manifest contains Bun patches
 needed to build the wallet fixes, which fail to resolve in consumer projects.

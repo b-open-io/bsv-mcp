@@ -1,5 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/server";
+import type { WalletRoleContexts } from "../../utils/walletRoles";
 import { registerBrc100Tools } from "./brc100";
 import { registerCancelListingTool } from "./cancelListing";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
@@ -33,17 +34,16 @@ export function registerWalletTools(
 	wallet: Wallet | undefined,
 	config: {
 		ctx?: OneSatContext;
-		roleContexts?: {
-			payments: OneSatContext;
-			identity?: OneSatContext;
-			ordinals?: OneSatContext;
-		};
+		roleContexts?: WalletRoleContexts;
 		/** External signers do not expose the server's broad default-basket read. */
 		allowWholeWalletBalance?: boolean;
 		/** Project payments sessions do not authorize identity/OneSat operations. */
 		scope?: "full" | "payments";
 	},
 ): void {
+	const payments = config.roleContexts
+		? config.roleContexts.payments
+		: config.ctx;
 	const assets = config.roleContexts
 		? config.roleContexts.ordinals
 		: config.ctx;
@@ -51,14 +51,15 @@ export function registerWalletTools(
 		? config.roleContexts.identity
 		: config.ctx;
 
-	registerSendBsvTool(server, config.ctx);
+	if (!config.roleContexts || payments) registerSendBsvTool(server, payments);
 
 	// Register the wallet_getAddress tool
-	registerGetAddressTool(server, config.ctx);
+	if (!config.roleContexts || payments)
+		registerGetAddressTool(server, payments);
 
 	if (config.scope === "payments") {
 		if (config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false)
-			registerWalletGetBalanceTool(server, config.ctx);
+			registerWalletGetBalanceTool(server, payments);
 		return;
 	}
 
@@ -71,15 +72,16 @@ export function registerWalletTools(
 		registerTransferOrdTokenTool(server, assets);
 
 	// Register the wallet_refreshUtxos tool
-	registerRefreshUtxosTool(server, config.ctx);
+	if (!config.roleContexts || payments)
+		registerRefreshUtxosTool(server, payments);
 
 	// wallet_getBalance performs an unconditional default-basket read. That is
 	// an owner/admin capability for an embedded wallet and is not part of the
 	// application-scoped surface of an external signer.
 	const allowWholeWalletBalance =
 		config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false;
-	if (allowWholeWalletBalance) {
-		registerWalletGetBalanceTool(server, config.ctx);
+	if (allowWholeWalletBalance && (!config.roleContexts || payments)) {
+		registerWalletGetBalanceTool(server, payments);
 	}
 
 	// Register full BRC-100 wallet interface
@@ -87,6 +89,7 @@ export function registerWalletTools(
 		server,
 		config.ctx,
 		config.roleContexts ? (identity ?? null) : undefined,
+		config.roleContexts,
 	);
 	if (!config.roleContexts || identity)
 		registerRevealDelegationTool(server, identity);
@@ -116,7 +119,8 @@ export function registerWalletTools(
 	// Register state-changing action tools
 	if (!config.roleContexts || assets) registerListOrdinalTool(server, assets);
 	if (!config.roleContexts || assets) registerCancelListingTool(server, assets);
-	registerSendAllBsvTool(server, config.ctx);
+	if (!config.roleContexts || payments)
+		registerSendAllBsvTool(server, payments);
 	if (!config.roleContexts || assets) registerLockBsvTool(server, assets);
 	if (!config.roleContexts || assets) registerUnlockBsvTool(server, assets);
 	if (!config.roleContexts || assets) registerOpnsRegisterTool(server, assets);
@@ -124,7 +128,7 @@ export function registerWalletTools(
 		registerOpnsDeregisterTool(server, assets);
 
 	// Register sweep tools
-	registerSweepBsvTool(server, config.ctx);
+	if (!config.roleContexts || payments) registerSweepBsvTool(server, payments);
 	if (!config.roleContexts || assets) registerSweepOrdinalsTool(server, assets);
 	if (!config.roleContexts || assets) registerSweepBsv21Tool(server, assets);
 }

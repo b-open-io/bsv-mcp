@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-	LATEST_PROTOCOL_VERSION,
-	SUPPORTED_PROTOCOL_VERSIONS,
-} from "@modelcontextprotocol/client";
+	MCP_PRIMARY_PROTOCOL,
+	readMcpProtocolPolicy,
+} from "../utils/mcpProtocol";
 
 /**
  * Canonical facts about this site, in one place.
@@ -46,15 +46,9 @@ export const MCP_ENDPOINT_LEGACY = `${SITE_URL}/api/mcp`;
 export const AUTH_SERVER_URL =
 	process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-/**
- * MCP protocol revisions this server speaks, taken from the SDK rather than
- * written down. `LATEST` is what a client negotiates by default; the older
- * revisions remain accepted for backwards compatibility.
- */
-export const MCP_PROTOCOL_LATEST = LATEST_PROTOCOL_VERSION;
-export const MCP_PROTOCOL_SUPPORTED = [
-	...SUPPORTED_PROTOCOL_VERSIONS,
-] as string[];
+/** The primary protocol and the explicitly configured compatibility revisions. */
+export const MCP_PROTOCOL_LATEST = MCP_PRIMARY_PROTOCOL;
+export const MCP_PROTOCOL_SUPPORTED = readMcpProtocolPolicy().supportedVersions;
 
 /** Reads the published package version so the UI never states a stale one. */
 export function getAppVersion(): string {

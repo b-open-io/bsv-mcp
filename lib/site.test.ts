@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-	LATEST_PROTOCOL_VERSION,
-	SUPPORTED_PROTOCOL_VERSIONS,
-} from "@modelcontextprotocol/client";
+	MCP_PRIMARY_PROTOCOL,
+	readMcpProtocolPolicy,
+} from "../utils/mcpProtocol";
 import {
 	getAppVersion,
 	MCP_ENDPOINT,
@@ -23,10 +23,12 @@ describe("version and protocol facts", () => {
 		expect(getAppVersion()).toBe(pkg.version);
 	});
 
-	test("protocol version comes from the SDK, not a literal", () => {
-		// The badge previously hardcoded 2025-03-26, which went stale.
-		expect(MCP_PROTOCOL_LATEST).toBe(LATEST_PROTOCOL_VERSION);
-		expect(MCP_PROTOCOL_SUPPORTED).toEqual([...SUPPORTED_PROTOCOL_VERSIONS]);
+	test("protocol facts match the serving policy", () => {
+		// Site metadata must reflect the actual modern-first serving policy.
+		expect(MCP_PROTOCOL_LATEST).toBe(MCP_PRIMARY_PROTOCOL);
+		expect(MCP_PROTOCOL_SUPPORTED).toEqual(
+			readMcpProtocolPolicy().supportedVersions,
+		);
 		expect(MCP_PROTOCOL_SUPPORTED).toContain(MCP_PROTOCOL_LATEST);
 	});
 

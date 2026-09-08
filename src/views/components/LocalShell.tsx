@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BrandMark } from "../../../components/landing/BrandMark";
 
 export function LocalShell({
 	children,
@@ -15,7 +16,7 @@ export function LocalShell({
 		<div className={navigation ? "local-shell" : "local-shell setup-shell"}>
 			<header className="local-header">
 				<div className="brand-mark">
-					<span className="brand-symbol">₿</span>
+					<BrandMark className="brand-symbol" />
 					<span>BSV MCP</span>
 				</div>
 				{navigation && onNavigate ? (

@@ -15,6 +15,7 @@ import {
 } from "../../utils/accounts";
 import { errorToToolResult, successResult } from "../../utils/errors";
 import { decodeEncryptedKeys } from "../../utils/keyManager";
+import { elicitMcpForm } from "../../utils/mcpApprovalFlow";
 
 export function registerAccountTools(server: McpServer) {
 	const run = async (fn: () => Promise<unknown>) => {
@@ -25,20 +26,19 @@ export function registerAccountTools(server: McpServer) {
 		}
 	};
 	const approve = async (message: string) => {
-		if (!server.server.getClientCapabilities()?.elicitation)
-			throw new Error(
-				"Account changes require human approval. Use the corresponding bsv-mcp command in a local terminal.",
-			);
-		const response = await server.server.elicitInput({
-			message,
-			requestedSchema: {
-				type: "object",
-				properties: {
-					approved: { type: "boolean", title: "Approve account change" },
+		const response = await elicitMcpForm(
+			{
+				message,
+				requestedSchema: {
+					type: "object",
+					properties: {
+						approved: { type: "boolean", title: "Approve account change" },
+					},
+					required: ["approved"],
 				},
-				required: ["approved"],
 			},
-		});
+			server,
+		);
 		if (response.action !== "accept" || response.content?.approved !== true)
 			throw new Error("Account change declined");
 	};

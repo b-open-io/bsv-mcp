@@ -1,113 +1,94 @@
 # MCP client protocol support
 
-Status: unreleased migration documentation. This page describes the staged
-implementation and its compatibility boundaries; it is not a deployment or
-full test certification.
+BSV MCP uses the split TypeScript SDK v2 packages and makes protocol
+`2026-07-28` primary. Both embedded and external wallet modes support modern
+tool execution. A client must negotiate the modern revision; merely installing
+a v2 package does not change a client's default handshake.
 
-The unreleased integration migrates BSV MCP's server, client, transport,
-handler, and registration boundaries to the split MCP TypeScript SDK v2
-packages. The SDK/API migration and the MCP wire protocol revision are
-separate decisions. Existing clients continue to use an ordinary 2025 handshake
-by default; the server negotiates a supported 2025 protocol date with each
-client. Protocol revision `2026-07-28` is available only when a client
-explicitly negotiates it and the selected transport enables it.
+## Connections
 
-## Dependency boundary
-
-The staged integration resolves `@modelcontextprotocol/server`,
-`@modelcontextprotocol/client`, and `@modelcontextprotocol/core` at `2.0.0`,
-with `mcp-handler` at `2.1.1`. It keeps
-`@modelcontextprotocol/sdk` at `^1.30.0` because
-`@modelcontextprotocol/ext-apps` at `^1.7.5` declares it as a v1 peer. The
-local MCP Apps adapter uses native SDK v2 registration methods; ext-apps remains
-for shared constants and its browser `App` implementation. This mixed graph is
-intentional, and it is not a claim that ext-apps 1.7.5 is v2-native or that the
-retained v1 package serves legacy wire clients.
-
-## Connection posture
-
-| Connection | 2025-compatible behavior | Modern opt-in behavior |
+| Endpoint | Modern connection | Legacy connection (enabled by default) |
 | --- | --- | --- |
-| Local stdio (`bunx bsv-mcp@latest --stdio`) | `serveStdio` serves the 2025 handshake by default. JSON-RPC stays on stdout; startup and diagnostics go to stderr. | A v2 client can explicitly negotiate `2026-07-28` when the server advertises it. This is a protocol choice made by the client, not an automatic result of installing v2 packages. |
-| Local HTTP (`/mcp`) | The existing Streamable HTTP path is sessionful: initialize creates an `mcp-session-id`, follow-up requests use it, and the 2025 path handles session stream/cleanup operations. | Requests with a modern envelope are routed to a stateless v2 handler without an MCP session ID. The direct Bun routing matrix still needs end-to-end release validation. |
-| Hosted HTTP (`https://bsvmcp.com` or `/api/mcp`) | The v2 `mcp-handler` provides a stateless 2025 fallback for POST requests. The bounded adapter proof returned 405 for direct GET, DELETE, and OPTIONS calls; do not rely on the old GET-based SSE or session-deletion contract. | Send a modern JSON request with the required protocol metadata headers. The root URL is rewritten to `/api/mcp` for MCP-shaped requests; OAuth discovery and protected-resource metadata remain separate HTTP endpoints. Production route behavior is still pending deployment validation. |
+| Local stdio | Modern `serveStdio`; stdout contains only MCP messages. | Supported 2025 handshakes negotiate automatically. |
+| Local HTTP `/mcp` | Stateless modern requests with protocol metadata; no session ID. | Sessionful 2025 Streamable HTTP. |
+| Hosted root or `/api/mcp` | Stateless modern public reads with OAuth. | Stateless 2025 POST requests. |
 
-The local and hosted HTTP contracts are intentionally different at this stage:
-local Bun HTTP preserves 2025 sessions, while the v2 hosted adapter is
-stateless. Clients should use the endpoint configured for their deployment and
-should not infer session support from the presence of Streamable HTTP in the
-product description.
+Set `MCP_LEGACY_COMPATIBILITY=false` to require modern clients.
 
-## Modern HTTP requests
+The hosted route does not expose wallet mutations or local keys. Local HTTP
+and hosted HTTP have different legacy session contracts. CORS preflight and
+OAuth discovery are separate from MCP method execution.
 
-A client opting into `2026-07-28` must preserve the protocol metadata through
-any proxy and CORS layer:
+Use automatic negotiation in a split SDK client:
+
+```ts
+import { Client } from "@modelcontextprotocol/client";
+
+const client = new Client(
+  { name: "example", version: "1" },
+  {
+    versionNegotiation: { mode: "auto" },
+    capabilities: { elicitation: { form: {} } },
+  },
+);
+```
+
+An application must implement a human approval handler for form elicitation.
+Do not auto-accept spending requests. A client lacking that capability cannot
+approve embedded spending. External signer permissions remain in the provider.
+
+## Modern HTTP metadata
+
+The SDK supplies these headers. Preserve them through proxies and CORS:
 
 - `Mcp-Protocol-Version: 2026-07-28`
-- `Mcp-Method` naming the MCP operation
-- `Mcp-Name` for named operations such as `tools/call`, matching the request
-  body
-- `Content-Type: application/json` (parameters such as `charset=utf-8` are
-  accepted)
-- no `Mcp-Session-Id`; modern requests carry their per-request envelope
+- `Mcp-Method` matching the JSON-RPC method
+- `Mcp-Name` matching named operations such as `tools/call`
+- `Content-Type: application/json`
 
-The v2 adapter proof covered modern discovery, `tools/list`, and an
-authenticated `tools/call` in a scratch harness. That proof does not establish
-that every production tool, wallet mode, or deployed proxy handles the modern
-envelope. Missing or mismatched method metadata should be treated as a protocol
-error rather than falling through to the website.
+Modern requests carry a per-request metadata envelope, with no
+`Mcp-Session-Id`. Missing or contradictory metadata is rejected. Authentication
+inside tool handlers is available at `ctx.http?.authInfo`.
 
-## Legacy clients and authentication
+## Approvals and operation lifetime
 
-The 2025 stdio path remains the compatibility default. 2025 hosted clients
-should use the documented hosted URL and bearer OAuth flow; the hosted route
-continues to expose the existing protected-resource metadata contract. In v2
-tool handlers, request authentication is available under
-`ctx.http?.authInfo`; this is the replacement for reading authentication from
-the v1 handler `extra` object.
+Modern approval uses SDK input-required continuations. The server retains the
+original operation and signs its continuation state, binding the authenticated
+principal, scopes, method, tool name, arguments, expiry, and approval round.
+Resuming supplies a decision to that operation instead of invoking the tool
+again. Changed arguments, another user, forged state, expired state, and replay
+are rejected. Multi-round approvals keep the original callback alive.
 
-The old `@modelcontextprotocol/sdk` package remains in the staged dependency
-graph because `@modelcontextprotocol/ext-apps@1.7.5` declares an SDK v1 peer.
-It is retained for that ext-apps dependency, not to serve 2025 wire clients:
-SDK v2 `serveStdio` and the v2-exported compatibility transport serve the
-2025-compatible connections. The local adapter keeps the v1 peer from crossing
-the native v2 server types, and its bounded registration tests cover that
-isolation. Remove the old package after ext-apps is v2-compatible and its
-remaining v1 consumers have been migrated.
+Decline, cancellation, wallet-session revocation, and shutdown reject pending
+approvals. Legacy compatibility requests use their own request-scoped channel;
+there is no fallback to another client's approval connection. Transport errors
+after submitting a transaction do not cause an automatic write retry.
 
-## MCP Apps
+## Wallet roles
 
-MCP Apps server registration uses a local native SDK v2 adapter. It delegates to
-`server.registerTool` and `server.registerResource`, preserving v2 schema
-conversion and request validation, and normalizes nested `_meta.ui.resourceUri`
-with the legacy `ui/resourceUri` metadata key. ext-apps 1.7.5 remains for shared
-constants and the browser `App` implementation, with its SDK v1 peer retained.
-This does not make ext-apps 1.7.5 v2-native: its declarations and runtime still
-import the v1 SDK package.
+Embedded project sessions open every assigned role and pin its public key.
+Direct, BRC-42, BRC-157, and Yours selections are checked before initializing
+the wallet. Binding changes and expiry revoke retained wallet handles.
+External roles use independent signer RPC endpoints and optional public-key
+pins; project root/ID pairs produce separate default permission origins.
 
-Checked-in `utils/mcpAppRegistration.test.ts` covers native v2 schema and
-metadata normalization plus the resource MIME type. `tests/mcp-apps.test.ts`
-covers v2 `tools/list`, `tools/call` structured results, and
-`resources/list`/`resources/read` HTML. The two files pass together in the
-current integration worktree.
+The BRC-100 tools expose an optional `walletRole` selector. Signing and
+certificates default to identity; encryption/HMAC use encryption; payments and
+asset operations use their corresponding roles. Known action references retain
+their originating role and user. Unassigned roles fail explicitly. See
+[external signer setup](external-signer.md) and [wallet accounts](keys.md).
 
-No browser-host integration proof is recorded here for iframe loading,
-postMessage origins, CSP, or the complete `ui/initialize` exchange. Keep the
-existing pre-connect event-handler ordering when this gate is closed.
+BAP identity publication, rotation, attestations, and profile operations use the
+selected identity wallet's BRC-100 derivations and signing. The identity wallet
+funds its BAP transactions and retains the `bap` basket. Signed BSocial posts use
+that identity; SIGMA inscriptions can use separate identity and ordinals roles.
 
-## Tools and wallet behavior
+## Catalogs
 
-The checked-in [tool manifest](../lib/tool-manifest.json) is the full-profile
-catalog source for one synthetic server configuration. It is a baseline, not a
-promise of a fixed default count or of one tool set for every installation.
-Wallet mode, enabled modules, account context, and the selected profile can
-change the tools returned by `tools/list`; the full profile remains the default.
-
-`MCP_TOOL_CATALOG=compact` is an explicit opt-in profile. It groups reviewed
-read operations into bounded families and omits the MCP App tools from that
-profile; the capability is staged and remains subject to release validation.
-Each family accepts only one of its enumerated operations and that operation's
-arguments:
+The full catalog is the default. Its tools depend on configured capabilities;
+the checked-in manifest represents one synthetic configuration, not every
+wallet mode. `MCP_TOOL_CATALOG=compact` selects bounded families and omits
+MCP App aliases:
 
 | Family | Operations |
 | --- | --- |
@@ -116,65 +97,43 @@ arguments:
 | `wallet_read` | `wallet_getAddress`, `wallet_getBalance`, `wallet_getOrdinals`, `wallet_listTokens`, `wallet_getBsv21Balances`, `wallet_getLockData`, `wallet_getHeight`, `wallet_getHeaderForHeight`, `wallet_getNetwork`, `wallet_getVersion`, `wallet_getPublicKey`, `wallet_isAuthenticated`, `wallet_waitForAuthentication` |
 | `utility` | `utils_convertData`, `utils_find_skills` |
 
-Local setup and PeerPay receiving use separate `wallet_setup` and
-`wallet_payments` families when available. Both carry mutating annotations and
-remain unavailable for modern requests.
+Eligible sessions also expose mutating `wallet_setup` and `wallet_payments`
+families. Modern requests can execute these through the same approval adapter.
+Compact mode is intentionally a bounded subset; use full mode for identity and
+asset workflows outside those families.
 
-Wallet operations are filtered when the selected wallet context cannot support
-them. The manifest and catalog tests verify stable schemas,
-deterministic family names, and one legacy implementation for each compact
-operation.
+## MCP Apps and dependencies
 
-The modern transport proof covers protocol exchange, not wallet spending.
-Modern discovery and tool transport are available. Approval-dependent modern
-mutations remain unsupported pending approved request-scoped adapters. The
-central guard now rejects those requests before their callbacks run, and
-policy/wire tests cover that denial. Codex v0.153.4 acceptance against the
-`0fed5be` artifact verified a wire
-initialize selecting `2025-06-18`, `tools/list`, and a dashboard `tools/call`
-returning `ready: true`; modern Codex acceptance remains unverified because the
-installed client selects a 2025 protocol. The intended modern read scope is
-limited to reviewed, allowlisted read-only calls. Use a supported 2025
-connection with form elicitation for the approval flow; successful modern
-approval and write settlement are future support work.
+The local MCP Apps adapter calls native SDK v2 registration methods and
+preserves schemas, validation, structured results, resources, and UI metadata.
+`@modelcontextprotocol/ext-apps@1.7.5` supplies browser behavior and constants;
+its declared v1 SDK peer remains installed. This does not make ext-apps itself
+v2-native, and that peer does not serve legacy server connections.
 
-## Release gates
+The dashboard reads complete payment balances and the configured deposit
+prefix. Browser sweeps keep source keys in the browser, verify source BEEF,
+preserve ordinal positions and token amounts, validate signatures, and retain
+references bound to the user and selected wallet. Completed submissions cannot
+be replayed through a fresh HTTP request.
 
-The migration is ready for a versioned release only after these checks are
-complete:
+## Validation scope
 
-- a real stdio subprocess completes a 2025 initialize, `tools/list`, and a
-  representative call with clean stdout;
-- the full configured `tools/list` schema bytes are valid and stable, and the
-  sorted names remain in sync with the checked-in manifest for that synthetic
-  configuration;
-- compact mode remains explicit opt-in and is tested for bounded read families,
-  stable schemas, deterministic results, and no MCP App aliases;
-- local 2025 session routing and modern stateless routing are tested through
-  the Bun endpoint, including malformed metadata, CORS preflight, session
-  cleanup, and authenticated principal binding;
-- the deployed hosted route is tested for OAuth, CORS, protected-resource
-  metadata, 2025 fallback, modern headers, and its POST-only method contract;
-- Codex v0.153.4 acceptance verifies a wire initialize selecting `2025-06-18`,
-  `tools/list`, and a dashboard `tools/call` returning `ready: true`; modern
-  Codex acceptance remains a release gate until an installed client negotiates
-  the modern revision;
-- the ext-apps peer/adapter and browser-host gates pass; and
-- modern approval-dependent mutations are centrally refused, with tests
-  demonstrating refusal, no fallback to another client or session, legacy
-  approval isolation, decline/cancel/disconnect handling, and exactly-once
-  denial.
+Checked-in tests cover actual modern stdio negotiation, authenticated local
+HTTP, malformed envelopes, default legacy compatibility and explicit modern-only mode, request-scoped approval settlement,
+real WalletPermissionsManager decisions, Vault derivations, external signer
+HTTP crypto, BAP/AIP verification, and browser sweep signature validation.
+These include synthetic transactions and keys; passing them does not imply a
+live network transaction was broadcast.
 
-Successful modern request-scoped approval exchange and write settlement are a
-future support gate. They should be added only after an approved modern
-approval adapter is implemented and tested.
+The installed desktop connection was observed using legacy requests after a
+restart, without protocol overrides. This verifies compatibility with that
+client; it does not demonstrate modern negotiation by the desktop app.
 
-The bounded SDK v2 stdio, hosted, tool API, MCP Apps, and compact catalog proofs
-are evidence for API shapes and scratch behavior only. They do not certify
-this repository's full dependency graph, Bun/Next/Vite builds, production
-deployment, browser host, wallet operations, or secrets.
+Deployed hosted traffic and browser-host iframe/postMessage/CSP behavior must
+also be checked in their actual environments. An installed Codex client that
+only negotiates 2025 can validate the compatibility path but cannot establish
+modern Codex acceptance. Use a modern-capable client for modern acceptance.
 
-For the official protocol and SDK references, see the [MCP TypeScript SDK v2
-documentation](https://ts.sdk.modelcontextprotocol.io/v2/), the [2026-07-28
-support guide](https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28.html),
-and the [legacy client guidance](https://ts.sdk.modelcontextprotocol.io/v2/serving/legacy-clients.html).
+Official references: [SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/),
+[2026-07-28 support](https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28.html),
+and [legacy clients](https://ts.sdk.modelcontextprotocol.io/v2/serving/legacy-clients.html).

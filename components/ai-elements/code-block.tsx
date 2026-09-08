@@ -361,24 +361,30 @@ export function CodeBlockContent({
 	showLineNumbers?: boolean;
 }) {
 	const rawTokens = useMemo(() => createRawTokens(code), [code]);
-	const syncTokens = useMemo(
-		() => highlightCode(code, language) ?? rawTokens,
-		[code, language, rawTokens],
-	);
-	const [asyncTokens, setAsyncTokens] = useState<TokenizedCode | null>(null);
+	// Server and first client render must use identical tokens, regardless of
+	// whether the process-local Shiki cache has been warmed by another request.
+	const [highlighted, setHighlighted] = useState<{
+		code: string;
+		language: BundledLanguage;
+		tokens: TokenizedCode;
+	} | null>(null);
 
 	useEffect(() => {
-		setAsyncTokens(null);
 		let cancelled = false;
-		highlightCode(code, language, (result) => {
-			if (!cancelled) setAsyncTokens(result);
-		});
+		const apply = (tokens: TokenizedCode) => {
+			if (!cancelled) setHighlighted({ code, language, tokens });
+		};
+		const cached = highlightCode(code, language, apply);
+		if (cached) apply(cached);
 		return () => {
 			cancelled = true;
 		};
 	}, [code, language]);
 
-	const tokenized = asyncTokens ?? syncTokens;
+	const tokenized =
+		highlighted?.code === code && highlighted.language === language
+			? highlighted.tokens
+			: rawTokens;
 	return (
 		<div className="relative overflow-auto">
 			<CodeBlockBody showLineNumbers={showLineNumbers} tokenized={tokenized} />

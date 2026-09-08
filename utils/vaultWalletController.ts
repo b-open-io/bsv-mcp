@@ -116,15 +116,32 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 		);
 	const projectRoot = options.projectRoot;
 	const expectedProjectId = options.expectedProjectId;
-	let active:
-		| { snapshot: ProjectRoleSnapshot; session: VaultWalletSession }
-		| undefined;
-	let generation = 0;
-	const lock = async () => {
-		generation += 1;
-		const previous = active;
-		active = undefined;
+	const active = new Map<
+		ProjectKeyRole,
+		{ snapshot: ProjectRoleSnapshot; session: VaultWalletSession }
+	>();
+	const generations = new Map<ProjectKeyRole, number>();
+	const generationOf = (role: ProjectKeyRole) => generations.get(role) ?? 0;
+	const lockRole = async (role: ProjectKeyRole) => {
+		generations.set(role, generationOf(role) + 1);
+		const previous = active.get(role);
+		active.delete(role);
 		await previous?.session.lock();
+	};
+	const lockAll = async () => {
+		const roles = new Set<ProjectKeyRole>([
+			...generations.keys(),
+			...active.keys(),
+		]);
+		for (const role of roles)
+			generations.set(role, (generations.get(role) ?? 0) + 1);
+		const previous = [...active.values()];
+		active.clear();
+		await Promise.all(previous.map((entry) => entry.session.lock()));
+	};
+	const lock = async (role?: ProjectKeyRole) => {
+		if (role === undefined) await lockAll();
+		else await lockRole(role);
 	};
 	const load = () =>
 		(options.loadBindings ?? loadProjectRoleBindings)(
@@ -140,8 +157,8 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 			reason: string,
 			ttlSeconds = 300,
 		) {
-			const closing = lock();
-			const attempt = generation;
+			const closing = lockRole(role);
+			const attempt = generationOf(role);
 			await closing;
 			const snapshot = resolveProjectRoleBinding(
 				await load(),
@@ -165,7 +182,7 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 			const module = await (
 				options.loadVaultModule ?? loadInstalledVaultModule
 			)();
-			if (attempt !== generation)
+			if (attempt !== generationOf(role))
 				throw new VaultWalletError(
 					"UNLOCK_SUPERSEDED",
 					"This unlock attempt was canceled or replaced.",
@@ -187,18 +204,18 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 						: undefined),
 			});
 			try {
-				if (attempt !== generation)
+				if (attempt !== generationOf(role))
 					throw new VaultWalletError(
 						"UNLOCK_SUPERSEDED",
 						"This unlock attempt was canceled or replaced.",
 					);
 				assertProjectRoleSnapshotCurrent(await load(), snapshot);
-				if (attempt !== generation)
+				if (attempt !== generationOf(role))
 					throw new VaultWalletError(
 						"UNLOCK_SUPERSEDED",
 						"This unlock attempt was canceled or replaced.",
 					);
-				active = { snapshot, session };
+				active.set(role, { snapshot, session });
 				return Object.freeze({
 					projectId: snapshot.projectId,
 					role,
@@ -218,7 +235,7 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 			role: ProjectKeyRole,
 			operation: (session: VaultWalletSession) => Promise<T>,
 		): Promise<T> {
-			const current = active;
+			const current = active.get(role);
 			if (!current || current.snapshot.binding.role !== role)
 				throw new VaultWalletError(
 					"SESSION_LOCKED",
@@ -227,10 +244,10 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 			try {
 				assertProjectRoleSnapshotCurrent(await load(), current.snapshot);
 			} catch (error) {
-				if (active === current) await lock();
+				if (active.get(role) === current) await lockRole(role);
 				throw error;
 			}
-			if (active !== current || current.session.state !== "ready")
+			if (active.get(role) !== current || current.session.state !== "ready")
 				throw new VaultWalletError(
 					"SESSION_LOCKED",
 					"Unlock the explicitly assigned project role again.",

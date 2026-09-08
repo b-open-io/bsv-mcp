@@ -25,6 +25,9 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 	const fromWifSpy = spyOn(PrivateKey, "fromWif");
 
 	process.env.ENABLE_OAUTH = "false";
+	process.env.MCP_LEGACY_COMPATIBILITY = "false";
+	const modernPrimaryRoute = await import("./route.ts" + "?modern-primary");
+	delete process.env.MCP_LEGACY_COMPATIBILITY;
 	const openRoute = await import("./route.ts");
 	delete process.env.ENABLE_OAUTH;
 	const protectedRoute = await import("./route.ts" + "?auth-required");
@@ -59,6 +62,23 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 		}
 		return JSON.parse(text);
 	}
+
+	test("hosted modern primary rejects legacy requests", async () => {
+		const request = {
+			jsonrpc: "2.0",
+			id: 77,
+			method: "tools/list",
+			params: {},
+		};
+		const rejected = await modernPrimaryRoute.POST(
+			post(request, LEGACY_HEADERS),
+		);
+		expect((await rpcBody(rejected)).error?.code).toBe(-32022);
+		const accepted = await modernPrimaryRoute.POST(
+			post({ ...request, params: { _meta: modernEnvelope } }, MODERN_HEADERS),
+		);
+		expect((await rpcBody(accepted)).result?.tools).toBeDefined();
+	});
 
 	function expectCors(response: Response) {
 		expect(response.headers.get("access-control-allow-origin")).toBe("*");
@@ -129,12 +149,12 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 	});
 
 	describe("hosted MCP route read-only surface", () => {
-		test("2025 tools/list exposes only reviewed public reads", async () => {
+		test("modern tools/list exposes only reviewed public reads", async () => {
 			const callsBefore = fromWifSpy.mock.calls.length;
 			const response = await openRoute.POST(
 				post(
-					{ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-					LEGACY_HEADERS,
+					{ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: modernEnvelope } },
+					MODERN_HEADERS,
 				),
 			);
 			expect(response.status).toBe(200);
@@ -229,9 +249,10 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 						params: {
 							name: "wallet_sendBsv",
 							arguments: { destination: "1ExampleDestination" },
+							_meta: modernEnvelope,
 						},
 					},
-					LEGACY_HEADERS,
+					{ ...MODERN_HEADERS, "Mcp-Method": "tools/call", "Mcp-Name": "wallet_sendBsv" },
 				),
 			);
 			expect(response.status).toBe(200);

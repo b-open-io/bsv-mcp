@@ -153,7 +153,11 @@ describe("local launch plans", () => {
 		expect(plan.env.BRC100_WALLET_ORIGINATOR).toBe("bsv-mcp.local");
 		expect(plan.env.DOTENV_SENTINEL).toBeUndefined();
 		for (const name of CONFLICTING_WALLET_ENV) {
-			if (name === "BRC100_WALLET_URL" || name === "BRC100_WALLET_ORIGINATOR")
+			if (
+				name === "BRC100_WALLET_URL" ||
+				name === "BRC100_WALLET_ORIGINATOR" ||
+				name === "BSV_CHAIN"
+			)
 				continue;
 			expect(plan.env[name]).toBeUndefined();
 		}
@@ -162,18 +166,18 @@ describe("local launch plans", () => {
 		expect(plan.env.HOME).not.toBe(homedir());
 	});
 
-	test("requires project mode for explicit project selectors", () => {
+	test("supports explicit project selectors in external and Vault modes", () => {
 		const projectRoot = fixtureHome();
-		expect(() =>
-			buildLaunchPlan({
-				mode: "external",
-				externalWalletUrl: "http://127.0.0.1:3321",
-				projectRoot,
-				projectId: "project.example:local",
-				serverBinary,
-				workingDirectory: join(tmpdir(), "bsv-mcp-launcher-project-cwd"),
-			}),
-		).toThrow("require the project launcher mode");
+		const external = buildLaunchPlan({
+			mode: "external",
+			externalWalletUrl: "http://127.0.0.1:3321",
+			projectRoot,
+			projectId: "project.example:local",
+			serverBinary,
+		});
+		expect(external.env.BSV_MCP_PROJECT_ROOT).toBe(realpathSync(projectRoot));
+		expect(external.env.BRC100_WALLET_ORIGINATOR).toMatch(/^project-/);
+		expect(external.env.BSV_MCP_PASSWORD).toBeUndefined();
 		const plan = buildLaunchPlan({
 			mode: "project",
 			projectRoot,

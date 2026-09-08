@@ -12,7 +12,7 @@ import {
 } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import { registerAppTool } from "../utils/mcpAppRegistration";
-import { withModernToolPolicy } from "../utils/modernToolPolicy";
+import { withMcpToolExecution } from "../utils/mcpToolExecution";
 
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
@@ -45,7 +45,7 @@ function registerMutationTool(
 	era: McpRequestContext["era"],
 	mutation: { run: () => CallToolResult },
 ) {
-	const server = withModernToolPolicy(nativeServer, era);
+	const server = withMcpToolExecution(nativeServer, era);
 	server.registerTool(
 		MUTATION_TOOL,
 		{
@@ -110,7 +110,7 @@ function modernDiscovery(id: number) {
 	};
 }
 
-test("negotiated modern HTTP calls deny mutation before the callback", async () => {
+test("negotiated modern HTTP calls execute registered mutations", async () => {
 	const mutation = {
 		run: () => ({
 			content: [{ type: "text" as const, text: "mutation executed" }],
@@ -127,7 +127,7 @@ test("negotiated modern HTTP calls deny mutation before the callback", async () 
 			);
 			return registerMutationTool(nativeServer, context.era, mutation);
 		},
-		{ legacy: "stateless", responseMode: "json" },
+		{ legacy: "reject", responseMode: "json" },
 	);
 
 	try {
@@ -148,9 +148,9 @@ test("negotiated modern HTTP calls deny mutation before the callback", async () 
 
 		expect(response.status).toBe(200);
 		expect(body.error).toBeUndefined();
-		expect(body.result?.isError).toBe(true);
-		expect(body.result?.content?.[0]?.text).toContain(MUTATION_TOOL);
-		expect(mutationSpy).not.toHaveBeenCalled();
+		expect(body.result?.isError).not.toBe(true);
+		expect(body.result?.content?.[0]?.text).toContain("mutation executed");
+		expect(mutationSpy).toHaveBeenCalledTimes(1);
 		expect(eras).toEqual(["modern", "modern"]);
 	} finally {
 		await handler.close();
@@ -168,7 +168,7 @@ test("negotiated modern HTTP calls can open the dashboard and return its ready v
 				{ name: "modern-policy-dashboard", version: "1.0.0" },
 				{ capabilities: { tools: {} } },
 			);
-			const server = withModernToolPolicy(nativeServer, context.era);
+			const server = withMcpToolExecution(nativeServer, context.era);
 			registerAppTool(
 				server,
 				DASHBOARD_TOOL,
@@ -189,7 +189,7 @@ test("negotiated modern HTTP calls can open the dashboard and return its ready v
 			);
 			return server;
 		},
-		{ legacy: "stateless", responseMode: "json" },
+		{ legacy: "reject", responseMode: "json" },
 	);
 
 	try {
@@ -227,7 +227,7 @@ test("negotiated modern HTTP calls can open the dashboard and return its ready v
 	}
 });
 
-test("negotiated modern stdio calls deny mutation before the callback", async () => {
+test("negotiated modern stdio calls execute registered mutations", async () => {
 	const input = new PassThrough();
 	const output = new PassThrough();
 	const mutation = {
@@ -301,9 +301,9 @@ test("negotiated modern stdio calls deny mutation before the callback", async ()
 		const denied = await nextResponse();
 		expect(denied.id).toBe(2);
 		expect(denied.error).toBeUndefined();
-		expect(denied.result?.isError).toBe(true);
-		expect(denied.result?.content?.[0]?.text).toContain(MUTATION_TOOL);
-		expect(mutationSpy).not.toHaveBeenCalled();
+		expect(denied.result?.isError).not.toBe(true);
+		expect(denied.result?.content?.[0]?.text).toContain("mutation executed");
+		expect(mutationSpy).toHaveBeenCalledTimes(1);
 		expect(eras).toContain("modern");
 		expect(eras).not.toContain("legacy");
 	} finally {
@@ -314,7 +314,7 @@ test("negotiated modern stdio calls deny mutation before the callback", async ()
 	}
 });
 
-test("legacy HTTP calls still enter the registered mutation callback", async () => {
+test("legacy HTTP calls are rejected before entering a mutation callback", async () => {
 	const mutation = {
 		run: () => ({
 			content: [{ type: "text" as const, text: "legacy mutation executed" }],
@@ -331,7 +331,7 @@ test("legacy HTTP calls still enter the registered mutation callback", async () 
 			);
 			return registerMutationTool(nativeServer, context.era, mutation);
 		},
-		{ legacy: "stateless", responseMode: "json" },
+		{ legacy: "reject", responseMode: "json" },
 	);
 
 	try {
@@ -351,14 +351,10 @@ test("legacy HTTP calls still enter the registered mutation callback", async () 
 		);
 		const body = await readHttpJson(response);
 
-		expect(response.status).toBe(200);
-		expect(body.error).toBeUndefined();
-		expect(body.result?.isError).toBeUndefined();
-		expect(body.result?.content).toEqual([
-			{ type: "text", text: "legacy mutation executed" },
-		]);
-		expect(mutationSpy).toHaveBeenCalledTimes(1);
-		expect(eras).toEqual(["legacy"]);
+		expect(body.error?.code).toBe(-32022);
+		expect(body.result).toBeUndefined();
+		expect(mutationSpy).not.toHaveBeenCalled();
+		expect(eras).toEqual([]);
 	} finally {
 		await handler.close();
 		mutationSpy.mockRestore();

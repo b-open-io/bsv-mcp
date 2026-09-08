@@ -3,6 +3,7 @@ import type {
 	WalletPermissionsManager,
 } from "@bsv/wallet-toolbox/out/src/WalletPermissionsManager.js";
 import type { McpServer } from "@modelcontextprotocol/server";
+import { elicitMcpForm } from "./mcpApprovalFlow";
 
 export type SpendingPermissionRequest = PermissionRequest & {
 	requestID: string;
@@ -12,19 +13,9 @@ type SpendingPermissionManager = Pick<
 	"grantPermission" | "denyPermission"
 >;
 
-/** The part of an MCP server used by the legacy push-style approval path. */
 export type SpendingApprovalServer = Pick<McpServer, "server">;
-
 let serverInstance: McpServer | null = null;
-
-/**
- * Set the MCP server used to ask the client for spending approval.
- */
-export function setSpendingApprovalServerInstance(
-	server: McpServer | null,
-): void {
-	serverInstance = server;
-}
+export function setSpendingApprovalServerInstance(server: McpServer | null): void { serverInstance = server; }
 
 function formatSpendingSummary(request: SpendingPermissionRequest): string {
 	const spending = request.spending;
@@ -67,23 +58,13 @@ export async function handleSpendingAuthorization(
 		signal?.throwIfAborted();
 		if (!request.spending) {
 			denialReason = "the request did not include spending details";
-		} else if (!serverOverride && !serverInstance) {
-			denialReason = "the MCP server is unavailable";
 		} else {
-			const approvalServer = serverOverride ?? serverInstance;
-			// The v1/v2 SDK checks the form sub-capability before sending
-			// elicitation/create. Checking the same advertised capability here
-			// avoids treating `{ elicitation: {} }` as approval authority.
-			if (!approvalServer?.server.getClientCapabilities()?.elicitation?.form) {
-				denialReason = "the MCP client does not support form elicitation";
-				throw new Error(denialReason);
-			}
 			const amount = request.spending.satoshis;
 			if (!Number.isSafeInteger(amount) || amount < 0) {
 				denialReason = "the requested amount is invalid";
 				throw new Error(denialReason);
 			}
-			const response = await approvalServer.server.elicitInput(
+			const response = await elicitMcpForm(
 				{
 					mode: "form",
 					message: [
@@ -103,7 +84,8 @@ export async function handleSpendingAuthorization(
 						required: ["approved"],
 					},
 				},
-				signal ? { signal } : undefined,
+				serverOverride ?? serverInstance,
+				signal,
 			);
 			signal?.throwIfAborted();
 

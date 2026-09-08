@@ -12,6 +12,7 @@ import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.clie
 import type { PermissionRequest } from "@bsv/wallet-toolbox/out/src/WalletPermissionsManager.js";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { registerGetAddressTool } from "../tools/wallet/getAddress";
 import { registerWalletGetBalanceTool } from "../tools/wallet/getBalance";
 import {
@@ -19,6 +20,8 @@ import {
 	withEmbeddedOwnerDefaultBasketRead,
 	withEmbeddedOwnerDerivation,
 } from "./embeddedOwnerRead";
+import { McpApprovalFlow } from "./mcpApprovalFlow";
+import { withMcpToolExecution } from "./mcpToolExecution";
 import { ADMIN_ORIGINATOR } from "./walletInit";
 
 const OWNER_OUTPUTS = [
@@ -397,7 +400,8 @@ test("default MCP originator is non-admin and still reaches the spending gate", 
 	expect(calls[1]?.[1]).toBe("explicit.client");
 });
 
-test("real wallet permissions settle accept, decline, and cancel through an MCP connection", async () => {
+
+test("modern MCP auto-fulfillment settles real wallet permissions without replaying createAction", async () => {
 	const { withEmbeddedMcpOriginator } = await import("./embeddedOwnerRead");
 	const { handleSpendingAuthorization } = await import("./spendingApproval");
 	for (const decision of [
@@ -407,34 +411,46 @@ test("real wallet permissions settle accept, decline, and cancel through an MCP 
 		"unsupported",
 	] as const) {
 		const { calls, manager } = makeSpendingManager();
-		const wallet = withEmbeddedOwnerDefaultBasketRead(
-			withEmbeddedMcpOriginator(manager),
-			ADMIN_ORIGINATOR,
-		);
-		const server = new McpServer({ name: "spending-gate-test", version: "1" });
+		const wallet = withEmbeddedMcpOriginator(manager);
 		manager.bindCallback(
 			"onSpendingAuthorizationRequested",
 			(request: SpendingRequest) =>
-				handleSpendingAuthorization(request, manager, server),
+				handleSpendingAuthorization(request, manager),
 		);
-		server.registerTool(
-			"synthetic_spend",
-			{ description: "Unfunded approval test" },
-			async () => {
-				try {
-					await wallet.createAction(spendingActionArgs());
-					return { content: [{ type: "text" as const, text: "approved" }] };
-				} catch {
-					return {
-						content: [{ type: "text" as const, text: "denied" }],
-						isError: true,
-					};
-				}
+		const flow = new McpApprovalFlow();
+		const [clientTransport, serverTransport] =
+			InMemoryTransport.createLinkedPair();
+		const served = serveStdio(
+			(context) => {
+				expect(context.era).toBe("modern");
+				const server = withMcpToolExecution(
+					new McpServer({ name: "modern-wallet", version: "1" }),
+					context.era,
+					flow,
+				);
+				server.registerTool(
+					"synthetic_spend",
+					{ description: "Unfunded modern permission test" },
+					async () => {
+						const result = await wallet.createAction(spendingActionArgs());
+						return {
+							content: [
+								{
+									type: "text",
+									text: result.signableTransaction?.reference ?? "missing",
+								},
+							],
+						};
+					},
+				);
+				return server;
 			},
+			{ transport: serverTransport, legacy: "reject" },
 		);
 		const client = new Client(
-			{ name: "spending-gate-client", version: "1" },
+			{ name: "modern-wallet-client", version: "1" },
 			{
+				versionNegotiation: { mode: "auto" },
 				capabilities:
 					decision === "unsupported" ? {} : { elicitation: { form: {} } },
 			},
@@ -449,18 +465,15 @@ test("real wallet permissions settle accept, decline, and cancel through an MCP 
 					...(decision === "accept" ? { content: { approved: true } } : {}),
 				};
 			});
-		const [clientTransport, serverTransport] =
-			InMemoryTransport.createLinkedPair();
 		try {
-			await Promise.all([
-				server.connect(serverTransport),
-				client.connect(clientTransport),
-			]);
+			await client.connect(clientTransport);
 			const result = await client.callTool({
 				name: "synthetic_spend",
 				arguments: {},
 			});
 			expect(result.isError === true).toBe(decision !== "accept");
+			if (decision === "accept")
+				expect(result.content).toEqual([{ type: "text", text: "cmVm" }]);
 			expect(prompts).toBe(decision === "unsupported" ? 0 : 1);
 			expect(calls).toEqual(
 				decision === "accept"
@@ -469,7 +482,8 @@ test("real wallet permissions settle accept, decline, and cancel through an MCP 
 			);
 		} finally {
 			await client.close();
-			await server.close();
+			await served.close();
+			flow.close();
 		}
 	}
 });

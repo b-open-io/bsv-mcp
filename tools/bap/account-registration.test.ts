@@ -136,7 +136,8 @@ describe("BAP generation wallet and context modes", () => {
 			wallet: {} as ToolsConfig["wallet"],
 			localAccountAvailable: true,
 		});
-		expect(has(walletAndContext, "bap_generate")).toBe(true);
+		expect(has(walletAndContext, "bap_generate")).toBe(false);
+		expect(has(walletAndContext, "bap_publishIdentity")).toBe(true);
 
 		const sponsored = await listTools({
 			droplitClient: {} as ToolsConfig["droplitClient"],

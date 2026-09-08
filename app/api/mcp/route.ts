@@ -16,7 +16,8 @@ import {
 	registerCompactCatalog,
 	resolveToolCatalogFromEnvironment,
 } from "@/tools/compactCatalog";
-import { withModernToolPolicy } from "@/utils/modernToolPolicy";
+import { readMcpProtocolPolicy } from "@/utils/mcpProtocol";
+import { withMcpToolExecution } from "@/utils/mcpToolExecution";
 
 // This Next.js route wraps the BSV MCP server for Vercel deployment as a
 // public read-only endpoint. It never reads or parses key material
@@ -25,6 +26,7 @@ import { withModernToolPolicy } from "@/utils/modernToolPolicy";
 // capability. The boundary holds independently of `DISABLE_BROADCASTING` and
 // any inherited key-like environment variables. Local stdio and Bun HTTP
 // behavior live elsewhere and are unchanged by this file.
+const protocolPolicy = readMcpProtocolPolicy();
 const configuredToolCatalog = resolveToolCatalogFromEnvironment();
 
 // Bearer-only transport: Better Auth rejects sender-bound tokens here.
@@ -58,17 +60,16 @@ const sdkHandler = createMcpHandler(
 				version: packageJson.version,
 			},
 			{
+				supportedProtocolVersions: protocolPolicy.supportedVersions,
 				capabilities: {
 					tools: {},
 				},
 			},
 		);
-		// The modern-era policy keeps its reviewed read surface; the hosted
-		// read-only policy then denies everything outside the hosted allowlist
-		// for every era, so a future registration cannot silently become
-		// callable here and a denied callback is never entered.
+		// Hosted traffic remains public read-only in every protocol era.
+		// The local execution adapter never expands the hosted allowlist.
 		const server = withHostedReadPolicy(
-			withModernToolPolicy(nativeServer, requestContext.era),
+			withMcpToolExecution(nativeServer, requestContext.era),
 		);
 
 		if (configuredToolCatalog === "compact") {
@@ -83,7 +84,7 @@ const sdkHandler = createMcpHandler(
 		return server;
 	},
 	{
-		legacy: "stateless",
+		legacy: protocolPolicy.legacyCompatibility ? "stateless" : "reject",
 		onerror: (error) => console.error("MCP handler error:", error),
 	},
 );

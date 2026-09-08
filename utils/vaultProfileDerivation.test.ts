@@ -157,126 +157,118 @@ test("expiry during derivation prevents returning material", () => {
 	).toThrow("SESSION_UNAVAILABLE");
 });
 
-// Optional real-package conformance: no machine paths or unpublished dependency
-// are committed. Set this to an installed @opl.dev/vault module entry point.
-const modulePath = process.env.BSV_MCP_TEST_VAULT_MODULE;
-const real = modulePath ? await import(modulePath) : undefined;
+// Real-package conformance runs against the installed, pinned Vault dependency.
+// An explicit module override remains available for upstream compatibility work.
+const modulePath = process.env.BSV_MCP_TEST_VAULT_MODULE ?? "@opl.dev/vault";
+const real = await import(modulePath);
 
-test.skipIf(!real)(
-	"real Vault BRC157 mnemonic profiles match hardened path plus explicit BRC42 leaf",
-	() => {
-		if (!real) throw new Error("Missing real Vault fixture");
-		const phrase = real.BRC157_PHRASE;
-		const vault = new real.Vault(real.createVaultDocument());
-		const [entry] = vault.importPlain(
-			{
-				format: "sigma-seed",
-				version: 1,
-				mnemonic: phrase,
-				profiles: [{ index: 0, bapId: "synthetic-profile" }],
-				nextProfileIndex: 1,
-				createdAt: 1,
-			},
-			"synthetic",
+test("real Vault BRC157 mnemonic profiles match hardened path plus explicit BRC42 leaf", () => {
+	if (!real) throw new Error("Missing real Vault fixture");
+	const phrase = real.BRC157_PHRASE;
+	const vault = new real.Vault(real.createVaultDocument());
+	const [entry] = vault.importPlain(
+		{
+			format: "sigma-seed",
+			version: 1,
+			mnemonic: phrase,
+			profiles: [{ index: 0, bapId: "synthetic-profile" }],
+			nextProfileIndex: 1,
+			createdAt: 1,
+		},
+		"synthetic",
+	);
+	const access: VaultProfileAccess = {
+		id: vault.toDocument().id,
+		assertActive: () => {},
+		get: (id) => vault.get(id),
+		reveal: (id, reason) => vault.reveal(id, reason),
+	};
+	const beforeEntries = vault.list();
+	for (const index of [0, 1, 17]) {
+		const profile = HD.fromSeed(Mnemonic.fromString(phrase).toSeed()).derive(
+			`m/0'/${index}'`,
+		).privKey;
+		const expected = new KeyDeriver(profile).derivePrivateKey(
+			[2, "project signing"],
+			"chosen-leaf",
+			"self",
 		);
-		const access: VaultProfileAccess = {
-			id: vault.toDocument().id,
-			assertActive: () => {},
-			get: (id) => vault.get(id),
-			reveal: (id, reason) => vault.reveal(id, reason),
+		const ref = {
+			...reference,
+			vaultId: access.id,
+			entryId: entry.id,
+			derivation: { ...reference.derivation, index },
 		};
-		const beforeEntries = vault.list();
-		for (const index of [0, 1, 17]) {
-			const profile = HD.fromSeed(Mnemonic.fromString(phrase).toSeed()).derive(
-				`m/0'/${index}'`,
-			).privKey;
-			const expected = new KeyDeriver(profile).derivePrivateKey(
-				[2, "project signing"],
-				"chosen-leaf",
-				"self",
-			);
-			const ref = {
-				...reference,
-				vaultId: access.id,
-				entryId: entry.id,
-				derivation: { ...reference.derivation, index },
-			};
-			expect(
-				deriveVaultProfilePublicKey(access, ref, "synthetic preview", real),
-			).toBe(expected.toPublicKey().toString());
-			expect(
-				resolveVaultProfilePrivateKey(
-					access,
-					{ ...ref, expectedPublicKey: expected.toPublicKey().toString() },
-					"synthetic leaf",
-					real,
-				).toHex(),
-			).toBe(expected.toHex());
-		}
-		expect(vault.list()).toEqual(beforeEntries);
-		const denied = new real.Vault({
-			...vault.toDocument(),
-			settings: { revealEnabled: false, unlockTtlSeconds: 300 },
-		});
+		expect(
+			deriveVaultProfilePublicKey(access, ref, "synthetic preview", real),
+		).toBe(expected.toPublicKey().toString());
+		expect(
+			resolveVaultProfilePrivateKey(
+				access,
+				{ ...ref, expectedPublicKey: expected.toPublicKey().toString() },
+				"synthetic leaf",
+				real,
+			).toHex(),
+		).toBe(expected.toHex());
+	}
+	expect(vault.list()).toEqual(beforeEntries);
+	const denied = new real.Vault({
+		...vault.toDocument(),
+		settings: { revealEnabled: false, unlockTtlSeconds: 300 },
+	});
+	expect(() =>
+		deriveVaultProfilePublicKey(
+			{ ...access, reveal: (id, reason) => denied.reveal(id, reason) },
+			{ ...reference, vaultId: access.id, entryId: entry.id },
+			"synthetic denied",
+			real,
+		),
+	).toThrow("REVEAL_DENIED");
+});
+
+test("real Vault preserves all three Yours legacy paths and rejects child HD sources", () => {
+	if (!real) throw new Error("Missing real Vault fixture");
+	const master = HD.fromSeed(Mnemonic.fromString(real.BRC157_PHRASE).toSeed());
+	const vault = new real.Vault(real.createVaultDocument());
+	const entries = vault.importPlain(
+		{
+			ids: "synthetic",
+			mnemonic: real.BRC157_PHRASE,
+			xprv: master.toString(),
+		},
+		"synthetic",
+	);
+	const entry = entries.find(
+		(value: { kind: string }) => value.kind === "hd-private",
+	);
+	const access: VaultProfileAccess = {
+		id: vault.toDocument().id,
+		assertActive: () => {},
+		get: (id) => vault.get(id),
+		reveal: (id, reason) => vault.reveal(id, reason),
+	};
+	for (const path of YOURS_LEGACY_PROFILE_PATHS) {
+		const ref = {
+			vaultId: access.id,
+			entryId: entry.id,
+			derivation: { scheme: "yours-legacy-bip32", path },
+		};
+		const expected = master.derive(path).privKey;
+		expect(
+			resolveVaultProfilePrivateKey(
+				access,
+				{ ...ref, expectedPublicKey: expected.toPublicKey().toString() },
+				"legacy fixture",
+				real,
+			).toHex(),
+		).toBe(expected.toHex());
 		expect(() =>
 			deriveVaultProfilePublicKey(
-				{ ...access, reveal: (id, reason) => denied.reveal(id, reason) },
-				{ ...reference, vaultId: access.id, entryId: entry.id },
-				"synthetic denied",
+				{ ...access, reveal: () => master.derive("m/1").toString() },
+				ref,
+				"reject child",
 				real,
 			),
-		).toThrow("REVEAL_DENIED");
-	},
-);
-
-test.skipIf(!real)(
-	"real Vault preserves all three Yours legacy paths and rejects child HD sources",
-	() => {
-		if (!real) throw new Error("Missing real Vault fixture");
-		const master = HD.fromSeed(
-			Mnemonic.fromString(real.BRC157_PHRASE).toSeed(),
-		);
-		const vault = new real.Vault(real.createVaultDocument());
-		const entries = vault.importPlain(
-			{
-				ids: "synthetic",
-				mnemonic: real.BRC157_PHRASE,
-				xprv: master.toString(),
-			},
-			"synthetic",
-		);
-		const entry = entries.find(
-			(value: { kind: string }) => value.kind === "hd-private",
-		);
-		const access: VaultProfileAccess = {
-			id: vault.toDocument().id,
-			assertActive: () => {},
-			get: (id) => vault.get(id),
-			reveal: (id, reason) => vault.reveal(id, reason),
-		};
-		for (const path of YOURS_LEGACY_PROFILE_PATHS) {
-			const ref = {
-				vaultId: access.id,
-				entryId: entry.id,
-				derivation: { scheme: "yours-legacy-bip32", path },
-			};
-			const expected = master.derive(path).privKey;
-			expect(
-				resolveVaultProfilePrivateKey(
-					access,
-					{ ...ref, expectedPublicKey: expected.toPublicKey().toString() },
-					"legacy fixture",
-					real,
-				).toHex(),
-			).toBe(expected.toHex());
-			expect(() =>
-				deriveVaultProfilePublicKey(
-					{ ...access, reveal: () => master.derive("m/1").toString() },
-					ref,
-					"reject child",
-					real,
-				),
-			).toThrow("HD_MASTER_REQUIRED");
-		}
-	},
-);
+		).toThrow("HD_MASTER_REQUIRED");
+	}
+});

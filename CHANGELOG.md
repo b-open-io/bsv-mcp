@@ -1,6 +1,6 @@
 # BSV MCP Server Changelog
 
-## [Unreleased]
+## [0.5.0] - 2026-09-08
 
 ### Added
 
@@ -18,7 +18,8 @@
 
 - Create, import, and unlock an embedded wallet through private local browser
   setup. Activation refreshes the connected MCP session immediately; the ready
-  screen shows an interactive tool cloud generated from its enabled catalog.
+  screen shows a compact, animated tool collage from its enabled catalog, with
+  pause controls and reduced-motion support.
 - Receive selected PeerPay payments with `wallet_peerPayments` (or the compact
   `wallet_payments` family). Wallet acceptance precedes acknowledgement;
   automatic MessageBox service-fee spending is refused. Availability is limited
@@ -49,14 +50,23 @@
 - Migrate the server/client/core boundaries and the surrounding server
   lifecycle, stdio transport, hosted adapter, request routing, and
   prompt/resource registrations to the split MCP TypeScript SDK v2 packages.
-- Preserve the ordinary 2025 handshake as the default while adding an explicit
-  opt-in path for protocol revision `2026-07-28`. The server negotiates a
-  supported 2025 protocol date with each client; a package/API upgrade alone
-  does not select the modern wire protocol.
-- Keep the 2025 hosted and stdio connection paths available through the SDK v2
-  compatibility transport. Local HTTP keeps its sessionful 2025 behavior; the
-  modern HTTP path is stateless and uses the protocol's method metadata
-  headers.
+- Make protocol `2026-07-28` primary across stdio, local HTTP, and hosted HTTP.
+  Accept supported 2025 clients automatically; `MCP_LEGACY_COMPATIBILITY=false`
+  explicitly requires modern clients.
+- Execute modern approval-dependent tools through request-scoped continuations
+  bound to the original operation, authenticated principal, arguments, and expiry.
+  Cancellation and revocation reject pending approvals; replay cannot re-execute
+  the callback. Legacy approvals also remain scoped to their requesting client.
+- Open all configured project roles, including BRC-42 child and BRC-157/Yours
+  profile derivations. Isolate child-key storage and preserve selected root
+  databases and deposit prefixes.
+- Support external per-role signer endpoints, identity pins, and project-specific
+  permission origins without local key loading.
+- Expose BRC-100 BAP publication, rotation, attestations, profiles, and signed
+  BSocial posts through the selected identity wallet.
+- Preserve ordinal outputs and token amounts in browser-signed dashboard sweeps.
+  Verify source transactions and signatures, bind preparation to the user and
+  wallet, and reject duplicate submission. Read all dashboard balance pages.
 - Keep `@modelcontextprotocol/sdk` v1 in the staged dependency graph because
   `@modelcontextprotocol/ext-apps` 1.7.5 still declares it as a peer. A local
   MCP Apps adapter calls native SDK v2 `registerTool` and `registerResource`,
@@ -74,24 +84,15 @@
   baseline for one configured server, while wallet mode, enabled modules,
   account context, and the selected profile determine actual tool exposure.
   Compact mode is an explicit opt-in.
-- Modern discovery and tool transport are available. Approval-dependent modern
-  mutations remain unsupported pending approved request-scoped adapters. The
-  central guard now rejects those requests before callbacks run, and policy/wire
-  tests cover that denial. Current Codex acceptance covers the legacy 2025 wire
-  path; modern Codex acceptance remains unverified because
-  the installed client selects a 2025 protocol. Codex v0.153.4 acceptance
-  on the `0fed5be` artifact selected `2025-06-18` and verified initialize,
-  `tools/list`, and a dashboard
-  `tools/call` returning `ready: true`. The intended modern read scope is
-  limited to reviewed, allowlisted read-only calls. Use a supported 2025
-  connection with form elicitation for that approval flow.
-- Successful modern approval exchange and write settlement remain future
-  support work. Browser-host MCP Apps behavior, full schema/catalog parity,
-  compact profile validation, and deployed hosted traffic remain validation
-  gates.
+- Modern protocol tests cover stdio and authenticated HTTP, approval accept,
+  decline, cancellation, expiry, replay, external signer HTTP crypto, and
+  project-role derivations. Installed clients that only negotiate 2025 connect through default legacy
+  compatibility; their success is not modern acceptance.
+- The hosted route remains public-read-only. Browser-host MCP Apps integration
+  and deployed traffic require validation in their actual host environments.
 
 See [MCP client protocol support](docs/mcp-client-protocol-support.md) for
-endpoint details and the unreleased migration's evidence and acceptance gaps.
+endpoint contracts and the distinction between protocol and host validation.
 
 ## [0.4.0] - 2026-09-07
 

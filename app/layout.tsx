@@ -57,9 +57,18 @@ export const metadata: Metadata = {
 		description: SITE_DESCRIPTION,
 		url: SITE_URL,
 		locale: "en_US",
+		images: [
+			{
+				url: "/social-card.png",
+				width: 1200,
+				height: 630,
+				alt: "BSV MCP — Give your agent a wallet.",
+			},
+		],
 	},
 	twitter: {
-		card: "summary",
+		card: "summary_large_image",
+		images: ["/social-card.png"],
 		title: `${SITE_NAME} — ${SITE_TAGLINE}`,
 		description: SITE_DESCRIPTION,
 	},

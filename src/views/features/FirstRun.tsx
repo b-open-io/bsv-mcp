@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { AvailableSetupTool } from "../../../utils/vaultSetup";
 import { AvailableTools } from "../components/AvailableTools";
+import { WalletReady } from "../components/WalletReady";
 import {
 	Button,
 	LocalShell,
@@ -179,6 +180,8 @@ export function FirstRun({
 				onUnlock={() => navigate("roles")}
 			/>
 		);
+	if (created && !standalone) return <LocalShell navigation={false}><WalletReady tools={tools} /></LocalShell>;
+
 	return (
 		<LocalShell navigation={false}>
 			<PageHeader

@@ -145,7 +145,7 @@ The child receives a clean environment, a temporary HOME, and read-only safety
 flags. No MCP tool is called.
 
 Options:
-  --client legacy|modern|both  Client implementation to run (default: legacy)
+  --client legacy|modern|both  Client implementation to run (default: modern)
   --runs N                     Repeat each selected client (default: 1)
   --timeout-ms N               Per MCP request timeout (default: 10000)
   --cwd PATH                   Child working directory (default: current directory)
@@ -257,7 +257,7 @@ export function parseArguments(argv: string[]): {
 				? argv.slice(implicitTargetIndex)
 				: [];
 	const options: BenchmarkOptions = {
-		client: "legacy",
+		client: "modern",
 		runs: DEFAULT_RUNS,
 		timeoutMs: DEFAULT_TIMEOUT_MS,
 		json: true,

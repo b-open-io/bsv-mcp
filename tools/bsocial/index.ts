@@ -1,13 +1,17 @@
+import type { OneSatContext } from "@1sat/actions";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { Wallet } from "../wallet/wallet";
 import { registerBmapReadFollowsTool } from "./bmapFollow";
 import { registerBmapReadLikesTool } from "./bmapLikes";
 import { registerBmapReadPostsTool } from "./bmapReadPosts";
+import { registerContextSocialPost } from "./context";
 import { registerCreatePostTool } from "./createPost";
 import { registerReadPostsTool } from "./readPosts";
 
 interface BsocialToolsConfig {
 	wallet?: Wallet;
+	identityContext?: OneSatContext;
+	disableBroadcasting?: boolean;
 }
 
 /**
@@ -36,7 +40,13 @@ export function registerBsocialTools(
 	console.error("✅ Registered bmap_readFollows tool");
 
 	// Register tools that require wallet
-	if (config.wallet) {
+	if (config.identityContext) {
+		registerContextSocialPost(
+			server,
+			config.identityContext,
+			config.disableBroadcasting,
+		);
+	} else if (config.wallet) {
 		registerCreatePostTool(server, config.wallet);
 		console.error("✅ Registered bsocial_createPost tool");
 	} else {

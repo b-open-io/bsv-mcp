@@ -18,10 +18,9 @@ import {
 import {
 	createMcpHandler,
 	isLegacyRequest,
+	WebStandardStreamableHTTPServerTransport,
 	type McpRequestContext,
 	McpServer,
-	SUPPORTED_PROTOCOL_VERSIONS,
-	WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
@@ -41,7 +40,7 @@ import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { runAccountCommand } from "./utils/accountCommands";
 import { accountDir, accountName, readAccount } from "./utils/accounts";
-import { getWalletRoleSettings } from "./utils/walletRoleDefaults";
+import { appSweepInputSchema, createAppSweep } from "./utils/appSweep";
 import {
 	contentUrl,
 	explorerFetch,
@@ -53,11 +52,13 @@ import {
 import { assertBroadcastAllowed } from "./utils/broadcastGuard";
 import { DroplitClient, readDroplitSponsorConfig } from "./utils/droplit";
 import { createEmbeddedSetupActions } from "./utils/embeddedSetupActions";
+import { createEmbeddedWalletRuntime } from "./utils/embeddedWalletRuntime";
 import {
 	initializeKeysForWalletMode,
 	isExternalWalletContext,
 	readExternalWalletConfig,
 } from "./utils/externalWalletConfig";
+import { createExternalWalletRuntime } from "./utils/externalWalletRuntime";
 import {
 	type BSVJWTPayload,
 	createMCPJWTValidator,
@@ -74,29 +75,27 @@ import {
 	registerAppResource,
 	registerAppTool,
 } from "./utils/mcpAppRegistration.ts";
-import {
-	getMcpSessionPrincipal,
-	isMcpSessionPrincipalMatch,
-	type McpSessionPrincipal,
-} from "./utils/mcpSessionPrincipal.ts";
+import { McpApprovalFlow } from "./utils/mcpApprovalFlow";
+import { readMcpProtocolPolicy } from "./utils/mcpProtocol";
+import { getMcpSessionPrincipal, isMcpSessionPrincipalMatch, type McpSessionPrincipal } from "./utils/mcpSessionPrincipal";
 import {
 	type ToolPolicyEra,
-	withModernToolPolicy,
-} from "./utils/modernToolPolicy.ts";
-import { setServerInstance } from "./utils/passphrasePrompt.ts";
+	withMcpToolExecution,
+} from "./utils/mcpToolExecution.ts";
 import {
 	createProjectWalletRuntime,
 	type ProjectWalletRuntime,
 	readProjectWalletConfig,
 } from "./utils/projectWalletRuntime";
 import { inspectMigration } from "./utils/vaultMigration";
+import { readWalletBalance } from "./utils/walletBalance";
+import { walletDepositAddress } from "./utils/walletDepositAddress";
 import {
 	destroyWallet,
-	initExternalWallet,
-	initWallet,
-	setSpendingApprovalServerInstance,
 } from "./utils/walletInit.ts";
 import { createWalletSetupLauncher } from "./utils/walletOnboarding.ts";
+import { getWalletRoleSettings } from "./utils/walletRoleDefaults";
+import type { WalletRoleContexts } from "./utils/walletRoles";
 
 // Initialize server variable (used for stdio mode and passphrase detection)
 let server: McpServer | undefined;
@@ -110,9 +109,11 @@ interface ServerFactoryOptions {
 	loadPrompts?: boolean;
 	loadResources: boolean;
 	era?: ToolPolicyEra;
+	approvalFlow?: McpApprovalFlow;
 }
 
 type McpAppToolsConfig = {
+	roleContexts?: WalletRoleContexts;
 	wallet?: Wallet;
 	ctx?: import("@1sat/actions").OneSatContext;
 	services?: import("@1sat/client").OneSatServices;
@@ -147,7 +148,7 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 	const nativeServer = new McpServer(
 		{ name: packageJson.name, version: packageJson.version },
 		{
-			supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
+			supportedProtocolVersions: CONFIG.protocol.supportedVersions,
 			capabilities: {
 				resources: {},
 				tools: {},
@@ -164,7 +165,11 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 			`,
 		},
 	);
-	const policyServer = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
+	const policyServer = withMcpToolExecution(
+		nativeServer,
+		opts.era ?? "modern",
+		opts.approvalFlow,
+	);
 	const registrations: Array<{ remove(): void }> = [];
 	const toolRegistrations: Array<{
 		name: string;
@@ -236,6 +241,7 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
  * Configuration options from environment variables
  */
 export const CONFIG = {
+	protocol: readMcpProtocolPolicy(),
 	// Whether to load various components
 	loadPrompts: process.env.DISABLE_PROMPTS !== "true",
 	loadResources: process.env.DISABLE_RESOURCES !== "true",
@@ -270,14 +276,6 @@ export const CONFIG = {
 	oauthIssuer: process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
 	resourceUrl: process.env.RESOURCE_URL || "", // Will be set based on port
 };
-
-// Advertise both protocol eras. v2 defaults to the legacy handshake unless a
-// client explicitly negotiates the modern revision, so retaining the legacy
-// entry keeps existing clients working while enabling 2026 discovery.
-const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
-	...SUPPORTED_PROTOCOL_VERSIONS,
-	"2026-07-28",
-];
 
 const logFunc = console.error;
 const KEY_FILE_PATH = path.join(accountDir(), "keys.bep");
@@ -325,7 +323,10 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 		config.externalWallet ??
 		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
 	const wholeWalletBalanceAvailable =
-		walletAvailable && !externalWallet && config.walletScope !== "payments";
+		walletAvailable &&
+		(!config.roleContexts || !!config.roleContexts.payments) &&
+		!externalWallet &&
+		config.walletScope !== "payments";
 	const sweepPrepareAvailable = Boolean(
 		config.walletScope !== "payments" &&
 			config.ctx &&
@@ -341,7 +342,7 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 	const broadcastingEnabled =
 		process.env.DISABLE_BROADCASTING !== "true" &&
 		config.disableBroadcasting !== true;
-	const ctx = config.ctx;
+	const ctx = config.roleContexts ? config.roleContexts.payments : config.ctx;
 	const wallet = config.wallet;
 	const disableBroadcasting = config.disableBroadcasting ?? false;
 	// Primary dashboard tool — model calls this to open the UI
@@ -568,21 +569,13 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 
 					// Use BRC-100 context (same source as wallet_getAddress / wallet_getBalance)
 					if (ctx) {
-						const { deriveDepositAddresses } = await import("@1sat/actions");
-						const { derivations } = await deriveDepositAddresses.execute(ctx, {
-							prefix: "mcp",
-						});
-						address = derivations[0]?.address;
-
-						const result = await ctx.wallet.listOutputs({ basket: "default" });
-						totalSatoshis = result.outputs.reduce(
-							(sum, output) => sum + output.satoshis,
-							0,
-						);
-						utxoCount = result.totalOutputs;
-						utxos = result.outputs.slice(0, 50).map((o) => {
-							const [txid = "", voutStr = "0"] = (o.outpoint ?? "").split(".");
-							return { txid, vout: Number(voutStr), satoshis: o.satoshis };
+						address = await walletDepositAddress(ctx);
+						const balance = await readWalletBalance(ctx);
+						totalSatoshis = balance.satoshis;
+						utxoCount = balance.utxoCount;
+						utxos = balance.outputs.map((output) => {
+							const [txid = "", vout = "0"] = output.outpoint.split(".");
+							return { txid, vout: Number(vout), satoshis: output.satoshis };
 						});
 					} else if (wallet) {
 						// Fallback to local wallet if no BRC-100 context
@@ -842,255 +835,95 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 		);
 	}
 
-	// App-only: prepare unsigned sweep transaction for client-side signing
-	if (walletToolsEnabled && sweepPrepareAvailable) {
+	const sweep = config.ctx
+		? createAppSweep(config.ctx, config.roleContexts)
+		: undefined;
+	if (walletToolsEnabled && sweepPrepareAvailable && sweep) {
 		registerAppTool(
 			server,
 			"app_sweep_prepare",
 			{
 				title: "Sweep Prepare",
 				description:
-					"App-only: builds an unsigned sweep transaction. Returns BEEF hex and reference for client-side signing.",
-				inputSchema: z.object({
-					sweepType: z
-						.enum(["bsv", "ordinals", "bsv21"])
-						.describe("Type of assets to sweep"),
-					inputs: z
-						.array(
-							z.object({
-								outpoint: z.string().describe("Outpoint (txid_vout)"),
-								satoshis: z.number().int().describe("Satoshis in output"),
-								lockingScript: z.string().describe("Locking script hex"),
-							}),
-						)
-						.describe("UTXOs to sweep"),
-				}),
-				_meta: {
-					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-				},
+					"App-only: verify source transactions and prepare a sweep that preserves ordinals and token amounts. Source private keys remain in the browser.",
+				inputSchema: appSweepInputSchema,
+				_meta: { ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] } },
 			},
-			async (args) => {
-				const { sweepType, inputs } = args as {
-					sweepType: "bsv" | "ordinals" | "bsv21";
-					inputs: Array<{
-						outpoint: string;
-						satoshis: number;
-						lockingScript: string;
-					}>;
-				};
-
-				if (!ctx || !appServices) {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: "BRC-100 wallet context not available",
-							},
-						],
-						structuredContent: { error: "No wallet context" },
-					};
-				}
-
+			async (args, context) => {
 				try {
-					if (!appServices) throw new Error("Services not available");
-					if (!inputs.length) throw new Error("No inputs provided");
-
-					// Fetch and merge BEEF for all input transactions
-					const txids = [
-						...new Set(
-							inputs.map((i) => {
-								const txid = i.outpoint.split("_")[0];
-								if (!txid) throw new Error("Invalid input outpoint");
-								return txid;
-							}),
-						),
-					];
-					const [firstTxid, ...remainingTxids] = txids;
-					if (!firstTxid) throw new Error("No input transactions provided");
-					const firstBeef = await appServices.getBeefForTxid(firstTxid);
-					for (const txid of remainingTxids) {
-						const additionalBeef = await appServices.getBeefForTxid(txid);
-						firstBeef.mergeBeef(additionalBeef);
-					}
-
-					// Build input descriptors using SDK format (txid.vout)
-					const inputDescriptors = inputs.map((input) => {
-						const [txid, voutStr] = input.outpoint.split("_");
-						return {
-							outpoint: `${txid}.${Number(voutStr)}`,
-							inputDescription: `Sweep ${sweepType} input`,
-							unlockingScriptLength: 108,
-							sequenceNumber: 0xffffffff,
-						};
-					});
-
-					const inputTotal = inputs.reduce((sum, i) => sum + i.satoshis, 0);
-
-					const createResult = await ctx.wallet.createAction({
-						description: `Sweep ${inputTotal} sats (${sweepType})`,
-						inputBEEF: firstBeef.toBinary(),
-						inputs: inputDescriptors,
-						outputs: [],
-						options: {
-							signAndProcess: false,
-							...(sweepType !== "bsv" && {
-								randomizeOutputs: false,
-							}),
-						},
-					});
-
-					if ("error" in createResult && createResult.error) {
-						throw new Error(String(createResult.error));
-					}
-					if (!createResult.signableTransaction) {
-						throw new Error("No signable transaction returned");
-					}
-
-					// Map our inputs to their indices in the transaction
-					const { Transaction: TxClass, Utils: SdkUtils } = await import(
-						"@bsv/sdk"
+					const prepared = await sweep.prepare(
+						args,
+						getMcpSessionPrincipal(context.http?.authInfo),
 					);
-					const tx = TxClass.fromBEEF(createResult.signableTransaction.tx);
-					const ourOutpoints = new Set(
-						inputs.map((i) => {
-							const [txid, voutStr] = i.outpoint.split("_");
-							return `${txid}.${Number(voutStr)}`;
-						}),
-					);
-
-					const inputsToSign: Array<{
-						index: number;
-						outpoint: string;
-						satoshis: number;
-						lockingScript: string;
-					}> = [];
-					for (const [idx, txInput] of tx.inputs.entries()) {
-						const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
-						if (ourOutpoints.has(op)) {
-							const match = inputs.find((i) => {
-								const [t, v] = i.outpoint.split("_");
-								return `${t}.${Number(v)}` === op;
-							});
-							if (match) {
-								inputsToSign.push({
-									index: idx,
-									outpoint: match.outpoint,
-									satoshis: match.satoshis,
-									lockingScript: match.lockingScript,
-								});
-							}
-						}
-					}
-
-					const txHex = SdkUtils.toHex(createResult.signableTransaction.tx);
-
 					return {
 						content: [
 							{
 								type: "text" as const,
-								text: `Prepared ${sweepType} sweep: ${inputsToSign.length} inputs to sign`,
+								text: `Prepared ${prepared.inputsToSign.length} sweep inputs`,
 							},
 						],
-						structuredContent: {
-							txHex,
-							reference: createResult.signableTransaction.reference,
-							inputsToSign,
-						},
+						structuredContent: prepared,
 					};
-				} catch (err) {
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
 					return {
-						content: [
-							{
-								type: "text" as const,
-								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-							},
-						],
-						structuredContent: { error: String(err) },
+						content: [{ type: "text" as const, text: message }],
+						structuredContent: { error: message },
+						isError: true,
 					};
 				}
 			},
 		);
 	}
-
-	// App-only: complete a sweep by broadcasting with client-signed spends
-	if (walletToolsEnabled && sweepCompleteAvailable && broadcastingEnabled) {
+	if (
+		walletToolsEnabled &&
+		sweepCompleteAvailable &&
+		broadcastingEnabled &&
+		sweep
+	) {
 		registerAppTool(
 			server,
 			"app_sweep_complete",
 			{
 				title: "Sweep Complete",
 				description:
-					"App-only: completes a sweep by broadcasting the transaction with client-signed unlocking scripts.",
+					"App-only: verify browser signatures and submit the exact previously prepared sweep once.",
 				inputSchema: z.object({
-					reference: z
-						.string()
-						.describe("Opaque reference from app_sweep_prepare"),
-					spends: z
-						.record(
-							z.string(),
-							z.object({
-								unlockingScript: z
-									.string()
-									.describe("Signed unlocking script hex"),
-							}),
-						)
-						.describe("Map of input index to signed unlocking script"),
+					reference: z.string().uuid(),
+					spends: z.record(
+						z.string().regex(/^(0|[1-9][0-9]*)$/),
+						z.object({
+							unlockingScript: z.string().regex(/^(?:[0-9a-f]{2}){1,108}$/i),
+						}),
+					),
 				}),
-				_meta: {
-					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-				},
+				_meta: { ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] } },
 			},
-			async (args) => {
-				const { reference, spends } = args as {
-					reference: string;
-					spends: Record<number, { unlockingScript: string }>;
-				};
-
-				if (!ctx || !appServices) {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: "BRC-100 wallet context not available",
-							},
-						],
-						structuredContent: { error: "No wallet context" },
-					};
-				}
-
+			async (args, context) => {
 				try {
 					assertBroadcastAllowed("app_sweep_complete", disableBroadcasting);
-					const signResult = await ctx.wallet.signAction({
-						reference,
-						spends,
-						options: { acceptDelayedBroadcast: false },
-					});
-
-					if ("error" in signResult) {
-						throw new Error(String(signResult.error));
-					}
-
+					const complete = await sweep.complete(
+						args.reference,
+						args.spends,
+						getMcpSessionPrincipal(context.http?.authInfo),
+					);
 					return {
 						content: [
 							{
 								type: "text" as const,
-								text: `Sweep broadcast: ${signResult.txid}`,
+								text: `Sweep broadcast: ${complete.txid}`,
 							},
 						],
-						structuredContent: {
-							txid: signResult.txid,
-							success: true,
-						},
+						structuredContent: complete,
 					};
-				} catch (err) {
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
 					return {
-						content: [
-							{
-								type: "text" as const,
-								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-							},
-						],
-						structuredContent: { error: String(err) },
+						content: [{ type: "text" as const, text: message }],
+						structuredContent: { error: message },
+						isError: true,
 					};
 				}
 			},
@@ -1214,7 +1047,7 @@ Authentication:
 
 	// --- Initialize Keys ---
 	// Project selectors are consumed before any legacy account, WIF, external
-	// signer, or Droplit branch. The project runtime owns one explicitly bound
+	// signer, or Droplit branch. The project runtime owns every explicitly bound
 	// Vault role and is available only to the local stdio child.
 	const projectConfig = readProjectWalletConfig();
 	const projectRuntime: ProjectWalletRuntime | undefined = projectConfig
@@ -1421,6 +1254,7 @@ Authentication:
 						walletSetupNeeded: false,
 						openWalletSetup: undefined,
 						localAccountAvailable: true,
+						bapPublicOnly: false,
 						enableAccountTools: !result.roleContexts,
 						enableWalletTools: CONFIG.loadWalletTools,
 						enableOrdinalsTools: CONFIG.loadOrdinalsTools,
@@ -1437,16 +1271,10 @@ Authentication:
 			`Embedded wallet setup required (${walletSetupReason ?? "no-wallet"}). Public tools remain available; invoke wallet onboarding to configure locally.`,
 		);
 	} else if (projectRuntime) {
-		// A payment role is deliberately narrower than a general embedded
-		// account. Identity signing, encryption, and OneSat asset operations need
-		// their own explicitly assigned role and are not authorized by this ctx.
-		effectiveConfig.bapPublicOnly = true;
-		effectiveConfig.loadOrdinalsTools = false;
+		effectiveConfig.bapPublicOnly = false;
 		effectiveConfig.loadMneeTools = false;
-		effectiveConfig.loadBapTools = false;
 	} else if (externalWallet) {
-		effectiveConfig.bapPublicOnly = true;
-		effectiveConfig.loadBsocialTools = false;
+		effectiveConfig.bapPublicOnly = false;
 		effectiveConfig.loadMneeTools = false;
 		logFunc(
 			"External BRC-100 signer selected; local key loading and generation bypassed.",
@@ -1599,6 +1427,11 @@ Authentication:
 	let integratedWallet: IntegratedWallet | undefined;
 	let remoteCtx: import("@1sat/actions").OneSatContext | undefined;
 	let remoteServices: import("@1sat/client").OneSatServices | undefined;
+	let externalRuntime:
+		| Awaited<ReturnType<typeof createExternalWalletRuntime>>
+		| undefined;
+
+	let embeddedRuntime: Awaited<ReturnType<typeof createEmbeddedWalletRuntime>> | undefined;
 
 	if (CONFIG.loadTools) {
 		// Check if we should use Droplit API mode
@@ -1606,13 +1439,14 @@ Authentication:
 			remoteCtx = projectRuntime.ctx;
 			remoteServices = projectRuntime.services;
 			logFunc(
-				`Project payments wallet ready for ${projectRuntime.projectId}. Deposit address: ${projectRuntime.depositAddress}`,
+				`Project wallet ready for ${projectRuntime.projectId}; roles: ${Object.keys(projectRuntime.roles).join(", ")}. Primary deposit address: ${projectRuntime.depositAddress}`,
 			);
 		} else if (externalWallet) {
 			const chain = process.env.BSV_CHAIN ?? "main";
 			if (chain !== "main" && chain !== "test")
 				throw new Error("BSV_CHAIN must be main or test");
-			const result = await initExternalWallet(externalWallet, chain);
+			const result = await createExternalWalletRuntime(externalWallet, chain);
+			externalRuntime = result;
 			remoteCtx = result.ctx;
 			remoteServices = result.services;
 			logFunc(`External BRC-100 signer ready. Identity: ${result.identityKey}`);
@@ -1688,7 +1522,13 @@ Authentication:
 					const chain =
 						readAccount()?.chain ??
 						(process.env.BSV_CHAIN === "test" ? "test" : "main");
-					const remoteResult = await initWallet(payPk.toWif(), chain);
+					const remoteResult = await createEmbeddedWalletRuntime(payPk, identityPk, chain);
+					embeddedRuntime = remoteResult;
+					if (remoteResult.roleContexts) {
+						wallet = undefined;
+						integratedWallet = undefined;
+						effectiveConfig.loadMneeTools = false;
+					}
 					remoteCtx = remoteResult.ctx;
 					remoteServices = remoteResult.services;
 					logFunc(
@@ -1739,14 +1579,15 @@ Authentication:
 					? false
 					: !externalWallet && !projectRuntime && !CONFIG.useDroplitApi,
 				enableBsvTools: effectiveConfig.loadBsvTools,
-				enableOrdinalsTools:
-					!projectRuntime && effectiveConfig.loadOrdinalsTools,
+				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
 				enableUtilsTools: effectiveConfig.loadUtilsTools,
-				enableBapTools: !projectRuntime && effectiveConfig.loadBapTools,
+				enableBapTools: effectiveConfig.loadBapTools,
 				enableBsocialTools: effectiveConfig.loadBsocialTools,
 				enableWalletTools: effectiveConfig.loadWalletTools,
 				enableMneeTools: !projectRuntime && effectiveConfig.loadMneeTools,
-				walletScope: projectRuntime ? "payments" : "full",
+				walletScope: "full",
+				roleContexts:
+					projectRuntime?.roleContexts ?? externalRuntime?.roleContexts ?? embeddedRuntime?.roleContexts,
 				identityPk,
 				payPk,
 				xprv,
@@ -1773,7 +1614,9 @@ Authentication:
 				disableBroadcasting: true,
 			};
 
+	const approvalFlow = new McpApprovalFlow();
 	const serverFactoryOpts: ServerFactoryOptions = {
+		approvalFlow,
 		toolsConfig,
 		wallet,
 		ctx: remoteCtx,
@@ -1781,14 +1624,24 @@ Authentication:
 		loadResources: effectiveConfig.loadResources,
 	};
 
-	// Clean up remote wallet on shutdown
-	for (const sig of ["SIGINT", "SIGTERM"] as const) {
-		process.once(sig, () => {
-			Promise.allSettled([
+	let stopTransport: (() => void | Promise<void>) | undefined;
+	let shutdown: Promise<void> | undefined;
+	const cleanup = () =>
+		(shutdown ??= (async () => {
+			approvalFlow.close();
+			await Promise.allSettled([
+				Promise.resolve().then(() => stopTransport?.()),
 				projectRuntime?.cleanup(),
+				externalRuntime?.destroy(),
+				embeddedRuntime?.destroy(),
 				activatedWalletCleanup?.(),
 				destroyWallet(),
-			]).catch(() => {});
+			]);
+		})());
+	// EOF and signals revoke pending approvals and release every opened wallet.
+	for (const sig of ["SIGINT", "SIGTERM"] as const) {
+		process.once(sig, () => {
+			void cleanup();
 		});
 	}
 
@@ -1797,25 +1650,30 @@ Authentication:
 		// v2 owns the transport and pins the factory-created server to the
 		// negotiated era. Set the helper globals inside the factory: serveStdio
 		// may create a probe instance before selecting the connection instance.
-		serveStdio(
+		const stdio = serveStdio(
 			(requestContext: McpRequestContext) => {
 				const configured = createConfiguredServer({
 					...serverFactoryOpts,
 					era: requestContext.era,
 				});
 				server = configured;
-				setServerInstance(configured);
-				setSpendingApprovalServerInstance(configured);
 				return configured;
 			},
 			{
-				legacy: "serve",
+				legacy: CONFIG.protocol.legacyCompatibility ? "serve" : "reject",
 				onerror: (error) => logFunc(`MCP stdio error: ${error}`),
 			},
 		);
+		stopTransport = () => stdio.close();
+		process.stdin.once("end", () => {
+			void cleanup();
+		});
+		process.stdin.once("close", () => {
+			void cleanup();
+		});
 		logFunc("BSV MCP Server running on stdio");
 	} else {
-		// --- HTTP: Streamable HTTP transport (MCP 2025-03-26 spec) ---
+		// --- HTTP: modern per-request transport ---
 		const port = CONFIG.port;
 		const resourceUrl = CONFIG.resourceUrl || `http://localhost:${port}`;
 
@@ -1823,16 +1681,6 @@ Authentication:
 		const jwtValidator = CONFIG.enableOAuth
 			? createMCPJWTValidator(resourceUrl)
 			: null;
-
-		// Session tracking: sessionId -> { server, transport, principal }
-		const sessions = new Map<
-			string,
-			{
-				server: McpServer;
-				transport: WebStandardStreamableHTTPServerTransport;
-				principal: McpSessionPrincipal;
-			}
-		>();
 
 		logFunc(
 			`Starting BSV MCP Server in Streamable HTTP mode on port ${port}...`,
@@ -1846,9 +1694,17 @@ Authentication:
 		const authServer =
 			process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
-		// The modern leg is deliberately strict. Requests without a 2026
-		// envelope are routed to the sessionful legacy leg below, preserving the
-		// existing 2025 Streamable HTTP behavior and session map.
+		// Session tracking: sessionId -> { server, transport, principal }
+		const sessions = new Map<
+			string,
+			{
+				server: McpServer;
+				transport: WebStandardStreamableHTTPServerTransport;
+				principal: McpSessionPrincipal;
+			}
+		>();
+
+		// Modern requests use the SDK handler; older clients keep their session lifecycle.
 		const modernHandler = createMcpHandler(
 			(requestContext: McpRequestContext) => {
 				const configured = createConfiguredServer({
@@ -1897,7 +1753,7 @@ Authentication:
 			return userContext;
 		}
 
-		Bun.serve({
+		const httpServer = Bun.serve({
 			hostname: process.env.HOST || "0.0.0.0",
 			port,
 			async fetch(req: Request): Promise<Response> {
@@ -2015,7 +1871,7 @@ Authentication:
 					// Modern requests are stateless and do not use MCP-Session-Id.
 					// isLegacyRequest reads a clone, so the original body remains
 					// available to the selected handler.
-					if (!(await isLegacyRequest(req))) {
+					if (!CONFIG.protocol.legacyCompatibility || !(await isLegacyRequest(req))) {
 						const response = await modernHandler.fetch(req, { authInfo });
 						for (const [k, v] of Object.entries(corsHeaders)) {
 							if (!response.headers.has(k)) response.headers.set(k, v);
@@ -2115,6 +1971,7 @@ Authentication:
 			},
 		});
 
+		stopTransport = () => httpServer.stop(true);
 		logFunc(`Bun server listening on http://localhost:${port}`);
 		logFunc("  MCP Endpoint: /mcp (Streamable HTTP)");
 		logFunc("  OAuth Discovery: /.well-known/oauth-protected-resource");

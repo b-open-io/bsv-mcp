@@ -5571,6 +5571,14 @@ function object2(shape, params) {
   };
   return new ZodObject(def);
 }
+function strictObject(shape, params) {
+  return new ZodObject({
+    type: "object",
+    shape,
+    catchall: never(),
+    ...normalizeParams(params)
+  });
+}
 function looseObject(shape, params) {
   return new ZodObject({
     type: "object",
@@ -12915,6 +12923,33 @@ function buildInputRequired(spec) {
     ...spec.inputRequests !== undefined && { inputRequests: spec.inputRequests },
     ...spec.requestState !== undefined && { requestState: spec.requestState }
   };
+}
+function inputResponse(responses, key) {
+  if (responses === undefined || typeof responses !== "object" || responses === null)
+    return { kind: "missing" };
+  const entry = responses[key];
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry))
+    return { kind: "missing" };
+  const candidate = entry;
+  if (candidate["action"] === "accept" || candidate["action"] === "decline" || candidate["action"] === "cancel") {
+    const content = candidate["content"];
+    return {
+      kind: "elicit",
+      action: candidate["action"],
+      ...content !== null && typeof content === "object" && !Array.isArray(content) && { content }
+    };
+  }
+  if (Array.isArray(candidate["roots"]))
+    return {
+      kind: "roots",
+      roots: candidate["roots"]
+    };
+  if (typeof candidate["role"] === "string" && candidate["content"] !== undefined)
+    return {
+      kind: "sampling",
+      result: candidate
+    };
+  return { kind: "missing" };
 }
 function inputRequiredRoundsExceededMessage(method, maxRounds) {
   return `Multi-round-trip request '${method}' still required input after ${maxRounds} rounds (inputRequired.maxRounds)`;
@@ -24403,6 +24438,94 @@ function createMcpHandler(factory, options = {}) {
     }
   };
 }
+function bytesToBase64Url(bytes) {
+  let bin = "";
+  for (const b of bytes)
+    bin += String.fromCodePoint(b);
+  return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+function constantTimeTagEqual(a, b) {
+  if (a.length !== b.length)
+    return false;
+  let r = 0;
+  for (let i = 0;i < a.length; i++)
+    r |= a.codePointAt(i) ^ b.codePointAt(i);
+  return r === 0;
+}
+function base64UrlToBytes(s) {
+  const b64 = s.replaceAll("-", "+").replaceAll("_", "/");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0;i < bin.length; i++)
+    bytes[i] = bin.codePointAt(i);
+  return bytes;
+}
+function createRequestStateCodec(options) {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined)
+    throw new TypeError("createRequestStateCodec requires the Web Crypto API (globalThis.crypto.subtle); see https://ts.sdk.modelcontextprotocol.io/v2/troubleshooting for the Node.js polyfill instructions");
+  const keyBytes = typeof options.key === "string" ? new TextEncoder().encode(options.key) : Uint8Array.from(options.key);
+  if (keyBytes.byteLength < 32)
+    throw new RangeError(`createRequestStateCodec: key must be at least 32 bytes (got ${keyBytes.byteLength})`);
+  const ttlSeconds = options.ttlSeconds ?? 600;
+  if (!Number.isFinite(ttlSeconds))
+    throw new RangeError("createRequestStateCodec: ttlSeconds must be a finite number");
+  const bind = options.bind;
+  let cryptoKey;
+  const importedKey = () => cryptoKey ??= subtle.importKey("raw", keyBytes, {
+    name: "HMAC",
+    hash: "SHA-256"
+  }, false, ["sign", "verify"]);
+  const utf8 = new TextEncoder;
+  const BIND_LABEL = "mcp.requestState.bind:";
+  const bindTag = async (value) => {
+    return bytesToBase64Url(new Uint8Array(await subtle.sign("HMAC", await importedKey(), utf8.encode(BIND_LABEL + value))).slice(0, 16));
+  };
+  return {
+    async mint(payload, ctx) {
+      const envelope = {
+        p: payload,
+        exp: Math.floor(Date.now() / 1000) + ttlSeconds
+      };
+      if (bind !== undefined) {
+        if (ctx === undefined)
+          throw new TypeError("createRequestStateCodec: mint() requires ctx when a bind callback is configured");
+        envelope.b = await bindTag(bind(ctx));
+      }
+      const body = bytesToBase64Url(utf8.encode(JSON.stringify(envelope)));
+      return `${PREFIX}${body}.${bytesToBase64Url(new Uint8Array(await subtle.sign("HMAC", await importedKey(), utf8.encode(PREFIX + body))))}`;
+    },
+    async verify(state, ctx) {
+      const dot = state.lastIndexOf(".");
+      if (!state.startsWith(PREFIX) || dot <= 3)
+        throw new Error("malformed");
+      const body = state.slice(3, dot);
+      let macBytes;
+      try {
+        macBytes = base64UrlToBytes(state.slice(dot + 1));
+      } catch {
+        throw new Error("malformed");
+      }
+      if (!await subtle.verify("HMAC", await importedKey(), macBytes, utf8.encode(PREFIX + body)))
+        throw new Error("mac");
+      let envelope;
+      try {
+        envelope = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(base64UrlToBytes(body)));
+      } catch {
+        throw new Error("malformed");
+      }
+      if (typeof envelope.exp !== "number" || envelope.exp < Math.floor(Date.now() / 1000))
+        throw new Error("expired");
+      if (bind !== undefined) {
+        const expected = await bindTag(bind(ctx));
+        if (envelope.b === undefined || !constantTimeTagEqual(envelope.b, expected))
+          throw new Error("bind");
+      } else if (envelope.b !== undefined)
+        throw new Error("bind");
+      return envelope.p;
+    }
+  };
+}
 var PerRequestHTTPServerTransport = class {
   onclose;
   onerror;
@@ -25215,7 +25338,7 @@ data:
       }
     }
   }
-};
+}, PREFIX = "v1.";
 var init_dist = __esm(() => {
   init_mcp_DXXb3Vv3();
   init_src_CX2iR2pK();
@@ -25750,7 +25873,7 @@ var init_package = __esm(() => {
     name: "bsv-mcp",
     module: "dist/index.js",
     type: "module",
-    version: "0.4.0",
+    version: "0.5.0",
     license: "MIT",
     author: "satchmo",
     description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -72613,6 +72736,8 @@ var init_getPrice = __esm(() => {
 });
 
 // utils/externalWalletConfig.ts
+import { createHash } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 function markExternalWalletContext(ctx) {
   Object.defineProperty(ctx, EXTERNAL_WALLET_CONTEXT, {
     value: true,
@@ -72628,8 +72753,12 @@ function isExternalWalletContext(ctx) {
 function readExternalWalletConfig(env = process.env) {
   const raw = env.BRC100_WALLET_URL;
   if (raw === undefined) {
-    if (env.BRC100_WALLET_ORIGINATOR !== undefined) {
-      throw new Error("BRC100_WALLET_ORIGINATOR requires BRC100_WALLET_URL");
+    if ([
+      "BRC100_WALLET_ORIGINATOR",
+      "BRC100_WALLET_PUBLIC_KEY",
+      "BRC100_WALLET_ROLES"
+    ].some((name) => env[name] !== undefined)) {
+      throw new Error("External wallet configuration requires BRC100_WALLET_URL");
     }
     return;
   }
@@ -72651,7 +72780,15 @@ function readExternalWalletConfig(env = process.env) {
   if (!raw || raw !== raw.trim() || /[\\\s@?]/.test(raw) || url.username || url.password || raw.includes("#") || url.search || !(url.protocol === "https:" || url.protocol === "http:" && loopback)) {
     throw new Error("BRC100_WALLET_URL requires HTTPS or HTTP loopback, without credentials, queries or fragments");
   }
-  const originator = env.BRC100_WALLET_ORIGINATOR ?? "bsv-mcp.local";
+  const projectRoot = env.BSV_MCP_PROJECT_ROOT;
+  const projectId = env.BSV_MCP_PROJECT_ID;
+  let projectOrigin;
+  if (projectRoot !== undefined || projectId !== undefined) {
+    if (!projectRoot || !isAbsolute(projectRoot) || !projectId || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
+      throw new Error("External project wallets require an absolute BSV_MCP_PROJECT_ROOT and valid BSV_MCP_PROJECT_ID together");
+    projectOrigin = `project-${createHash("sha256").update(JSON.stringify([resolve(projectRoot), projectId])).digest("hex").slice(0, 32)}.bsv-mcp.local`;
+  }
+  const originator = env.BRC100_WALLET_ORIGINATOR ?? projectOrigin ?? "bsv-mcp.local";
   let origin;
   try {
     origin = new URL(originator.includes("://") ? originator : `http://${originator}`);
@@ -72661,13 +72798,54 @@ function readExternalWalletConfig(env = process.env) {
   if (!originator || /[\s\\]/.test(originator) || originator.length >= 250 || !["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || /[#?@]/.test(originator) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[::1\])$/i.test(origin.hostname) || origin.hostname.toLowerCase() === "admin.bsv-mcp.internal") {
     throw new Error("BRC100_WALLET_ORIGINATOR must be a non-admin domain or HTTP(S) origin without credentials, path, query or fragment");
   }
-  return { url: url.toString().replace(/\/$/, ""), originator };
+  const config = {
+    url: url.toString().replace(/\/$/, ""),
+    originator
+  };
+  if (env.BRC100_WALLET_PUBLIC_KEY !== undefined) {
+    const pin = env.BRC100_WALLET_PUBLIC_KEY;
+    if (!/^0[23][0-9a-f]{64}$/i.test(pin))
+      throw new Error("BRC100_WALLET_PUBLIC_KEY must be a compressed public key");
+    config.expectedPublicKey = PublicKey.fromString(pin).toString();
+  }
+  if (env.BRC100_WALLET_ROLES !== undefined) {
+    const role = object2({
+      url: string2(),
+      originator: string2().optional(),
+      expectedPublicKey: string2().optional()
+    }).strict().nullable().optional();
+    const parsed = object2({
+      payments: role,
+      identity: role,
+      ordinals: role,
+      encryption: role
+    }).strict().parse(JSON.parse(env.BRC100_WALLET_ROLES));
+    config.roles = {};
+    for (const name of [
+      "payments",
+      "identity",
+      "ordinals",
+      "encryption"
+    ]) {
+      const selected = parsed[name];
+      config.roles[name] = selected ? readExternalWalletConfig({
+        BRC100_WALLET_URL: selected.url,
+        BRC100_WALLET_ORIGINATOR: selected.originator ?? originator,
+        BRC100_WALLET_PUBLIC_KEY: selected.expectedPublicKey
+      }) : null;
+    }
+    if (!Object.values(config.roles).some(Boolean))
+      throw new Error("Assign at least one external wallet role");
+  }
+  return config;
 }
 async function initializeKeysForWalletMode(external, loadLocalKeys) {
   return external ? undefined : loadLocalKeys();
 }
 var EXTERNAL_WALLET_CONTEXT;
 var init_externalWalletConfig = __esm(() => {
+  init_mod();
+  init_zod();
   EXTERNAL_WALLET_CONTEXT = Symbol.for("bsv-mcp.external-wallet-context");
 });
 
@@ -82634,7 +82812,7 @@ function registerStatusTool(server, config) {
       idempotentHint: true,
       openWorldHint: true
     }
-  }, async ({ checkServices }) => {
+  }, async ({ checkServices }, ctx) => {
     const chain = config.ctx?.chain ?? configuredChain();
     const base = config.ctx?.services?.baseUrl ?? config.services?.baseUrl ?? onesatUrl(chain);
     let service = { status: "not_checked" };
@@ -82667,6 +82845,10 @@ function registerStatusTool(server, config) {
     };
     const data = {
       version: package_default.version,
+      mcp: {
+        protocolVersion: ctx.mcpReq.envelope ? Reflect.get(ctx.mcpReq.envelope, "io.modelcontextprotocol/protocolVersion") ?? null : null,
+        requestFormat: ctx.mcpReq.envelope ? "modern" : "legacy"
+      },
       chain,
       security: {
         vaultMigration,
@@ -84386,6 +84568,183 @@ var init_peerPayments = __esm(() => {
   });
 });
 
+// utils/mcpSessionPrincipal.ts
+function nonEmptyString(value) {
+  if (typeof value !== "string")
+    return;
+  return value.length > 0 ? value : undefined;
+}
+function getMcpSessionPrincipal(authInfo) {
+  const userId = nonEmptyString(authInfo?.extra?.userId);
+  if (userId)
+    return `user:${userId}`;
+  const clientId = nonEmptyString(authInfo?.clientId);
+  if (clientId)
+    return `client:${clientId}`;
+  return ANONYMOUS_MCP_SESSION_PRINCIPAL;
+}
+function isMcpSessionPrincipalMatch(boundPrincipal, authInfo) {
+  return boundPrincipal === getMcpSessionPrincipal(authInfo);
+}
+var ANONYMOUS_MCP_SESSION_PRINCIPAL = "anonymous";
+
+// utils/walletRoleRouting.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+function basketRole(basket) {
+  if (basket === "bap")
+    return "identity";
+  return typeof basket === "string" && assetBaskets.has(basket) ? "ordinals" : undefined;
+}
+function createWalletRoleRouting(roles) {
+  const scope = new AsyncLocalStorage;
+  const bindings = actionBindings.get(roles) ?? new Map;
+  actionBindings.set(roles, bindings);
+  const roleContext = (role) => role === "encryption" ? roles.encryption === undefined ? roles.identity : roles.encryption ?? undefined : roles[role];
+  const primary = roles.payments ?? roles.identity ?? roles.ordinals ?? roles.encryption;
+  if (!primary)
+    throw new Error("No wallet key roles are assigned");
+  const wallet = new Proxy(Object.create(null), {
+    get(_target, property) {
+      if (typeof property !== "string")
+        return;
+      return async (...args) => {
+        const invocation = scope.getStore();
+        if (!invocation)
+          throw new Error("Wallet role selection requires an active tool request");
+        const input = args[0] ?? {};
+        const reference = typeof input.reference === "string" ? input.reference : undefined;
+        const candidates = reference ? [...bindings.entries()].filter(([key]) => key.endsWith(`\x00${reference}`)).map(([, binding]) => binding) : [];
+        if (!invocation.role && candidates.length > 1)
+          throw new Error("This action reference exists in multiple wallets; specify walletRole");
+        const binding = invocation.role && reference ? bindings.get(`${invocation.role}\x00${reference}`) ?? candidates[0] : candidates[0];
+        let role = invocation.role;
+        if (!role && binding && (property === "signAction" || property === "abortAction"))
+          role = binding.role;
+        if (!role) {
+          if (identityMethods.has(property))
+            role = "identity";
+          else if (encryptionMethods.has(property))
+            role = "encryption";
+          else
+            role = basketRole(input.basket) ?? "payments";
+        }
+        if (!invocation.role && property === "createAction" && Array.isArray(input.outputs)) {
+          const outputRoles = new Set(input.outputs.map((output) => basketRole(output?.basket)).filter(Boolean));
+          if (outputRoles.size > 1)
+            throw new Error("Choose walletRole explicitly for an action with multiple key roles");
+          role = [...outputRoles][0] ?? role;
+        }
+        const selected = commonMethods.has(property) && !invocation.role ? primary : roleContext(role);
+        if (!selected)
+          throw new Error(`No ${role} key is assigned. Configure the wallet role before using this operation.`);
+        if (binding && (property === "signAction" || property === "abortAction")) {
+          if (binding.role !== role || binding.wallet !== selected.wallet || binding.principal !== invocation.principal) {
+            throw new Error("Action reference belongs to another wallet role or authenticated user");
+          }
+          if (binding.settling)
+            throw new Error("This action has already been submitted for settlement; inspect wallet history before retrying");
+        }
+        if (property === "createAction" && bindings.size >= 4096)
+          throw new Error("Too many retained action references; restart only after settling pending actions");
+        const method = Reflect.get(selected.wallet, property, selected.wallet);
+        if (typeof method !== "function")
+          throw new Error(`Wallet method ${property} is unavailable`);
+        if (binding && (property === "signAction" || property === "abortAction"))
+          binding.settling = true;
+        const result = await Reflect.apply(method, selected.wallet, args);
+        if (property === "createAction") {
+          const created = result;
+          if (created?.signableTransaction?.reference)
+            bindings.set(`${role}\x00${created.signableTransaction.reference}`, {
+              role,
+              wallet: selected.wallet,
+              principal: invocation.principal
+            });
+        }
+        return result;
+      };
+    }
+  });
+  const ctx = Object.create(Object.getPrototypeOf(primary));
+  const descriptors = Object.getOwnPropertyDescriptors(primary);
+  Reflect.deleteProperty(descriptors, "wallet");
+  Object.defineProperties(ctx, descriptors);
+  Object.defineProperty(ctx, "wallet", { value: wallet, enumerable: true });
+  return {
+    ctx,
+    server(server) {
+      return new Proxy(server, {
+        get(target, property, receiver) {
+          if (property !== "registerTool")
+            return Reflect.get(target, property, receiver);
+          return (name, config, callback) => {
+            const inputSchema = config.inputSchema.extend({
+              walletRole: walletRoleSchema.optional().describe("Select the configured root key for this BRC-100 call. Defaults to the role for the method; action continuations retain their original role.")
+            });
+            return Reflect.apply(target.registerTool, target, [
+              name,
+              { ...config, inputSchema },
+              (args, ctx) => {
+                const { walletRole, ...input } = args;
+                return scope.run({
+                  role: walletRoleSchema.optional().parse(walletRole),
+                  principal: getMcpSessionPrincipal(ctx?.http?.authInfo)
+                }, () => callback(input, ctx));
+              }
+            ]);
+          };
+        }
+      });
+    }
+  };
+}
+var walletRoleSchema, actionBindings, identityMethods, encryptionMethods, commonMethods, assetBaskets;
+var init_walletRoleRouting = __esm(() => {
+  init_zod();
+  walletRoleSchema = _enum([
+    "payments",
+    "identity",
+    "ordinals",
+    "encryption"
+  ]);
+  actionBindings = new WeakMap;
+  identityMethods = new Set([
+    "getPublicKey",
+    "createSignature",
+    "verifySignature",
+    "acquireCertificate",
+    "listCertificates",
+    "proveCertificate",
+    "relinquishCertificate",
+    "discoverByIdentityKey",
+    "discoverByAttributes",
+    "revealCounterpartyKeyLinkage",
+    "revealSpecificKeyLinkage"
+  ]);
+  encryptionMethods = new Set([
+    "encrypt",
+    "decrypt",
+    "createHmac",
+    "verifyHmac"
+  ]);
+  commonMethods = new Set([
+    "isAuthenticated",
+    "waitForAuthentication",
+    "getHeight",
+    "getHeaderForHeight",
+    "getNetwork",
+    "getVersion"
+  ]);
+  assetBaskets = new Set([
+    "1sat",
+    "bsv21",
+    "opns",
+    "lock",
+    "sigma",
+    "bsocial"
+  ]);
+});
+
 // tools/wallet/brc100.ts
 function result(data) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
@@ -84417,38 +84776,12 @@ function parseRequiredJSON(name, s) {
 function identityKeyArg(v) {
   return v === true ? true : undefined;
 }
-function registerBrc100Tools(server, ctx, identityContext) {
-  if (ctx && identityContext !== undefined) {
-    const payments = ctx;
-    const identityMethods = new Set([
-      "getPublicKey",
-      "createSignature",
-      "verifySignature",
-      "createHmac",
-      "verifyHmac",
-      "encrypt",
-      "decrypt",
-      "acquireCertificate",
-      "listCertificates",
-      "proveCertificate",
-      "relinquishCertificate",
-      "discoverByIdentityKey",
-      "discoverByAttributes",
-      "revealCounterpartyKeyLinkage",
-      "revealSpecificKeyLinkage"
-    ]);
-    const wallet = new Proxy(payments.wallet, {
-      get(target, property) {
-        const selected = identityMethods.has(String(property)) ? identityContext?.wallet : target;
-        if (!selected)
-          return async () => {
-            throw new Error("No identity key is assigned. Configure wallet key defaults.");
-          };
-        const value = Reflect.get(selected, property, selected);
-        return typeof value === "function" ? value.bind(selected) : value;
-      }
-    });
-    ctx = Object.assign(Object.create(Object.getPrototypeOf(payments)), payments, { wallet });
+function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
+  const roles = roleContexts ?? (ctx && identityContext !== undefined ? { payments: ctx, identity: identityContext ?? undefined, ordinals: ctx } : undefined);
+  if (roles) {
+    const routing = createWalletRoleRouting(roles);
+    ctx = routing.ctx;
+    server = routing.server(server);
   }
   server.registerTool("wallet_createAction", {
     description: "Creates a new Bitcoin transaction. Handles funding, signing, and broadcasting based on options.",
@@ -85033,6 +85366,7 @@ function registerBrc100Tools(server, ctx, identityContext) {
 var noCtx;
 var init_brc100 = __esm(() => {
   init_zod();
+  init_walletRoleRouting();
   noCtx = {
     content: [{ type: "text", text: "Wallet not initialized." }],
     isError: true
@@ -101557,6 +101891,25 @@ var init_embeddedOwnerRead = __esm(() => {
   EMBEDDED_OWNER_ORIGINATOR = Symbol("bsv-mcp.embedded-owner-originator");
 });
 
+// utils/walletDepositAddress.ts
+async function walletDepositAddress(ctx) {
+  const context = ctx;
+  const owner = context[EMBEDDED_OWNER_ORIGINATOR];
+  const selected = owner ? { ...ctx, wallet: withEmbeddedOwnerDerivation(ctx.wallet, owner) } : ctx;
+  const { derivations } = await deriveDepositAddresses.execute(selected, {
+    prefix: context[WALLET_DEPOSIT_PREFIX] ?? "mcp"
+  });
+  if (!derivations[0])
+    throw new Error("No deposit address was derived");
+  return derivations[0].address;
+}
+var WALLET_DEPOSIT_PREFIX;
+var init_walletDepositAddress = __esm(() => {
+  init_dist7();
+  init_embeddedOwnerRead();
+  WALLET_DEPOSIT_PREFIX = Symbol.for("bsv-mcp.wallet-deposit-prefix");
+});
+
 // tools/wallet/getAddress.ts
 function registerGetAddressTool(server, ctx) {
   server.registerTool("wallet_getAddress", {
@@ -101567,23 +101920,13 @@ function registerGetAddressTool(server, ctx) {
       if (!ctx) {
         throw new Error("BRC-100 wallet context not available");
       }
-      const ownerOriginator = ctx[EMBEDDED_OWNER_ORIGINATOR];
-      const deriveContext = ownerOriginator ? {
-        ...ctx,
-        wallet: withEmbeddedOwnerDerivation(ctx.wallet, ownerOriginator)
-      } : ctx;
-      const { derivations } = await deriveDepositAddresses.execute(deriveContext, {
-        prefix: MCP_ADDRESS_PREFIX
-      });
-      const firstDerivation = derivations[0];
-      if (!firstDerivation)
-        throw new Error("No deposit address was derived");
+      const address = await walletDepositAddress(ctx);
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
-              address: firstDerivation.address,
+              address,
               status: "ok"
             })
           }
@@ -101607,11 +101950,9 @@ function registerGetAddressTool(server, ctx) {
     }
   });
 }
-var MCP_ADDRESS_PREFIX = "mcp";
 var init_getAddress = __esm(() => {
-  init_dist7();
   init_zod();
-  init_embeddedOwnerRead();
+  init_walletDepositAddress();
 });
 
 // node_modules/satoshi-token/dist/index.js
@@ -101699,6 +102040,37 @@ function X3(q, w) {
 }
 var init_dist8 = () => {};
 
+// utils/walletBalance.ts
+async function readWalletBalance(ctx) {
+  const seen = new Set;
+  const sample = [];
+  let totalSatoshis = 0;
+  let expectedCount;
+  do {
+    const result = await ctx.wallet.listOutputs({
+      basket: "default",
+      limit: 1000,
+      offset: seen.size
+    });
+    if (!Number.isSafeInteger(result.totalOutputs) || result.totalOutputs < 0 || result.totalOutputs > 1e5)
+      throw new Error("Wallet output count is invalid or exceeds the balance read limit.");
+    expectedCount ??= result.totalOutputs;
+    if (result.totalOutputs !== expectedCount || !result.outputs.length && seen.size < expectedCount)
+      throw new Error("Wallet outputs changed or a page was incomplete. Retry the balance read.");
+    for (const output of result.outputs) {
+      if (!output.outpoint || seen.has(output.outpoint) || !Number.isSafeInteger(output.satoshis) || output.satoshis < 0)
+        throw new Error("Wallet returned inconsistent outputs. Retry the balance read.");
+      seen.add(output.outpoint);
+      if (sample.length < 50)
+        sample.push(output);
+      totalSatoshis += output.satoshis;
+    }
+    if (seen.size > expectedCount || !Number.isSafeInteger(totalSatoshis))
+      throw new Error("Wallet returned an inconsistent balance.");
+  } while (seen.size < expectedCount);
+  return { satoshis: totalSatoshis, utxoCount: seen.size, outputs: sample };
+}
+
 // tools/wallet/getBalance.ts
 function registerWalletGetBalanceTool(server, ctx) {
   server.registerTool("wallet_getBalance", {
@@ -101717,37 +102089,15 @@ function registerWalletGetBalanceTool(server, ctx) {
       };
     }
     try {
-      const seen = new Set;
-      let totalSatoshis = 0;
-      let expectedCount;
-      do {
-        const result = await ctx.wallet.listOutputs({
-          basket: "default",
-          limit: 1000,
-          offset: seen.size
-        });
-        if (!Number.isSafeInteger(result.totalOutputs) || result.totalOutputs < 0 || result.totalOutputs > 1e5)
-          throw new Error("Wallet output count is invalid or exceeds the balance read limit.");
-        expectedCount ??= result.totalOutputs;
-        if (result.totalOutputs !== expectedCount || !result.outputs.length && seen.size < expectedCount)
-          throw new Error("Wallet outputs changed or a page was incomplete. Retry the balance read.");
-        for (const output of result.outputs) {
-          if (!output.outpoint || seen.has(output.outpoint) || !Number.isSafeInteger(output.satoshis) || output.satoshis < 0)
-            throw new Error("Wallet returned inconsistent outputs. Retry the balance read.");
-          seen.add(output.outpoint);
-          totalSatoshis += output.satoshis;
-        }
-        if (seen.size > expectedCount || !Number.isSafeInteger(totalSatoshis))
-          throw new Error("Wallet returned an inconsistent balance.");
-      } while (seen.size < expectedCount);
+      const balance = await readWalletBalance(ctx);
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
-              satoshis: totalSatoshis,
-              bsv: X3(totalSatoshis),
-              utxoCount: seen.size
+              satoshis: balance.satoshis,
+              bsv: X3(balance.satoshis),
+              utxoCount: balance.utxoCount
             })
           }
         ]
@@ -111480,7 +111830,7 @@ function registerRefreshUtxosTool(server, ctx) {
         throw new Error("BRC-100 wallet context not available");
       }
       const result = await syncAddresses.execute(ctx, {
-        prefix: MCP_ADDRESS_PREFIX2,
+        prefix: MCP_ADDRESS_PREFIX,
         count: 1
       });
       return {
@@ -111503,7 +111853,7 @@ function registerRefreshUtxosTool(server, ctx) {
     }
   });
 }
-var MCP_ADDRESS_PREFIX2 = "mcp";
+var MCP_ADDRESS_PREFIX = "mcp";
 var init_refreshUtxos = __esm(() => {
   init_dist7();
   init_zod();
@@ -112273,25 +112623,29 @@ var init_unlockBsv = __esm(() => {
 
 // tools/wallet/tools.ts
 function registerWalletTools(server, wallet, config) {
+  const payments = config.roleContexts ? config.roleContexts.payments : config.ctx;
   const assets = config.roleContexts ? config.roleContexts.ordinals : config.ctx;
   const identity = config.roleContexts ? config.roleContexts.identity : config.ctx;
-  registerSendBsvTool(server, config.ctx);
-  registerGetAddressTool(server, config.ctx);
+  if (!config.roleContexts || payments)
+    registerSendBsvTool(server, payments);
+  if (!config.roleContexts || payments)
+    registerGetAddressTool(server, payments);
   if (config.scope === "payments") {
     if (config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false)
-      registerWalletGetBalanceTool(server, config.ctx);
+      registerWalletGetBalanceTool(server, payments);
     return;
   }
   if (!config.roleContexts || assets)
     registerPurchaseListingTool(server, assets);
   if (!config.roleContexts || assets)
     registerTransferOrdTokenTool(server, assets);
-  registerRefreshUtxosTool(server, config.ctx);
+  if (!config.roleContexts || payments)
+    registerRefreshUtxosTool(server, payments);
   const allowWholeWalletBalance = config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false;
-  if (allowWholeWalletBalance) {
-    registerWalletGetBalanceTool(server, config.ctx);
+  if (allowWholeWalletBalance && (!config.roleContexts || payments)) {
+    registerWalletGetBalanceTool(server, payments);
   }
-  registerBrc100Tools(server, config.ctx, config.roleContexts ? identity ?? null : undefined);
+  registerBrc100Tools(server, config.ctx, config.roleContexts ? identity ?? null : undefined, config.roleContexts);
   if (!config.roleContexts || identity)
     registerRevealDelegationTool(server, identity);
   if (!config.roleContexts || assets)
@@ -112314,7 +112668,8 @@ function registerWalletTools(server, wallet, config) {
     registerListOrdinalTool(server, assets);
   if (!config.roleContexts || assets)
     registerCancelListingTool(server, assets);
-  registerSendAllBsvTool(server, config.ctx);
+  if (!config.roleContexts || payments)
+    registerSendAllBsvTool(server, payments);
   if (!config.roleContexts || assets)
     registerLockBsvTool(server, assets);
   if (!config.roleContexts || assets)
@@ -112323,7 +112678,8 @@ function registerWalletTools(server, wallet, config) {
     registerOpnsRegisterTool(server, assets);
   if (!config.roleContexts || assets)
     registerOpnsDeregisterTool(server, assets);
-  registerSweepBsvTool(server, config.ctx);
+  if (!config.roleContexts || payments)
+    registerSweepBsvTool(server, payments);
   if (!config.roleContexts || assets)
     registerSweepOrdinalsTool(server, assets);
   if (!config.roleContexts || assets)
@@ -112442,7 +112798,7 @@ function captureConfig(config) {
     allowWholeWalletBalance: !externalWallet,
     scope: config.walletScope
   })) : new Map;
-  const peerPaymentsCtx = config.ctx;
+  const peerPaymentsCtx = config.roleContexts ? config.roleContexts.payments : config.ctx;
   const peerPayments = categoryEnabled(config, "wallet_payments") && peerPaymentsCtx && !externalWallet && !config.integratedWallet?.isDroplitMode && config.walletScope !== "payments" ? captureRegistrations((server) => registerPeerPaymentsTool(server, peerPaymentsCtx, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet)) : new Map;
   return { bsv, ordinals, utility, wallet, peerPayments };
 }
@@ -112981,7 +113337,7 @@ var init_friend = __esm(() => {
 });
 
 // utils/accounts.ts
-import { createHash, randomBytes } from "node:crypto";
+import { createHash as createHash2, randomBytes } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -113048,7 +113404,7 @@ function readAccount(name = accountName(), root = accountsRoot()) {
   }
 }
 function sha256Hex(raw) {
-  return createHash("sha256").update(raw).digest("hex");
+  return createHash2("sha256").update(raw).digest("hex");
 }
 function readAccountRevision(name = accountName(), root = accountsRoot()) {
   regularPath(root, true);
@@ -113540,7 +113896,7 @@ async function decryptData(encryptedBackup, passphrase, attemptIterations) {
 function hexToBytes3(hex) {
   return Uint8Array.from(toArray22(hex, "hex"));
 }
-function bytesToBase64Url(bytes) {
+function bytesToBase64Url2(bytes) {
   const b64 = toBase6422(Array.from(bytes));
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 }
@@ -113565,8 +113921,8 @@ async function importEcdhPublicKey(publicKeyHex, label) {
   const jwk = {
     kty: "EC",
     crv: "P-256",
-    x: bytesToBase64Url(x),
-    y: bytesToBase64Url(y),
+    x: bytesToBase64Url2(x),
+    y: bytesToBase64Url2(y),
     ext: true
   };
   try {
@@ -116525,6 +116881,66 @@ var init_bap3 = __esm(() => {
   logFunc = console.error;
 });
 
+// tools/bap/context.ts
+function registerContextBapTools(server, ctx, disableBroadcasting = false) {
+  function register(name, description, schema, execute, broadcast, readOnly = false) {
+    registerTool(server, {
+      name,
+      description,
+      schema,
+      annotations: {
+        readOnlyHint: readOnly,
+        destructiveHint: !readOnly,
+        idempotentHint: readOnly,
+        openWorldHint: broadcast
+      },
+      handler: async (input) => {
+        try {
+          if (broadcast)
+            assertBroadcastAllowed(name, disableBroadcasting);
+          return response(await execute(input));
+        } catch (error) {
+          return response({
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    });
+  }
+  register("bap_getIdentity", "Read the selected identity wallet's deterministic BAP ID, publication status and root signing address. Uses BRC-100 derivation; exports no private keys.", object2({}), async () => {
+    const { publicKey } = await ctx.wallet.getPublicKey({
+      protocolID: BAP_PROTOCOL_ID,
+      keyID: "identity-0",
+      counterparty: "self"
+    });
+    return {
+      bapId: await computeBapId(ctx),
+      published: await resolveBapId(ctx) !== null,
+      rootPublicKey: publicKey,
+      rootAddress: PublicKey.fromString(publicKey).toAddress()
+    };
+  }, false, true);
+  register("bap_publishIdentity", "Publish the selected identity wallet's BAP ID with an AIP signature. The identity wallet funds the transaction and retains its BAP records; its signer controls approval.", object2({}), (input) => publishIdentity.execute(ctx, input), true);
+  register("bap_rotateIdentity", "Rotate the selected identity wallet's BAP signing key, publish its signed successor record, and retire the preceding wallet record.", object2({}), (input) => rotateIdentity.execute(ctx, input), true);
+  register("bap_attest", "Publish a BAP attestation signed by the selected identity wallet's current derived signing key.", object2({
+    attestationHash: string2().regex(/^[0-9a-f]{64}$/i),
+    counter: string2().regex(/^\d+$/).max(20).optional()
+  }), (input) => attest.execute(ctx, input), true);
+  register("bap_updateProfile", "Publish a BAP profile using the selected identity wallet. Publishes its initial identity if needed. Profile data becomes public on chain.", object2({
+    profile: record(string2(), unknown()).refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 1e5, "Profile exceeds 100 KB")
+  }), (input) => updateProfile.execute(ctx, input), true);
+  register("bap_getProfile", "Read the current profile from the selected identity wallet's BAP basket. The SDK also relinquishes duplicate stale profile records in that wallet.", object2({}), (input) => getProfile.execute(ctx, input), false);
+}
+var response = (value) => ({
+  content: [{ type: "text", text: JSON.stringify(value) }],
+  ...value && typeof value === "object" && "error" in value && value.error ? { isError: true } : {}
+});
+var init_context = __esm(() => {
+  init_dist7();
+  init_mod();
+  init_zod();
+});
+
 // tools/bsocial/bmapFollow.ts
 async function readBmapFollows(args) {
   try {
@@ -116813,6 +117229,48 @@ var init_bmapReadPosts = __esm(() => {
   });
 });
 
+// tools/bsocial/context.ts
+function registerContextSocialPost(server, ctx, disableBroadcasting = false) {
+  server.registerTool("bsocial_createPost", {
+    description: "Publish a BSocial post with an AIP signature from the selected BAP identity wallet. Requires a published identity. The identity wallet funds the transaction; content becomes public on chain.",
+    inputSchema: strictObject({
+      content: string2().min(1).max(1e5),
+      contentType: _enum(["text/plain", "text/markdown"]).default("text/plain"),
+      app: string2().min(1).max(100).default("bsv-mcp"),
+      tags: array(string2().max(100)).max(50).optional()
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    }
+  }, async (input) => {
+    try {
+      assertBroadcastAllowed("bsocial_createPost", disableBroadcasting);
+      const result = await createSocialPost.execute(ctx, input);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        ...result.error ? { isError: true } : {}
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: error instanceof Error ? error.message : String(error)
+          }
+        ],
+        isError: true
+      };
+    }
+  });
+}
+var init_context2 = __esm(() => {
+  init_dist7();
+  init_zod();
+});
+
 // tools/bsocial/createPost.ts
 async function createSocialPost2(args, wallet) {
   try {
@@ -117087,7 +117545,9 @@ function registerBsocialTools(server, config = {}) {
   console.error("✅ Registered bmap_readLikes tool");
   registerBmapReadFollowsTool(server);
   console.error("✅ Registered bmap_readFollows tool");
-  if (config.wallet) {
+  if (config.identityContext) {
+    registerContextSocialPost(server, config.identityContext, config.disableBroadcasting);
+  } else if (config.wallet) {
     registerCreatePostTool(server, config.wallet);
     console.error("✅ Registered bsocial_createPost tool");
   } else {
@@ -117098,6 +117558,7 @@ var init_bsocial2 = __esm(() => {
   init_bmapFollow();
   init_bmapLikes();
   init_bmapReadPosts();
+  init_context2();
   init_createPost();
   init_readPosts();
 });
@@ -117228,7 +117689,7 @@ var init_x402_http = __esm(() => {
 });
 
 // utils/x402-protocol.ts
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 function canonical(value) {
   if (typeof value === "string" && /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value))
     throw new Error("Invalid Unicode in challenge");
@@ -117275,7 +117736,7 @@ function parseChallenge(raw, request) {
     payUrl: payUrl.toString()
   };
 }
-var sha2562 = (value) => createHash2("sha256").update(value).digest("hex"), hex, script2, amount, compact, bound;
+var sha2562 = (value) => createHash3("sha256").update(value).digest("hex"), hex, script2, amount, compact, bound;
 var init_x402_protocol = __esm(() => {
   init_mod();
   init_zod();
@@ -156495,6 +156956,197 @@ var init_accountStore = __esm(() => {
   init_keyManager();
 });
 
+// utils/mcpApprovalFlow.ts
+import { AsyncLocalStorage as AsyncLocalStorage2 } from "node:async_hooks";
+import { createHash as createHash4, randomBytes as randomBytes2, randomUUID as randomUUID2 } from "node:crypto";
+function requestScopedElicitation(prompt, signal) {
+  return approvalScope.getStore()?.elicit(prompt, signal);
+}
+async function elicitMcpForm(prompt, server, signal) {
+  signal?.throwIfAborted();
+  const scoped = requestScopedElicitation(prompt, signal);
+  if (scoped)
+    return scoped;
+  if (!server)
+    throw new Error("The MCP server is unavailable");
+  if (!server.server.getClientCapabilities()?.elicitation?.form)
+    throw new Error("The MCP client does not support form elicitation");
+  return server.server.elicitInput(prompt, signal ? { signal } : undefined);
+}
+function runWithLegacyApprovalContext(server, ctx, callback) {
+  return approvalScope.run({ elicit: async (prompt, signal) => {
+    if (!server.server.getClientCapabilities()?.elicitation?.form)
+      throw new Error("The MCP client does not support form elicitation");
+    const requestSignal = signal ? AbortSignal.any([signal, ctx.mcpReq.signal]) : ctx.mcpReq.signal;
+    requestSignal.throwIfAborted();
+    return ctx.mcpReq.send({ method: "elicitation/create", params: { ...prompt, mode: "form" } }, { signal: requestSignal });
+  } }, callback);
+}
+function errorResult(message) {
+  return { isError: true, content: [{ type: "text", text: message }] };
+}
+function stableJson(value) {
+  if (Array.isArray(value))
+    return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+class McpApprovalFlow {
+  ttlMs;
+  capacity;
+  operations = new Map;
+  codec;
+  constructor(ttlMs = 300000, capacity = 256) {
+    this.ttlMs = ttlMs;
+    this.capacity = capacity;
+    this.codec = createRequestStateCodec({
+      key: randomBytes2(32),
+      ttlSeconds: Math.ceil(ttlMs / 1000),
+      bind: (ctx) => JSON.stringify([
+        ctx.mcpReq.method,
+        getMcpSessionPrincipal(ctx.http?.authInfo),
+        ctx.http?.authInfo?.scopes.slice().sort() ?? []
+      ])
+    });
+  }
+  change(operation) {
+    const notify = operation.notify;
+    operation.changed = new Promise((resolve) => {
+      operation.notify = resolve;
+    });
+    notify();
+  }
+  cancel(operation) {
+    operation.controller.abort(new Error("Approval operation expired or canceled"));
+    const challenge = operation.challenge;
+    operation.challenge = undefined;
+    challenge?.answer({ action: "cancel" });
+    operation.result ??= errorResult("Approval operation expired or canceled. Inspect wallet history before starting another write.");
+    this.change(operation);
+  }
+  close() {
+    for (const operation of this.operations.values()) {
+      clearTimeout(operation.expires);
+      this.cancel(operation);
+    }
+    this.operations.clear();
+  }
+  async run(name, args, ctx, supportsForm, callback) {
+    ctx.mcpReq.signal.throwIfAborted();
+    const fingerprint = createHash4("sha256").update(stableJson([name, args])).digest("hex");
+    const state = ctx.mcpReq.requestState();
+    let id;
+    let operation;
+    if (state !== undefined) {
+      if (typeof state !== "string")
+        throw new Error("Invalid approval continuation");
+      const continuation = await this.codec.verify(state, ctx);
+      const existing = this.operations.get(continuation.id);
+      if (!existing || existing.fingerprint !== fingerprint)
+        throw new Error("Approval continuation does not match this operation or has expired");
+      id = continuation.id;
+      operation = existing;
+      if (continuation.round > operation.round)
+        throw new Error("Invalid approval round");
+      const challenge = operation.challenge;
+      if (challenge?.round === continuation.round) {
+        const response = inputResponse(ctx.mcpReq.inputResponses, "approval");
+        if (response.kind !== "missing") {
+          operation.challenge = undefined;
+          challenge.answer(response.kind === "elicit" ? {
+            action: response.action,
+            content: response.content
+          } : { action: "cancel" });
+        }
+      }
+    } else {
+      if (ctx.mcpReq.inputResponses !== undefined)
+        throw new Error("Approval responses require a valid continuation");
+      if (this.operations.size >= this.capacity)
+        throw new Error("Too many active approval operations; retry later");
+      id = randomUUID2();
+      let notify = () => {};
+      const changed = new Promise((resolve) => {
+        notify = resolve;
+      });
+      operation = {
+        fingerprint,
+        round: 0,
+        changed,
+        notify,
+        controller: new AbortController,
+        expires: setTimeout(() => {
+          this.cancel(operation);
+          this.operations.delete(id);
+        }, this.ttlMs)
+      };
+      operation.expires.unref();
+      this.operations.set(id, operation);
+      const scope = {
+        elicit: async (prompt, signal) => {
+          operation.controller.signal.throwIfAborted();
+          signal?.throwIfAborted();
+          if (!supportsForm)
+            throw new Error("The MCP client does not support form elicitation");
+          if (operation.challenge)
+            throw new Error("Concurrent approvals within one operation are unsupported");
+          const response = new Promise((answer) => {
+            operation.challenge = { round: ++operation.round, prompt, answer };
+          });
+          this.change(operation);
+          const abort = () => this.cancel(operation);
+          signal?.addEventListener("abort", abort, { once: true });
+          if (signal?.aborted)
+            abort();
+          try {
+            return await response;
+          } finally {
+            signal?.removeEventListener("abort", abort);
+          }
+        }
+      };
+      approvalScope.run(scope, async () => callback(operation.controller.signal)).then((result) => {
+        operation.result = result;
+        this.change(operation);
+      }, (error) => {
+        operation.result = errorResult(error instanceof Error ? error.message : String(error));
+        this.change(operation);
+      });
+    }
+    const abort = () => this.cancel(operation);
+    ctx.mcpReq.signal.addEventListener("abort", abort, { once: true });
+    if (ctx.mcpReq.signal.aborted)
+      abort();
+    try {
+      while (!operation.result && !operation.challenge)
+        await operation.changed;
+      if (operation.result)
+        return operation.result;
+      const challenge = operation.challenge;
+      if (!challenge)
+        throw new Error("Approval operation has no pending request");
+      return inputRequired({
+        inputRequests: { approval: inputRequired.elicit(challenge.prompt) },
+        requestState: await this.codec.mint({ id, round: challenge.round }, ctx)
+      });
+    } finally {
+      ctx.mcpReq.signal.removeEventListener("abort", abort);
+      if (operation.round === 0 && operation.result) {
+        clearTimeout(operation.expires);
+        this.operations.delete(id);
+      }
+    }
+  }
+}
+var approvalScope;
+var init_mcpApprovalFlow = __esm(() => {
+  init_dist();
+  approvalScope = new AsyncLocalStorage2;
+});
+
 // tools/wallet/accounts.ts
 import { existsSync as existsSync3, readdirSync as readdirSync2, rmSync as rmSync3 } from "node:fs";
 import { join as join3 } from "node:path";
@@ -156507,9 +157159,7 @@ function registerAccountTools(server) {
     }
   };
   const approve = async (message) => {
-    if (!server.server.getClientCapabilities()?.elicitation)
-      throw new Error("Account changes require human approval. Use the corresponding bsv-mcp command in a local terminal.");
-    const response = await server.server.elicitInput({
+    const response = await elicitMcpForm({
       message,
       requestedSchema: {
         type: "object",
@@ -156518,7 +157168,7 @@ function registerAccountTools(server) {
         },
         required: ["approved"]
       }
-    });
+    }, server);
     if (response.action !== "accept" || response.content?.approved !== true)
       throw new Error("Account change declined");
   };
@@ -156595,6 +157245,7 @@ var init_accounts2 = __esm(() => {
   init_accounts();
   init_errors4();
   init_keyManager();
+  init_mcpApprovalFlow();
 });
 
 // utils/droplit.ts
@@ -156858,7 +157509,7 @@ var init_droplit = __esm(() => {
 });
 
 // tools/wallet/droplit.ts
-function errorResult(error) {
+function errorResult2(error) {
   const failure = error instanceof DroplitError ? error : new DroplitError("request_failed", "Droplit operation failed. Check configuration and broadcasting policy.");
   const data = {
     error: failure.code,
@@ -156899,7 +157550,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
         isError: !access.authorized
       };
     } catch (error) {
-      return errorResult(error);
+      return errorResult2(error);
     }
   });
   server.registerTool("droplit_push", {
@@ -156921,7 +157572,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
       assertBroadcastAllowed("droplit_push");
       return createSuccessResponse(await client.push(data, encoding));
     } catch (error) {
-      return errorResult(error);
+      return errorResult2(error);
     }
   });
   server.registerTool("droplit_fund", {
@@ -156942,7 +157593,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
       assertBroadcastAllowed("droplit_fund");
       return createSuccessResponse(await client.fund(rawtx));
     } catch (error) {
-      return errorResult(error);
+      return errorResult2(error);
     }
   });
 }
@@ -157150,14 +157801,22 @@ function registerAllTools(server, config = {}) {
       localAccountAvailable: config.localAccountAvailable === true && config.integratedWallet?.isDroplitMode !== true,
       wallet: config.wallet
     };
-    if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
+    const identityContext = config.roleContexts ? config.roleContexts.identity : config.ctx;
+    if (!config.bapPublicOnly && identityContext) {
+      registerBapGetIdTool(server);
+      registerContextBapTools(server, identityContext, config.disableBroadcasting);
+    } else if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
       registerBapTools(server, bapConfig);
     } else {
       registerBapGetIdTool(server, config.identityPk);
     }
   }
   if (enableBsocialTools) {
-    registerBsocialTools(server, { wallet: config.wallet });
+    registerBsocialTools(server, {
+      wallet: config.wallet,
+      identityContext: config.roleContexts ? config.roleContexts.identity : config.ctx,
+      disableBroadcasting: config.disableBroadcasting
+    });
   }
   if (enableWalletTools) {
     const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
@@ -157183,8 +157842,9 @@ function registerAllTools(server, config = {}) {
       };
       registerWalletTools(server, config.wallet, walletToolOptions);
     }
-    if (config.ctx && !externalWallet && config.integratedWallet?.isDroplitMode !== true && config.walletScope !== "payments") {
-      registerPeerPaymentsTool(server, config.ctx, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet);
+    const paymentContext = config.roleContexts ? config.roleContexts.payments : config.ctx;
+    if (paymentContext && !externalWallet && config.integratedWallet?.isDroplitMode !== true && config.walletScope !== "payments") {
+      registerPeerPaymentsTool(server, paymentContext, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet);
     }
   }
   if (enableMneeTools && (!config.ctx || config.wallet)) {
@@ -157198,6 +157858,7 @@ var init_tools2 = __esm(() => {
   init_externalWalletConfig();
   init_peerPaymentReceive();
   init_bap3();
+  init_context();
   init_getId();
   init_bsocial2();
   init_bsv();
@@ -157535,7 +158196,7 @@ async function newPassword() {
 
 // utils/localUiAssets.ts
 import { existsSync as existsSync4, readFileSync as readFileSync2, realpathSync, statSync } from "node:fs";
-import { dirname, extname, isAbsolute, join as join4, relative, sep } from "node:path";
+import { dirname, extname, isAbsolute as isAbsolute2, join as join4, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 function localUiAssetsDirectory(moduleUrl = import.meta.url) {
   const here = dirname(fileURLToPath(moduleUrl));
@@ -157560,7 +158221,7 @@ function readLocalUiAsset(requestPath, directory) {
     const root = realpathSync(directory);
     const path = realpathSync(join4(root, filename));
     const subpath = relative(root, path);
-    if (isAbsolute(subpath) || subpath === ".." || subpath.startsWith(`..${sep}`) || !statSync(path).isFile())
+    if (isAbsolute2(subpath) || subpath === ".." || subpath.startsWith(`..${sep}`) || !statSync(path).isFile())
       return;
     return { body: readFileSync2(path), contentType };
   } catch {
@@ -157592,7 +158253,7 @@ import {
   readFileSync as readFileSync3
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { isAbsolute as isAbsolute2, join as join5 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join5 } from "node:path";
 function readWalletSettings(home = homedir2()) {
   let fd;
   try {
@@ -157624,7 +158285,7 @@ var init_walletSettings = __esm(() => {
   init_accounts();
   walletSourceSchema = object2({
     name: accountNameSchema,
-    directory: string2().min(1).refine(isAbsolute2, "Wallet source directory must be absolute"),
+    directory: string2().min(1).refine(isAbsolute3, "Wallet source directory must be absolute"),
     keyFile: _enum(["keys.json", "root.wif"]).default("keys.json"),
     storageIdentityKey: string2().min(1).max(200).optional(),
     depositPrefix: _enum(["mcp", "1sat"]).optional()
@@ -158559,7 +159220,7 @@ var init_walletRoleDefaults = __esm(() => {
 });
 
 // utils/vaultSetup.ts
-import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 function unavailableMigrationBackend() {
   const reason = "The local Vault migration backend could not be initialized. Check the Vault package and project configuration, then reopen setup.";
@@ -158589,7 +159250,7 @@ async function startVaultSetup(options = {}) {
       migrationBackend = unavailableMigrationBackend();
     }
   }
-  const token = randomBytes2(32).toString("hex");
+  const token = randomBytes3(32).toString("hex");
   const assetsDirectory = options.assetsDirectory ?? localUiAssetsDirectory();
   let origin = "";
   let wizard;
@@ -292227,7 +292888,7 @@ import {
   writeSync as writeSync2
 } from "node:fs";
 import { homedir as homedir5 } from "node:os";
-import { isAbsolute as isAbsolute3, join as join9 } from "node:path";
+import { isAbsolute as isAbsolute4, join as join9 } from "node:path";
 function erasePlaintext(file) {
   regularPath(file);
   const fd = openSync4(file, "r+");
@@ -292243,7 +292904,7 @@ function erasePlaintext(file) {
   rmSync4(file);
 }
 async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join9(homedir5(), ".bsv-mcp") : "", storageIdentityKey) {
-  if (!isAbsolute3(sourceDir) || source === "one-sat" && !storageIdentityKey)
+  if (!isAbsolute4(sourceDir) || source === "one-sat" && !storageIdentityKey)
     throw new Error("OneSat migration requires an absolute source directory and storage identity");
   const sourceFile = join9(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
   const target = accountDir(name, root);
@@ -292425,6 +293086,266 @@ var init_accountCommands = __esm(() => {
   init_keyManager();
 });
 
+// utils/appSweep.ts
+import { randomUUID as randomUUID3 } from "node:crypto";
+function createAppSweep(ctx, roles) {
+  const pending = pendingByWallet.get(ctx.wallet) ?? new Map;
+  pendingByWallet.set(ctx.wallet, pending);
+  const cleanupExpired = async () => {
+    for (const [id, entry] of pending)
+      if (entry.expiresAt <= Date.now()) {
+        pending.delete(id);
+        if (entry.status === "pending")
+          await entry.wallet.abortAction({ reference: entry.providerReference }).catch(() => {});
+      }
+  };
+  return {
+    async prepare(input, principal) {
+      input = appSweepInputSchema.parse(input);
+      await cleanupExpired();
+      if (pending.size >= 256)
+        throw new Error("Too many retained sweeps; wait for pending sweeps to expire");
+      const selected = roles ? input.sweepType === "bsv" ? roles.payments : roles.ordinals : ctx;
+      if (!selected)
+        throw new Error(`No ${input.sweepType === "bsv" ? "payments" : "ordinals"} wallet role is assigned`);
+      if (!selected.services)
+        throw new Error("Wallet services are unavailable");
+      const { wallet, services } = selected;
+      const outpoints = input.inputs.map((value) => value.outpoint.toLowerCase());
+      if (new Set(outpoints).size !== outpoints.length)
+        throw new Error("Duplicate sweep input");
+      const txids = [...new Set(outpoints.map((value) => value.slice(0, 64)))];
+      const beef = await services.getBeefForTxid(txids[0]);
+      for (const txid of txids.slice(1))
+        beef.mergeBeef(await services.getBeefForTxid(txid));
+      const inputs = input.inputs.map((value, index) => {
+        const outpoint = outpoints[index];
+        const vout = Number(outpoint.slice(65));
+        if (!Number.isSafeInteger(vout) || vout > 4294967295)
+          throw new Error("Invalid source output index");
+        const source = beef.findTxid(outpoint.slice(0, 64))?.tx;
+        const output = source?.outputs[vout];
+        if (!source || source.id("hex") !== outpoint.slice(0, 64) || !output || output.satoshis !== value.satoshis || output.lockingScript.toHex() !== value.lockingScript.toLowerCase())
+          throw new Error("Sweep input does not match its source transaction");
+        if (input.sweepType !== "bsv" && output.satoshis !== 1)
+          throw new Error("Asset sweep requires one-satoshi inputs to preserve ordinal positions");
+        return {
+          ...value,
+          outpoint,
+          lockingScript: output.lockingScript.toHex(),
+          satoshis: output.satoshis
+        };
+      });
+      const metadata = input.sweepType === "bsv21" ? {} : await services.ordfs.bulkMetadata(outpoints.map((value) => `${value}:-2`));
+      const outputs = [];
+      const labels = [];
+      if (input.sweepType === "bsv") {
+        for (const value of inputs) {
+          const meta = metadata[`${value.outpoint}:-2`] ?? metadata[value.outpoint];
+          if (value.satoshis <= 1 || !/^76a914[0-9a-f]{40}88ac$/.test(value.lockingScript) || meta?.contentType)
+            throw new Error("An asset or non-P2PKH input cannot be swept as BSV funding");
+        }
+      } else if (input.sweepType === "ordinals") {
+        for (const value of inputs) {
+          const meta = metadata[`${value.outpoint}:-2`] ?? metadata[value.outpoint];
+          if (!meta?.origin || !meta.contentType)
+            throw new Error("Ordinal metadata is unavailable; retry when its origin can be verified");
+          if (meta.contentType.split(";")[0]?.trim() === "application/bsv-20" || BSV21.decode(LockingScript.fromHex(value.lockingScript)))
+            throw new Error("Token inputs require a BSV-21 sweep");
+          const resolved = await resolveOrdinalTags(selected, value.outpoint, {
+            contentType: meta.contentType,
+            origin: meta.origin,
+            map: meta.map,
+            parent: meta.parent
+          });
+          const { publicKey } = await wallet.getPublicKey({
+            protocolID: P1SAT_PROTOCOL,
+            keyID: value.outpoint,
+            counterparty: "self",
+            forSelf: true
+          });
+          outputs.push({
+            lockingScript: new P2PKH().lock(PublicKey.fromString(publicKey).toAddress()).toHex(),
+            satoshis: 1,
+            outputDescription: `Sweep ordinal ${meta.origin}`,
+            basket: resolved.basket,
+            tags: resolved.tags,
+            customInstructions: buildOrdinalCustomInstructions({
+              protocolID: P1SAT_PROTOCOL,
+              keyID: value.outpoint,
+              counterparty: "self",
+              tags: resolved.tags,
+              name: resolved.name
+            })
+          });
+        }
+      } else {
+        const tokens = inputs.map((value) => {
+          const data = BSV21.decode(LockingScript.fromHex(value.lockingScript))?.tokenData;
+          if (!data || !["deploy+mint", "mint", "transfer"].includes(data.op) || !data.amt || !/^[0-9]+$/.test(data.amt))
+            throw new Error("Input is not a transferable BSV-21 amount");
+          return {
+            id: data.op === "deploy+mint" ? value.outpoint : data.id,
+            amount: BigInt(data.amt)
+          };
+        });
+        const tokenId = tokens[0]?.id;
+        if (!tokenId || tokens.some((value) => value.id !== tokenId || value.amount <= 0n))
+          throw new Error("Token sweep inputs must hold positive amounts of one token ID");
+        const details = await services.bsv21.getTokenDetails(tokenId);
+        if (!details.status.is_active)
+          throw new Error("Token is not active");
+        const validated = await services.bsv21.validateOutputs(tokenId, outpoints, { unspent: true });
+        if (outpoints.some((value) => !validated.some((output) => output.outpoint.replace(":", "_").replace(".", "_").toLowerCase() === value)))
+          throw new Error("Token overlay did not validate every unspent input");
+        const amount = tokens.reduce((sum, value) => sum + value.amount, 0n);
+        const keyID = `${tokenId}-${randomUUID3()}`;
+        const { publicKey } = await wallet.getPublicKey({
+          protocolID: P1SAT_PROTOCOL,
+          keyID,
+          counterparty: "self",
+          forSelf: true
+        });
+        outputs.push({
+          lockingScript: BSV21.transfer(tokenId, amount).lock(new P2PKH().lock(PublicKey.fromString(publicKey).toAddress())).toHex(),
+          satoshis: 1,
+          outputDescription: `Sweep ${amount} tokens`,
+          basket: BSV21_BASKET,
+          tags: bsv21FilterTags({ tokenId }),
+          customInstructions: buildBsv21CustomInstructions({
+            token: {
+              id: tokenId,
+              amt: String(amount),
+              op: "transfer",
+              sym: details.token.sym,
+              dec: details.token.dec ?? 0,
+              icon: details.token.icon
+            },
+            protocolID: P1SAT_PROTOCOL,
+            keyID,
+            counterparty: "self"
+          })
+        });
+        if (!Number.isSafeInteger(details.status.fee_per_output) || details.status.fee_per_output < 0)
+          throw new Error("Invalid token overlay fee");
+        outputs.push({
+          lockingScript: new P2PKH().lock(details.status.fee_address).toHex(),
+          satoshis: details.status.fee_per_output,
+          outputDescription: "Token overlay processing fee"
+        });
+        labels.push(buildTokenLabel(tokenId));
+      }
+      const args = {
+        description: `Sweep ${inputs.length} ${input.sweepType} inputs`,
+        inputBEEF: beef.toBinary(),
+        inputs: inputs.map((value) => ({
+          outpoint: value.outpoint.replace("_", "."),
+          inputDescription: "Browser-signed sweep input",
+          unlockingScriptLength: 108,
+          sequenceNumber: 4294967295
+        })),
+        outputs,
+        labels,
+        options: { signAndProcess: false, randomizeOutputs: false }
+      };
+      await applyP1SatCreateAction(wallet, args);
+      const created = await wallet.createAction(args);
+      const action = created.signableTransaction;
+      if (!action)
+        throw new Error("Signer did not return an unsigned sweep transaction");
+      try {
+        const tx = Transaction.fromBEEF(action.tx);
+        const inputsToSign = inputs.map((value) => {
+          const indices = tx.inputs.flatMap((entry, index) => `${entry.sourceTXID ?? entry.sourceTransaction?.id("hex")}.${entry.sourceOutputIndex}` === value.outpoint.replace("_", ".") ? [index] : []);
+          if (indices.length !== 1)
+            throw new Error("Signer changed or omitted a sweep input");
+          return { ...value, index: indices[0] };
+        });
+        if (input.sweepType === "ordinals" && inputsToSign.some((value, index) => value.index !== index))
+          throw new Error("Signer reordered ordinal inputs; refusing to move their satoshis");
+        for (const [index, expected] of outputs.entries())
+          if (tx.outputs[index]?.satoshis !== expected.satoshis || tx.outputs[index]?.lockingScript.toHex() !== expected.lockingScript)
+            throw new Error("Signer changed or reordered a preservation output");
+        const reference = randomUUID3();
+        pending.set(reference, {
+          wallet,
+          providerReference: action.reference,
+          principal,
+          tx,
+          inputsToSign,
+          expiresAt: Date.now() + 600000,
+          status: "pending"
+        });
+        return { reference, txHex: toHex2(action.tx), inputsToSign };
+      } catch (error) {
+        await wallet.abortAction({ reference: action.reference }).catch(() => {});
+        throw error;
+      }
+    },
+    async complete(reference, spends, principal) {
+      await cleanupExpired();
+      const entry = pending.get(reference);
+      if (!entry || entry.principal !== principal)
+        throw new Error("Unknown, expired or unauthorized sweep reference");
+      if (entry.status !== "pending")
+        throw new Error("Sweep has already been submitted; check its transaction status before retrying");
+      if (Object.keys(spends).length !== entry.inputsToSign.length || entry.inputsToSign.some((value) => !Object.hasOwn(spends, String(value.index))))
+        throw new Error("Provide exactly the external input signatures from sweep preparation");
+      for (const value of entry.inputsToSign) {
+        const script = spends[String(value.index)]?.unlockingScript;
+        if (!/^(?:[0-9a-f]{2}){1,108}$/i.test(script))
+          throw new Error("Invalid external unlocking script");
+        const input = entry.tx.inputs[value.index];
+        const spend = new Spend({
+          sourceTXID: value.outpoint.slice(0, 64),
+          sourceOutputIndex: input.sourceOutputIndex,
+          sourceSatoshis: value.satoshis,
+          lockingScript: LockingScript.fromHex(value.lockingScript),
+          transactionVersion: entry.tx.version,
+          otherInputs: entry.tx.inputs.filter((_, index) => index !== value.index),
+          outputs: entry.tx.outputs,
+          inputIndex: value.index,
+          unlockingScript: UnlockingScript.fromHex(script),
+          inputSequence: input.sequence ?? 4294967295,
+          lockTime: entry.tx.lockTime
+        });
+        if (!spend.validate())
+          throw new Error("External signature does not authorize the prepared sweep transaction");
+      }
+      entry.status = "submitting";
+      try {
+        const result = await entry.wallet.signAction({
+          reference: entry.providerReference,
+          spends,
+          options: { acceptDelayedBroadcast: false }
+        });
+        if (!result.txid)
+          throw new Error("Signer returned no transaction ID; check signer status before retrying");
+        return { txid: result.txid, success: true };
+      } finally {
+        entry.status = "settled";
+      }
+    }
+  };
+}
+var appSweepInputSchema, pendingByWallet;
+var init_appSweep = __esm(() => {
+  init_dist7();
+  init_dist4();
+  init_dist2();
+  init_mod();
+  init_zod();
+  appSweepInputSchema = object2({
+    sweepType: _enum(["bsv", "ordinals", "bsv21"]),
+    inputs: array(object2({
+      outpoint: string2().regex(/^[0-9a-f]{64}_[0-9]+$/i),
+      satoshis: number2().int().nonnegative().safe(),
+      lockingScript: string2().regex(/^(?:[0-9a-f]{2})+$/i)
+    })).min(1).max(100)
+  });
+  pendingByWallet = new WeakMap;
+});
+
 // node_modules/@opl.dev/vault/dist/index.js
 var exports_dist = {};
 __export(exports_dist, {
@@ -292478,7 +293399,7 @@ __export(exports_dist, {
   privateKeyToHex: () => privateKeyToHex,
   providerToUnlock: () => providerToUnlock,
   publicKeyHex: () => publicKeyHex,
-  randomBytes: () => randomBytes3,
+  randomBytes: () => randomBytes4,
   randomId: () => randomId,
   randomSuffix: () => randomSuffix,
   recoverEntropy: () => recoverEntropy,
@@ -292494,7 +293415,7 @@ __export(exports_dist, {
 });
 import { spawnSync } from "child_process";
 import { existsSync as existsSync7 } from "fs";
-import { dirname as dirname3, join as join10, resolve } from "path";
+import { dirname as dirname3, join as join10, resolve as resolve2 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { dirname as dirname22, join as join22 } from "path";
@@ -292524,7 +293445,7 @@ function fromHexString(hex) {
     out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
-function randomBytes3(length) {
+function randomBytes4(length) {
   const out = new Uint8Array(length);
   crypto.getRandomValues(out);
   return out;
@@ -292746,8 +293667,8 @@ class PassphraseProvider {
     return typeof crypto !== "undefined" && !!crypto.subtle;
   }
   async wrap(contentKey) {
-    const salt = randomBytes3(SALT_BYTES);
-    const iv = randomBytes3(IV_BYTES);
+    const salt = randomBytes4(SALT_BYTES);
+    const iv = randomBytes4(IV_BYTES);
     const kek = await deriveKek2(this.passphrase, salt, this.iterations);
     const sealed = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv }, kek, contentKey));
     const out = concat(salt, iv, sealed);
@@ -292791,7 +293712,7 @@ async function eciesWrap(recipientRaw65, contentKey) {
   ]);
   const shared = new Uint8Array(await subtle2().deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256));
   const kek = await deriveKek22(shared);
-  const nonce = randomBytes3(12);
+  const nonce = randomBytes4(12);
   const sealed = new Uint8Array(await subtle2().encrypt({ name: "AES-GCM", iv: nonce }, kek, contentKey));
   const ephemeralPub = new Uint8Array(await subtle2().exportKey("raw", ephemeral.publicKey));
   shared.fill(0);
@@ -292857,7 +293778,7 @@ class DeviceKeyProvider {
 }
 function helperDir() {
   const here = dirname3(fileURLToPath2(import.meta.url));
-  const candidates = [resolve(here, "../../swift"), resolve(here, "../swift")];
+  const candidates = [resolve2(here, "../../swift"), resolve2(here, "../swift")];
   for (const dir of candidates) {
     if (existsSync7(join10(dir, "build.sh")))
       return dir;
@@ -293800,7 +294721,7 @@ var init_dist11 = __esm(() => {
 });
 
 // utils/embeddedVaultIo.ts
-import { createHash as createHash3, randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash5, randomUUID as randomUUID4 } from "node:crypto";
 import { existsSync as existsSync8, lstatSync as lstatSync3, realpathSync as realpathSync2 } from "node:fs";
 import {
   chmod as chmod2,
@@ -293813,7 +294734,7 @@ import {
   rm as rm2,
   stat
 } from "node:fs/promises";
-import { basename, dirname as dirname4, isAbsolute as isAbsolute4, join as join11, resolve as resolve2 } from "node:path";
+import { basename, dirname as dirname4, isAbsolute as isAbsolute5, join as join11, resolve as resolve3 } from "node:path";
 function assertLabel(label) {
   if (typeof label !== "string" || label.trim().length === 0)
     throw failure("INVALID_LABEL");
@@ -293875,9 +294796,9 @@ function parseKeys(keys) {
   return parsed;
 }
 function canonicalVaultPath(input) {
-  if (typeof input !== "string" || !isAbsolute4(input))
+  if (typeof input !== "string" || !isAbsolute5(input))
     throw failure("INVALID_PATH");
-  let parent = resolve2(input);
+  let parent = resolve3(input);
   const tail = [];
   while (!existsSync8(parent)) {
     const next = dirname4(parent);
@@ -293954,7 +294875,7 @@ function createEmbeddedVaultIo(options) {
     } catch {}
   };
   const resolveCanonical = () => {
-    const resolved = resolve2(requestedPath);
+    const resolved = resolve3(requestedPath);
     assertNoSymlinks(resolved);
     const canonical = canonicalVaultPath(requestedPath);
     assertNoSymlinks(canonical);
@@ -293962,7 +294883,7 @@ function createEmbeddedVaultIo(options) {
   };
   const withExclusiveWrite = async (canonical, work) => {
     const lockPath = `${canonical}.lock`;
-    const nonce = randomUUID2();
+    const nonce = randomUUID4();
     let lockHandle;
     try {
       lockHandle = await open2(lockPath, "wx", 384);
@@ -294013,7 +294934,7 @@ function createEmbeddedVaultIo(options) {
           await rm2(lockPath);
       } catch {}
     };
-    const stageDir = `${canonical}.stage-${randomUUID2()}`;
+    const stageDir = `${canonical}.stage-${randomUUID4()}`;
     let stageOwned = false;
     let stageIno = -1;
     let stageDev = -1;
@@ -294176,7 +295097,7 @@ function createEmbeddedVaultIo(options) {
       throw failure(code);
     };
     try {
-      assertNoSymlinks(resolve2(canonical));
+      assertNoSymlinks(resolve3(canonical));
       assertNoSymlinks(canonical);
       const parentLink = await lstat(dirname4(canonical));
       if (parentLink.isSymbolicLink() || !parentLink.isDirectory())
@@ -294192,7 +295113,7 @@ function createEmbeddedVaultIo(options) {
       return await uncertain("WRITE_FAILED");
     }
     if (beforeBytes) {
-      const backupPath = `${canonical}.backup-${randomUUID2()}.bep`;
+      const backupPath = `${canonical}.backup-${randomUUID4()}.bep`;
       let backupHandle;
       try {
         backupHandle = await open2(backupPath, "wx", 384);
@@ -294376,7 +295297,7 @@ function createEmbeddedVaultIo(options) {
       const passwordCandidate = input?.password;
       if (typeof passwordCandidate !== "string" || !passwordCandidate)
         throw failure("INVALID_PASSWORD");
-      const probeResolved = resolve2(requestedPath);
+      const probeResolved = resolve3(requestedPath);
       assertNoSymlinks(probeResolved);
       if (!existsSync8(canonicalVaultPath(requestedPath))) {
         assertPassword(passwordCandidate);
@@ -294444,7 +295365,7 @@ function createEmbeddedVaultIo(options) {
           if (parsed.xprv !== undefined) {
             const at = new Date(now()).toISOString();
             const adopted = active.adoptEntry({
-              id: randomUUID2(),
+              id: randomUUID4(),
               kind: "hd-private",
               label: `${label} hd`,
               tags: [],
@@ -294662,7 +295583,7 @@ function createEmbeddedVaultIo(options) {
     }
   };
 }
-var EmbeddedVaultError, MESSAGES, failure = (code) => new EmbeddedVaultError(code, MESSAGES[code]), COMPRESSED_PUBKEY, KEY_KINDS, VERIFY_REASON = "Embedded vault verify", UNLOCK_REASON = "Embedded vault unlock", digest = (data) => createHash3("sha256").update(data).digest("hex");
+var EmbeddedVaultError, MESSAGES, failure = (code) => new EmbeddedVaultError(code, MESSAGES[code]), COMPRESSED_PUBKEY, KEY_KINDS, VERIFY_REASON = "Embedded vault verify", UNLOCK_REASON = "Embedded vault unlock", digest = (data) => createHash5("sha256").update(data).digest("hex");
 var init_embeddedVaultIo = __esm(() => {
   init_mod();
   EmbeddedVaultError = class EmbeddedVaultError extends Error {
@@ -294693,10 +295614,10 @@ var init_embeddedVaultIo = __esm(() => {
 });
 
 // utils/embeddedFirstRunBackend.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID as randomUUID5 } from "node:crypto";
 import { existsSync as existsSync9, constants as fsConstants2, lstatSync as lstatSync4 } from "node:fs";
 import { chmod as chmod3, mkdir as mkdir3, open as open3, readFile as readFile3, rm as rm3 } from "node:fs/promises";
-import { isAbsolute as isAbsolute5, join as join12 } from "node:path";
+import { isAbsolute as isAbsolute6, join as join12 } from "node:path";
 function lockPathFor(accountsDirectory, accountName) {
   return join12(accountsDirectory, `.${accountName}.first-run.lock`);
 }
@@ -294708,10 +295629,10 @@ function createEmbeddedFirstRunBackend(options) {
   const requestedAccountsDirectory = options?.accountsDirectory;
   const requestedChain = options?.chain ?? "main";
   const writeAccountImpl = options?.writeAccountImpl ?? writeAccount;
-  if (typeof requestedVaultPath !== "string" || !isAbsolute5(requestedVaultPath)) {
+  if (typeof requestedVaultPath !== "string" || !isAbsolute6(requestedVaultPath)) {
     throw fail2("FAILED");
   }
-  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute5(requestedAccountsDirectory))) {
+  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute6(requestedAccountsDirectory))) {
     throw fail2("FAILED");
   }
   if (requestedChain !== "main" && requestedChain !== "test") {
@@ -294754,7 +295675,7 @@ function createEmbeddedFirstRunBackend(options) {
       if (error?.code !== "ENOENT")
         throw fail2("BUSY");
     }
-    const nonce = randomUUID3();
+    const nonce = randomUUID5();
     let lockHandle;
     let heldDev;
     let heldIno;
@@ -294944,7 +295865,7 @@ var init_embeddedFirstRunBackend = __esm(() => {
 
 // utils/embeddedImportBackend.ts
 import { Buffer as Buffer2 } from "node:buffer";
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 import {
   chmodSync as chmodSync4,
   existsSync as existsSync10,
@@ -294954,9 +295875,9 @@ import {
 } from "node:fs";
 import { copyFile as copyFile2 } from "node:fs/promises";
 import { homedir as homedir7 } from "node:os";
-import { isAbsolute as isAbsolute6, join as join13, resolve as resolve3 } from "node:path";
+import { isAbsolute as isAbsolute7, join as join13, resolve as resolve4 } from "node:path";
 function digest2(data) {
-  return createHash4("sha256").update(data).digest("hex");
+  return createHash6("sha256").update(data).digest("hex");
 }
 function assertConfirmation2(value) {
   if (value !== IMPORT_CONFIRMATION)
@@ -294964,18 +295885,18 @@ function assertConfirmation2(value) {
 }
 function resolveTrustedHome(home) {
   const candidate = home ?? homedir7();
-  if (typeof candidate !== "string" || !isAbsolute6(candidate))
+  if (typeof candidate !== "string" || !isAbsolute7(candidate))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
 }
 function resolveVaultPath(vaultPath) {
-  if (typeof vaultPath !== "string" || !isAbsolute6(vaultPath))
+  if (typeof vaultPath !== "string" || !isAbsolute7(vaultPath))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return vaultPath;
 }
 function resolveDestRoot(accountsDirectory, home) {
   const candidate = accountsDirectory ?? join13(home, ".bsv-mcp", "accounts");
-  if (typeof candidate !== "string" || !isAbsolute6(candidate))
+  if (typeof candidate !== "string" || !isAbsolute7(candidate))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
 }
@@ -295211,7 +296132,7 @@ function resolveChain(existing, requested) {
   return existing?.chain ?? requested ?? "main";
 }
 function assertDatabasesCopyable(selection) {
-  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+  if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
@@ -295232,7 +296153,7 @@ function assertDatabasesCopyable(selection) {
   }
 }
 function assertNoDestinationDbCollision(selection) {
-  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+  if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
@@ -295264,7 +296185,7 @@ function assertNoDestinationDbCollision(selection) {
   }
 }
 async function copyInventoryDatabases(selection) {
-  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+  if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   if (selection.entry.walletDatabases.length === 0)
     return;
@@ -295872,9 +296793,6 @@ var require_index_client5 = __commonJS(function(exports) {
 });
 
 // utils/spendingApproval.ts
-function setSpendingApprovalServerInstance(server) {
-  serverInstance = server;
-}
 function formatSpendingSummary(request) {
   const spending = request.spending;
   if (!spending) {
@@ -295898,20 +296816,13 @@ async function handleSpendingAuthorization(request, permissionsManager, serverOv
     signal?.throwIfAborted();
     if (!request.spending) {
       denialReason = "the request did not include spending details";
-    } else if (!serverOverride && !serverInstance) {
-      denialReason = "the MCP server is unavailable";
     } else {
-      const approvalServer = serverOverride ?? serverInstance;
-      if (!approvalServer?.server.getClientCapabilities()?.elicitation?.form) {
-        denialReason = "the MCP client does not support form elicitation";
-        throw new Error(denialReason);
-      }
       const amount = request.spending.satoshis;
       if (!Number.isSafeInteger(amount) || amount < 0) {
         denialReason = "the requested amount is invalid";
         throw new Error(denialReason);
       }
-      const response = await approvalServer.server.elicitInput({
+      const response = await elicitMcpForm({
         mode: "form",
         message: [
           `Approve spending exactly ${amount} satoshis?`,
@@ -295930,7 +296841,7 @@ async function handleSpendingAuthorization(request, permissionsManager, serverOv
           },
           required: ["approved"]
         }
-      }, signal ? { signal } : undefined);
+      }, serverOverride ?? serverInstance, signal);
       signal?.throwIfAborted();
       approved = response.action === "accept" && response.content?.approved === true;
       if (!approved) {
@@ -295953,6 +296864,9 @@ async function handleSpendingAuthorization(request, permissionsManager, serverOv
   await permissionsManager.denyPermission(request.requestID);
 }
 var serverInstance = null;
+var init_spendingApproval = __esm(() => {
+  init_mcpApprovalFlow();
+});
 
 // utils/walletInit.ts
 import { appendFileSync, chmodSync as chmodSync5, mkdirSync as mkdirSync3 } from "node:fs";
@@ -295996,6 +296910,8 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
     onStoragePaymentRequired: denyStoragePayment
   };
   const result = await createNodeWallet(nodeWalletConfig).finally(() => process.umask(oldMask));
+  let destruction;
+  const destroy = () => destruction ??= result.destroy();
   try {
     chmodSync5(filename, 384);
     const wpm = new import_index_client.WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
@@ -296028,13 +296944,16 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
       dataDir,
       isBaseWallet: true,
       log: (entry) => writeAuditLog(dataDir, entry)
-    }), { [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR });
+    }), {
+      [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR,
+      [WALLET_DEPOSIT_PREFIX]: config?.depositPrefix ?? MCP_ADDRESS_PREFIX2
+    });
     const internalCtx = {
       ...ctx,
       wallet: withEmbeddedOwnerDerivation(wallet, ADMIN_ORIGINATOR)
     };
     const { derivations } = await deriveDepositAddresses.execute(internalCtx, {
-      prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX3
+      prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX2
     });
     const depositAddress = derivations[0]?.address;
     if (!depositAddress) {
@@ -296042,16 +296961,16 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
     }
     options.sessionSignal?.throwIfAborted();
     if (options.trackActive !== false)
-      activeResult = result;
+      activeResult = { destroy };
     return {
       wallet,
       services: result.services,
       ctx,
       depositAddress,
-      destroy: result.destroy
+      destroy
     };
   } catch (error) {
-    await result.destroy().catch(() => {});
+    await destroy().catch(() => {});
     throw error;
   }
 }
@@ -296070,6 +296989,9 @@ async function initExternalWallet(config, chain = "main") {
     }
     PublicKey.fromString(identity.publicKey);
     identityKey = identity.publicKey;
+    if (config.expectedPublicKey && identityKey.toLowerCase() !== config.expectedPublicKey.toLowerCase()) {
+      throw new Error("External signer identity does not match its configured public key");
+    }
   } catch (error) {
     throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error });
   }
@@ -296091,7 +297013,7 @@ async function destroyWallet() {
     activeResult = null;
   }
 }
-var import_index_client, ADMIN_ORIGINATOR = "admin.bsv-mcp.internal", MCP_ADDRESS_PREFIX3 = "mcp", activeResult = null;
+var import_index_client, ADMIN_ORIGINATOR = "admin.bsv-mcp.internal", MCP_ADDRESS_PREFIX2 = "mcp", activeResult = null;
 var init_walletInit = __esm(() => {
   init_dist7();
   init_dist3();
@@ -296102,6 +297024,8 @@ var init_walletInit = __esm(() => {
   init_embeddedOwnerRead();
   init_externalWalletConfig();
   init_redact();
+  init_spendingApproval();
+  init_walletDepositAddress();
   import_index_client = __toESM(require_index_client5(), 1);
 });
 
@@ -296253,8 +297177,38 @@ var init_embeddedWalletActivation = __esm(() => {
   };
 });
 
+// utils/walletKeyStorage.ts
+import { createHash as createHash7 } from "node:crypto";
+function walletStorageForKey(accountName, publicKey, accountsRoot) {
+  const account = readAccount(accountName, accountsRoot);
+  if (!account)
+    throw new Error("The selected wallet account is not initialized");
+  return walletStorageForPublicKey(accountName, account, publicKey);
+}
+function walletStorageForPublicKey(accountName, account, publicKey) {
+  publicKey = PublicKey.fromString(publicKey).toString();
+  const address = PublicKey.fromString(publicKey).toAddress(account.chain === "test" ? [111] : [0]);
+  const ownsStorage = account.vaultBinding ? account.vaultBinding.payment.publicKey.toLowerCase() === publicKey : account.address === address;
+  if (ownsStorage) {
+    return { accountName, accountConfig: account };
+  }
+  const isolated = `key-${createHash7("sha256").update(`${account.chain}:${publicKey}`).digest("hex").slice(0, 24)}`;
+  const config = {
+    chain: account.chain,
+    address,
+    storageIdentityKey: isolated,
+    depositPrefix: account.depositPrefix,
+    ...account.activeRemote === undefined ? {} : { activeRemote: account.activeRemote },
+    ...account.backups === undefined ? {} : { backups: account.backups }
+  };
+  return { accountName: isolated, accountConfig: config };
+}
+var init_walletKeyStorage = __esm(() => {
+  init_mod();
+  init_accounts();
+});
+
 // utils/walletRoleActivation.ts
-import { createHash as createHash5 } from "node:crypto";
 async function activateWalletRoles(vaultPath, password, fallbackAccount) {
   const { effective } = getWalletRoleSettings();
   if (!Object.keys(effective).length)
@@ -296289,17 +297243,9 @@ async function activateWalletRoles(vaultPath, password, fallbackAccount) {
           });
           if (!keys.payPk)
             throw new Error("The selected Vault key could not be unlocked.");
-          const isolated = `key-${createHash5("sha256").update(`${binding.vaultId}:${ref.entryId}`).digest("hex").slice(0, 24)}`;
-          const keyAddress = keys.payPk.toAddress(account.chain === "test" ? [111] : [0]);
           const result = await initWallet(keys.payPk, account.chain, {
-            accountName: kind === "payment" ? accountName : isolated,
-            trackActive: false,
-            ...kind === "identity" ? {
-              accountConfig: {
-                ...newAccountConfig(account.chain, keyAddress),
-                storageIdentityKey: isolated
-              }
-            } : {}
+            ...walletStorageForKey(accountName, keys.payPk.toPublicKey().toString()),
+            trackActive: false
           });
           opened.set(selected, result);
         } finally {
@@ -296333,6 +297279,7 @@ var init_walletRoleActivation = __esm(() => {
   init_accounts();
   init_embeddedVaultIo();
   init_walletInit();
+  init_walletKeyStorage();
   init_walletRoleDefaults();
 });
 
@@ -296495,6 +297442,87 @@ var init_embeddedSetupActions = __esm(() => {
     passwordConfirmation: string2(),
     confirmation: literal("IMPORT_WALLET_CONFIRMED")
   });
+});
+
+// utils/embeddedWalletRuntime.ts
+import { homedir as homedir9 } from "node:os";
+import { join as join15 } from "node:path";
+async function createEmbeddedWalletRuntime(payment, identity, chain) {
+  if (process.env.BSV_MCP_PASSWORD) {
+    const selected = await activateWalletRoles(process.env.VAULT_PATH ?? join15(homedir9(), ".bsv", "vault.bep"), process.env.BSV_MCP_PASSWORD, accountName());
+    if (selected)
+      return selected;
+  }
+  const primary = await initWallet(payment.toWif(), chain);
+  if (!identity || identity.toPublicKey().toString() === payment.toPublicKey().toString())
+    return primary;
+  try {
+    const source = readAccount() ?? { chain, address: payment.toAddress(chain === "test" ? [111] : [0]), storageIdentityKey: "bsv-mcp", depositPrefix: "mcp" };
+    const signer = await initWallet(identity.toWif(), chain, { ...walletStorageForPublicKey(accountName(), source, identity.toPublicKey().toString()), trackActive: false });
+    return { ...primary, roleContexts: { payments: primary.ctx, identity: signer.ctx, ordinals: primary.ctx }, destroy: async () => {
+      await Promise.allSettled([primary.destroy(), signer.destroy()]);
+    } };
+  } catch (error) {
+    await primary.destroy();
+    throw error;
+  }
+}
+var init_embeddedWalletRuntime = __esm(() => {
+  init_accounts();
+  init_walletRoleActivation();
+  init_walletInit();
+  init_walletKeyStorage();
+});
+
+// utils/externalWalletRuntime.ts
+async function createExternalWalletRuntime(config, chain) {
+  if (!config.roles)
+    return {
+      ...await initExternalWallet(config, chain),
+      roleContexts: undefined
+    };
+  const connections = new Map;
+  const roleContexts = { encryption: null };
+  try {
+    for (const role of [
+      "payments",
+      "identity",
+      "ordinals",
+      "encryption"
+    ]) {
+      const selected = config.roles[role];
+      if (!selected)
+        continue;
+      const key = JSON.stringify([
+        selected.url,
+        selected.originator,
+        selected.expectedPublicKey
+      ]);
+      let connection = connections.get(key);
+      if (!connection) {
+        connection = await initExternalWallet(selected, chain);
+        connections.set(key, connection);
+      }
+      roleContexts[role] = connection.ctx;
+    }
+    const primary = roleContexts.payments ?? Object.values(roleContexts).find(Boolean);
+    const connection = [...connections.values()].find((value) => value.ctx === primary);
+    if (!connection)
+      throw new Error("No external wallet role is available");
+    return {
+      ...connection,
+      roleContexts: Object.freeze(roleContexts),
+      destroy: async () => {
+        await Promise.allSettled([...connections.values()].map((value) => value.destroy()));
+      }
+    };
+  } catch (error) {
+    await Promise.allSettled([...connections.values()].map((value) => value.destroy()));
+    throw error;
+  }
+}
+var init_externalWalletRuntime = __esm(() => {
+  init_walletInit();
 });
 
 // node_modules/jose/dist/webapi/lib/buffer_utils.js
@@ -297371,122 +298399,11990 @@ var init_mcpAppRegistration = __esm(() => {
   init_server();
 });
 
-// utils/mcpSessionPrincipal.ts
-function nonEmptyString(value) {
-  if (typeof value !== "string")
-    return;
-  return value.length > 0 ? value : undefined;
-}
-function getMcpSessionPrincipal(authInfo) {
-  const userId = nonEmptyString(authInfo?.extra?.userId);
-  if (userId)
-    return `user:${userId}`;
-  const clientId = nonEmptyString(authInfo?.clientId);
-  if (clientId)
-    return `client:${clientId}`;
-  return ANONYMOUS_MCP_SESSION_PRINCIPAL;
-}
-function isMcpSessionPrincipalMatch(boundPrincipal, authInfo) {
-  return boundPrincipal === getMcpSessionPrincipal(authInfo);
-}
-var ANONYMOUS_MCP_SESSION_PRINCIPAL = "anonymous";
-
-// utils/modernToolPolicy.ts
-function isToolCallback(value) {
-  return typeof value === "function";
-}
-function isModernReadTool(name) {
-  return modernReadToolNames.has(name);
-}
-function modernToolDeniedResult(name) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Tool ${name} is unavailable for modern MCP requests until its approval policy is reviewed.`
+// node_modules/@modelcontextprotocol/client/dist/chunk-Br0eD_fh.mjs
+var __create4, __defProp6, __getOwnPropDesc2, __getOwnPropNames4, __getProtoOf4, __hasOwnProp4, __commonJSMin2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), __exportAll4 = (all, symbols) => {
+  let target = {};
+  for (var name in all) {
+    __defProp6(target, name, {
+      get: all[name],
+      enumerable: true
+    });
+  }
+  if (symbols) {
+    __defProp6(target, Symbol.toStringTag, { value: "Module" });
+  }
+  return target;
+}, __copyProps2 = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (var keys = __getOwnPropNames4(from), i = 0, n = keys.length, key;i < n; i++) {
+      key = keys[i];
+      if (!__hasOwnProp4.call(to, key) && key !== except) {
+        __defProp6(to, key, {
+          get: ((k) => from[k]).bind(null, key),
+          enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable
+        });
       }
-    ],
-    isError: true
+    }
+  }
+  return to;
+}, __toESM4 = (mod, isNodeMode, target) => (target = mod != null ? __create4(__getProtoOf4(mod)) : {}, __copyProps2(isNodeMode || !mod || !mod.__esModule ? __defProp6(target, "default", {
+  value: mod,
+  enumerable: true
+}) : target, mod));
+var init_chunk_Br0eD_fh2 = __esm(() => {
+  __create4 = Object.create;
+  __defProp6 = Object.defineProperty;
+  __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+  __getOwnPropNames4 = Object.getOwnPropertyNames;
+  __getProtoOf4 = Object.getPrototypeOf;
+  __hasOwnProp4 = Object.prototype.hasOwnProperty;
+});
+
+// node_modules/@modelcontextprotocol/client/dist/dialects-BOhdv1Fc.mjs
+function declares2019Dialect2($schema) {
+  return typeof $schema === "string" && DRAFT_2019_09_URIS2.has($schema.replace(/#$/, ""));
+}
+var DRAFT_2020_12_URIS2, DRAFT_2019_09_URIS2, DRAFT_07_URIS2, DRAFT_06_URIS2;
+var init_dialects_BOhdv1Fc = __esm(() => {
+  DRAFT_2020_12_URIS2 = new Set(["https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft/2020-12/schema"]);
+  DRAFT_2019_09_URIS2 = new Set(["https://json-schema.org/draft/2019-09/schema", "http://json-schema.org/draft/2019-09/schema"]);
+  DRAFT_07_URIS2 = new Set(["https://json-schema.org/draft-07/schema", "http://json-schema.org/draft-07/schema"]);
+  DRAFT_06_URIS2 = new Set(["https://json-schema.org/draft-06/schema", "http://json-schema.org/draft-06/schema"]);
+});
+
+// node_modules/@modelcontextprotocol/client/dist/src-D_zzAWoS.mjs
+function stampErrorBrands2(instance, ctor) {
+  const brands = /* @__PURE__ */ new Set;
+  let current = ctor;
+  while (typeof current === "function") {
+    const brand = current.mcpBrand;
+    if (Object.prototype.hasOwnProperty.call(current, "mcpBrand") && typeof brand === "string")
+      brands.add(brand);
+    current = Object.getPrototypeOf(current);
+  }
+  if (brands.size === 0)
+    return;
+  Object.defineProperty(instance, BRANDS2, {
+    value: brands,
+    enumerable: false,
+    configurable: true
+  });
+}
+function brandedHasInstance2(cls, value) {
+  try {
+    if (typeof value === "object" && value !== null && Object.prototype.hasOwnProperty.call(cls, "mcpBrand") && typeof cls.mcpBrand === "string" && Object.prototype.hasOwnProperty.call(value, BRANDS2)) {
+      const carried = value[BRANDS2];
+      if (carried && typeof carried.has === "function" && carried.has(cls.mcpBrand))
+        return true;
+    }
+  } catch {}
+  return Function.prototype[Symbol.hasInstance].call(cls, value);
+}
+function isModernProtocolVersion2(version) {
+  return version >= FIRST_MODERN_PROTOCOL_VERSION2;
+}
+function appendTextFallbackForNonObject2(result) {
+  const sc = result.structuredContent;
+  if (sc === undefined)
+    return result;
+  if (!(typeof sc !== "object" || sc === null || Array.isArray(sc)))
+    return result;
+  if (result.content?.some((c) => c.type === "text") ?? false)
+    return result;
+  return {
+    ...result,
+    content: [...result.content ?? [], {
+      type: "text",
+      text: JSON.stringify(sc)
+    }]
   };
 }
-function applyModernToolPolicy(era, name, callback) {
-  if (era === "legacy" || isModernReadTool(name))
-    return callback;
-  return () => modernToolDeniedResult(name);
+function normalizeContentlessToolResult2(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || value.content !== undefined || TOOL_RESULT_FOREIGN_FAMILY_KEYS2.some((key) => (key in value)))
+    return value;
+  return {
+    ...value,
+    content: []
+  };
 }
-function withModernToolPolicy(server, era) {
-  if (era === "legacy")
-    return server;
+function build$12() {
+  const JSONValueSchema$1 = lazy(() => union([
+    string2(),
+    number2(),
+    boolean2(),
+    _null3(),
+    record(string2(), JSONValueSchema$1),
+    array(JSONValueSchema$1)
+  ]));
+  const JSONObjectSchema$1 = record(string2(), JSONValueSchema$1);
+  const ProgressTokenSchema$1 = union([string2(), number2().int()]);
+  const CursorSchema$1 = string2();
+  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const RequestMetaSchema$1 = looseObject({
+    progressToken: ProgressTokenSchema$1.optional(),
+    "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
+  });
+  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
+  const RequestSchema$1 = object2({
+    method: string2(),
+    params: BaseRequestParamsSchema$1.loose().optional()
+  });
+  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object2({
+    method: string2(),
+    params: NotificationsParamsSchema$1.loose().optional()
+  });
+  const ResultSchema$1 = looseObject({ _meta: RequestMetaSchema$1.optional() });
+  const RequestIdSchema$1 = union([string2(), number2().int()]);
+  const EmptyResultSchema$1 = ResultSchema$1.strict();
+  const CancelledNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({
+    requestId: RequestIdSchema$1.optional(),
+    reason: string2().optional()
+  });
+  const CancelledNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/cancelled"),
+    params: CancelledNotificationParamsSchema$1
+  });
+  const IconSchema$1 = object2({
+    src: string2(),
+    mimeType: string2().optional(),
+    sizes: array(string2()).optional(),
+    theme: _enum(["light", "dark"]).optional()
+  });
+  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object2({
+    name: string2(),
+    title: string2().optional()
+  });
+  const ImplementationSchema$1 = BaseMetadataSchema$1.extend({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    version: string2(),
+    websiteUrl: string2().optional(),
+    description: string2().optional()
+  });
+  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const ElicitationCapabilitySchema = preprocess((value) => {
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
+      return { form: {} };
+    return value;
+  }, intersection(object2({
+    form: FormElicitationCapabilitySchema.optional(),
+    url: JSONObjectSchema$1.optional()
+  }), JSONObjectSchema$1.optional()));
+  const ClientTasksCapabilitySchema$1 = looseObject({
+    list: JSONObjectSchema$1.optional(),
+    cancel: JSONObjectSchema$1.optional(),
+    requests: looseObject({
+      sampling: looseObject({ createMessage: JSONObjectSchema$1.optional() }).optional(),
+      elicitation: looseObject({ create: JSONObjectSchema$1.optional() }).optional()
+    }).optional()
+  });
+  const ServerTasksCapabilitySchema$1 = looseObject({
+    list: JSONObjectSchema$1.optional(),
+    cancel: JSONObjectSchema$1.optional(),
+    requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
+  });
+  const ClientCapabilitiesSchema$1 = object2({
+    experimental: record(string2(), JSONObjectSchema$1).optional(),
+    sampling: object2({
+      context: JSONObjectSchema$1.optional(),
+      tools: JSONObjectSchema$1.optional()
+    }).optional(),
+    elicitation: ElicitationCapabilitySchema.optional(),
+    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    tasks: ClientTasksCapabilitySchema$1.optional(),
+    extensions: record(string2(), JSONObjectSchema$1).optional()
+  });
+  const InitializeRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({
+    protocolVersion: string2(),
+    capabilities: ClientCapabilitiesSchema$1,
+    clientInfo: ImplementationSchema$1
+  });
+  const InitializeRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("initialize"),
+    params: InitializeRequestParamsSchema$1
+  });
+  const ServerCapabilitiesSchema$1 = object2({
+    experimental: record(string2(), JSONObjectSchema$1).optional(),
+    logging: JSONObjectSchema$1.optional(),
+    completions: JSONObjectSchema$1.optional(),
+    prompts: object2({ listChanged: boolean2().optional() }).optional(),
+    resources: object2({
+      subscribe: boolean2().optional(),
+      listChanged: boolean2().optional()
+    }).optional(),
+    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tasks: ServerTasksCapabilitySchema$1.optional(),
+    extensions: record(string2(), JSONObjectSchema$1).optional()
+  });
+  const InitializeResultSchema$1 = ResultSchema$1.extend({
+    protocolVersion: string2(),
+    capabilities: ServerCapabilitiesSchema$1,
+    serverInfo: ImplementationSchema$1,
+    instructions: string2().optional()
+  });
+  const InitializedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/initialized"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const PingRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("ping"),
+    params: BaseRequestParamsSchema$1.optional()
+  });
+  const ProgressSchema$1 = object2({
+    progress: number2(),
+    total: optional(number2()),
+    message: optional(string2())
+  });
+  const ProgressNotificationParamsSchema$1 = object2({
+    ...NotificationsParamsSchema$1.shape,
+    ...ProgressSchema$1.shape,
+    progressToken: ProgressTokenSchema$1
+  });
+  const ProgressNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/progress"),
+    params: ProgressNotificationParamsSchema$1
+  });
+  const PaginatedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ cursor: CursorSchema$1.optional() });
+  const PaginatedRequestSchema$1 = RequestSchema$1.extend({ params: PaginatedRequestParamsSchema$1.optional() });
+  const PaginatedResultSchema$1 = ResultSchema$1.extend({ nextCursor: CursorSchema$1.optional() });
+  const ResourceContentsSchema$1 = object2({
+    uri: string2(),
+    mimeType: optional(string2()),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const TextResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ text: string2() });
+  const Base64Schema = string2().refine((val) => {
+    try {
+      atob(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, { message: "Invalid Base64 string" });
+  const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
+  const RoleSchema$1 = _enum(["user", "assistant"]);
+  const AnnotationsSchema$1 = object2({
+    audience: array(RoleSchema$1).optional(),
+    priority: number2().min(0).max(1).optional(),
+    lastModified: datetime2({ offset: true }).optional()
+  });
+  const ResourceSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    uri: string2(),
+    description: optional(string2()),
+    mimeType: optional(string2()),
+    size: optional(number2()),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: optional(looseObject({}))
+  });
+  const ResourceTemplateSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    uriTemplate: string2(),
+    description: optional(string2()),
+    mimeType: optional(string2()),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: optional(looseObject({}))
+  });
+  const ListResourcesRequestSchema$1 = PaginatedRequestSchema$1.extend({ method: literal("resources/list") });
+  const ListResourcesResultSchema$1 = PaginatedResultSchema$1.extend({ resources: array(ResourceSchema$1) });
+  const ListResourceTemplatesRequestSchema$1 = PaginatedRequestSchema$1.extend({ method: literal("resources/templates/list") });
+  const ListResourceTemplatesResultSchema$1 = PaginatedResultSchema$1.extend({ resourceTemplates: array(ResourceTemplateSchema$1) });
+  const ResourceRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ uri: string2() });
+  const ReadResourceRequestParamsSchema$1 = ResourceRequestParamsSchema$1;
+  const ReadResourceRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("resources/read"),
+    params: ReadResourceRequestParamsSchema$1
+  });
+  const ReadResourceResultSchema$1 = ResultSchema$1.extend({ contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1])) });
+  const ResourceListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/resources/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const SubscribeRequestParamsSchema$1 = ResourceRequestParamsSchema$1;
+  const SubscribeRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("resources/subscribe"),
+    params: SubscribeRequestParamsSchema$1
+  });
+  const UnsubscribeRequestParamsSchema$1 = ResourceRequestParamsSchema$1;
+  const UnsubscribeRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("resources/unsubscribe"),
+    params: UnsubscribeRequestParamsSchema$1
+  });
+  const ResourceUpdatedNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({ uri: string2() });
+  const ResourceUpdatedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/resources/updated"),
+    params: ResourceUpdatedNotificationParamsSchema$1
+  });
+  const PromptArgumentSchema$1 = object2({
+    name: string2(),
+    description: optional(string2()),
+    required: optional(boolean2())
+  });
+  const PromptSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    description: optional(string2()),
+    arguments: optional(array(PromptArgumentSchema$1)),
+    _meta: optional(looseObject({}))
+  });
+  const ListPromptsRequestSchema$1 = PaginatedRequestSchema$1.extend({ method: literal("prompts/list") });
+  const ListPromptsResultSchema$1 = PaginatedResultSchema$1.extend({ prompts: array(PromptSchema$1) });
+  const GetPromptRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({
+    name: string2(),
+    arguments: record(string2(), string2()).optional()
+  });
+  const GetPromptRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("prompts/get"),
+    params: GetPromptRequestParamsSchema$1
+  });
+  const TextContentSchema$1 = object2({
+    type: literal("text"),
+    text: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ImageContentSchema$1 = object2({
+    type: literal("image"),
+    data: Base64Schema,
+    mimeType: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const AudioContentSchema$1 = object2({
+    type: literal("audio"),
+    data: Base64Schema,
+    mimeType: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ToolUseContentSchema$1 = object2({
+    type: literal("tool_use"),
+    name: string2(),
+    id: string2(),
+    input: record(string2(), unknown()),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const EmbeddedResourceSchema$1 = object2({
+    type: literal("resource"),
+    resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ResourceLinkSchema$1 = ResourceSchema$1.extend({ type: literal("resource_link") });
+  const ContentBlockSchema$1 = union([
+    TextContentSchema$1,
+    ImageContentSchema$1,
+    AudioContentSchema$1,
+    ResourceLinkSchema$1,
+    EmbeddedResourceSchema$1
+  ]);
+  const PromptMessageSchema$1 = object2({
+    role: RoleSchema$1,
+    content: ContentBlockSchema$1
+  });
+  const GetPromptResultSchema$1 = ResultSchema$1.extend({
+    description: string2().optional(),
+    messages: array(PromptMessageSchema$1)
+  });
+  const PromptListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/prompts/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const ToolAnnotationsSchema$1 = object2({
+    title: string2().optional(),
+    readOnlyHint: boolean2().optional(),
+    destructiveHint: boolean2().optional(),
+    idempotentHint: boolean2().optional(),
+    openWorldHint: boolean2().optional()
+  });
+  const ToolExecutionSchema$1 = object2({ taskSupport: _enum([
+    "required",
+    "optional",
+    "forbidden"
+  ]).optional() });
+  const ToolSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    description: string2().optional(),
+    inputSchema: object2({
+      type: literal("object"),
+      properties: record(string2(), JSONValueSchema$1).optional(),
+      required: array(string2()).optional()
+    }).catchall(unknown()),
+    outputSchema: object2({
+      type: literal("object"),
+      properties: record(string2(), JSONValueSchema$1).optional(),
+      required: array(string2()).optional()
+    }).catchall(unknown()).optional(),
+    annotations: ToolAnnotationsSchema$1.optional(),
+    execution: ToolExecutionSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ListToolsRequestSchema$1 = PaginatedRequestSchema$1.extend({ method: literal("tools/list") });
+  const ListToolsResultSchema$1 = PaginatedResultSchema$1.extend({ tools: array(ToolSchema$1) });
+  const CallToolResultSchema$1 = ResultSchema$1.extend({
+    content: array(ContentBlockSchema$1),
+    structuredContent: record(string2(), unknown()).optional(),
+    isError: boolean2().optional()
+  });
+  const CallToolRequestParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
+    name: string2(),
+    arguments: record(string2(), unknown()).optional()
+  });
+  const CallToolRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("tools/call"),
+    params: CallToolRequestParamsSchema$1
+  });
+  const ToolListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/tools/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const LoggingLevelSchema$1 = _enum([
+    "debug",
+    "info",
+    "notice",
+    "warning",
+    "error",
+    "critical",
+    "alert",
+    "emergency"
+  ]);
+  const SetLevelRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ level: LoggingLevelSchema$1 });
+  const SetLevelRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("logging/setLevel"),
+    params: SetLevelRequestParamsSchema$1
+  });
+  const LoggingMessageNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({
+    level: LoggingLevelSchema$1,
+    logger: string2().optional(),
+    data: unknown()
+  });
+  const LoggingMessageNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/message"),
+    params: LoggingMessageNotificationParamsSchema$1
+  });
+  const ModelHintSchema$1 = object2({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object2({
+    hints: array(ModelHintSchema$1).optional(),
+    costPriority: number2().min(0).max(1).optional(),
+    speedPriority: number2().min(0).max(1).optional(),
+    intelligencePriority: number2().min(0).max(1).optional()
+  });
+  const ToolChoiceSchema$1 = object2({ mode: _enum([
+    "auto",
+    "required",
+    "none"
+  ]).optional() });
+  const ToolResultContentSchema$1 = object2({
+    type: literal("tool_result"),
+    toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
+    content: array(ContentBlockSchema$1),
+    structuredContent: object2({}).loose().optional(),
+    isError: boolean2().optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const SamplingContentSchema$1 = discriminatedUnion("type", [
+    TextContentSchema$1,
+    ImageContentSchema$1,
+    AudioContentSchema$1
+  ]);
+  const SamplingMessageContentBlockSchema$1 = discriminatedUnion("type", [
+    TextContentSchema$1,
+    ImageContentSchema$1,
+    AudioContentSchema$1,
+    ToolUseContentSchema$1,
+    ToolResultContentSchema$1
+  ]);
+  const SamplingMessageSchema$1 = object2({
+    role: RoleSchema$1,
+    content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const CreateMessageRequestParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
+    messages: array(SamplingMessageSchema$1),
+    modelPreferences: ModelPreferencesSchema$1.optional(),
+    systemPrompt: string2().optional(),
+    includeContext: _enum([
+      "none",
+      "thisServer",
+      "allServers"
+    ]).optional(),
+    temperature: number2().optional(),
+    maxTokens: number2().int(),
+    stopSequences: array(string2()).optional(),
+    metadata: JSONObjectSchema$1.optional(),
+    tools: array(ToolSchema$1).optional(),
+    toolChoice: ToolChoiceSchema$1.optional()
+  });
+  const CreateMessageRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("sampling/createMessage"),
+    params: CreateMessageRequestParamsSchema$1
+  });
+  const CreateMessageResultSchema$1 = ResultSchema$1.extend({
+    model: string2(),
+    stopReason: optional(_enum([
+      "endTurn",
+      "stopSequence",
+      "maxTokens"
+    ]).or(string2())),
+    role: RoleSchema$1,
+    content: SamplingContentSchema$1
+  });
+  const CreateMessageResultWithToolsSchema$1 = ResultSchema$1.extend({
+    model: string2(),
+    stopReason: optional(_enum([
+      "endTurn",
+      "stopSequence",
+      "maxTokens",
+      "toolUse"
+    ]).or(string2())),
+    role: RoleSchema$1,
+    content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)])
+  });
+  const BooleanSchemaSchema$1 = object2({
+    type: literal("boolean"),
+    title: string2().optional(),
+    description: string2().optional(),
+    default: boolean2().optional()
+  });
+  const StringSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minLength: number2().optional(),
+    maxLength: number2().optional(),
+    format: _enum([
+      "email",
+      "uri",
+      "date",
+      "date-time"
+    ]).optional(),
+    default: string2().optional()
+  });
+  const NumberSchemaSchema$1 = object2({
+    type: _enum(["number", "integer"]),
+    title: string2().optional(),
+    description: string2().optional(),
+    minimum: number2().optional(),
+    maximum: number2().optional(),
+    default: number2().optional()
+  });
+  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    enum: array(string2()),
+    default: string2().optional()
+  });
+  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    oneOf: array(object2({
+      const: string2(),
+      title: string2()
+    })),
+    default: string2().optional()
+  });
+  const LegacyTitledEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    enum: array(string2()),
+    enumNames: array(string2()).optional(),
+    default: string2().optional()
+  });
+  const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
+  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+    type: literal("array"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minItems: number2().optional(),
+    maxItems: number2().optional(),
+    items: object2({
+      type: literal("string"),
+      enum: array(string2())
+    }),
+    default: array(string2()).optional()
+  });
+  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+    type: literal("array"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minItems: number2().optional(),
+    maxItems: number2().optional(),
+    items: object2({ anyOf: array(object2({
+      const: string2(),
+      title: string2()
+    })) }),
+    default: array(string2()).optional()
+  });
+  const MultiSelectEnumSchemaSchema$1 = union([UntitledMultiSelectEnumSchemaSchema$1, TitledMultiSelectEnumSchemaSchema$1]);
+  const EnumSchemaSchema$1 = union([
+    LegacyTitledEnumSchemaSchema$1,
+    SingleSelectEnumSchemaSchema$1,
+    MultiSelectEnumSchemaSchema$1
+  ]);
+  const PrimitiveSchemaDefinitionSchema$1 = union([
+    EnumSchemaSchema$1,
+    BooleanSchemaSchema$1,
+    StringSchemaSchema$1,
+    NumberSchemaSchema$1
+  ]);
+  const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
+    mode: literal("form").optional(),
+    message: string2(),
+    requestedSchema: object2({
+      type: literal("object"),
+      properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
+      required: array(string2()).optional()
+    }).catchall(unknown())
+  });
+  const ElicitRequestURLParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
+    mode: literal("url"),
+    message: string2(),
+    elicitationId: string2(),
+    url: string2().url()
+  });
+  const ElicitRequestParamsSchema$1 = union([ElicitRequestFormParamsSchema$1, ElicitRequestURLParamsSchema$1]);
+  const ElicitRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("elicitation/create"),
+    params: ElicitRequestParamsSchema$1
+  });
+  const ElicitationCompleteNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({ elicitationId: string2() });
+  const ElicitationCompleteNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/elicitation/complete"),
+    params: ElicitationCompleteNotificationParamsSchema$1
+  });
+  const ElicitResultSchema$1 = ResultSchema$1.extend({
+    action: _enum([
+      "accept",
+      "decline",
+      "cancel"
+    ]),
+    content: preprocess((val) => val === null ? undefined : val, record(string2(), union([
+      string2(),
+      number2(),
+      boolean2(),
+      array(string2())
+    ])).optional())
+  });
+  const ResourceTemplateReferenceSchema$1 = object2({
+    type: literal("ref/resource"),
+    uri: string2()
+  });
+  const PromptReferenceSchema$1 = object2({
+    type: literal("ref/prompt"),
+    name: string2()
+  });
+  const CompleteRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({
+    ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
+    argument: object2({
+      name: string2(),
+      value: string2()
+    }),
+    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+  });
+  const CompleteRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("completion/complete"),
+    params: CompleteRequestParamsSchema$1
+  });
+  const CompleteResultSchema$1 = ResultSchema$1.extend({ completion: looseObject({
+    values: array(string2()).max(100),
+    total: optional(number2().int()),
+    hasMore: optional(boolean2())
+  }) });
+  const RootSchema$1 = object2({
+    uri: string2().startsWith("file://"),
+    name: string2().optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ListRootsRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("roots/list"),
+    params: BaseRequestParamsSchema$1.optional()
+  });
+  const ListRootsResultSchema$1 = ResultSchema$1.extend({ roots: array(RootSchema$1) });
+  const RootsListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/roots/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const TaskCreationParamsSchema$1 = looseObject({
+    ttl: number2().optional(),
+    pollInterval: number2().optional()
+  });
+  const TaskStatusSchema$1 = _enum([
+    "working",
+    "input_required",
+    "completed",
+    "failed",
+    "cancelled"
+  ]);
+  const TaskSchema$1 = object2({
+    taskId: string2(),
+    status: TaskStatusSchema$1,
+    ttl: union([number2(), _null3()]),
+    createdAt: string2(),
+    lastUpdatedAt: string2(),
+    pollInterval: optional(number2()),
+    statusMessage: optional(string2())
+  });
+  const CreateTaskResultSchema$1 = ResultSchema$1.extend({ task: TaskSchema$1 });
+  const TaskStatusNotificationParamsSchema$1 = NotificationsParamsSchema$1.merge(TaskSchema$1);
+  const TaskStatusNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/tasks/status"),
+    params: TaskStatusNotificationParamsSchema$1
+  });
+  const GetTaskRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("tasks/get"),
+    params: BaseRequestParamsSchema$1.extend({ taskId: string2() })
+  });
+  const GetTaskResultSchema$1 = ResultSchema$1.merge(TaskSchema$1);
+  const GetTaskPayloadRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("tasks/result"),
+    params: BaseRequestParamsSchema$1.extend({ taskId: string2() })
+  });
+  const GetTaskPayloadResultSchema$1 = ResultSchema$1.loose();
+  const ListTasksRequestSchema$1 = PaginatedRequestSchema$1.extend({ method: literal("tasks/list") });
+  const ListTasksResultSchema$1 = PaginatedResultSchema$1.extend({ tasks: array(TaskSchema$1) });
+  const CancelTaskRequestSchema$1 = RequestSchema$1.extend({
+    method: literal("tasks/cancel"),
+    params: BaseRequestParamsSchema$1.extend({ taskId: string2() })
+  });
+  return {
+    JSONValueSchema: JSONValueSchema$1,
+    JSONObjectSchema: JSONObjectSchema$1,
+    ProgressTokenSchema: ProgressTokenSchema$1,
+    CursorSchema: CursorSchema$1,
+    TaskMetadataSchema: TaskMetadataSchema$1,
+    RelatedTaskMetadataSchema: RelatedTaskMetadataSchema$1,
+    RequestMetaSchema: RequestMetaSchema$1,
+    BaseRequestParamsSchema: BaseRequestParamsSchema$1,
+    TaskAugmentedRequestParamsSchema: TaskAugmentedRequestParamsSchema$1,
+    RequestSchema: RequestSchema$1,
+    NotificationsParamsSchema: NotificationsParamsSchema$1,
+    NotificationSchema: NotificationSchema$1,
+    ResultSchema: ResultSchema$1,
+    RequestIdSchema: RequestIdSchema$1,
+    EmptyResultSchema: EmptyResultSchema$1,
+    CancelledNotificationParamsSchema: CancelledNotificationParamsSchema$1,
+    CancelledNotificationSchema: CancelledNotificationSchema$1,
+    IconSchema: IconSchema$1,
+    IconsSchema: IconsSchema$1,
+    BaseMetadataSchema: BaseMetadataSchema$1,
+    ImplementationSchema: ImplementationSchema$1,
+    ClientTasksCapabilitySchema: ClientTasksCapabilitySchema$1,
+    ServerTasksCapabilitySchema: ServerTasksCapabilitySchema$1,
+    ClientCapabilitiesSchema: ClientCapabilitiesSchema$1,
+    InitializeRequestParamsSchema: InitializeRequestParamsSchema$1,
+    InitializeRequestSchema: InitializeRequestSchema$1,
+    ServerCapabilitiesSchema: ServerCapabilitiesSchema$1,
+    InitializeResultSchema: InitializeResultSchema$1,
+    InitializedNotificationSchema: InitializedNotificationSchema$1,
+    PingRequestSchema: PingRequestSchema$1,
+    ProgressSchema: ProgressSchema$1,
+    ProgressNotificationParamsSchema: ProgressNotificationParamsSchema$1,
+    ProgressNotificationSchema: ProgressNotificationSchema$1,
+    PaginatedRequestParamsSchema: PaginatedRequestParamsSchema$1,
+    PaginatedRequestSchema: PaginatedRequestSchema$1,
+    PaginatedResultSchema: PaginatedResultSchema$1,
+    ResourceContentsSchema: ResourceContentsSchema$1,
+    TextResourceContentsSchema: TextResourceContentsSchema$1,
+    BlobResourceContentsSchema: BlobResourceContentsSchema$1,
+    RoleSchema: RoleSchema$1,
+    AnnotationsSchema: AnnotationsSchema$1,
+    ResourceSchema: ResourceSchema$1,
+    ResourceTemplateSchema: ResourceTemplateSchema$1,
+    ListResourcesRequestSchema: ListResourcesRequestSchema$1,
+    ListResourcesResultSchema: ListResourcesResultSchema$1,
+    ListResourceTemplatesRequestSchema: ListResourceTemplatesRequestSchema$1,
+    ListResourceTemplatesResultSchema: ListResourceTemplatesResultSchema$1,
+    ResourceRequestParamsSchema: ResourceRequestParamsSchema$1,
+    ReadResourceRequestParamsSchema: ReadResourceRequestParamsSchema$1,
+    ReadResourceRequestSchema: ReadResourceRequestSchema$1,
+    ReadResourceResultSchema: ReadResourceResultSchema$1,
+    ResourceListChangedNotificationSchema: ResourceListChangedNotificationSchema$1,
+    SubscribeRequestParamsSchema: SubscribeRequestParamsSchema$1,
+    SubscribeRequestSchema: SubscribeRequestSchema$1,
+    UnsubscribeRequestParamsSchema: UnsubscribeRequestParamsSchema$1,
+    UnsubscribeRequestSchema: UnsubscribeRequestSchema$1,
+    ResourceUpdatedNotificationParamsSchema: ResourceUpdatedNotificationParamsSchema$1,
+    ResourceUpdatedNotificationSchema: ResourceUpdatedNotificationSchema$1,
+    PromptArgumentSchema: PromptArgumentSchema$1,
+    PromptSchema: PromptSchema$1,
+    ListPromptsRequestSchema: ListPromptsRequestSchema$1,
+    ListPromptsResultSchema: ListPromptsResultSchema$1,
+    GetPromptRequestParamsSchema: GetPromptRequestParamsSchema$1,
+    GetPromptRequestSchema: GetPromptRequestSchema$1,
+    TextContentSchema: TextContentSchema$1,
+    ImageContentSchema: ImageContentSchema$1,
+    AudioContentSchema: AudioContentSchema$1,
+    ToolUseContentSchema: ToolUseContentSchema$1,
+    EmbeddedResourceSchema: EmbeddedResourceSchema$1,
+    ResourceLinkSchema: ResourceLinkSchema$1,
+    ContentBlockSchema: ContentBlockSchema$1,
+    PromptMessageSchema: PromptMessageSchema$1,
+    GetPromptResultSchema: GetPromptResultSchema$1,
+    PromptListChangedNotificationSchema: PromptListChangedNotificationSchema$1,
+    ToolAnnotationsSchema: ToolAnnotationsSchema$1,
+    ToolExecutionSchema: ToolExecutionSchema$1,
+    ToolSchema: ToolSchema$1,
+    ListToolsRequestSchema: ListToolsRequestSchema$1,
+    ListToolsResultSchema: ListToolsResultSchema$1,
+    CallToolResultSchema: CallToolResultSchema$1,
+    CallToolRequestParamsSchema: CallToolRequestParamsSchema$1,
+    CallToolRequestSchema: CallToolRequestSchema$1,
+    ToolListChangedNotificationSchema: ToolListChangedNotificationSchema$1,
+    LoggingLevelSchema: LoggingLevelSchema$1,
+    SetLevelRequestParamsSchema: SetLevelRequestParamsSchema$1,
+    SetLevelRequestSchema: SetLevelRequestSchema$1,
+    LoggingMessageNotificationParamsSchema: LoggingMessageNotificationParamsSchema$1,
+    LoggingMessageNotificationSchema: LoggingMessageNotificationSchema$1,
+    ModelHintSchema: ModelHintSchema$1,
+    ModelPreferencesSchema: ModelPreferencesSchema$1,
+    ToolChoiceSchema: ToolChoiceSchema$1,
+    ToolResultContentSchema: ToolResultContentSchema$1,
+    SamplingContentSchema: SamplingContentSchema$1,
+    SamplingMessageContentBlockSchema: SamplingMessageContentBlockSchema$1,
+    SamplingMessageSchema: SamplingMessageSchema$1,
+    CreateMessageRequestParamsSchema: CreateMessageRequestParamsSchema$1,
+    CreateMessageRequestSchema: CreateMessageRequestSchema$1,
+    CreateMessageResultSchema: CreateMessageResultSchema$1,
+    CreateMessageResultWithToolsSchema: CreateMessageResultWithToolsSchema$1,
+    BooleanSchemaSchema: BooleanSchemaSchema$1,
+    StringSchemaSchema: StringSchemaSchema$1,
+    NumberSchemaSchema: NumberSchemaSchema$1,
+    UntitledSingleSelectEnumSchemaSchema: UntitledSingleSelectEnumSchemaSchema$1,
+    TitledSingleSelectEnumSchemaSchema: TitledSingleSelectEnumSchemaSchema$1,
+    LegacyTitledEnumSchemaSchema: LegacyTitledEnumSchemaSchema$1,
+    SingleSelectEnumSchemaSchema: SingleSelectEnumSchemaSchema$1,
+    UntitledMultiSelectEnumSchemaSchema: UntitledMultiSelectEnumSchemaSchema$1,
+    TitledMultiSelectEnumSchemaSchema: TitledMultiSelectEnumSchemaSchema$1,
+    MultiSelectEnumSchemaSchema: MultiSelectEnumSchemaSchema$1,
+    EnumSchemaSchema: EnumSchemaSchema$1,
+    PrimitiveSchemaDefinitionSchema: PrimitiveSchemaDefinitionSchema$1,
+    ElicitRequestFormParamsSchema: ElicitRequestFormParamsSchema$1,
+    ElicitRequestURLParamsSchema: ElicitRequestURLParamsSchema$1,
+    ElicitRequestParamsSchema: ElicitRequestParamsSchema$1,
+    ElicitRequestSchema: ElicitRequestSchema$1,
+    ElicitationCompleteNotificationParamsSchema: ElicitationCompleteNotificationParamsSchema$1,
+    ElicitationCompleteNotificationSchema: ElicitationCompleteNotificationSchema$1,
+    ElicitResultSchema: ElicitResultSchema$1,
+    ResourceTemplateReferenceSchema: ResourceTemplateReferenceSchema$1,
+    PromptReferenceSchema: PromptReferenceSchema$1,
+    CompleteRequestParamsSchema: CompleteRequestParamsSchema$1,
+    CompleteRequestSchema: CompleteRequestSchema$1,
+    CompleteResultSchema: CompleteResultSchema$1,
+    RootSchema: RootSchema$1,
+    ListRootsRequestSchema: ListRootsRequestSchema$1,
+    ListRootsResultSchema: ListRootsResultSchema$1,
+    RootsListChangedNotificationSchema: RootsListChangedNotificationSchema$1,
+    TaskCreationParamsSchema: TaskCreationParamsSchema$1,
+    TaskStatusSchema: TaskStatusSchema$1,
+    TaskSchema: TaskSchema$1,
+    CreateTaskResultSchema: CreateTaskResultSchema$1,
+    TaskStatusNotificationParamsSchema: TaskStatusNotificationParamsSchema$1,
+    TaskStatusNotificationSchema: TaskStatusNotificationSchema$1,
+    GetTaskRequestSchema: GetTaskRequestSchema$1,
+    GetTaskResultSchema: GetTaskResultSchema$1,
+    GetTaskPayloadRequestSchema: GetTaskPayloadRequestSchema$1,
+    GetTaskPayloadResultSchema: GetTaskPayloadResultSchema$1,
+    ListTasksRequestSchema: ListTasksRequestSchema$1,
+    ListTasksResultSchema: ListTasksResultSchema$1,
+    CancelTaskRequestSchema: CancelTaskRequestSchema$1,
+    CancelTaskResultSchema: ResultSchema$1.merge(TaskSchema$1),
+    ClientRequestSchema: union([
+      PingRequestSchema$1,
+      InitializeRequestSchema$1,
+      CompleteRequestSchema$1,
+      SetLevelRequestSchema$1,
+      GetPromptRequestSchema$1,
+      ListPromptsRequestSchema$1,
+      ListResourcesRequestSchema$1,
+      ListResourceTemplatesRequestSchema$1,
+      ReadResourceRequestSchema$1,
+      SubscribeRequestSchema$1,
+      UnsubscribeRequestSchema$1,
+      CallToolRequestSchema$1,
+      ListToolsRequestSchema$1,
+      GetTaskRequestSchema$1,
+      GetTaskPayloadRequestSchema$1,
+      ListTasksRequestSchema$1,
+      CancelTaskRequestSchema$1
+    ]),
+    ClientNotificationSchema: union([
+      CancelledNotificationSchema$1,
+      ProgressNotificationSchema$1,
+      InitializedNotificationSchema$1,
+      RootsListChangedNotificationSchema$1,
+      TaskStatusNotificationSchema$1
+    ]),
+    ClientResultSchema: union([
+      EmptyResultSchema$1,
+      CreateMessageResultSchema$1,
+      CreateMessageResultWithToolsSchema$1,
+      ElicitResultSchema$1,
+      ListRootsResultSchema$1,
+      GetTaskResultSchema$1,
+      ListTasksResultSchema$1,
+      CreateTaskResultSchema$1
+    ]),
+    ServerRequestSchema: union([
+      PingRequestSchema$1,
+      CreateMessageRequestSchema$1,
+      ElicitRequestSchema$1,
+      ListRootsRequestSchema$1,
+      GetTaskRequestSchema$1,
+      GetTaskPayloadRequestSchema$1,
+      ListTasksRequestSchema$1,
+      CancelTaskRequestSchema$1
+    ]),
+    ServerNotificationSchema: union([
+      CancelledNotificationSchema$1,
+      ProgressNotificationSchema$1,
+      LoggingMessageNotificationSchema$1,
+      ResourceUpdatedNotificationSchema$1,
+      ResourceListChangedNotificationSchema$1,
+      ToolListChangedNotificationSchema$1,
+      PromptListChangedNotificationSchema$1,
+      TaskStatusNotificationSchema$1,
+      ElicitationCompleteNotificationSchema$1
+    ]),
+    ServerResultSchema: union([
+      EmptyResultSchema$1,
+      InitializeResultSchema$1,
+      CompleteResultSchema$1,
+      GetPromptResultSchema$1,
+      ListPromptsResultSchema$1,
+      ListResourcesResultSchema$1,
+      ListResourceTemplatesResultSchema$1,
+      ReadResourceResultSchema$1,
+      CallToolResultSchema$1,
+      ListToolsResultSchema$1,
+      GetTaskResultSchema$1,
+      ListTasksResultSchema$1,
+      CreateTaskResultSchema$1
+    ]),
+    CallToolResultWireSchema: unknown().superRefine((value, ctx) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value) || value.content !== undefined)
+        return;
+      for (const key of TOOL_RESULT_FOREIGN_FAMILY_KEYS2)
+        if (key in value) {
+          ctx.addIssue({
+            code: "custom",
+            message: `content is required when the body carries '${key}' — another result family cannot default into an empty tools/call success`
+          });
+          return;
+        }
+    }).transform(normalizeContentlessToolResult2).pipe(CallToolResultSchema$1)
+  };
+}
+function buildSchemas20252() {
+  return memo$12 ??= build$12();
+}
+function isNonObjectJsonSchemaRoot2(json) {
+  return json["type"] !== "object";
+}
+function establishesNewBase2(id) {
+  return id !== undefined && !(typeof id === "string" && id.startsWith("#"));
+}
+function wrapOutputSchemaForLegacy2(natural) {
+  const $schema = typeof natural["$schema"] === "string" ? natural["$schema"] : undefined;
+  if (establishesNewBase2(natural["$id"]))
+    return {
+      ...$schema !== undefined && { $schema },
+      type: "object",
+      properties: { result: natural },
+      required: ["result"]
+    };
+  const convertRecursiveRefs = declares2019Dialect2(natural["$schema"]) && natural["$recursiveAnchor"] !== true;
+  const rewriteRefs = (node, parentIsNameMap) => {
+    if (Array.isArray(node))
+      return node.map((item) => rewriteRefs(item, false));
+    if (node === null || typeof node !== "object")
+      return node;
+    if (!parentIsNameMap && establishesNewBase2(node["$id"]))
+      return node;
+    const out = {};
+    let convertedRecursion = false;
+    for (const [k, v] of Object.entries(node))
+      if (parentIsNameMap)
+        out[k] = rewriteRefs(v, false);
+      else if ((k === "$ref" || k === "$dynamicRef") && typeof v === "string")
+        out[k] = v === "#" ? "#/properties/result" : v.startsWith("#/") ? `#/properties/result${v.slice(1)}` : v;
+      else if (k === "$recursiveRef" && v === "#" && convertRecursiveRefs)
+        convertedRecursion = true;
+      else if (REF_REWRITE_DATA_POSITION_KEYS2.has(k))
+        out[k] = v;
+      else if (REF_REWRITE_NAME_MAP_KEYS2.has(k))
+        out[k] = rewriteRefs(v, true);
+      else
+        out[k] = rewriteRefs(v, false);
+    if (convertedRecursion)
+      if ("$ref" in out)
+        out["allOf"] = [...Array.isArray(out["allOf"]) ? out["allOf"] : [], { $ref: "#/properties/result" }];
+      else
+        out["$ref"] = "#/properties/result";
+    return out;
+  };
+  return {
+    ...$schema !== undefined && { $schema },
+    type: "object",
+    properties: { result: rewriteRefs(natural, false) },
+    required: ["result"]
+  };
+}
+function registryMaps2() {
+  if (maps$12)
+    return maps$12;
+  const s = buildSchemas20252();
+  maps$12 = {
+    requestSchemas: {
+      ping: s.PingRequestSchema,
+      initialize: s.InitializeRequestSchema,
+      "completion/complete": s.CompleteRequestSchema,
+      "logging/setLevel": s.SetLevelRequestSchema,
+      "prompts/get": s.GetPromptRequestSchema,
+      "prompts/list": s.ListPromptsRequestSchema,
+      "resources/list": s.ListResourcesRequestSchema,
+      "resources/templates/list": s.ListResourceTemplatesRequestSchema,
+      "resources/read": s.ReadResourceRequestSchema,
+      "resources/subscribe": s.SubscribeRequestSchema,
+      "resources/unsubscribe": s.UnsubscribeRequestSchema,
+      "tools/call": s.CallToolRequestSchema,
+      "tools/list": s.ListToolsRequestSchema,
+      "tasks/get": s.GetTaskRequestSchema,
+      "tasks/result": s.GetTaskPayloadRequestSchema,
+      "tasks/list": s.ListTasksRequestSchema,
+      "tasks/cancel": s.CancelTaskRequestSchema,
+      "sampling/createMessage": s.CreateMessageRequestSchema,
+      "elicitation/create": s.ElicitRequestSchema,
+      "roots/list": s.ListRootsRequestSchema
+    },
+    notificationSchemas: {
+      "notifications/cancelled": s.CancelledNotificationSchema,
+      "notifications/progress": s.ProgressNotificationSchema,
+      "notifications/initialized": s.InitializedNotificationSchema,
+      "notifications/roots/list_changed": s.RootsListChangedNotificationSchema,
+      "notifications/tasks/status": s.TaskStatusNotificationSchema,
+      "notifications/message": s.LoggingMessageNotificationSchema,
+      "notifications/resources/updated": s.ResourceUpdatedNotificationSchema,
+      "notifications/resources/list_changed": s.ResourceListChangedNotificationSchema,
+      "notifications/tools/list_changed": s.ToolListChangedNotificationSchema,
+      "notifications/prompts/list_changed": s.PromptListChangedNotificationSchema,
+      "notifications/elicitation/complete": s.ElicitationCompleteNotificationSchema
+    },
+    resultSchemas: {
+      ping: s.EmptyResultSchema,
+      initialize: s.InitializeResultSchema,
+      "completion/complete": s.CompleteResultSchema,
+      "logging/setLevel": s.EmptyResultSchema,
+      "prompts/get": s.GetPromptResultSchema,
+      "prompts/list": s.ListPromptsResultSchema,
+      "resources/list": s.ListResourcesResultSchema,
+      "resources/templates/list": s.ListResourceTemplatesResultSchema,
+      "resources/read": s.ReadResourceResultSchema,
+      "resources/subscribe": s.EmptyResultSchema,
+      "resources/unsubscribe": s.EmptyResultSchema,
+      "tools/call": s.CallToolResultWireSchema,
+      "tools/list": s.ListToolsResultSchema,
+      "sampling/createMessage": s.CreateMessageResultWithToolsSchema,
+      "elicitation/create": s.ElicitResultSchema,
+      "roots/list": s.ListRootsResultSchema
+    }
+  };
+  return maps$12;
+}
+function hasRequestMethod20252(method) {
+  return Object.prototype.hasOwnProperty.call(requestMethodKeys$12, method);
+}
+function hasNotificationMethod20252(method) {
+  return Object.prototype.hasOwnProperty.call(notificationMethodKeys$12, method);
+}
+function hasResultMethod2(method) {
+  return Object.prototype.hasOwnProperty.call(resultMethodKeys2, method);
+}
+function getResultSchema2(method) {
+  return hasResultMethod2(method) ? registryMaps2().resultSchemas[method] : undefined;
+}
+function getRequestSchema2(method) {
+  return hasRequestMethod20252(method) ? registryMaps2().requestSchemas[method] : undefined;
+}
+function getNotificationSchema2(method) {
+  return hasNotificationMethod20252(method) ? registryMaps2().notificationSchemas[method] : undefined;
+}
+function isPlainObject$42(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function triState$12(schema, raw) {
+  if (schema === undefined)
+    return {
+      ok: false,
+      reason: "not-in-era"
+    };
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? {
+    ok: true,
+    value: parsed.data
+  } : {
+    ok: false,
+    reason: "invalid",
+    message: String(parsed.error)
+  };
+}
+function toolNeedsLegacyWrap2(t) {
+  return isPlainObject$42(t) && isPlainObject$42(t["outputSchema"]) && isNonObjectJsonSchemaRoot2(t["outputSchema"]);
+}
+function toNeutralResult2(value) {
+  return value;
+}
+function build2() {
+  const JSONValueSchema$1 = lazy(() => union([
+    string2(),
+    number2(),
+    boolean2(),
+    _null3(),
+    record(string2(), JSONValueSchema$1),
+    array(JSONValueSchema$1)
+  ]));
+  const JSONObjectSchema$1 = record(string2(), JSONValueSchema$1);
+  const ProgressTokenSchema$1 = union([string2(), number2().int()]);
+  const CursorSchema$1 = string2();
+  const RequestIdSchema$1 = union([string2(), number2().int()]);
+  const RoleSchema$1 = _enum(["user", "assistant"]);
+  const LoggingLevelSchema$1 = _enum([
+    "debug",
+    "info",
+    "notice",
+    "warning",
+    "error",
+    "critical",
+    "alert",
+    "emergency"
+  ]);
+  const Base64Schema = string2().refine((val) => {
+    try {
+      atob(val);
+      return true;
+    } catch {
+      return false;
+    }
+  }, { message: "Invalid Base64 string" });
+  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const RequestMetaSchema$1 = looseObject({
+    progressToken: ProgressTokenSchema$1.optional(),
+    "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
+  });
+  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
+  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object2({
+    method: string2(),
+    params: NotificationsParamsSchema$1.loose().optional()
+  });
+  const IconSchema$1 = object2({
+    src: string2(),
+    mimeType: string2().optional(),
+    sizes: array(string2()).optional(),
+    theme: _enum(["light", "dark"]).optional()
+  });
+  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object2({
+    name: string2(),
+    title: string2().optional()
+  });
+  const ImplementationSchema$1 = BaseMetadataSchema$1.extend({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    version: string2(),
+    websiteUrl: string2().optional(),
+    description: string2().optional()
+  });
+  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const ElicitationCapabilitySchema = preprocess((value) => {
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
+      return { form: {} };
+    return value;
+  }, intersection(object2({
+    form: FormElicitationCapabilitySchema.optional(),
+    url: JSONObjectSchema$1.optional()
+  }), JSONObjectSchema$1.optional()));
+  const ClientTasksCapabilitySchema$1 = looseObject({
+    list: JSONObjectSchema$1.optional(),
+    cancel: JSONObjectSchema$1.optional(),
+    requests: looseObject({
+      sampling: looseObject({ createMessage: JSONObjectSchema$1.optional() }).optional(),
+      elicitation: looseObject({ create: JSONObjectSchema$1.optional() }).optional()
+    }).optional()
+  });
+  const ServerTasksCapabilitySchema$1 = looseObject({
+    list: JSONObjectSchema$1.optional(),
+    cancel: JSONObjectSchema$1.optional(),
+    requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
+  });
+  const ClientCapabilitiesSchema$1 = object2({
+    experimental: record(string2(), JSONObjectSchema$1).optional(),
+    sampling: object2({
+      context: JSONObjectSchema$1.optional(),
+      tools: JSONObjectSchema$1.optional()
+    }).optional(),
+    elicitation: ElicitationCapabilitySchema.optional(),
+    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    tasks: ClientTasksCapabilitySchema$1.optional(),
+    extensions: record(string2(), JSONObjectSchema$1).optional()
+  });
+  const ServerCapabilitiesSchema$1 = object2({
+    experimental: record(string2(), JSONObjectSchema$1).optional(),
+    logging: JSONObjectSchema$1.optional(),
+    completions: JSONObjectSchema$1.optional(),
+    prompts: object2({ listChanged: boolean2().optional() }).optional(),
+    resources: object2({
+      subscribe: boolean2().optional(),
+      listChanged: boolean2().optional()
+    }).optional(),
+    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tasks: ServerTasksCapabilitySchema$1.optional(),
+    extensions: record(string2(), JSONObjectSchema$1).optional()
+  });
+  const ProgressSchema$1 = object2({
+    progress: number2(),
+    total: optional(number2()),
+    message: optional(string2())
+  });
+  const ProgressNotificationParamsSchema$1 = object2({
+    ...NotificationsParamsSchema$1.shape,
+    ...ProgressSchema$1.shape,
+    progressToken: ProgressTokenSchema$1
+  });
+  const ProgressNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/progress"),
+    params: ProgressNotificationParamsSchema$1
+  });
+  const LoggingMessageNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({
+    level: LoggingLevelSchema$1,
+    logger: string2().optional(),
+    data: unknown()
+  });
+  const LoggingMessageNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/message"),
+    params: LoggingMessageNotificationParamsSchema$1
+  });
+  const ResourceContentsSchema$1 = object2({
+    uri: string2(),
+    mimeType: optional(string2()),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const TextResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ text: string2() });
+  const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
+  const AnnotationsSchema$1 = object2({
+    audience: array(RoleSchema$1).optional(),
+    priority: number2().min(0).max(1).optional(),
+    lastModified: datetime2({ offset: true }).optional()
+  });
+  const ResourceSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    uri: string2(),
+    description: optional(string2()),
+    mimeType: optional(string2()),
+    size: optional(number2()),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: optional(looseObject({}))
+  });
+  const ResourceTemplateSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    uriTemplate: string2(),
+    description: optional(string2()),
+    mimeType: optional(string2()),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: optional(looseObject({}))
+  });
+  const ResourceListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/resources/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const ResourceUpdatedNotificationParamsSchema$1 = NotificationsParamsSchema$1.extend({ uri: string2() });
+  const ResourceUpdatedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/resources/updated"),
+    params: ResourceUpdatedNotificationParamsSchema$1
+  });
+  const PromptArgumentSchema$1 = object2({
+    name: string2(),
+    description: optional(string2()),
+    required: optional(boolean2())
+  });
+  const PromptSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    description: optional(string2()),
+    arguments: optional(array(PromptArgumentSchema$1)),
+    _meta: optional(looseObject({}))
+  });
+  const PromptListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/prompts/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const TextContentSchema$1 = object2({
+    type: literal("text"),
+    text: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ImageContentSchema$1 = object2({
+    type: literal("image"),
+    data: Base64Schema,
+    mimeType: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const AudioContentSchema$1 = object2({
+    type: literal("audio"),
+    data: Base64Schema,
+    mimeType: string2(),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ToolUseContentSchema$1 = object2({
+    type: literal("tool_use"),
+    name: string2(),
+    id: string2(),
+    input: record(string2(), unknown()),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const EmbeddedResourceSchema$1 = object2({
+    type: literal("resource"),
+    resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
+    annotations: AnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ResourceLinkSchema$1 = ResourceSchema$1.extend({ type: literal("resource_link") });
+  const ContentBlockSchema$1 = union([
+    TextContentSchema$1,
+    ImageContentSchema$1,
+    AudioContentSchema$1,
+    ResourceLinkSchema$1,
+    EmbeddedResourceSchema$1
+  ]);
+  const PromptMessageSchema$1 = object2({
+    role: RoleSchema$1,
+    content: ContentBlockSchema$1
+  });
+  const ToolAnnotationsSchema$1 = object2({
+    title: string2().optional(),
+    readOnlyHint: boolean2().optional(),
+    destructiveHint: boolean2().optional(),
+    idempotentHint: boolean2().optional(),
+    openWorldHint: boolean2().optional()
+  });
+  const ToolListChangedNotificationSchema$1 = NotificationSchema$1.extend({
+    method: literal("notifications/tools/list_changed"),
+    params: NotificationsParamsSchema$1.optional()
+  });
+  const ModelHintSchema$1 = object2({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object2({
+    hints: array(ModelHintSchema$1).optional(),
+    costPriority: number2().min(0).max(1).optional(),
+    speedPriority: number2().min(0).max(1).optional(),
+    intelligencePriority: number2().min(0).max(1).optional()
+  });
+  const ToolChoiceSchema$1 = object2({ mode: _enum([
+    "auto",
+    "required",
+    "none"
+  ]).optional() });
+  const BooleanSchemaSchema$1 = object2({
+    type: literal("boolean"),
+    title: string2().optional(),
+    description: string2().optional(),
+    default: boolean2().optional()
+  });
+  const StringSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minLength: number2().optional(),
+    maxLength: number2().optional(),
+    format: _enum([
+      "email",
+      "uri",
+      "date",
+      "date-time"
+    ]).optional(),
+    default: string2().optional()
+  });
+  const NumberSchemaSchema$1 = object2({
+    type: _enum(["number", "integer"]),
+    title: string2().optional(),
+    description: string2().optional(),
+    minimum: number2().optional(),
+    maximum: number2().optional(),
+    default: number2().optional()
+  });
+  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    enum: array(string2()),
+    default: string2().optional()
+  });
+  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    oneOf: array(object2({
+      const: string2(),
+      title: string2()
+    })),
+    default: string2().optional()
+  });
+  const LegacyTitledEnumSchemaSchema$1 = object2({
+    type: literal("string"),
+    title: string2().optional(),
+    description: string2().optional(),
+    enum: array(string2()),
+    enumNames: array(string2()).optional(),
+    default: string2().optional()
+  });
+  const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
+  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+    type: literal("array"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minItems: number2().optional(),
+    maxItems: number2().optional(),
+    items: object2({
+      type: literal("string"),
+      enum: array(string2())
+    }),
+    default: array(string2()).optional()
+  });
+  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+    type: literal("array"),
+    title: string2().optional(),
+    description: string2().optional(),
+    minItems: number2().optional(),
+    maxItems: number2().optional(),
+    items: object2({ anyOf: array(object2({
+      const: string2(),
+      title: string2()
+    })) }),
+    default: array(string2()).optional()
+  });
+  const MultiSelectEnumSchemaSchema$1 = union([UntitledMultiSelectEnumSchemaSchema$1, TitledMultiSelectEnumSchemaSchema$1]);
+  const EnumSchemaSchema$1 = union([
+    LegacyTitledEnumSchemaSchema$1,
+    SingleSelectEnumSchemaSchema$1,
+    MultiSelectEnumSchemaSchema$1
+  ]);
+  const PrimitiveSchemaDefinitionSchema$1 = union([
+    EnumSchemaSchema$1,
+    BooleanSchemaSchema$1,
+    StringSchemaSchema$1,
+    NumberSchemaSchema$1
+  ]);
+  const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
+    mode: literal("form").optional(),
+    message: string2(),
+    requestedSchema: object2({
+      type: literal("object"),
+      properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
+      required: array(string2()).optional()
+    }).catchall(unknown())
+  });
+  const ResourceTemplateReferenceSchema$1 = object2({
+    type: literal("ref/resource"),
+    uri: string2()
+  });
+  const PromptReferenceSchema$1 = object2({
+    type: literal("ref/prompt"),
+    name: string2()
+  });
+  const RootSchema$1 = object2({
+    uri: string2().startsWith("file://"),
+    name: string2().optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const sharedClientCapabilityShape = ClientCapabilitiesSchema$1.shape;
+  const ClientCapabilities2026Schema = object2({
+    experimental: sharedClientCapabilityShape.experimental,
+    sampling: sharedClientCapabilityShape.sampling,
+    elicitation: sharedClientCapabilityShape.elicitation,
+    roots: sharedClientCapabilityShape.roots,
+    extensions: sharedClientCapabilityShape.extensions
+  });
+  const sharedServerCapabilityShape = ServerCapabilitiesSchema$1.shape;
+  const ServerCapabilities2026Schema = object2({
+    experimental: sharedServerCapabilityShape.experimental,
+    logging: sharedServerCapabilityShape.logging,
+    completions: sharedServerCapabilityShape.completions,
+    prompts: sharedServerCapabilityShape.prompts,
+    resources: sharedServerCapabilityShape.resources,
+    tools: sharedServerCapabilityShape.tools,
+    extensions: sharedServerCapabilityShape.extensions
+  });
+  const RequestMetaEnvelopeSchema = looseObject({
+    progressToken: ProgressTokenSchema$1.optional(),
+    [PROTOCOL_VERSION_META_KEY]: string2(),
+    [CLIENT_INFO_META_KEY]: ImplementationSchema$1.optional(),
+    [CLIENT_CAPABILITIES_META_KEY]: ClientCapabilities2026Schema,
+    [LOG_LEVEL_META_KEY]: LoggingLevelSchema$1.optional()
+  });
+  const ToolSchema$1 = object2({
+    ...BaseMetadataSchema$1.shape,
+    ...IconsSchema$1.shape,
+    description: string2().optional(),
+    inputSchema: looseObject({
+      $schema: string2().optional(),
+      type: literal("object")
+    }),
+    outputSchema: looseObject({ $schema: string2().optional() }).optional(),
+    annotations: ToolAnnotationsSchema$1.optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ToolResultContentSchema$1 = object2({
+    type: literal("tool_result"),
+    toolUseId: string2(),
+    content: array(ContentBlockSchema$1),
+    structuredContent: unknown().optional(),
+    isError: boolean2().optional(),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const SamplingMessageContentBlockSchema$1 = union([
+    TextContentSchema$1,
+    ImageContentSchema$1,
+    AudioContentSchema$1,
+    ToolUseContentSchema$1,
+    ToolResultContentSchema$1
+  ]);
+  const SamplingMessageSchema$1 = object2({
+    role: RoleSchema$1,
+    content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
+    _meta: record(string2(), unknown()).optional()
+  });
+  const ResultTypeSchema = string2();
+  const ResultMetaSchema = looseObject({ [SERVER_INFO_META_KEY]: ImplementationSchema$1.optional().catch(undefined) });
+  const wireMeta = ResultMetaSchema.optional();
+  function wireResult(shape) {
+    return looseObject({
+      _meta: wireMeta,
+      resultType: ResultTypeSchema.default("complete"),
+      ...shape
+    });
+  }
+  const ResultSchema$1 = wireResult({});
+  const PaginatedResultSchema$1 = wireResult({ nextCursor: CursorSchema$1.optional() });
+  const CallToolResultSchema$1 = wireResult({
+    content: array(ContentBlockSchema$1),
+    structuredContent: unknown().optional(),
+    isError: boolean2().optional()
+  });
+  const ListToolsResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"]),
+    tools: array(ToolSchema$1),
+    nextCursor: CursorSchema$1.optional()
+  });
+  const ListPromptsResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"]),
+    prompts: array(PromptSchema$1),
+    nextCursor: CursorSchema$1.optional()
+  });
+  const GetPromptResultSchema$1 = wireResult({
+    description: string2().optional(),
+    messages: array(PromptMessageSchema$1)
+  });
+  const ListResourcesResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"]),
+    resources: array(ResourceSchema$1),
+    nextCursor: CursorSchema$1.optional()
+  });
+  const ListResourceTemplatesResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"]),
+    resourceTemplates: array(ResourceTemplateSchema$1),
+    nextCursor: CursorSchema$1.optional()
+  });
+  const ReadResourceResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"]),
+    contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
+  });
+  const CompleteResultSchema$1 = wireResult({ completion: object2({
+    values: array(string2()).max(100),
+    total: number2().int().optional(),
+    hasMore: boolean2().optional()
+  }).loose() });
+  const CacheableResultSchema = wireResult({
+    ttlMs: number2().int().min(0),
+    cacheScope: _enum(["public", "private"])
+  });
+  const DiscoverResultSchema$1 = wireResult({
+    ttlMs: number2().int().min(0).catch(0),
+    cacheScope: _enum(["public", "private"]).catch("private"),
+    supportedVersions: array(string2()),
+    capabilities: ServerCapabilities2026Schema,
+    instructions: string2().optional()
+  });
+  const CreateMessageRequestParamsSchema$1 = object2({
+    messages: array(SamplingMessageSchema$1),
+    modelPreferences: ModelPreferencesSchema$1.optional(),
+    systemPrompt: string2().optional(),
+    includeContext: _enum([
+      "none",
+      "thisServer",
+      "allServers"
+    ]).optional(),
+    temperature: number2().optional(),
+    maxTokens: number2().int(),
+    stopSequences: array(string2()).optional(),
+    metadata: JSONObjectSchema$1.optional(),
+    tools: array(ToolSchema$1).optional(),
+    toolChoice: ToolChoiceSchema$1.optional()
+  });
+  const CreateMessageRequestSchema$1 = object2({
+    method: literal("sampling/createMessage"),
+    params: CreateMessageRequestParamsSchema$1
+  });
+  const ListRootsRequestSchema$1 = object2({
+    method: literal("roots/list"),
+    params: object2({ _meta: record(string2(), unknown()).optional() }).optional()
+  });
+  const CreateMessageResultSchema$1 = object2({
+    ...SamplingMessageSchema$1.shape,
+    model: string2(),
+    stopReason: string2().optional()
+  });
+  const ListRootsResultSchema$1 = object2({ roots: array(RootSchema$1) });
+  const ElicitResultSchema$1 = object2({
+    action: _enum([
+      "accept",
+      "decline",
+      "cancel"
+    ]),
+    content: record(string2(), union([
+      string2(),
+      number2(),
+      boolean2(),
+      array(string2())
+    ])).optional()
+  });
+  const ElicitRequestURLParamsSchema$1 = object2({
+    mode: literal("url"),
+    message: string2(),
+    url: string2().url()
+  });
+  const ElicitRequestParamsSchema$1 = union([ElicitRequestFormParamsSchema$1, ElicitRequestURLParamsSchema$1]);
+  const ElicitRequestSchema$1 = object2({
+    method: literal("elicitation/create"),
+    params: ElicitRequestParamsSchema$1
+  });
+  const InputRequestSchema = union([
+    CreateMessageRequestSchema$1,
+    ListRootsRequestSchema$1,
+    ElicitRequestSchema$1
+  ]);
+  const InputResponseSchema = union([
+    CreateMessageResultSchema$1,
+    ListRootsResultSchema$1,
+    ElicitResultSchema$1
+  ]);
+  const InputRequestsSchema = record(string2(), InputRequestSchema);
+  const InputResponsesSchema = record(string2(), InputResponseSchema);
+  const InputRequiredResultSchema = wireResult({
+    inputRequests: InputRequestsSchema.optional(),
+    requestState: string2().optional()
+  });
+  const retryParamsShape = {
+    inputResponses: InputResponsesSchema.optional(),
+    requestState: string2().optional()
+  };
+  const InputResponseRequestParamsSchema = object2({
+    _meta: RequestMetaEnvelopeSchema,
+    ...retryParamsShape
+  });
+  const DispatchRequestMetaSchema = looseObject({ progressToken: ProgressTokenSchema$1.optional() });
+  function wireRequest(method, paramsShape) {
+    return object2({
+      method: literal(method),
+      params: object2({
+        _meta: RequestMetaEnvelopeSchema,
+        ...paramsShape
+      })
+    });
+  }
+  function dispatchRequest(method, paramsShape) {
+    return object2({
+      method: literal(method),
+      params: object2({
+        _meta: DispatchRequestMetaSchema.optional(),
+        ...paramsShape
+      }).optional()
+    });
+  }
+  const callToolParamsShape = {
+    name: string2(),
+    arguments: record(string2(), unknown()).optional(),
+    ...retryParamsShape
+  };
+  const paginatedParamsShape = { cursor: CursorSchema$1.optional() };
+  const CallToolRequestSchema$1 = wireRequest("tools/call", callToolParamsShape);
+  const ListToolsRequestSchema$1 = wireRequest("tools/list", paginatedParamsShape);
+  const ListPromptsRequestSchema$1 = wireRequest("prompts/list", paginatedParamsShape);
+  const GetPromptRequestSchema$1 = wireRequest("prompts/get", {
+    name: string2(),
+    arguments: record(string2(), string2()).optional(),
+    ...retryParamsShape
+  });
+  const ListResourcesRequestSchema$1 = wireRequest("resources/list", paginatedParamsShape);
+  const ListResourceTemplatesRequestSchema$1 = wireRequest("resources/templates/list", paginatedParamsShape);
+  const ReadResourceRequestSchema$1 = wireRequest("resources/read", {
+    uri: string2(),
+    ...retryParamsShape
+  });
+  const completeParamsShape = {
+    ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
+    argument: object2({
+      name: string2(),
+      value: string2()
+    }),
+    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+  };
+  const CompleteRequestSchema$1 = wireRequest("completion/complete", completeParamsShape);
+  const DiscoverRequestSchema$1 = wireRequest("server/discover", {});
+  const SubscriptionFilterSchema$1 = object2({
+    toolsListChanged: boolean2().optional(),
+    promptsListChanged: boolean2().optional(),
+    resourcesListChanged: boolean2().optional(),
+    resourceSubscriptions: array(string2()).optional()
+  });
+  const subscriptionsListenParamsShape = { notifications: SubscriptionFilterSchema$1 };
+  const SubscriptionsListenRequestSchema$1 = wireRequest("subscriptions/listen", subscriptionsListenParamsShape);
+  const SubscriptionsListenResultMetaSchema$1 = ResultMetaSchema.extend({ "io.modelcontextprotocol/subscriptionId": RequestIdSchema$1 });
+  const SubscriptionsListenResultSchema$1 = looseObject({
+    _meta: SubscriptionsListenResultMetaSchema$1,
+    resultType: ResultTypeSchema.default("complete")
+  });
+  const dispatchRequestSchemas = {
+    "tools/call": dispatchRequest("tools/call", callToolParamsShape),
+    "tools/list": dispatchRequest("tools/list", paginatedParamsShape),
+    "prompts/get": dispatchRequest("prompts/get", {
+      name: string2(),
+      arguments: record(string2(), string2()).optional()
+    }),
+    "prompts/list": dispatchRequest("prompts/list", paginatedParamsShape),
+    "resources/list": dispatchRequest("resources/list", paginatedParamsShape),
+    "resources/templates/list": dispatchRequest("resources/templates/list", paginatedParamsShape),
+    "resources/read": dispatchRequest("resources/read", { uri: string2() }),
+    "completion/complete": dispatchRequest("completion/complete", completeParamsShape),
+    "server/discover": dispatchRequest("server/discover", {}),
+    "subscriptions/listen": dispatchRequest("subscriptions/listen", subscriptionsListenParamsShape)
+  };
+  function liftedResult(shape) {
+    return looseObject({
+      _meta: wireMeta,
+      ...shape
+    });
+  }
+  const dispatchResultSchemas = {
+    "tools/call": liftedResult({
+      content: array(ContentBlockSchema$1),
+      structuredContent: unknown().optional(),
+      isError: boolean2().optional()
+    }),
+    "tools/list": liftedResult({
+      ttlMs: number2().int().min(0),
+      cacheScope: _enum(["public", "private"]),
+      tools: array(ToolSchema$1),
+      nextCursor: CursorSchema$1.optional()
+    }),
+    "prompts/get": liftedResult({
+      description: string2().optional(),
+      messages: array(PromptMessageSchema$1)
+    }),
+    "prompts/list": liftedResult({
+      ttlMs: number2().int().min(0),
+      cacheScope: _enum(["public", "private"]),
+      prompts: array(PromptSchema$1),
+      nextCursor: CursorSchema$1.optional()
+    }),
+    "resources/list": liftedResult({
+      ttlMs: number2().int().min(0),
+      cacheScope: _enum(["public", "private"]),
+      resources: array(ResourceSchema$1),
+      nextCursor: CursorSchema$1.optional()
+    }),
+    "resources/templates/list": liftedResult({
+      ttlMs: number2().int().min(0),
+      cacheScope: _enum(["public", "private"]),
+      resourceTemplates: array(ResourceTemplateSchema$1),
+      nextCursor: CursorSchema$1.optional()
+    }),
+    "resources/read": liftedResult({
+      ttlMs: number2().int().min(0),
+      cacheScope: _enum(["public", "private"]),
+      contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
+    }),
+    "completion/complete": liftedResult({ completion: object2({
+      values: array(string2()).max(100),
+      total: number2().int().optional(),
+      hasMore: boolean2().optional()
+    }).loose() }),
+    "server/discover": liftedResult({
+      ttlMs: number2().int().min(0).catch(0),
+      cacheScope: _enum(["public", "private"]).catch("private"),
+      supportedVersions: array(string2()),
+      capabilities: ServerCapabilities2026Schema,
+      instructions: string2().optional()
+    }),
+    "subscriptions/listen": liftedResult({})
+  };
+  const NotificationMetaSchema = looseObject({ "io.modelcontextprotocol/subscriptionId": RequestIdSchema$1.optional() });
+  const SubscriptionsAcknowledgedNotificationSchema$1 = object2({
+    method: literal("notifications/subscriptions/acknowledged"),
+    params: object2({
+      _meta: NotificationMetaSchema.optional(),
+      notifications: SubscriptionFilterSchema$1
+    })
+  });
+  const CancelledNotificationParamsSchema$1 = object2({
+    _meta: NotificationMetaSchema.optional(),
+    requestId: RequestIdSchema$1,
+    reason: string2().optional()
+  });
+  const CancelledNotificationSchema$1 = object2({
+    method: literal("notifications/cancelled"),
+    params: CancelledNotificationParamsSchema$1
+  });
+  const notificationSchemas2026 = {
+    "notifications/cancelled": CancelledNotificationSchema$1,
+    "notifications/progress": ProgressNotificationSchema$1,
+    "notifications/message": LoggingMessageNotificationSchema$1,
+    "notifications/resources/updated": ResourceUpdatedNotificationSchema$1,
+    "notifications/resources/list_changed": ResourceListChangedNotificationSchema$1,
+    "notifications/tools/list_changed": ToolListChangedNotificationSchema$1,
+    "notifications/prompts/list_changed": PromptListChangedNotificationSchema$1,
+    "notifications/subscriptions/acknowledged": SubscriptionsAcknowledgedNotificationSchema$1
+  };
+  const wireResultResponse = (result) => object2({
+    jsonrpc: literal("2.0"),
+    id: union([string2(), number2().int()]),
+    result
+  }).strict();
+  return {
+    JSONValueSchema: JSONValueSchema$1,
+    JSONObjectSchema: JSONObjectSchema$1,
+    ProgressTokenSchema: ProgressTokenSchema$1,
+    CursorSchema: CursorSchema$1,
+    RequestIdSchema: RequestIdSchema$1,
+    RoleSchema: RoleSchema$1,
+    LoggingLevelSchema: LoggingLevelSchema$1,
+    TaskMetadataSchema: TaskMetadataSchema$1,
+    RelatedTaskMetadataSchema: RelatedTaskMetadataSchema$1,
+    RequestMetaSchema: RequestMetaSchema$1,
+    BaseRequestParamsSchema: BaseRequestParamsSchema$1,
+    TaskAugmentedRequestParamsSchema: TaskAugmentedRequestParamsSchema$1,
+    NotificationsParamsSchema: NotificationsParamsSchema$1,
+    NotificationSchema: NotificationSchema$1,
+    IconSchema: IconSchema$1,
+    IconsSchema: IconsSchema$1,
+    BaseMetadataSchema: BaseMetadataSchema$1,
+    ImplementationSchema: ImplementationSchema$1,
+    ClientTasksCapabilitySchema: ClientTasksCapabilitySchema$1,
+    ServerTasksCapabilitySchema: ServerTasksCapabilitySchema$1,
+    ClientCapabilitiesSchema: ClientCapabilitiesSchema$1,
+    ServerCapabilitiesSchema: ServerCapabilitiesSchema$1,
+    ProgressSchema: ProgressSchema$1,
+    ProgressNotificationParamsSchema: ProgressNotificationParamsSchema$1,
+    ProgressNotificationSchema: ProgressNotificationSchema$1,
+    LoggingMessageNotificationParamsSchema: LoggingMessageNotificationParamsSchema$1,
+    LoggingMessageNotificationSchema: LoggingMessageNotificationSchema$1,
+    ResourceContentsSchema: ResourceContentsSchema$1,
+    TextResourceContentsSchema: TextResourceContentsSchema$1,
+    BlobResourceContentsSchema: BlobResourceContentsSchema$1,
+    AnnotationsSchema: AnnotationsSchema$1,
+    ResourceSchema: ResourceSchema$1,
+    ResourceTemplateSchema: ResourceTemplateSchema$1,
+    ResourceListChangedNotificationSchema: ResourceListChangedNotificationSchema$1,
+    ResourceUpdatedNotificationParamsSchema: ResourceUpdatedNotificationParamsSchema$1,
+    ResourceUpdatedNotificationSchema: ResourceUpdatedNotificationSchema$1,
+    PromptArgumentSchema: PromptArgumentSchema$1,
+    PromptSchema: PromptSchema$1,
+    PromptListChangedNotificationSchema: PromptListChangedNotificationSchema$1,
+    TextContentSchema: TextContentSchema$1,
+    ImageContentSchema: ImageContentSchema$1,
+    AudioContentSchema: AudioContentSchema$1,
+    ToolUseContentSchema: ToolUseContentSchema$1,
+    EmbeddedResourceSchema: EmbeddedResourceSchema$1,
+    ResourceLinkSchema: ResourceLinkSchema$1,
+    ContentBlockSchema: ContentBlockSchema$1,
+    PromptMessageSchema: PromptMessageSchema$1,
+    ToolAnnotationsSchema: ToolAnnotationsSchema$1,
+    ToolListChangedNotificationSchema: ToolListChangedNotificationSchema$1,
+    ModelHintSchema: ModelHintSchema$1,
+    ModelPreferencesSchema: ModelPreferencesSchema$1,
+    ToolChoiceSchema: ToolChoiceSchema$1,
+    BooleanSchemaSchema: BooleanSchemaSchema$1,
+    StringSchemaSchema: StringSchemaSchema$1,
+    NumberSchemaSchema: NumberSchemaSchema$1,
+    UntitledSingleSelectEnumSchemaSchema: UntitledSingleSelectEnumSchemaSchema$1,
+    TitledSingleSelectEnumSchemaSchema: TitledSingleSelectEnumSchemaSchema$1,
+    LegacyTitledEnumSchemaSchema: LegacyTitledEnumSchemaSchema$1,
+    SingleSelectEnumSchemaSchema: SingleSelectEnumSchemaSchema$1,
+    UntitledMultiSelectEnumSchemaSchema: UntitledMultiSelectEnumSchemaSchema$1,
+    TitledMultiSelectEnumSchemaSchema: TitledMultiSelectEnumSchemaSchema$1,
+    MultiSelectEnumSchemaSchema: MultiSelectEnumSchemaSchema$1,
+    EnumSchemaSchema: EnumSchemaSchema$1,
+    PrimitiveSchemaDefinitionSchema: PrimitiveSchemaDefinitionSchema$1,
+    ElicitRequestFormParamsSchema: ElicitRequestFormParamsSchema$1,
+    ResourceTemplateReferenceSchema: ResourceTemplateReferenceSchema$1,
+    PromptReferenceSchema: PromptReferenceSchema$1,
+    RootSchema: RootSchema$1,
+    ClientCapabilities2026Schema,
+    ServerCapabilities2026Schema,
+    RequestMetaEnvelopeSchema,
+    ToolSchema: ToolSchema$1,
+    ToolResultContentSchema: ToolResultContentSchema$1,
+    SamplingMessageContentBlockSchema: SamplingMessageContentBlockSchema$1,
+    SamplingMessageSchema: SamplingMessageSchema$1,
+    ResultTypeSchema,
+    ResultMetaSchema,
+    ResultSchema: ResultSchema$1,
+    PaginatedResultSchema: PaginatedResultSchema$1,
+    CallToolResultSchema: CallToolResultSchema$1,
+    ListToolsResultSchema: ListToolsResultSchema$1,
+    ListPromptsResultSchema: ListPromptsResultSchema$1,
+    GetPromptResultSchema: GetPromptResultSchema$1,
+    ListResourcesResultSchema: ListResourcesResultSchema$1,
+    ListResourceTemplatesResultSchema: ListResourceTemplatesResultSchema$1,
+    ReadResourceResultSchema: ReadResourceResultSchema$1,
+    CompleteResultSchema: CompleteResultSchema$1,
+    CacheableResultSchema,
+    DiscoverResultSchema: DiscoverResultSchema$1,
+    CreateMessageRequestParamsSchema: CreateMessageRequestParamsSchema$1,
+    CreateMessageRequestSchema: CreateMessageRequestSchema$1,
+    ListRootsRequestSchema: ListRootsRequestSchema$1,
+    CreateMessageResultSchema: CreateMessageResultSchema$1,
+    ListRootsResultSchema: ListRootsResultSchema$1,
+    ElicitResultSchema: ElicitResultSchema$1,
+    ElicitRequestURLParamsSchema: ElicitRequestURLParamsSchema$1,
+    ElicitRequestParamsSchema: ElicitRequestParamsSchema$1,
+    ElicitRequestSchema: ElicitRequestSchema$1,
+    InputRequestSchema,
+    InputResponseSchema,
+    InputRequestsSchema,
+    InputResponsesSchema,
+    InputRequiredResultSchema,
+    InputResponseRequestParamsSchema,
+    CallToolRequestSchema: CallToolRequestSchema$1,
+    ListToolsRequestSchema: ListToolsRequestSchema$1,
+    ListPromptsRequestSchema: ListPromptsRequestSchema$1,
+    GetPromptRequestSchema: GetPromptRequestSchema$1,
+    ListResourcesRequestSchema: ListResourcesRequestSchema$1,
+    ListResourceTemplatesRequestSchema: ListResourceTemplatesRequestSchema$1,
+    ReadResourceRequestSchema: ReadResourceRequestSchema$1,
+    CompleteRequestSchema: CompleteRequestSchema$1,
+    DiscoverRequestSchema: DiscoverRequestSchema$1,
+    SubscriptionFilterSchema: SubscriptionFilterSchema$1,
+    SubscriptionsListenRequestSchema: SubscriptionsListenRequestSchema$1,
+    SubscriptionsListenResultMetaSchema: SubscriptionsListenResultMetaSchema$1,
+    SubscriptionsListenResultSchema: SubscriptionsListenResultSchema$1,
+    dispatchRequestSchemas,
+    dispatchResultSchemas,
+    NotificationMetaSchema,
+    SubscriptionsAcknowledgedNotificationSchema: SubscriptionsAcknowledgedNotificationSchema$1,
+    CancelledNotificationParamsSchema: CancelledNotificationParamsSchema$1,
+    CancelledNotificationSchema: CancelledNotificationSchema$1,
+    notificationSchemas2026,
+    JSONRPCResultResponseSchema: wireResultResponse(ResultSchema$1),
+    CallToolResultResponseSchema: wireResultResponse(union([CallToolResultSchema$1, InputRequiredResultSchema])),
+    ListToolsResultResponseSchema: wireResultResponse(ListToolsResultSchema$1),
+    ListPromptsResultResponseSchema: wireResultResponse(ListPromptsResultSchema$1),
+    GetPromptResultResponseSchema: wireResultResponse(union([GetPromptResultSchema$1, InputRequiredResultSchema])),
+    ListResourcesResultResponseSchema: wireResultResponse(ListResourcesResultSchema$1),
+    ListResourceTemplatesResultResponseSchema: wireResultResponse(ListResourceTemplatesResultSchema$1),
+    ReadResourceResultResponseSchema: wireResultResponse(union([ReadResourceResultSchema$1, InputRequiredResultSchema])),
+    CompleteResultResponseSchema: wireResultResponse(CompleteResultSchema$1),
+    DiscoverResultResponseSchema: wireResultResponse(DiscoverResultSchema$1)
+  };
+}
+function buildSchemas20262() {
+  return memo3 ??= build2();
+}
+function isCacheableResultMethod2(method) {
+  return CACHEABLE_RESULT_METHODS2.includes(method);
+}
+function cacheHintFallbackOf2(result) {
+  return result[RESULT_CACHE_HINT_FALLBACK2];
+}
+function isValidCacheTtlMs2(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+function isValidCacheScope2(value) {
+  return value === "public" || value === "private";
+}
+function stampResultType2(method, result) {
+  const provided = result["resultType"];
+  if (provided === undefined)
+    return {
+      ...result,
+      resultType: "complete"
+    };
+  if (provided === "complete")
+    return result;
+  if (EXTENDED_RESULT_TYPE_METHODS2.includes(method))
+    return result;
+  throw new ProtocolError2(ProtocolErrorCode2.InternalError, `Handler for ${method} returned resultType '${String(provided)}', but results of ${method} only support 'complete' on protocol revision 2026-07-28`);
+}
+function fillCacheFields2(method, result) {
+  const fallback = cacheHintFallbackOf2(result);
+  if (result["resultType"] !== "complete" || !isCacheableResultMethod2(method))
+    return fallback === undefined ? result : stripCacheHintFallback2(result);
+  const provided = result;
+  const ttlMs = isValidCacheTtlMs2(provided["ttlMs"]) ? provided["ttlMs"] : resolveTtlMs2(fallback);
+  const cacheScope = isValidCacheScope2(provided["cacheScope"]) ? provided["cacheScope"] : resolveCacheScope2(fallback);
+  const filled = {
+    ...provided,
+    ttlMs,
+    cacheScope
+  };
+  delete filled[RESULT_CACHE_HINT_FALLBACK2];
+  return filled;
+}
+function isPlainObject$32(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function stampServerInfoMeta2(result, serverInfo) {
+  if (serverInfo === undefined)
+    return result;
+  const meta = result["_meta"];
+  if (meta === undefined)
+    return {
+      ...result,
+      _meta: { [SERVER_INFO_META_KEY]: serverInfo }
+    };
+  if (!isPlainObject$32(meta))
+    return result;
+  if (meta[SERVER_INFO_META_KEY] !== undefined)
+    return result;
+  return {
+    ...result,
+    _meta: {
+      ...meta,
+      [SERVER_INFO_META_KEY]: serverInfo
+    }
+  };
+}
+function resolveTtlMs2(fallback) {
+  return fallback !== undefined && isValidCacheTtlMs2(fallback.ttlMs) ? fallback.ttlMs : DEFAULT_CACHE_TTL_MS2;
+}
+function resolveCacheScope2(fallback) {
+  return fallback !== undefined && isValidCacheScope2(fallback.cacheScope) ? fallback.cacheScope : DEFAULT_CACHE_SCOPE2;
+}
+function stripCacheHintFallback2(result) {
+  const copy = { ...result };
+  delete copy[RESULT_CACHE_HINT_FALLBACK2];
+  return copy;
+}
+function inputSchemaMaps2() {
+  if (maps2)
+    return maps2;
+  const s = buildSchemas20262();
+  maps2 = {
+    request: {
+      "elicitation/create": object2({
+        method: literal("elicitation/create"),
+        params: s.ElicitRequestParamsSchema
+      }),
+      "sampling/createMessage": object2({
+        method: literal("sampling/createMessage"),
+        params: s.CreateMessageRequestParamsSchema
+      }),
+      "roots/list": object2({
+        method: literal("roots/list"),
+        params: looseObject({}).optional()
+      })
+    },
+    response: {
+      "elicitation/create": s.ElicitResultSchema,
+      "sampling/createMessage": s.CreateMessageResultSchema,
+      "roots/list": s.ListRootsResultSchema
+    }
+  };
+  return maps2;
+}
+function isInputRequestMethod20262(method) {
+  return INPUT_REQUEST_METHODS_20262.includes(method);
+}
+function getInputRequestSchema20262(method) {
+  return isInputRequestMethod20262(method) ? inputSchemaMaps2().request[method] : undefined;
+}
+function getInputResponseSchema20262(method) {
+  return isInputRequestMethod20262(method) ? inputSchemaMaps2().response[method] : undefined;
+}
+function hasRequestMethod20262(method) {
+  return Object.prototype.hasOwnProperty.call(requestMethodKeys2, method);
+}
+function hasNotificationMethod20262(method) {
+  return Object.prototype.hasOwnProperty.call(notificationMethodKeys2, method);
+}
+function hasResultMethod20262(method) {
+  return Object.prototype.hasOwnProperty.call(requestMethodKeys2, method);
+}
+function getRequestSchema20262(method) {
+  return hasRequestMethod20262(method) ? buildSchemas20262().dispatchRequestSchemas[method] : undefined;
+}
+function getResultSchema20262(method) {
+  return hasResultMethod20262(method) ? buildSchemas20262().dispatchResultSchemas[method] : undefined;
+}
+function getNotificationSchema20262(method) {
+  return hasNotificationMethod20262(method) ? buildSchemas20262().notificationSchemas2026[method] : undefined;
+}
+function isPlainObject$22(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function triState2(schema, raw) {
+  if (schema === undefined)
+    return {
+      ok: false,
+      reason: "not-in-era"
+    };
+  const parsed = schema.safeParse(raw);
+  return parsed.success ? {
+    ok: true,
+    value: parsed.data
+  } : {
+    ok: false,
+    reason: "invalid",
+    message: String(parsed.error)
+  };
+}
+function enforceDeletedFields2(method, result) {
+  let next = result;
+  let copied = false;
+  const copy = () => {
+    if (!copied) {
+      next = { ...next };
+      copied = true;
+    }
+    return next;
+  };
+  const tools = result.tools;
+  if (method === "tools/list" && Array.isArray(tools) && tools.some((tool) => isPlainObject$22(tool) && ("execution" in tool)))
+    copy().tools = tools.map((tool) => {
+      if (!isPlainObject$22(tool) || !("execution" in tool))
+        return tool;
+      const rest = { ...tool };
+      delete rest["execution"];
+      return rest;
+    });
+  const capabilities = result.capabilities;
+  if (isPlainObject$22(capabilities) && "tasks" in capabilities) {
+    const rest = { ...capabilities };
+    delete rest["tasks"];
+    copy().capabilities = rest;
+  }
+  return next;
+}
+function getWireResultSchemas2() {
+  if (wireResultSchemasMemo2)
+    return wireResultSchemasMemo2;
+  const s = buildSchemas20262();
+  wireResultSchemasMemo2 = {
+    "tools/call": s.CallToolResultSchema,
+    "tools/list": s.ListToolsResultSchema,
+    "prompts/get": s.GetPromptResultSchema,
+    "prompts/list": s.ListPromptsResultSchema,
+    "resources/list": s.ListResourcesResultSchema,
+    "resources/templates/list": s.ListResourceTemplatesResultSchema,
+    "resources/read": s.ReadResourceResultSchema,
+    "completion/complete": s.CompleteResultSchema,
+    "server/discover": s.DiscoverResultSchema
+  };
+  return wireResultSchemasMemo2;
+}
+function codecForVersion2(version) {
+  return version !== undefined && isModernProtocolVersion2(version) ? rev2026Codec2 : rev2025Codec2;
+}
+function classifiedWireEra2(classification) {
+  if (classification.revision !== undefined)
+    return codecForVersion2(classification.revision).era;
+  return classification.era === "modern" ? rev2026Codec2.era : rev2025Codec2.era;
+}
+function isSpecRequestMethod2(method) {
+  return ALL_CODECS2.some((codec) => codec.hasRequestMethod(method));
+}
+function isSpecNotificationMethod2(method) {
+  return ALL_CODECS2.some((codec) => codec.hasNotificationMethod(method));
+}
+function parseSchema2(schema, data) {
+  return safeParse3(schema, data);
+}
+function shapeKeys2(schemas) {
+  return new Set(schemas.flatMap((schema) => Object.keys(schema.shape)));
+}
+function isStandardSchema2(schema) {
+  if (schema == null)
+    return false;
+  const schemaType = typeof schema;
+  if (schemaType !== "object" && schemaType !== "function")
+    return false;
+  if (!("~standard" in schema))
+    return false;
+  return typeof schema["~standard"]?.validate === "function";
+}
+function standardSchemaToJsonSchema2(schema, io = "input") {
+  const std = schema["~standard"];
+  let result;
+  if (std.jsonSchema)
+    result = std.jsonSchema[io]({ target: JSON_SCHEMA_CONVERSION_TARGET2 });
+  else if (std.vendor === "zod") {
+    if (!("_zod" in schema))
+      throw new Error("Schema appears to be from zod 3, which the SDK cannot convert to JSON Schema. Upgrade to zod >=4.2.0, or wrap your JSON Schema with fromJsonSchema().");
+    if (!warnedZodFallback2) {
+      warnedZodFallback2 = true;
+      console.warn("[mcp-sdk] Your zod version does not implement `~standard.jsonSchema` (added in zod 4.2.0). Falling back to z.toJSONSchema(). Upgrade to zod >=4.2.0 to silence this warning.");
+    }
+    result = toJSONSchema(schema, {
+      target: JSON_SCHEMA_CONVERSION_TARGET2,
+      io
+    });
+  } else
+    throw new Error(`Schema library "${std.vendor}" does not implement StandardJSONSchemaV1 (\`~standard.jsonSchema\`). Upgrade to a version that does, or wrap your JSON Schema with fromJsonSchema().`);
+  if (io === "output") {
+    if (result.type !== undefined)
+      return result;
+    return isProvablyObjectShapedRoot2(result) ? {
+      type: "object",
+      ...result
+    } : result;
+  }
+  if (result.type !== undefined && result.type !== "object")
+    throw new Error(`MCP tool and prompt schemas must describe objects (got type: ${JSON.stringify(result.type)}). Wrap your schema in z.object({...}) or equivalent.`);
+  return {
+    type: "object",
+    ...result
+  };
+}
+function isProvablyObjectShapedRoot2(schema) {
+  if ("properties" in schema || "patternProperties" in schema || "additionalProperties" in schema || "required" in schema)
+    return true;
+  for (const key of [
+    "oneOf",
+    "anyOf",
+    "allOf"
+  ]) {
+    const members = schema[key];
+    if (Array.isArray(members) && members.length > 0)
+      return members.every((m) => m !== null && typeof m === "object" && (m.type === "object" || isProvablyObjectShapedRoot2(m)));
+  }
+  return false;
+}
+function formatIssue2(issue) {
+  if (!issue.path?.length)
+    return issue.message;
+  return `${issue.path.map((p) => String(typeof p === "object" ? p.key : p)).join(".")}: ${issue.message}`;
+}
+async function validateStandardSchema2(schema, data) {
+  const result = await schema["~standard"].validate(data);
+  if (result.issues && result.issues.length > 0)
+    return {
+      success: false,
+      error: result.issues.map((i) => formatIssue2(i)).join(", ")
+    };
+  return {
+    success: true,
+    data: result.value
+  };
+}
+function zodEmittedPattern2(schema) {
+  const jsonSchema = toJSONSchema(schema, {
+    target: JSON_SCHEMA_CONVERSION_TARGET2,
+    io: "input"
+  });
+  return typeof jsonSchema.pattern === "string" ? jsonSchema.pattern : undefined;
+}
+function datetimeReferenceSchemas2(pattern) {
+  const fractionDigits = DATETIME_FRACTION_DIGITS2.exec(pattern);
+  const precisions = [
+    undefined,
+    -1,
+    0
+  ];
+  if (fractionDigits)
+    precisions.push(Number(fractionDigits[1]));
+  return [false, true].flatMap((local) => [false, true].flatMap((offset) => precisions.map((precision) => datetime2({
+    local,
+    offset,
+    precision
+  }))));
+}
+function referencePatternsForFormat2(format, pattern) {
+  let referenceSchemas;
+  switch (format) {
+    case "email":
+      referenceSchemas = [email2()];
+      break;
+    case "uri":
+      referenceSchemas = [url()];
+      break;
+    case "date":
+      referenceSchemas = [date2()];
+      break;
+    case "date-time":
+      referenceSchemas = datetimeReferenceSchemas2(pattern);
+      break;
+  }
+  return new Set(referenceSchemas.map((schema) => zodEmittedPattern2(schema)).filter((emitted) => emitted !== undefined));
+}
+function isLibraryFormatPattern2(format, pattern, vendor) {
+  if (vendor !== "zod")
+    return true;
+  return referencePatternsForFormat2(format, pattern).has(pattern);
+}
+function isJsonObject2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function convertStandardElicitationSchema2(schema) {
+  try {
+    return standardSchemaToJsonSchema2(schema, "input");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema must describe an object with flat primitive properties: ${detail}`);
+  }
+}
+function isAnnotationOnlyJsonSchemaKeyword2(key) {
+  return ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS2.has(key) || key.startsWith("x-");
+}
+function walkProperty2(node, path, vendor, unsupported) {
+  if (!isJsonObject2(node))
+    return node;
+  const allowedKeys = typeof node.type === "string" && Object.hasOwn(PROPERTY_KEYS_BY_TYPE2, node.type) ? PROPERTY_KEYS_BY_TYPE2[node.type] : undefined;
+  if (allowedKeys === undefined)
+    return node;
+  const pruned = {};
+  for (const [key, value] of Object.entries(node))
+    if (allowedKeys.has(key) || isAnnotationOnlyJsonSchemaKeyword2(key))
+      pruned[key] = value;
+    else if (key === "pattern" && node.type === "string" && typeof node.format === "string") {
+      if (!SUPPORTED_STRING_FORMATS2.has(node.format))
+        pruned[key] = value;
+      else if (typeof value !== "string" || !isLibraryFormatPattern2(node.format, value, vendor))
+        unsupported.push(`${path}.${key}`);
+    } else
+      unsupported.push(`${path}.${key}`);
+  return pruned;
+}
+function walkRequestedSchema2(converted, vendor) {
+  const pruned = {};
+  const unsupported = [];
+  for (const [key, value] of Object.entries(converted))
+    if (key === "properties" && isJsonObject2(value))
+      pruned[key] = Object.fromEntries(Object.entries(value).map(([name, node]) => [name, walkProperty2(node, `properties.${name}`, vendor, unsupported)]));
+    else if (ROOT_KEYS2.has(key))
+      pruned[key] = value;
+    else if (!isAnnotationOnlyJsonSchemaKeyword2(key))
+      unsupported.push(key);
+  if (unsupported.length > 0)
+    throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema contains unsupported JSON Schema constraint(s) after Standard Schema conversion: ${unsupported.join(", ")}`);
+  return pruned;
+}
+function describeUnsupportedProperties2(pruned, fallback) {
+  if (!isJsonObject2(pruned.properties))
+    return fallback;
+  const offenders = Object.entries(pruned.properties).filter(([, node]) => !parseSchema2(PrimitiveSchemaDefinitionSchema2, node).success).map(([name]) => `properties.${name}`);
+  return offenders.length > 0 ? offenders.join(", ") : fallback;
+}
+function findDroppedConstraintPaths2(original, parsed, path = "") {
+  if (Array.isArray(original) && Array.isArray(parsed))
+    return original.flatMap((item, index) => findDroppedConstraintPaths2(item, parsed[index], `${path}[${index}]`));
+  if (!isJsonObject2(original) || !isJsonObject2(parsed))
+    return [];
+  return Object.entries(original).flatMap(([key, value]) => {
+    const childPath = path ? `${path}.${key}` : key;
+    if (!Object.prototype.hasOwnProperty.call(parsed, key))
+      return isAnnotationOnlyJsonSchemaKeyword2(key) ? [] : [childPath];
+    return findDroppedConstraintPaths2(value, parsed[key], childPath);
+  });
+}
+function normalizeElicitInputParams2(input) {
+  if (!isStandardSchema2(input.requestedSchema))
+    return {
+      ...input,
+      mode: "form",
+      requestedSchema: input.requestedSchema
+    };
+  const vendor = input.requestedSchema["~standard"].vendor;
+  const pruned = walkRequestedSchema2(convertStandardElicitationSchema2(input.requestedSchema), vendor);
+  const parsed = parseSchema2(ElicitRequestFormParamsSchema2.shape.requestedSchema, pruned);
+  if (!parsed.success)
+    throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema only supports flat primitive properties (string, number, integer, boolean, and string enums): ${describeUnsupportedProperties2(pruned, parsed.error.message)}`);
+  const droppedConstraints = findDroppedConstraintPaths2(pruned, parsed.data);
+  if (droppedConstraints.length > 0)
+    throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema contains unsupported JSON Schema constraint(s) after Standard Schema conversion: ${droppedConstraints.join(", ")}`);
+  const danglingRequired = (parsed.data.required ?? []).filter((key) => !Object.prototype.hasOwnProperty.call(parsed.data.properties, key));
+  if (danglingRequired.length > 0)
+    throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema lists required properties that are not defined in properties: ${danglingRequired.join(", ")}`);
+  return {
+    ...input,
+    mode: "form",
+    requestedSchema: parsed.data
+  };
+}
+function buildInputRequired2(spec) {
+  const hasInputRequests = spec.inputRequests !== undefined && Object.keys(spec.inputRequests).length > 0;
+  const hasRequestState = typeof spec.requestState === "string";
+  if (!hasInputRequests && !hasRequestState)
+    throw new TypeError("inputRequired() requires at least one of inputRequests (with at least one entry) or requestState (spec: every InputRequiredResult MUST include at least one of the two)");
+  return {
+    resultType: "input_required",
+    ...spec.inputRequests !== undefined && { inputRequests: spec.inputRequests },
+    ...spec.requestState !== undefined && { requestState: spec.requestState }
+  };
+}
+function register2(key, schema) {
+  const name = key.slice(0, -6);
+  _specTypeSchemas2[name] = schema;
+  _isSpecType2[name] = (v) => schema.safeParse(v).success;
+}
+function bootstrapOutboundCodec2(method) {
+  switch (method) {
+    case "initialize":
+    case "notifications/initialized":
+      return codecForVersion2(undefined);
+    case "server/discover":
+      return codecForVersion2(MODERN_WIRE_REVISION2);
+    default:
+      return;
+  }
+}
+function liftWireOnlyMaterial2(message, kind) {
+  const params = message.params;
+  if (!isPlainObject$12(params))
+    return {
+      message,
+      lifted: {}
+    };
+  const meta = params._meta;
+  const envelopeKeys = isPlainObject$12(meta) ? RESERVED_ENVELOPE_META_KEYS2.filter((key) => (key in meta)) : [];
+  const retryKeys = kind === "request" ? RETRY_PARAMS_KEYS2.filter((key) => (key in params)) : [];
+  if (envelopeKeys.length === 0 && retryKeys.length === 0)
+    return {
+      message,
+      lifted: {}
+    };
+  const lifted = {};
+  const nextParams = { ...params };
+  if (envelopeKeys.length > 0 && isPlainObject$12(meta)) {
+    const envelope = {};
+    const nextMeta = { ...meta };
+    for (const key of envelopeKeys) {
+      envelope[key] = meta[key];
+      delete nextMeta[key];
+    }
+    lifted.envelope = envelope;
+    if (Object.keys(nextMeta).length > 0)
+      nextParams._meta = nextMeta;
+    else
+      delete nextParams._meta;
+  }
+  for (const key of retryKeys) {
+    if (key === "inputResponses")
+      lifted.inputResponses = nextParams[key];
+    if (key === "requestState")
+      lifted.requestState = nextParams[key];
+    delete nextParams[key];
+  }
+  return {
+    message: {
+      ...message,
+      params: nextParams
+    },
+    lifted
+  };
+}
+function codecResultValidator2(codec, method) {
+  const probe = codec.validateResult(method, undefined);
+  if (!probe.ok && probe.reason === "not-in-era")
+    return;
+  return { "~standard": {
+    version: 1,
+    vendor: "mcp-wire-codec",
+    validate(value) {
+      const outcome = codec.validateResult(method, value);
+      if (outcome.ok)
+        return { value: outcome.value };
+      return { issues: [{ message: outcome.reason === "invalid" ? outcome.message : `not-in-era: ${method}` }] };
+    }
+  } };
+}
+function requestStateAccessor2(value) {
+  return () => value;
+}
+function isPlainObject$12(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function isPlainObject4(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function partitionInputResponses2(inputResponses) {
+  const accepted = {};
+  const droppedKeys = [];
+  if (!isPlainObject4(inputResponses))
+    return {
+      accepted,
+      droppedKeys
+    };
+  for (const [key, entry] of Object.entries(inputResponses)) {
+    if (!isPlainObject4(entry) || "method" in entry || "result" in entry) {
+      droppedKeys.push(key);
+      continue;
+    }
+    accepted[key] = entry;
+  }
+  return {
+    accepted,
+    droppedKeys
+  };
+}
+function manualInputRequiredValue2(decoded) {
+  return {
+    resultType: "input_required",
+    inputRequests: decoded.inputRequests,
+    ...decoded.requestState !== undefined && { requestState: decoded.requestState }
+  };
+}
+var BRANDS2, OAuthError2, SdkErrorCode2, SdkError2, SdkHttpError2, FIRST_MODERN_PROTOCOL_VERSION2 = "2026-07-28", TOOL_RESULT_FOREIGN_FAMILY_KEYS2, memo$12, REF_REWRITE_DATA_POSITION_KEYS2, REF_REWRITE_NAME_MAP_KEYS2, requestMethodKeys$12, notificationMethodKeys$12, resultMethodKeys2, maps$12, rev2025RequestMethods2, rev2025NotificationMethods2, NOT_IN_ERA$12, rev2025Codec2, memo3, CACHEABLE_RESULT_METHODS2, RESULT_CACHE_HINT_FALLBACK2, ProtocolErrorCode2, ProtocolError2, ResourceNotFoundError2, UrlElicitationRequiredError3, UnsupportedProtocolVersionError2, MissingRequiredClientCapabilityError2, DEFAULT_CACHE_TTL_MS2 = 0, DEFAULT_CACHE_SCOPE2 = "private", EXTENDED_RESULT_TYPE_METHODS2, INPUT_REQUEST_METHODS_20262, maps2, requestMethodKeys2, notificationMethodKeys2, rev2026RequestMethods2, rev2026NotificationMethods2, NOT_IN_ERA2, REQUIRED_ENVELOPE_KEYS2, rev2026Codec2, wireResultSchemasMemo2, MODERN_WIRE_REVISION2 = "2026-07-28", ALL_CODECS2, schemas_exports2, isJSONRPCRequest3 = (value) => JSONRPCRequestSchema2.safeParse(value).success, isJSONRPCNotification3 = (value) => JSONRPCNotificationSchema2.safeParse(value).success, isJSONRPCResultResponse3 = (value) => JSONRPCResultResponseSchema2.safeParse(value).success, isJSONRPCErrorResponse3 = (value) => JSONRPCErrorResponseSchema2.safeParse(value).success, PERMITTED_X_MCP_HEADER_TYPES2, OBJECT_VALUED_SUBSCHEMA_KEYWORDS2, HEADER_MISMATCH_ERROR_CODE2 = -32020, INBOUND_VALIDATION_LADDER2, LADDER_ERROR_HTTP_STATUS2, warnedZodFallback2 = false, JSON_SCHEMA_CONVERSION_TARGET2 = "draft-2020-12", DATETIME_FRACTION_DIGITS2, ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS2, ROOT_KEYS2, PROPERTY_KEYS_BY_TYPE2, SUPPORTED_STRING_FORMATS2, inputRequired2, SPEC_SCHEMA_KEYS2, authSchemas2, _specTypeSchemas2, _isSpecType2, specTypeSchemas2, isSpecType2, DEFAULT_REQUEST_TIMEOUT_MSEC3 = 60000, RESERVED_ENVELOPE_META_KEYS2, RETRY_PARAMS_KEYS2, NO_REQUEST_STATE2, writeNegotiatedProtocolVersion2, Protocol3, require_content_type3, import_content_type2, STDIO_DEFAULT_MAX_BUFFER_SIZE2;
+var init_src_D_zzAWoS = __esm(() => {
+  init_chunk_Br0eD_fh2();
+  init_dialects_BOhdv1Fc();
+  init_internal();
+  init_v4();
+  BRANDS2 = Symbol.for("mcp.sdk.errorBrands");
+  OAuthError2 = class OAuthError extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.OAuthError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(code, message, errorUri) {
+      super(message);
+      this.code = code;
+      this.errorUri = errorUri;
+      this.name = "OAuthError";
+      stampErrorBrands2(this, new.target);
+    }
+    toResponseObject() {
+      const response = {
+        error: this.code,
+        error_description: this.message
+      };
+      if (this.errorUri)
+        response.error_uri = this.errorUri;
+      return response;
+    }
+    static fromResponse(response) {
+      return new OAuthError(response.error, response.error_description ?? response.error, response.error_uri);
+    }
+  };
+  SdkErrorCode2 = /* @__PURE__ */ function(SdkErrorCode$1) {
+    SdkErrorCode$1["NotConnected"] = "NOT_CONNECTED";
+    SdkErrorCode$1["AlreadyConnected"] = "ALREADY_CONNECTED";
+    SdkErrorCode$1["NotInitialized"] = "NOT_INITIALIZED";
+    SdkErrorCode$1["CapabilityNotSupported"] = "CAPABILITY_NOT_SUPPORTED";
+    SdkErrorCode$1["RequestTimeout"] = "REQUEST_TIMEOUT";
+    SdkErrorCode$1["ConnectionClosed"] = "CONNECTION_CLOSED";
+    SdkErrorCode$1["SendFailed"] = "SEND_FAILED";
+    SdkErrorCode$1["InvalidResult"] = "INVALID_RESULT";
+    SdkErrorCode$1["UnsupportedResultType"] = "UNSUPPORTED_RESULT_TYPE";
+    SdkErrorCode$1["InputRequiredRoundsExceeded"] = "INPUT_REQUIRED_ROUNDS_EXCEEDED";
+    SdkErrorCode$1["ListPaginationExceeded"] = "LIST_PAGINATION_EXCEEDED";
+    SdkErrorCode$1["MethodNotSupportedByProtocolVersion"] = "METHOD_NOT_SUPPORTED_BY_PROTOCOL_VERSION";
+    SdkErrorCode$1["EraNegotiationFailed"] = "ERA_NEGOTIATION_FAILED";
+    SdkErrorCode$1["ClientHttpNotImplemented"] = "CLIENT_HTTP_NOT_IMPLEMENTED";
+    SdkErrorCode$1["ClientHttpAuthentication"] = "CLIENT_HTTP_AUTHENTICATION";
+    SdkErrorCode$1["ClientHttpForbidden"] = "CLIENT_HTTP_FORBIDDEN";
+    SdkErrorCode$1["ClientHttpUnexpectedContent"] = "CLIENT_HTTP_UNEXPECTED_CONTENT";
+    SdkErrorCode$1["ClientHttpFailedToOpenStream"] = "CLIENT_HTTP_FAILED_TO_OPEN_STREAM";
+    SdkErrorCode$1["ClientHttpFailedToTerminateSession"] = "CLIENT_HTTP_FAILED_TO_TERMINATE_SESSION";
+    return SdkErrorCode$1;
+  }({});
+  SdkError2 = class extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.SdkError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(code, message, data) {
+      super(message);
+      this.code = code;
+      this.data = data;
+      this.name = "SdkError";
+      stampErrorBrands2(this, new.target);
+    }
+  };
+  SdkHttpError2 = class extends SdkError2 {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.SdkHttpError" });
+    }
+    constructor(code, message, data) {
+      super(code, message, data);
+      this.name = "SdkHttpError";
+    }
+    get status() {
+      return this.data.status;
+    }
+    get statusText() {
+      return this.data.statusText;
+    }
+  };
+  TOOL_RESULT_FOREIGN_FAMILY_KEYS2 = [
+    "task",
+    "inputRequests",
+    "requestState"
+  ];
+  REF_REWRITE_DATA_POSITION_KEYS2 = new Set([
+    "const",
+    "enum",
+    "default",
+    "examples"
+  ]);
+  REF_REWRITE_NAME_MAP_KEYS2 = new Set([
+    "properties",
+    "patternProperties",
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+    "dependencies"
+  ]);
+  requestMethodKeys$12 = {
+    ping: null,
+    initialize: null,
+    "completion/complete": null,
+    "logging/setLevel": null,
+    "prompts/get": null,
+    "prompts/list": null,
+    "resources/list": null,
+    "resources/templates/list": null,
+    "resources/read": null,
+    "resources/subscribe": null,
+    "resources/unsubscribe": null,
+    "tools/call": null,
+    "tools/list": null,
+    "tasks/get": null,
+    "tasks/result": null,
+    "tasks/list": null,
+    "tasks/cancel": null,
+    "sampling/createMessage": null,
+    "elicitation/create": null,
+    "roots/list": null
+  };
+  notificationMethodKeys$12 = {
+    "notifications/cancelled": null,
+    "notifications/progress": null,
+    "notifications/initialized": null,
+    "notifications/roots/list_changed": null,
+    "notifications/tasks/status": null,
+    "notifications/message": null,
+    "notifications/resources/updated": null,
+    "notifications/resources/list_changed": null,
+    "notifications/tools/list_changed": null,
+    "notifications/prompts/list_changed": null,
+    "notifications/elicitation/complete": null
+  };
+  resultMethodKeys2 = {
+    ping: null,
+    initialize: null,
+    "completion/complete": null,
+    "logging/setLevel": null,
+    "prompts/get": null,
+    "prompts/list": null,
+    "resources/list": null,
+    "resources/templates/list": null,
+    "resources/read": null,
+    "resources/subscribe": null,
+    "resources/unsubscribe": null,
+    "tools/call": null,
+    "tools/list": null,
+    "sampling/createMessage": null,
+    "elicitation/create": null,
+    "roots/list": null
+  };
+  rev2025RequestMethods2 = Object.keys(requestMethodKeys$12);
+  rev2025NotificationMethods2 = Object.keys(notificationMethodKeys$12);
+  NOT_IN_ERA$12 = {
+    ok: false,
+    reason: "not-in-era"
+  };
+  rev2025Codec2 = {
+    era: "2025-11-25",
+    hasRequestMethod: hasRequestMethod20252,
+    hasNotificationMethod: hasNotificationMethod20252,
+    validateRequest: (method, raw) => triState$12(getRequestSchema2(method), raw),
+    validateResult: (method, raw) => triState$12(getResultSchema2(method), raw),
+    validateNotification: (method, raw) => triState$12(getNotificationSchema2(method), raw),
+    hasInputRequestMethod: () => false,
+    validateInputRequest: () => NOT_IN_ERA$12,
+    validateInputResponse: () => NOT_IN_ERA$12,
+    samplingResultVariant: (hasTools, raw) => {
+      const s = buildSchemas20252();
+      return triState$12(hasTools ? s.CreateMessageResultWithToolsSchema : s.CreateMessageResultSchema, raw);
+    },
+    outboundEnvelope: (_material) => {
+      return;
+    },
+    validateEnvelopeMeta: (_meta) => [],
+    projectCallToolResult(result, advertisedOutputSchema) {
+      const withText = appendTextFallbackForNonObject2(result);
+      const sc = withText.structuredContent;
+      if (sc === undefined)
+        return withText;
+      const valueIsNonObject = typeof sc !== "object" || sc === null || Array.isArray(sc);
+      const schemaWrapped = advertisedOutputSchema !== undefined && isNonObjectJsonSchemaRoot2(advertisedOutputSchema);
+      if (!valueIsNonObject && !schemaWrapped)
+        return withText;
+      return {
+        ...withText,
+        structuredContent: { result: sc }
+      };
+    },
+    decodeResult(_method, raw) {
+      if (isPlainObject$42(raw) && "resultType" in raw) {
+        const stripped = { ...raw };
+        delete stripped["resultType"];
+        return {
+          kind: "complete",
+          result: toNeutralResult2(stripped)
+        };
+      }
+      return {
+        kind: "complete",
+        result: toNeutralResult2(raw)
+      };
+    },
+    encodeResult(method, result) {
+      if (method !== "tools/list")
+        return result;
+      const tools = result.tools;
+      if (!Array.isArray(tools) || !tools.some((t) => toolNeedsLegacyWrap2(t)))
+        return result;
+      return {
+        ...result,
+        tools: tools.map((t) => toolNeedsLegacyWrap2(t) ? {
+          ...t,
+          outputSchema: wrapOutputSchemaForLegacy2(t.outputSchema)
+        } : t)
+      };
+    },
+    encodeErrorCode: (code) => code === -32002 ? -32602 : code,
+    checkInboundEnvelope: (_material) => {
+      return;
+    }
+  };
+  CACHEABLE_RESULT_METHODS2 = [
+    "tools/list",
+    "prompts/list",
+    "resources/list",
+    "resources/templates/list",
+    "resources/read",
+    "server/discover"
+  ];
+  RESULT_CACHE_HINT_FALLBACK2 = Symbol("modelcontextprotocol.resultCacheHintFallback");
+  ProtocolErrorCode2 = /* @__PURE__ */ function(ProtocolErrorCode$1) {
+    ProtocolErrorCode$1[ProtocolErrorCode$1["ParseError"] = -32700] = "ParseError";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["InvalidRequest"] = -32600] = "InvalidRequest";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["MethodNotFound"] = -32601] = "MethodNotFound";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["InvalidParams"] = -32602] = "InvalidParams";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["InternalError"] = -32603] = "InternalError";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["ResourceNotFound"] = -32002] = "ResourceNotFound";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["MissingRequiredClientCapability"] = -32021] = "MissingRequiredClientCapability";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["UnsupportedProtocolVersion"] = -32022] = "UnsupportedProtocolVersion";
+    ProtocolErrorCode$1[ProtocolErrorCode$1["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
+    return ProtocolErrorCode$1;
+  }({});
+  ProtocolError2 = class ProtocolError extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.ProtocolError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(code, message, data) {
+      super(message);
+      this.code = code;
+      this.data = data;
+      this.name = "ProtocolError";
+      stampErrorBrands2(this, new.target);
+    }
+    static fromError(code, message, data) {
+      if (code === ProtocolErrorCode2.UrlElicitationRequired && data) {
+        const errorData = data;
+        if (errorData.elicitations)
+          return new UrlElicitationRequiredError3(errorData.elicitations, message);
+      }
+      if (code === ProtocolErrorCode2.UnsupportedProtocolVersion && data) {
+        const errorData = data;
+        if (Array.isArray(errorData.supported) && typeof errorData.requested === "string")
+          return new UnsupportedProtocolVersionError2({
+            supported: errorData.supported,
+            requested: errorData.requested
+          }, message);
+      }
+      if (code === ProtocolErrorCode2.InvalidParams || code === ProtocolErrorCode2.ResourceNotFound) {
+        const errorData = data;
+        if (typeof errorData?.uri === "string" && (code === ProtocolErrorCode2.ResourceNotFound || Object.keys(errorData).length === 1))
+          return new ResourceNotFoundError2(errorData.uri, message);
+      }
+      if (code === ProtocolErrorCode2.MissingRequiredClientCapability && data) {
+        const errorData = data;
+        if (errorData.requiredCapabilities !== null && typeof errorData.requiredCapabilities === "object" && !Array.isArray(errorData.requiredCapabilities))
+          return new MissingRequiredClientCapabilityError2({ requiredCapabilities: errorData.requiredCapabilities }, message);
+      }
+      return new ProtocolError(code, message, data);
+    }
+  };
+  ResourceNotFoundError2 = class extends ProtocolError2 {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.ResourceNotFoundError" });
+    }
+    constructor(uri, message = `Resource not found: ${uri}`) {
+      super(ProtocolErrorCode2.InvalidParams, message, { uri });
+    }
+    get uri() {
+      return this.data.uri;
+    }
+  };
+  UrlElicitationRequiredError3 = class extends ProtocolError2 {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.UrlElicitationRequiredError" });
+    }
+    constructor(elicitations, message = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
+      super(ProtocolErrorCode2.UrlElicitationRequired, message, { elicitations });
+    }
+    get elicitations() {
+      return this.data?.elicitations ?? [];
+    }
+  };
+  UnsupportedProtocolVersionError2 = class extends ProtocolError2 {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.UnsupportedProtocolVersionError" });
+    }
+    constructor(data, message = `Unsupported protocol version: ${data.requested}`) {
+      super(ProtocolErrorCode2.UnsupportedProtocolVersion, message, data);
+    }
+    get supported() {
+      return this.data.supported;
+    }
+    get requested() {
+      return this.data.requested;
+    }
+  };
+  MissingRequiredClientCapabilityError2 = class extends ProtocolError2 {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.MissingRequiredClientCapabilityError" });
+    }
+    constructor(data, message = `Missing required client capabilities: ${Object.keys(data.requiredCapabilities).join(", ")}`) {
+      super(ProtocolErrorCode2.MissingRequiredClientCapability, message, data);
+    }
+    get requiredCapabilities() {
+      return this.data.requiredCapabilities;
+    }
+  };
+  EXTENDED_RESULT_TYPE_METHODS2 = [
+    "tools/call",
+    "prompts/get",
+    "resources/read"
+  ];
+  INPUT_REQUEST_METHODS_20262 = [
+    "elicitation/create",
+    "sampling/createMessage",
+    "roots/list"
+  ];
+  requestMethodKeys2 = {
+    "tools/call": null,
+    "tools/list": null,
+    "prompts/get": null,
+    "prompts/list": null,
+    "resources/list": null,
+    "resources/templates/list": null,
+    "resources/read": null,
+    "completion/complete": null,
+    "server/discover": null,
+    "subscriptions/listen": null
+  };
+  notificationMethodKeys2 = {
+    "notifications/cancelled": null,
+    "notifications/progress": null,
+    "notifications/message": null,
+    "notifications/resources/updated": null,
+    "notifications/resources/list_changed": null,
+    "notifications/tools/list_changed": null,
+    "notifications/prompts/list_changed": null,
+    "notifications/subscriptions/acknowledged": null
+  };
+  rev2026RequestMethods2 = Object.keys(requestMethodKeys2);
+  rev2026NotificationMethods2 = Object.keys(notificationMethodKeys2);
+  NOT_IN_ERA2 = {
+    ok: false,
+    reason: "not-in-era"
+  };
+  REQUIRED_ENVELOPE_KEYS2 = [PROTOCOL_VERSION_META_KEY, CLIENT_CAPABILITIES_META_KEY];
+  rev2026Codec2 = {
+    era: "2026-07-28",
+    hasRequestMethod: hasRequestMethod20262,
+    hasNotificationMethod: hasNotificationMethod20262,
+    hasInputRequestMethod: (method) => getInputRequestSchema20262(method) !== undefined,
+    validateRequest: (method, raw) => triState2(getRequestSchema20262(method), raw),
+    validateResult: (method, raw) => triState2(getResultSchema20262(method), raw),
+    validateNotification: (method, raw) => triState2(getNotificationSchema20262(method), raw),
+    validateInputRequest: (method, raw) => triState2(getInputRequestSchema20262(method), raw),
+    validateInputResponse: (method, raw) => triState2(getInputResponseSchema20262(method), raw),
+    samplingResultVariant: () => NOT_IN_ERA2,
+    outboundEnvelope(material) {
+      return {
+        [PROTOCOL_VERSION_META_KEY]: material.protocolVersion,
+        [CLIENT_INFO_META_KEY]: material.clientInfo,
+        [CLIENT_CAPABILITIES_META_KEY]: material.clientCapabilities,
+        ...material.logLevel !== undefined && { [LOG_LEVEL_META_KEY]: material.logLevel }
+      };
+    },
+    validateEnvelopeMeta(meta) {
+      const issues = [];
+      for (const key of REQUIRED_ENVELOPE_KEYS2)
+        if (!(key in meta))
+          issues.push({
+            key,
+            problem: "missing"
+          });
+      const parsed = buildSchemas20262().RequestMetaEnvelopeSchema.safeParse(meta);
+      if (!parsed.success)
+        for (const issue of parsed.error.issues) {
+          const path = issue.path.map(String);
+          const key = path.length > 0 ? path.join(".") : "_meta";
+          if (path.length === 1 && issues.some((existing) => existing.key === key && existing.problem === "missing"))
+            continue;
+          issues.push({
+            key,
+            problem: issue.message
+          });
+        }
+      return issues;
+    },
+    projectCallToolResult: (result) => appendTextFallbackForNonObject2(result),
+    inputRequestSchema: getInputRequestSchema20262,
+    decodeResult(method, raw) {
+      if (!isPlainObject$22(raw))
+        return {
+          kind: "invalid",
+          error: new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${method}: not an object`, { method })
+        };
+      const rawResultType = raw["resultType"];
+      if (rawResultType === undefined)
+        return {
+          kind: "invalid",
+          error: new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${method}: missing required resultType — servers implementing protocol revision 2026-07-28 MUST include it (the absent-means-complete bridge applies only to earlier-revision servers)`, {
+            method,
+            violation: "missing-resultType"
+          })
+        };
+      if (typeof rawResultType !== "string")
+        return {
+          kind: "invalid",
+          error: new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${method}: non-string resultType`, {
+            method,
+            resultType: rawResultType
+          })
+        };
+      if (rawResultType === "input_required") {
+        const rawInputRequests = raw["inputRequests"];
+        const inputRequests = isPlainObject$22(rawInputRequests) ? rawInputRequests : {};
+        const requestState = raw["requestState"];
+        if (Object.keys(inputRequests).length === 0 && typeof requestState !== "string")
+          return {
+            kind: "invalid",
+            error: new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${method}: input_required carries neither inputRequests nor requestState (every input_required result must include at least one of the two)`, {
+              method,
+              violation: "input-required-missing-both"
+            })
+          };
+        return {
+          kind: "input_required",
+          inputRequests,
+          ...typeof requestState === "string" && { requestState }
+        };
+      }
+      if (rawResultType !== "complete")
+        return {
+          kind: "invalid",
+          error: new SdkError2(SdkErrorCode2.UnsupportedResultType, `Unsupported result type '${rawResultType}' for ${method}`, {
+            resultType: rawResultType,
+            method
+          })
+        };
+      const wireResultSchemas = getWireResultSchemas2();
+      const wireSchema = Object.hasOwn(wireResultSchemas, method) ? wireResultSchemas[method] : undefined;
+      if (wireSchema !== undefined) {
+        const parsed = wireSchema.safeParse(raw);
+        if (!parsed.success)
+          return {
+            kind: "invalid",
+            error: new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${method}: ${parsed.error}`, { method })
+          };
+      }
+      const lifted = { ...raw };
+      delete lifted["resultType"];
+      return {
+        kind: "complete",
+        result: lifted
+      };
+    },
+    encodeResult(method, result, serverInfo) {
+      return stampServerInfoMeta2(fillCacheFields2(method, stampResultType2(method, enforceDeletedFields2(method, result))), serverInfo);
+    },
+    encodeErrorCode: (code) => code === -32002 ? -32602 : code,
+    checkInboundEnvelope(material) {
+      if (material.envelope === undefined)
+        return "Request is missing the required _meta envelope for protocol revision 2026-07-28 (io.modelcontextprotocol/protocolVersion, io.modelcontextprotocol/clientCapabilities)";
+      const parsed = buildSchemas20262().RequestMetaEnvelopeSchema.safeParse(material.envelope);
+      if (!parsed.success)
+        return `Invalid _meta envelope for protocol revision 2026-07-28: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`;
+    }
+  };
+  ALL_CODECS2 = [rev2025Codec2, rev2026Codec2];
+  schemas_exports2 = /* @__PURE__ */ __exportAll4({
+    AnnotationsSchema: () => AnnotationsSchema2,
+    AudioContentSchema: () => AudioContentSchema2,
+    BaseMetadataSchema: () => BaseMetadataSchema2,
+    BaseRequestParamsSchema: () => BaseRequestParamsSchema2,
+    BlobResourceContentsSchema: () => BlobResourceContentsSchema2,
+    BooleanSchemaSchema: () => BooleanSchemaSchema2,
+    CallToolRequestParamsSchema: () => CallToolRequestParamsSchema2,
+    CallToolRequestSchema: () => CallToolRequestSchema2,
+    CallToolResultSchema: () => CallToolResultSchema2,
+    CancelTaskRequestSchema: () => CancelTaskRequestSchema2,
+    CancelTaskResultSchema: () => CancelTaskResultSchema2,
+    CancelledNotificationParamsSchema: () => CancelledNotificationParamsSchema2,
+    CancelledNotificationSchema: () => CancelledNotificationSchema2,
+    ClientCapabilitiesSchema: () => ClientCapabilitiesSchema2,
+    ClientNotificationSchema: () => ClientNotificationSchema2,
+    ClientRequestSchema: () => ClientRequestSchema2,
+    ClientResultSchema: () => ClientResultSchema2,
+    ClientTasksCapabilitySchema: () => ClientTasksCapabilitySchema2,
+    CompatibilityCallToolResultSchema: () => CompatibilityCallToolResultSchema2,
+    CompleteRequestParamsSchema: () => CompleteRequestParamsSchema2,
+    CompleteRequestSchema: () => CompleteRequestSchema2,
+    CompleteResultSchema: () => CompleteResultSchema2,
+    ContentBlockSchema: () => ContentBlockSchema2,
+    CreateMessageRequestParamsSchema: () => CreateMessageRequestParamsSchema2,
+    CreateMessageRequestSchema: () => CreateMessageRequestSchema2,
+    CreateMessageResultSchema: () => CreateMessageResultSchema2,
+    CreateMessageResultWithToolsSchema: () => CreateMessageResultWithToolsSchema2,
+    CreateTaskResultSchema: () => CreateTaskResultSchema2,
+    CursorSchema: () => CursorSchema2,
+    DiscoverRequestSchema: () => DiscoverRequestSchema,
+    DiscoverResultSchema: () => DiscoverResultSchema,
+    ElicitRequestFormParamsSchema: () => ElicitRequestFormParamsSchema2,
+    ElicitRequestParamsSchema: () => ElicitRequestParamsSchema2,
+    ElicitRequestSchema: () => ElicitRequestSchema2,
+    ElicitRequestURLParamsSchema: () => ElicitRequestURLParamsSchema2,
+    ElicitResultSchema: () => ElicitResultSchema2,
+    ElicitationCompleteNotificationParamsSchema: () => ElicitationCompleteNotificationParamsSchema2,
+    ElicitationCompleteNotificationSchema: () => ElicitationCompleteNotificationSchema2,
+    EmbeddedResourceSchema: () => EmbeddedResourceSchema2,
+    EmptyResultSchema: () => EmptyResultSchema2,
+    EnumSchemaSchema: () => EnumSchemaSchema2,
+    GetPromptRequestParamsSchema: () => GetPromptRequestParamsSchema2,
+    GetPromptRequestSchema: () => GetPromptRequestSchema2,
+    GetPromptResultSchema: () => GetPromptResultSchema2,
+    GetTaskPayloadRequestSchema: () => GetTaskPayloadRequestSchema2,
+    GetTaskPayloadResultSchema: () => GetTaskPayloadResultSchema2,
+    GetTaskRequestSchema: () => GetTaskRequestSchema2,
+    GetTaskResultSchema: () => GetTaskResultSchema2,
+    IconSchema: () => IconSchema2,
+    IconsSchema: () => IconsSchema2,
+    ImageContentSchema: () => ImageContentSchema2,
+    ImplementationSchema: () => ImplementationSchema2,
+    InitializeRequestParamsSchema: () => InitializeRequestParamsSchema2,
+    InitializeRequestSchema: () => InitializeRequestSchema2,
+    InitializeResultSchema: () => InitializeResultSchema2,
+    InitializedNotificationSchema: () => InitializedNotificationSchema2,
+    JSONArraySchema: () => JSONArraySchema,
+    JSONObjectSchema: () => JSONObjectSchema,
+    JSONRPCErrorResponseSchema: () => JSONRPCErrorResponseSchema2,
+    JSONRPCMessageSchema: () => JSONRPCMessageSchema2,
+    JSONRPCNotificationSchema: () => JSONRPCNotificationSchema2,
+    JSONRPCRequestSchema: () => JSONRPCRequestSchema2,
+    JSONRPCResponseSchema: () => JSONRPCResponseSchema2,
+    JSONRPCResultResponseSchema: () => JSONRPCResultResponseSchema2,
+    JSONValueSchema: () => JSONValueSchema,
+    LegacyTitledEnumSchemaSchema: () => LegacyTitledEnumSchemaSchema2,
+    ListChangedOptionsBaseSchema: () => ListChangedOptionsBaseSchema2,
+    ListPromptsRequestSchema: () => ListPromptsRequestSchema2,
+    ListPromptsResultSchema: () => ListPromptsResultSchema2,
+    ListResourceTemplatesRequestSchema: () => ListResourceTemplatesRequestSchema2,
+    ListResourceTemplatesResultSchema: () => ListResourceTemplatesResultSchema2,
+    ListResourcesRequestSchema: () => ListResourcesRequestSchema2,
+    ListResourcesResultSchema: () => ListResourcesResultSchema2,
+    ListRootsRequestSchema: () => ListRootsRequestSchema2,
+    ListRootsResultSchema: () => ListRootsResultSchema2,
+    ListTasksRequestSchema: () => ListTasksRequestSchema2,
+    ListTasksResultSchema: () => ListTasksResultSchema2,
+    ListToolsRequestSchema: () => ListToolsRequestSchema2,
+    ListToolsResultSchema: () => ListToolsResultSchema2,
+    LoggingLevelSchema: () => LoggingLevelSchema2,
+    LoggingMessageNotificationParamsSchema: () => LoggingMessageNotificationParamsSchema2,
+    LoggingMessageNotificationSchema: () => LoggingMessageNotificationSchema2,
+    ModelHintSchema: () => ModelHintSchema2,
+    ModelPreferencesSchema: () => ModelPreferencesSchema2,
+    MultiSelectEnumSchemaSchema: () => MultiSelectEnumSchemaSchema2,
+    NotificationSchema: () => NotificationSchema2,
+    NotificationsParamsSchema: () => NotificationsParamsSchema2,
+    NumberSchemaSchema: () => NumberSchemaSchema2,
+    PaginatedRequestParamsSchema: () => PaginatedRequestParamsSchema2,
+    PaginatedRequestSchema: () => PaginatedRequestSchema2,
+    PaginatedResultSchema: () => PaginatedResultSchema2,
+    PingRequestSchema: () => PingRequestSchema2,
+    PrimitiveSchemaDefinitionSchema: () => PrimitiveSchemaDefinitionSchema2,
+    ProgressNotificationParamsSchema: () => ProgressNotificationParamsSchema2,
+    ProgressNotificationSchema: () => ProgressNotificationSchema2,
+    ProgressSchema: () => ProgressSchema2,
+    ProgressTokenSchema: () => ProgressTokenSchema2,
+    PromptArgumentSchema: () => PromptArgumentSchema2,
+    PromptListChangedNotificationSchema: () => PromptListChangedNotificationSchema2,
+    PromptMessageSchema: () => PromptMessageSchema2,
+    PromptReferenceSchema: () => PromptReferenceSchema2,
+    PromptSchema: () => PromptSchema2,
+    ReadResourceRequestParamsSchema: () => ReadResourceRequestParamsSchema2,
+    ReadResourceRequestSchema: () => ReadResourceRequestSchema2,
+    ReadResourceResultSchema: () => ReadResourceResultSchema2,
+    RelatedTaskMetadataSchema: () => RelatedTaskMetadataSchema2,
+    RequestIdSchema: () => RequestIdSchema2,
+    RequestMetaSchema: () => RequestMetaSchema2,
+    RequestSchema: () => RequestSchema2,
+    ResourceContentsSchema: () => ResourceContentsSchema2,
+    ResourceLinkSchema: () => ResourceLinkSchema2,
+    ResourceListChangedNotificationSchema: () => ResourceListChangedNotificationSchema2,
+    ResourceRequestParamsSchema: () => ResourceRequestParamsSchema2,
+    ResourceSchema: () => ResourceSchema2,
+    ResourceTemplateReferenceSchema: () => ResourceTemplateReferenceSchema2,
+    ResourceTemplateSchema: () => ResourceTemplateSchema2,
+    ResourceUpdatedNotificationParamsSchema: () => ResourceUpdatedNotificationParamsSchema2,
+    ResourceUpdatedNotificationSchema: () => ResourceUpdatedNotificationSchema2,
+    ResultMetaObjectSchema: () => ResultMetaObjectSchema,
+    ResultSchema: () => ResultSchema2,
+    RoleSchema: () => RoleSchema2,
+    RootSchema: () => RootSchema2,
+    RootsListChangedNotificationSchema: () => RootsListChangedNotificationSchema2,
+    SamplingContentSchema: () => SamplingContentSchema2,
+    SamplingMessageContentBlockSchema: () => SamplingMessageContentBlockSchema2,
+    SamplingMessageSchema: () => SamplingMessageSchema2,
+    ServerCapabilitiesSchema: () => ServerCapabilitiesSchema2,
+    ServerNotificationSchema: () => ServerNotificationSchema2,
+    ServerRequestSchema: () => ServerRequestSchema2,
+    ServerResultSchema: () => ServerResultSchema2,
+    ServerTasksCapabilitySchema: () => ServerTasksCapabilitySchema2,
+    SetLevelRequestParamsSchema: () => SetLevelRequestParamsSchema2,
+    SetLevelRequestSchema: () => SetLevelRequestSchema2,
+    SingleSelectEnumSchemaSchema: () => SingleSelectEnumSchemaSchema2,
+    StringSchemaSchema: () => StringSchemaSchema2,
+    SubscribeRequestParamsSchema: () => SubscribeRequestParamsSchema2,
+    SubscribeRequestSchema: () => SubscribeRequestSchema2,
+    SubscriptionFilterSchema: () => SubscriptionFilterSchema,
+    SubscriptionsAcknowledgedNotificationParamsSchema: () => SubscriptionsAcknowledgedNotificationParamsSchema,
+    SubscriptionsAcknowledgedNotificationSchema: () => SubscriptionsAcknowledgedNotificationSchema,
+    SubscriptionsListenRequestParamsSchema: () => SubscriptionsListenRequestParamsSchema,
+    SubscriptionsListenRequestSchema: () => SubscriptionsListenRequestSchema,
+    SubscriptionsListenResultMetaSchema: () => SubscriptionsListenResultMetaSchema,
+    SubscriptionsListenResultSchema: () => SubscriptionsListenResultSchema,
+    TaskAugmentedRequestParamsSchema: () => TaskAugmentedRequestParamsSchema2,
+    TaskCreationParamsSchema: () => TaskCreationParamsSchema2,
+    TaskMetadataSchema: () => TaskMetadataSchema2,
+    TaskSchema: () => TaskSchema2,
+    TaskStatusNotificationParamsSchema: () => TaskStatusNotificationParamsSchema2,
+    TaskStatusNotificationSchema: () => TaskStatusNotificationSchema2,
+    TaskStatusSchema: () => TaskStatusSchema2,
+    TextContentSchema: () => TextContentSchema2,
+    TextResourceContentsSchema: () => TextResourceContentsSchema2,
+    TitledMultiSelectEnumSchemaSchema: () => TitledMultiSelectEnumSchemaSchema2,
+    TitledSingleSelectEnumSchemaSchema: () => TitledSingleSelectEnumSchemaSchema2,
+    ToolAnnotationsSchema: () => ToolAnnotationsSchema2,
+    ToolChoiceSchema: () => ToolChoiceSchema2,
+    ToolExecutionSchema: () => ToolExecutionSchema2,
+    ToolListChangedNotificationSchema: () => ToolListChangedNotificationSchema2,
+    ToolResultContentSchema: () => ToolResultContentSchema2,
+    ToolSchema: () => ToolSchema2,
+    ToolUseContentSchema: () => ToolUseContentSchema2,
+    UnsubscribeRequestParamsSchema: () => UnsubscribeRequestParamsSchema2,
+    UnsubscribeRequestSchema: () => UnsubscribeRequestSchema2,
+    UntitledMultiSelectEnumSchemaSchema: () => UntitledMultiSelectEnumSchemaSchema2,
+    UntitledSingleSelectEnumSchemaSchema: () => UntitledSingleSelectEnumSchemaSchema2
+  });
+  PERMITTED_X_MCP_HEADER_TYPES2 = new Set([
+    "string",
+    "integer",
+    "boolean",
+    "number"
+  ]);
+  OBJECT_VALUED_SUBSCHEMA_KEYWORDS2 = new Set([
+    "patternProperties",
+    "dependentSchemas",
+    "$defs",
+    "definitions"
+  ]);
+  INBOUND_VALIDATION_LADDER2 = [
+    {
+      rung: "http-method",
+      order: 1,
+      evaluatedAt: "edge",
+      codes: [-32000],
+      conformance: [],
+      rationale: "The modern era is POST-only; GET/DELETE are body-less 2025-era session operations and are method-routed to legacy serving (405 when legacy serving is not configured), before any body is read."
+    },
+    {
+      rung: "jsonrpc-shape",
+      order: 2,
+      evaluatedAt: "edge",
+      codes: [ProtocolErrorCode2.InvalidRequest],
+      conformance: ["server-stateless"],
+      rationale: "The body must be a JSON-RPC request or notification: posted responses and batch arrays containing a modern or invalid element are rejected before classification (element-wise batch rule); all-legacy arrays stay legacy traffic."
+    },
+    {
+      rung: "era-classification",
+      order: 3,
+      evaluatedAt: "edge",
+      codes: [HEADER_MISMATCH_ERROR_CODE2, ProtocolErrorCode2.UnsupportedProtocolVersion],
+      conformance: [
+        "server-stateless",
+        "http-header-validation",
+        "http-custom-header-server-validation"
+      ],
+      rationale: "Body-primary era classification with the protocol-version header as a cross-check; a header/body disagreement is rejected with -32020 (HeaderMismatch), and an envelope-less request on a modern-only endpoint is answered with the unsupported-protocol-version error naming the supported revisions."
+    },
+    {
+      rung: "envelope",
+      order: 4,
+      evaluatedAt: "edge",
+      codes: [ProtocolErrorCode2.InvalidParams],
+      conformance: ["server-stateless"],
+      rationale: "A present envelope claim with a malformed envelope — and a missing envelope on a request whose protocol-version header names a modern revision — is an invalid-params rejection naming the offending or missing key(s); never a silent fall back to legacy handling. This is the only place an invalid-params rejection maps to HTTP 400."
+    },
+    {
+      rung: "method-registry",
+      order: 5,
+      evaluatedAt: "dispatch",
+      codes: [ProtocolErrorCode2.MethodNotFound],
+      conformance: ["server-stateless"],
+      rationale: "Method existence outranks parameter validity: a method absent from the negotiated revision’s registry (or with no handler installed) answers method-not-found before params or capabilities are looked at."
+    },
+    {
+      rung: "request-params",
+      order: 6,
+      evaluatedAt: "dispatch",
+      codes: [ProtocolErrorCode2.InvalidParams],
+      conformance: [],
+      rationale: "Per-method params validation; emitted in-band by the dispatch layer (HTTP 200), never via the ladder status table."
+    },
+    {
+      rung: "standard-header-validation",
+      order: 7,
+      evaluatedAt: "pre-dispatch",
+      codes: [HEADER_MISMATCH_ERROR_CODE2],
+      conformance: ["http-header-validation"],
+      rationale: "SEP-2243 standard `Mcp-Method` / `Mcp-Name` headers — presence, sentinel decoding, and `Mcp-Name` ↔ body cross-check — are validated by the HTTP entry on a modern-classified request after the supported-revision gate and before dispatch. The classifier’s own header-mismatch cells (protocol-version, `Mcp-Method` mismatch) stay on the edge `era-classification` rung; this rung carries the entry-layer presence/`Mcp-Name` half. Evaluated before the capability gate, the factory call, and the `Mcp-Param-*` rung so a request that fails several rungs is answered by the standard-header rung first. The documented order (after method-registry 5 and request-params 6) is NOT the observed precedence: serveModern evaluates this rung immediately after the supported-revision gate, so a request that also fails a dispatch rung is answered here before the dispatch rungs (5–6) are consulted."
+    },
+    {
+      rung: "client-capabilities",
+      order: 8,
+      evaluatedAt: "pre-dispatch",
+      codes: [ProtocolErrorCode2.MissingRequiredClientCapability],
+      conformance: ["server-stateless"],
+      rationale: "The capability requirement is checked by the HTTP entry, pre-dispatch, against the validated envelope the classifier produced — pinning the spec-mandated HTTP 400 independently of how dispatch- and handler-produced errors are mapped. The documented order (after method resolution and params validation) is preserved observably only while the requirement table is empty: once a served method gains a requirement entry, a request that is missing the capability and would also fail a dispatch rung is answered by this gate first, so the entry must consult the method registry before the gate if the documented precedence is to stay observable."
+    },
+    {
+      rung: "param-header-validation",
+      order: 9,
+      evaluatedAt: "pre-dispatch",
+      codes: [HEADER_MISMATCH_ERROR_CODE2],
+      conformance: ["http-custom-header-server-validation"],
+      rationale: "SEP-2243 `Mcp-Param-*` headers are validated against the named tool’s `x-mcp-header` declarations and the body `arguments` after the tool registry is known and before dispatch reaches the handler; a missing/disagreeing/malformed header is rejected 400 / -32020 with the same shape as the standard-header cross-checks. The documented order (after method resolution and params validation) is preserved observably only when the body `arguments` would otherwise validate: the check runs pre-dispatch, so a `tools/call` that fails BOTH this rung and a dispatch-time rung (e.g. order-6 `request-params`, -32602) is answered by this gate first with 400 / -32020, not by the earlier-ordered rung."
+    }
+  ];
+  LADDER_ERROR_HTTP_STATUS2 = {
+    [ProtocolErrorCode2.ParseError]: 400,
+    [ProtocolErrorCode2.InvalidRequest]: 400,
+    [ProtocolErrorCode2.MethodNotFound]: 404,
+    [ProtocolErrorCode2.UnsupportedProtocolVersion]: 400,
+    [ProtocolErrorCode2.MissingRequiredClientCapability]: 400,
+    [HEADER_MISMATCH_ERROR_CODE2]: 400
+  };
+  DATETIME_FRACTION_DIGITS2 = /\\\.\\d\{(\d+)\}/;
+  ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS2 = new Set([
+    "$comment",
+    "deprecated",
+    "description",
+    "examples",
+    "readOnly",
+    "title",
+    "writeOnly"
+  ]);
+  ROOT_KEYS2 = new Set(["$schema", ...Object.keys(ElicitRequestFormParamsSchema2.shape.requestedSchema.shape)]);
+  PROPERTY_KEYS_BY_TYPE2 = {
+    string: shapeKeys2([
+      StringSchemaSchema2,
+      UntitledSingleSelectEnumSchemaSchema2,
+      TitledSingleSelectEnumSchemaSchema2,
+      LegacyTitledEnumSchemaSchema2
+    ]),
+    number: shapeKeys2([NumberSchemaSchema2]),
+    integer: shapeKeys2([NumberSchemaSchema2]),
+    boolean: shapeKeys2([BooleanSchemaSchema2]),
+    array: shapeKeys2([UntitledMultiSelectEnumSchemaSchema2, TitledMultiSelectEnumSchemaSchema2])
+  };
+  SUPPORTED_STRING_FORMATS2 = new Set(StringSchemaSchema2.shape.format.unwrap().options);
+  inputRequired2 = Object.assign(buildInputRequired2, {
+    elicit(params) {
+      try {
+        return {
+          method: "elicitation/create",
+          params: normalizeElicitInputParams2(params)
+        };
+      } catch (error) {
+        throw error instanceof ProtocolError2 ? new TypeError(error.message, { cause: error }) : error;
+      }
+    },
+    elicitUrl(params) {
+      return {
+        method: "elicitation/create",
+        params: {
+          ...params,
+          mode: "url"
+        }
+      };
+    },
+    createMessage(params) {
+      return {
+        method: "sampling/createMessage",
+        params
+      };
+    },
+    listRoots() {
+      return { method: "roots/list" };
+    }
+  });
+  SPEC_SCHEMA_KEYS2 = [
+    "AnnotationsSchema",
+    "AudioContentSchema",
+    "BaseMetadataSchema",
+    "BlobResourceContentsSchema",
+    "BooleanSchemaSchema",
+    "CallToolRequestSchema",
+    "CallToolRequestParamsSchema",
+    "CallToolResultSchema",
+    "CancelledNotificationSchema",
+    "CancelledNotificationParamsSchema",
+    "CancelTaskRequestSchema",
+    "CancelTaskResultSchema",
+    "ClientCapabilitiesSchema",
+    "ClientNotificationSchema",
+    "ClientRequestSchema",
+    "ClientResultSchema",
+    "CompatibilityCallToolResultSchema",
+    "CompleteRequestSchema",
+    "CompleteRequestParamsSchema",
+    "CompleteResultSchema",
+    "ContentBlockSchema",
+    "CreateMessageRequestSchema",
+    "CreateMessageRequestParamsSchema",
+    "CreateMessageResultSchema",
+    "CreateMessageResultWithToolsSchema",
+    "CreateTaskResultSchema",
+    "CursorSchema",
+    "DiscoverRequestSchema",
+    "DiscoverResultSchema",
+    "ElicitationCompleteNotificationSchema",
+    "ElicitationCompleteNotificationParamsSchema",
+    "ElicitRequestSchema",
+    "ElicitRequestFormParamsSchema",
+    "ElicitRequestParamsSchema",
+    "ElicitRequestURLParamsSchema",
+    "ElicitResultSchema",
+    "EmbeddedResourceSchema",
+    "EmptyResultSchema",
+    "EnumSchemaSchema",
+    "GetPromptRequestSchema",
+    "GetPromptRequestParamsSchema",
+    "GetPromptResultSchema",
+    "GetTaskPayloadRequestSchema",
+    "GetTaskPayloadResultSchema",
+    "GetTaskRequestSchema",
+    "GetTaskResultSchema",
+    "IconSchema",
+    "IconsSchema",
+    "ImageContentSchema",
+    "ImplementationSchema",
+    "InitializedNotificationSchema",
+    "InitializeRequestSchema",
+    "InitializeRequestParamsSchema",
+    "InitializeResultSchema",
+    "JSONArraySchema",
+    "JSONObjectSchema",
+    "JSONRPCErrorResponseSchema",
+    "JSONRPCMessageSchema",
+    "JSONRPCNotificationSchema",
+    "JSONRPCRequestSchema",
+    "JSONRPCResponseSchema",
+    "JSONRPCResultResponseSchema",
+    "JSONValueSchema",
+    "LegacyTitledEnumSchemaSchema",
+    "ListPromptsRequestSchema",
+    "ListPromptsResultSchema",
+    "ListResourcesRequestSchema",
+    "ListResourcesResultSchema",
+    "ListResourceTemplatesRequestSchema",
+    "ListResourceTemplatesResultSchema",
+    "ListRootsRequestSchema",
+    "ListRootsResultSchema",
+    "ListTasksRequestSchema",
+    "ListTasksResultSchema",
+    "ListToolsRequestSchema",
+    "ListToolsResultSchema",
+    "LoggingLevelSchema",
+    "LoggingMessageNotificationSchema",
+    "LoggingMessageNotificationParamsSchema",
+    "ModelHintSchema",
+    "ModelPreferencesSchema",
+    "MultiSelectEnumSchemaSchema",
+    "NotificationSchema",
+    "NumberSchemaSchema",
+    "PaginatedRequestSchema",
+    "PaginatedRequestParamsSchema",
+    "PaginatedResultSchema",
+    "PingRequestSchema",
+    "PrimitiveSchemaDefinitionSchema",
+    "ProgressSchema",
+    "ProgressNotificationSchema",
+    "ProgressNotificationParamsSchema",
+    "ProgressTokenSchema",
+    "PromptSchema",
+    "PromptArgumentSchema",
+    "PromptListChangedNotificationSchema",
+    "PromptMessageSchema",
+    "PromptReferenceSchema",
+    "ReadResourceRequestSchema",
+    "ReadResourceRequestParamsSchema",
+    "ReadResourceResultSchema",
+    "RelatedTaskMetadataSchema",
+    "RequestSchema",
+    "RequestIdSchema",
+    "RequestMetaSchema",
+    "ResourceSchema",
+    "ResourceContentsSchema",
+    "ResourceLinkSchema",
+    "ResourceListChangedNotificationSchema",
+    "ResourceRequestParamsSchema",
+    "ResourceTemplateSchema",
+    "ResourceTemplateReferenceSchema",
+    "ResourceUpdatedNotificationSchema",
+    "ResourceUpdatedNotificationParamsSchema",
+    "ResultMetaObjectSchema",
+    "ResultSchema",
+    "RoleSchema",
+    "RootSchema",
+    "RootsListChangedNotificationSchema",
+    "SamplingContentSchema",
+    "SamplingMessageSchema",
+    "SamplingMessageContentBlockSchema",
+    "ServerCapabilitiesSchema",
+    "ServerNotificationSchema",
+    "ServerRequestSchema",
+    "ServerResultSchema",
+    "SetLevelRequestSchema",
+    "SetLevelRequestParamsSchema",
+    "SingleSelectEnumSchemaSchema",
+    "StringSchemaSchema",
+    "SubscribeRequestSchema",
+    "SubscribeRequestParamsSchema",
+    "SubscriptionFilterSchema",
+    "SubscriptionsAcknowledgedNotificationSchema",
+    "SubscriptionsAcknowledgedNotificationParamsSchema",
+    "SubscriptionsListenRequestSchema",
+    "SubscriptionsListenRequestParamsSchema",
+    "SubscriptionsListenResultSchema",
+    "SubscriptionsListenResultMetaSchema",
+    "TaskAugmentedRequestParamsSchema",
+    "TaskCreationParamsSchema",
+    "TaskMetadataSchema",
+    "TaskSchema",
+    "TaskStatusSchema",
+    "TaskStatusNotificationSchema",
+    "TaskStatusNotificationParamsSchema",
+    "TextContentSchema",
+    "TextResourceContentsSchema",
+    "TitledMultiSelectEnumSchemaSchema",
+    "TitledSingleSelectEnumSchemaSchema",
+    "ToolSchema",
+    "ToolAnnotationsSchema",
+    "ToolChoiceSchema",
+    "ToolExecutionSchema",
+    "ToolListChangedNotificationSchema",
+    "ToolResultContentSchema",
+    "ToolUseContentSchema",
+    "UnsubscribeRequestSchema",
+    "UnsubscribeRequestParamsSchema",
+    "UntitledMultiSelectEnumSchemaSchema",
+    "UntitledSingleSelectEnumSchemaSchema"
+  ];
+  authSchemas2 = {
+    IdJagTokenExchangeResponseSchema,
+    OAuthClientInformationFullSchema,
+    OAuthClientInformationSchema,
+    OAuthClientMetadataSchema,
+    OAuthClientRegistrationErrorSchema,
+    OAuthErrorResponseSchema,
+    OAuthMetadataSchema,
+    OAuthProtectedResourceMetadataSchema,
+    OAuthTokenRevocationRequestSchema,
+    OAuthTokensSchema,
+    OpenIdProviderDiscoveryMetadataSchema,
+    OpenIdProviderMetadataSchema
+  };
+  _specTypeSchemas2 = {};
+  _isSpecType2 = {};
+  for (const key of SPEC_SCHEMA_KEYS2)
+    register2(key, schemas_exports2[key]);
+  for (const [key, schema] of Object.entries(authSchemas2))
+    register2(key, schema);
+  specTypeSchemas2 = Object.freeze(_specTypeSchemas2);
+  isSpecType2 = Object.freeze(_isSpecType2);
+  RESERVED_ENVELOPE_META_KEYS2 = [
+    PROTOCOL_VERSION_META_KEY,
+    CLIENT_INFO_META_KEY,
+    CLIENT_CAPABILITIES_META_KEY,
+    LOG_LEVEL_META_KEY
+  ];
+  RETRY_PARAMS_KEYS2 = ["inputResponses", "requestState"];
+  NO_REQUEST_STATE2 = requestStateAccessor2(undefined);
+  Protocol3 = class {
+    _transport;
+    _requestMessageId = 0;
+    _requestHandlers = /* @__PURE__ */ new Map;
+    _requestHandlerAbortControllers = /* @__PURE__ */ new Map;
+    _notificationHandlers = /* @__PURE__ */ new Map;
+    _responseHandlers = /* @__PURE__ */ new Map;
+    _progressHandlers = /* @__PURE__ */ new Map;
+    _timeoutInfo = /* @__PURE__ */ new Map;
+    _pendingDebouncedNotifications = /* @__PURE__ */ new Set;
+    _negotiatedProtocolVersion;
+    static {
+      writeNegotiatedProtocolVersion2 = (instance, version) => {
+        instance._negotiatedProtocolVersion = version;
+      };
+    }
+    _supportedProtocolVersions;
+    onclose;
+    onerror;
+    fallbackRequestHandler;
+    fallbackNotificationHandler;
+    constructor(_options) {
+      this._options = _options;
+      this._supportedProtocolVersions = _options?.supportedProtocolVersions ?? SUPPORTED_PROTOCOL_VERSIONS;
+      this.setNotificationHandler("notifications/cancelled", (notification) => {
+        this._oncancel(notification);
+      });
+      this.setNotificationHandler("notifications/progress", (notification) => {
+        this._onprogress(notification);
+      });
+      this.setRequestHandler("ping", (_request) => ({}));
+    }
+    _shouldDropInbound(_message) {}
+    _outboundMetaEnvelope() {}
+    _envelopeOutbound(message) {
+      const envelope = this._outboundMetaEnvelope();
+      if (envelope === undefined)
+        return message;
+      const params = message.params ?? {};
+      return {
+        ...message,
+        params: {
+          ...params,
+          _meta: {
+            ...envelope,
+            ...params._meta
+          }
+        }
+      };
+    }
+    _resolveNonCompleteResult(decoded, flow) {
+      return Promise.reject(new SdkError2(SdkErrorCode2.UnsupportedResultType, `Unsupported result type '${decoded.kind}' for ${flow.request.method}`, {
+        resultType: decoded.kind,
+        method: flow.request.method
+      }));
+    }
+    _getRequestHandler(method) {
+      return this._requestHandlers.get(method);
+    }
+    async _oncancel(notification) {
+      if (!notification.params.requestId)
+        return;
+      this._requestHandlerAbortControllers.get(notification.params.requestId)?.abort(notification.params.reason);
+    }
+    _setupTimeout(messageId, timeout, maxTotalTimeout, onTimeout, resetTimeoutOnProgress = false) {
+      this._timeoutInfo.set(messageId, {
+        timeoutId: setTimeout(onTimeout, timeout),
+        startTime: Date.now(),
+        timeout,
+        maxTotalTimeout,
+        resetTimeoutOnProgress,
+        onTimeout
+      });
+    }
+    _resetTimeout(messageId) {
+      const info = this._timeoutInfo.get(messageId);
+      if (!info)
+        return false;
+      const totalElapsed = Date.now() - info.startTime;
+      if (info.maxTotalTimeout && totalElapsed >= info.maxTotalTimeout) {
+        this._timeoutInfo.delete(messageId);
+        throw new SdkError2(SdkErrorCode2.RequestTimeout, "Maximum total timeout exceeded", {
+          maxTotalTimeout: info.maxTotalTimeout,
+          totalElapsed
+        });
+      }
+      clearTimeout(info.timeoutId);
+      info.timeoutId = setTimeout(info.onTimeout, info.timeout);
+      return true;
+    }
+    _cleanupTimeout(messageId) {
+      const info = this._timeoutInfo.get(messageId);
+      if (info) {
+        clearTimeout(info.timeoutId);
+        this._timeoutInfo.delete(messageId);
+      }
+    }
+    async connect(transport) {
+      this._transport = transport;
+      const _onclose = this.transport?.onclose;
+      this._transport.onclose = () => {
+        try {
+          _onclose?.();
+        } finally {
+          this._onclose();
+        }
+      };
+      const _onerror = this.transport?.onerror;
+      this._transport.onerror = (error) => {
+        _onerror?.(error);
+        this._onerror(error);
+      };
+      const _onmessage = this._transport?.onmessage;
+      this._transport.onmessage = (message, extra) => {
+        _onmessage?.(message, extra);
+        if (isJSONRPCResultResponse3(message) || isJSONRPCErrorResponse3(message))
+          this._onresponse(message);
+        else if (isJSONRPCRequest3(message))
+          this._onrequest(message, extra);
+        else if (isJSONRPCNotification3(message))
+          this._onnotification(message, extra);
+        else
+          this._onerror(/* @__PURE__ */ new Error(`Unknown message type: ${JSON.stringify(message)}`));
+      };
+      transport.setSupportedProtocolVersions?.(this._supportedProtocolVersions);
+      await this._transport.start();
+    }
+    _onclose() {
+      const responseHandlers = this._responseHandlers;
+      this._responseHandlers = /* @__PURE__ */ new Map;
+      this._progressHandlers.clear();
+      this._pendingDebouncedNotifications.clear();
+      for (const info of this._timeoutInfo.values())
+        clearTimeout(info.timeoutId);
+      this._timeoutInfo.clear();
+      const requestHandlerAbortControllers = this._requestHandlerAbortControllers;
+      this._requestHandlerAbortControllers = /* @__PURE__ */ new Map;
+      const error = new SdkError2(SdkErrorCode2.ConnectionClosed, "Connection closed");
+      this._transport = undefined;
+      try {
+        this.onclose?.();
+      } finally {
+        for (const handler of responseHandlers.values())
+          handler(error);
+        for (const controller of requestHandlerAbortControllers.values())
+          controller.abort(error);
+      }
+    }
+    _onerror(error) {
+      this.onerror?.(error);
+    }
+    _onnotification(rawNotification, extra) {
+      const { message: notification } = liftWireOnlyMaterial2(rawNotification, "notification");
+      const codec = this._negotiatedWireCodec();
+      if (extra?.classification === undefined && this._shouldDropInbound(rawNotification) === "drop")
+        return;
+      if (extra?.classification !== undefined) {
+        const classified = classifiedWireEra2(extra.classification);
+        if (classified !== codec.era) {
+          this._onerror(/* @__PURE__ */ new Error(`Era mismatch on inbound notification '${notification.method}': classified as ${classified} but this instance serves ${codec.era}`));
+          return;
+        }
+      }
+      if (isSpecNotificationMethod2(notification.method) && !codec.hasNotificationMethod(notification.method))
+        return;
+      const handler = this._notificationHandlers.get(notification.method);
+      const fallback = this.fallbackNotificationHandler;
+      if (handler === undefined && fallback === undefined)
+        return;
+      Promise.resolve().then(() => handler === undefined ? fallback(notification) : handler(notification, codec)).catch((error) => this._onerror(/* @__PURE__ */ new Error(`Uncaught error in notification handler: ${error}`)));
+    }
+    _onrequest(rawRequest, extra) {
+      const { message: request, lifted } = liftWireOnlyMaterial2(rawRequest, "request");
+      const codec = this._negotiatedWireCodec();
+      if (extra?.classification === undefined && this._shouldDropInbound(rawRequest) === "drop") {
+        this._onerror(/* @__PURE__ */ new Error(`Dropped inbound request '${rawRequest.method}': not servable on this connection's protocol era`));
+        return;
+      }
+      const capturedTransport = this._transport;
+      const sendErrorResponse = (code, message, data) => {
+        const errorResponse = {
+          jsonrpc: "2.0",
+          id: request.id,
+          error: {
+            code,
+            message,
+            ...data !== undefined && { data }
+          }
+        };
+        capturedTransport?.send(errorResponse).catch((error) => this._onerror(/* @__PURE__ */ new Error(`Failed to send an error response: ${error}`)));
+      };
+      if (extra?.classification !== undefined) {
+        const classified = classifiedWireEra2(extra.classification);
+        if (classified !== codec.era) {
+          this._onerror(/* @__PURE__ */ new Error(`Era mismatch on inbound request '${request.method}': classified as ${classified} but this instance serves ${codec.era}`));
+          const requested = extra.classification.revision ?? classified;
+          sendErrorResponse(ProtocolErrorCode2.UnsupportedProtocolVersion, `Unsupported protocol version: ${requested}`, {
+            supported: this._supportedProtocolVersions,
+            requested
+          });
+          return;
+        }
+      }
+      if (isSpecRequestMethod2(request.method) && !codec.hasRequestMethod(request.method)) {
+        sendErrorResponse(ProtocolErrorCode2.MethodNotFound, "Method not found");
+        return;
+      }
+      const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
+      if (handler === undefined) {
+        sendErrorResponse(ProtocolErrorCode2.MethodNotFound, "Method not found");
+        return;
+      }
+      const envelopeError = codec.checkInboundEnvelope(lifted);
+      if (envelopeError !== undefined) {
+        sendErrorResponse(ProtocolErrorCode2.InvalidParams, envelopeError);
+        return;
+      }
+      const sendNotification = (notification, options) => this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, {
+        ...options,
+        relatedRequestId: request.id
+      });
+      const sendRequest = (r, resultSchema, options) => this._requestWithSchemaViaCodec(this._resolveOutboundCodec(r.method), r, resultSchema, {
+        ...options,
+        relatedRequestId: request.id
+      });
+      const abortController = new AbortController;
+      this._requestHandlerAbortControllers.set(request.id, abortController);
+      const partitionedInputResponses = lifted.inputResponses === undefined ? undefined : partitionInputResponses2(lifted.inputResponses);
+      const baseCtx = {
+        sessionId: capturedTransport?.sessionId,
+        mcpReq: {
+          id: request.id,
+          method: request.method,
+          _meta: request.params?._meta,
+          ...lifted.envelope !== undefined && { envelope: lifted.envelope },
+          ...partitionedInputResponses !== undefined && { inputResponses: partitionedInputResponses.accepted },
+          ...partitionedInputResponses !== undefined && partitionedInputResponses.droppedKeys.length > 0 && { droppedInputResponseKeys: partitionedInputResponses.droppedKeys },
+          requestState: lifted.requestState === undefined ? NO_REQUEST_STATE2 : requestStateAccessor2(lifted.requestState),
+          signal: abortController.signal,
+          send: (r, schemaOrOptions, maybeOptions) => {
+            const sendCodec = this._resolveOutboundCodec(r.method);
+            this._assertOutboundRequestInEra(sendCodec, r.method);
+            if (isStandardSchema2(schemaOrOptions))
+              return sendRequest(r, schemaOrOptions, maybeOptions);
+            const validate = codecResultValidator2(sendCodec, r.method);
+            if (validate === undefined)
+              throw new TypeError(`'${r.method}' is not a spec method; pass a result schema as the second argument to ctx.mcpReq.send().`);
+            return sendRequest(r, validate, schemaOrOptions);
+          },
+          notify: sendNotification
+        },
+        http: extra?.authInfo ? { authInfo: extra.authInfo } : undefined
+      };
+      const ctx = this.buildContext(baseCtx, extra);
+      Promise.resolve().then(() => handler(request, ctx)).then(async (result) => {
+        if (abortController.signal.aborted)
+          return;
+        let encoded;
+        try {
+          encoded = codec.encodeResult(request.method, result, this._outboundServerInfo());
+        } catch (error) {
+          this._onerror(/* @__PURE__ */ new Error(`Failed to encode result for ${request.method}: ${error}`));
+          sendErrorResponse(ProtocolErrorCode2.InternalError, "Internal error");
+          return;
+        }
+        const response = {
+          result: encoded,
+          jsonrpc: "2.0",
+          id: request.id
+        };
+        await capturedTransport?.send(response);
+      }, async (error) => {
+        if (abortController.signal.aborted)
+          return;
+        const thrownCode = Number.isSafeInteger(error["code"]) ? error["code"] : ProtocolErrorCode2.InternalError;
+        const errorResponse = {
+          jsonrpc: "2.0",
+          id: request.id,
+          error: {
+            code: codec.encodeErrorCode(thrownCode),
+            message: error.message ?? "Internal error",
+            ...error["data"] !== undefined && { data: error["data"] }
+          }
+        };
+        await capturedTransport?.send(errorResponse);
+      }).catch((error) => this._onerror(/* @__PURE__ */ new Error(`Failed to send response: ${error}`))).finally(() => {
+        if (this._requestHandlerAbortControllers.get(request.id) === abortController)
+          this._requestHandlerAbortControllers.delete(request.id);
+      });
+    }
+    _onprogress(notification) {
+      const { progressToken, ...params } = notification.params;
+      const messageId = Number(progressToken);
+      const handler = this._progressHandlers.get(messageId);
+      if (!handler) {
+        this._onerror(/* @__PURE__ */ new Error(`Received a progress notification for an unknown token: ${JSON.stringify(notification)}`));
+        return;
+      }
+      const responseHandler = this._responseHandlers.get(messageId);
+      const timeoutInfo = this._timeoutInfo.get(messageId);
+      if (timeoutInfo && responseHandler && timeoutInfo.resetTimeoutOnProgress)
+        try {
+          this._resetTimeout(messageId);
+        } catch (error) {
+          this._responseHandlers.delete(messageId);
+          this._progressHandlers.delete(messageId);
+          this._cleanupTimeout(messageId);
+          responseHandler(error);
+          return;
+        }
+      handler(params);
+    }
+    _onresponse(response) {
+      const messageId = Number(response.id);
+      const handler = this._responseHandlers.get(messageId);
+      if (handler === undefined) {
+        this._onerror(/* @__PURE__ */ new Error(`Received a response for an unknown message ID: ${JSON.stringify(response)}`));
+        return;
+      }
+      this._responseHandlers.delete(messageId);
+      this._cleanupTimeout(messageId);
+      this._progressHandlers.delete(messageId);
+      if (isJSONRPCResultResponse3(response))
+        handler(response);
+      else
+        handler(ProtocolError2.fromError(response.error.code, response.error.message, response.error.data));
+    }
+    get transport() {
+      return this._transport;
+    }
+    async close() {
+      await this._transport?.close();
+    }
+    request(request, schemaOrOptions, maybeOptions) {
+      const codec = this._resolveOutboundCodec(request.method);
+      this._assertOutboundRequestInEra(codec, request.method);
+      if (isStandardSchema2(schemaOrOptions))
+        return this._requestWithSchemaViaCodec(codec, request, schemaOrOptions, maybeOptions);
+      const validate = codecResultValidator2(codec, request.method);
+      if (validate === undefined)
+        throw new TypeError(`'${request.method}' is not a spec method; pass a result schema as the second argument to request().`);
+      return this._requestWithSchemaViaCodec(codec, request, validate, schemaOrOptions);
+    }
+    _negotiatedWireCodec() {
+      return codecForVersion2(this._negotiatedProtocolVersion);
+    }
+    _wireCodec() {
+      return this._negotiatedWireCodec();
+    }
+    _resolveOutboundCodec(method) {
+      if (this._negotiatedProtocolVersion === undefined) {
+        const pinned = bootstrapOutboundCodec2(method);
+        if (pinned)
+          return pinned;
+      }
+      return this._negotiatedWireCodec();
+    }
+    _assertOutboundRequestInEra(codec, method) {
+      if (isSpecRequestMethod2(method) && !codec.hasRequestMethod(method))
+        throw new SdkError2(SdkErrorCode2.MethodNotSupportedByProtocolVersion, `Method '${method}' is not supported by the negotiated protocol version (wire era ${codec.era})`, {
+          method,
+          era: codec.era
+        });
+    }
+    _requestWithSchema(request, resultSchema, options) {
+      const codec = this._resolveOutboundCodec(request.method);
+      this._assertOutboundRequestInEra(codec, request.method);
+      return this._requestWithSchemaViaCodec(codec, request, resultSchema, options);
+    }
+    _requestWithSchemaViaCodec(codec, request, resultSchema, options) {
+      const { relatedRequestId, resumptionToken, onresumptiontoken, headers } = options ?? {};
+      const flowStartedAt = Date.now();
+      let onAbort;
+      let cleanupMessageId;
+      return new Promise((resolve, reject) => {
+        const earlyReject = (error) => {
+          reject(error);
+        };
+        if (!this._transport) {
+          earlyReject(/* @__PURE__ */ new Error("Not connected"));
+          return;
+        }
+        if (this._options?.enforceStrictCapabilities === true)
+          try {
+            this.assertCapabilityForMethod(request.method);
+          } catch (error) {
+            earlyReject(error);
+            return;
+          }
+        if (options?.signal?.aborted) {
+          const reason = options.signal.reason;
+          throw reason instanceof SdkError2 ? reason : new SdkError2(SdkErrorCode2.RequestTimeout, String(reason));
+        }
+        const requestAbort = codec.era === MODERN_WIRE_REVISION2 && this._transport.hasPerRequestStream === true ? new AbortController : undefined;
+        const messageId = this._requestMessageId++;
+        cleanupMessageId = messageId;
+        const jsonrpcRequest = {
+          ...request,
+          jsonrpc: "2.0",
+          id: messageId
+        };
+        if (options?.onprogress) {
+          this._progressHandlers.set(messageId, options.onprogress);
+          jsonrpcRequest.params = {
+            ...request.params,
+            _meta: {
+              ...request.params?._meta,
+              progressToken: messageId
+            }
+          };
+        }
+        const outbound = this._envelopeOutbound(jsonrpcRequest);
+        let responseReceived = false;
+        const cancel = (reason) => {
+          if (responseReceived)
+            return;
+          this._progressHandlers.delete(messageId);
+          if (requestAbort === undefined)
+            this._transport?.send(this._envelopeOutbound({
+              jsonrpc: "2.0",
+              method: "notifications/cancelled",
+              params: {
+                requestId: messageId,
+                reason: String(reason)
+              }
+            }), {
+              relatedRequestId,
+              resumptionToken,
+              onresumptiontoken
+            }).catch((error) => this._onerror(/* @__PURE__ */ new Error(`Failed to send cancellation: ${error}`)));
+          else
+            requestAbort.abort();
+          reject(reason instanceof SdkError2 ? reason : new SdkError2(SdkErrorCode2.RequestTimeout, String(reason)));
+        };
+        this._responseHandlers.set(messageId, (response) => {
+          if (options?.signal?.aborted)
+            return;
+          responseReceived = true;
+          if (response instanceof Error)
+            return reject(response);
+          let decoded;
+          try {
+            decoded = codec.decodeResult(request.method, response.result);
+          } catch (error) {
+            return reject(error instanceof Error ? error : new Error(String(error)));
+          }
+          if (decoded.kind === "invalid")
+            return reject(decoded.error);
+          if (decoded.kind === "input_required") {
+            if (options?.allowInputRequired === true)
+              return resolve(manualInputRequiredValue2(decoded));
+            const flow = {
+              codec,
+              request,
+              resultSchema,
+              options,
+              flowStartedAt,
+              retry: (params, legOptions) => this._requestWithSchemaViaCodec(codec, params === undefined ? { method: request.method } : {
+                method: request.method,
+                params
+              }, resultSchema, legOptions)
+            };
+            return resolve(this._resolveNonCompleteResult(decoded, flow));
+          }
+          const result = decoded.result;
+          validateStandardSchema2(resultSchema, result).then((parseResult) => {
+            if (parseResult.success)
+              resolve(parseResult.data);
+            else
+              reject(new SdkError2(SdkErrorCode2.InvalidResult, `Invalid result for ${request.method}: ${parseResult.error}`));
+          }, reject);
+        });
+        onAbort = () => cancel(options?.signal?.reason);
+        options?.signal?.addEventListener("abort", onAbort, { once: true });
+        const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC3;
+        const timeoutHandler = () => cancel(new SdkError2(SdkErrorCode2.RequestTimeout, "Request timed out", { timeout }));
+        this._setupTimeout(messageId, timeout, options?.maxTotalTimeout, timeoutHandler, options?.resetTimeoutOnProgress ?? false);
+        this._transport.send(outbound, {
+          relatedRequestId,
+          resumptionToken,
+          onresumptiontoken,
+          headers,
+          requestSignal: requestAbort?.signal
+        }).catch((error) => {
+          this._progressHandlers.delete(messageId);
+          reject(error);
+        });
+      }).finally(() => {
+        if (onAbort)
+          options?.signal?.removeEventListener("abort", onAbort);
+        if (cleanupMessageId !== undefined) {
+          this._responseHandlers.delete(cleanupMessageId);
+          this._cleanupTimeout(cleanupMessageId);
+        }
+      });
+    }
+    async notification(notification, options) {
+      return this._notificationViaCodec(this._resolveOutboundCodec(notification.method), notification, options);
+    }
+    async _notificationViaCodec(codec, notification, options) {
+      if (!this._transport)
+        throw new SdkError2(SdkErrorCode2.NotConnected, "Not connected");
+      if (isSpecNotificationMethod2(notification.method) && !codec.hasNotificationMethod(notification.method))
+        throw new SdkError2(SdkErrorCode2.MethodNotSupportedByProtocolVersion, `Notification '${notification.method}' is not supported by the negotiated protocol version (wire era ${codec.era})`, {
+          method: notification.method,
+          era: codec.era
+        });
+      this.assertNotificationCapability(notification.method);
+      const jsonrpcNotification = this._envelopeOutbound({
+        jsonrpc: "2.0",
+        ...notification
+      });
+      if ((this._options?.debouncedNotificationMethods ?? []).includes(notification.method) && !notification.params && !options?.relatedRequestId) {
+        if (this._pendingDebouncedNotifications.has(notification.method))
+          return;
+        this._pendingDebouncedNotifications.add(notification.method);
+        Promise.resolve().then(() => {
+          this._pendingDebouncedNotifications.delete(notification.method);
+          if (!this._transport)
+            return;
+          this._transport?.send(jsonrpcNotification, options).catch((error) => this._onerror(error));
+        });
+        return;
+      }
+      await this._transport.send(jsonrpcNotification, options);
+    }
+    setRequestHandler(method, schemasOrHandler, maybeHandler) {
+      this.assertRequestHandlerCapability(method);
+      let stored;
+      if (typeof schemasOrHandler === "function") {
+        if (!isSpecRequestMethod2(method))
+          throw new TypeError(`'${method}' is not a spec request method; pass schemas as the second argument to setRequestHandler().`);
+        stored = (request, ctx) => {
+          const dispatchCodec = this._negotiatedWireCodec();
+          let outcome = dispatchCodec.validateRequest(method, request);
+          if (!outcome.ok && outcome.reason === "not-in-era")
+            outcome = dispatchCodec.validateInputRequest(method, request);
+          if (!outcome.ok) {
+            if (outcome.reason === "not-in-era")
+              throw new ProtocolError2(ProtocolErrorCode2.InternalError, `No wire schema for ${method} in the resolved era`);
+            throw new Error(outcome.message);
+          }
+          return Promise.resolve(schemasOrHandler(outcome.value, ctx));
+        };
+      } else if (maybeHandler)
+        stored = async (request, ctx) => {
+          const parsed = await validateStandardSchema2(schemasOrHandler.params, { ...request.params });
+          if (!parsed.success)
+            throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Invalid params for ${method}: ${parsed.error}`);
+          return maybeHandler(parsed.data, ctx);
+        };
+      else
+        throw new TypeError("setRequestHandler: handler is required");
+      this._requestHandlers.set(method, this._wrapHandler(method, stored));
+    }
+    _wrapHandler(_method, handler) {
+      return handler;
+    }
+    _outboundServerInfo() {}
+    removeRequestHandler(method) {
+      this._requestHandlers.delete(method);
+    }
+    assertCanSetRequestHandler(method) {
+      if (this._requestHandlers.has(method))
+        throw new Error(`A request handler for ${method} already exists, which would be overridden`);
+    }
+    setNotificationHandler(method, schemasOrHandler, maybeHandler) {
+      if (typeof schemasOrHandler === "function") {
+        if (!isSpecNotificationMethod2(method))
+          throw new TypeError(`'${method}' is not a spec notification method; pass schemas as the second argument to setNotificationHandler().`);
+        this._notificationHandlers.set(method, (notification, codec) => {
+          const outcome = codec.validateNotification(method, notification);
+          if (!outcome.ok) {
+            if (outcome.reason === "not-in-era")
+              throw new ProtocolError2(ProtocolErrorCode2.InternalError, `No wire schema for ${method} in the resolved era`);
+            throw new Error(outcome.message);
+          }
+          return Promise.resolve(schemasOrHandler(outcome.value));
+        });
+        return;
+      }
+      if (!maybeHandler)
+        throw new TypeError("setNotificationHandler: handler is required");
+      this._notificationHandlers.set(method, async (notification) => {
+        const parsed = await validateStandardSchema2(schemasOrHandler.params, { ...notification.params });
+        if (!parsed.success)
+          throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Invalid params for notification ${method}: ${parsed.error}`);
+        await maybeHandler(parsed.data, notification);
+      });
+    }
+    removeNotificationHandler(method) {
+      this._notificationHandlers.delete(method);
+    }
+  };
+  /*!
+  * content-type
+  * Copyright(c) 2015 Douglas Christopher Wilson
+  * MIT Licensed
+  */
+  require_content_type3 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    var PARAM_REGEXP = /; *([!#$%&'*+.^_`|~0-9A-Za-z-]+) *= *("(?:[\u000b\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\u000b\u0020-\u00ff])*"|[!#$%&'*+.^_`|~0-9A-Za-z-]+) */g;
+    var QESC_REGEXP = /\\([\u000b\u0020-\u00ff])/g;
+    var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+    exports.parse = parse;
+    function parse(string) {
+      if (!string)
+        throw new TypeError("argument string is required");
+      var header = typeof string === "object" ? getcontenttype(string) : string;
+      if (typeof header !== "string")
+        throw new TypeError("argument string is required to be a string");
+      var index = header.indexOf(";");
+      var type = index !== -1 ? header.slice(0, index).trim() : header.trim();
+      if (!TYPE_REGEXP.test(type))
+        throw new TypeError("invalid media type");
+      var obj = new ContentType(type.toLowerCase());
+      if (index !== -1) {
+        var key;
+        var match;
+        var value;
+        PARAM_REGEXP.lastIndex = index;
+        while (match = PARAM_REGEXP.exec(header)) {
+          if (match.index !== index)
+            throw new TypeError("invalid parameter format");
+          index += match[0].length;
+          key = match[1].toLowerCase();
+          value = match[2];
+          if (value.charCodeAt(0) === 34) {
+            value = value.slice(1, -1);
+            if (value.indexOf("\\") !== -1)
+              value = value.replace(QESC_REGEXP, "$1");
+          }
+          obj.parameters[key] = value;
+        }
+        if (index !== header.length)
+          throw new TypeError("invalid parameter format");
+      }
+      return obj;
+    }
+    function getcontenttype(obj) {
+      var header;
+      if (typeof obj.getHeader === "function")
+        header = obj.getHeader("content-type");
+      else if (typeof obj.headers === "object")
+        header = obj.headers && obj.headers["content-type"];
+      if (typeof header !== "string")
+        throw new TypeError("content-type header is missing from object");
+      return header;
+    }
+    function ContentType(type) {
+      this.parameters = Object.create(null);
+      this.type = type;
+    }
+  });
+  import_content_type2 = /* @__PURE__ */ __toESM4(require_content_type3(), 1);
+  STDIO_DEFAULT_MAX_BUFFER_SIZE2 = 10 * 1024 * 1024;
+});
+
+// node_modules/@modelcontextprotocol/client/dist/ajvProvider-97rDpkRx.mjs
+var require_code$12, require_scope2, require_codegen2, require_util2, require_names2, require_errors2, require_boolSchema2, require_rules2, require_applicability2, require_dataType2, require_defaults3, require_code2, require_keyword2, require_subschema2, require_fast_deep_equal2, require_json_schema_traverse2, require_resolve2, require_validate2, require_validation_error2, require_ref_error2, require_compile2, require_data2, require_utils13, require_schemes2, require_fast_uri2, require_uri3, require_core$32, require_id2, require_ref4, require_core$22, require_limitNumber2, require_multipleOf2, require_ucs2length2, require_limitLength2, require_pattern2, require_limitProperties2, require_required2, require_limitItems2, require_equal2, require_uniqueItems2, require_const2, require_enum2, require_validation$22, require_additionalItems2, require_items2, require_prefixItems2, require_items20202, require_contains2, require_dependencies2, require_propertyNames2, require_additionalProperties2, require_properties2, require_patternProperties2, require_not2, require_anyOf2, require_oneOf2, require_allOf2, require_if2, require_thenElse2, require_applicator$22, require_format$22, require_format$12, require_metadata2, require_draft72, require_types8, require_discriminator2, require_json_schema_draft_072, require_ajv2, require_dynamicAnchor2, require_dynamicRef2, require_recursiveAnchor2, require_recursiveRef2, require_dynamic2, require_dependentRequired2, require_dependentSchemas2, require_limitContains2, require_next2, require_unevaluatedProperties2, require_unevaluatedItems2, require_unevaluated$12, require_schema$12, require_applicator$12, require_content$12, require_core$12, require_format2, require_meta_data$12, require_validation$12, require_json_schema_2019_092, require__20192, require_draft20202, require_schema2, require_applicator2, require_unevaluated2, require_content2, require_core2, require_format_annotation2, require_meta_data2, require_validation3, require_json_schema_2020_122, require__20202, require_formats3, require_limit2, require_dist8, import_ajv2, import__20192, import__20202, import_dist2, addFormats2, Ajv2;
+var init_ajvProvider_97rDpkRx = __esm(() => {
+  init_chunk_Br0eD_fh2();
+  init_dialects_BOhdv1Fc();
+  require_code$12 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = undefined;
+    var _CodeOrName = class {
+    };
+    exports._CodeOrName = _CodeOrName;
+    exports.IDENTIFIER = /^[a-z$_][a-z$_0-9]*$/i;
+    var Name = class extends _CodeOrName {
+      constructor(s) {
+        super();
+        if (!exports.IDENTIFIER.test(s))
+          throw new Error("CodeGen: name must be a valid identifier");
+        this.str = s;
+      }
+      toString() {
+        return this.str;
+      }
+      emptyStr() {
+        return false;
+      }
+      get names() {
+        return { [this.str]: 1 };
+      }
+    };
+    exports.Name = Name;
+    var _Code = class extends _CodeOrName {
+      constructor(code) {
+        super();
+        this._items = typeof code === "string" ? [code] : code;
+      }
+      toString() {
+        return this.str;
+      }
+      emptyStr() {
+        if (this._items.length > 1)
+          return false;
+        const item = this._items[0];
+        return item === "" || item === '""';
+      }
+      get str() {
+        var _a;
+        return (_a = this._str) !== null && _a !== undefined ? _a : this._str = this._items.reduce((s, c) => `${s}${c}`, "");
+      }
+      get names() {
+        var _a;
+        return (_a = this._names) !== null && _a !== undefined ? _a : this._names = this._items.reduce((names, c) => {
+          if (c instanceof Name)
+            names[c.str] = (names[c.str] || 0) + 1;
+          return names;
+        }, {});
+      }
+    };
+    exports._Code = _Code;
+    exports.nil = new _Code("");
+    function _(strs, ...args) {
+      const code = [strs[0]];
+      let i = 0;
+      while (i < args.length) {
+        addCodeArg(code, args[i]);
+        code.push(strs[++i]);
+      }
+      return new _Code(code);
+    }
+    exports._ = _;
+    const plus = new _Code("+");
+    function str(strs, ...args) {
+      const expr = [safeStringify(strs[0])];
+      let i = 0;
+      while (i < args.length) {
+        expr.push(plus);
+        addCodeArg(expr, args[i]);
+        expr.push(plus, safeStringify(strs[++i]));
+      }
+      optimize(expr);
+      return new _Code(expr);
+    }
+    exports.str = str;
+    function addCodeArg(code, arg) {
+      if (arg instanceof _Code)
+        code.push(...arg._items);
+      else if (arg instanceof Name)
+        code.push(arg);
+      else
+        code.push(interpolate(arg));
+    }
+    exports.addCodeArg = addCodeArg;
+    function optimize(expr) {
+      let i = 1;
+      while (i < expr.length - 1) {
+        if (expr[i] === plus) {
+          const res = mergeExprItems(expr[i - 1], expr[i + 1]);
+          if (res !== undefined) {
+            expr.splice(i - 1, 3, res);
+            continue;
+          }
+          expr[i++] = "+";
+        }
+        i++;
+      }
+    }
+    function mergeExprItems(a, b) {
+      if (b === '""')
+        return a;
+      if (a === '""')
+        return b;
+      if (typeof a == "string") {
+        if (b instanceof Name || a[a.length - 1] !== '"')
+          return;
+        if (typeof b != "string")
+          return `${a.slice(0, -1)}${b}"`;
+        if (b[0] === '"')
+          return a.slice(0, -1) + b.slice(1);
+        return;
+      }
+      if (typeof b == "string" && b[0] === '"' && !(a instanceof Name))
+        return `"${a}${b.slice(1)}`;
+    }
+    function strConcat(c1, c2) {
+      return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str`${c1}${c2}`;
+    }
+    exports.strConcat = strConcat;
+    function interpolate(x) {
+      return typeof x == "number" || typeof x == "boolean" || x === null ? x : safeStringify(Array.isArray(x) ? x.join(",") : x);
+    }
+    function stringify(x) {
+      return new _Code(safeStringify(x));
+    }
+    exports.stringify = stringify;
+    function safeStringify(x) {
+      return JSON.stringify(x).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+    }
+    exports.safeStringify = safeStringify;
+    function getProperty(key) {
+      return typeof key == "string" && exports.IDENTIFIER.test(key) ? new _Code(`.${key}`) : _`[${key}]`;
+    }
+    exports.getProperty = getProperty;
+    function getEsmExportName(key) {
+      if (typeof key == "string" && exports.IDENTIFIER.test(key))
+        return new _Code(`${key}`);
+      throw new Error(`CodeGen: invalid export name: ${key}, use explicit $id name mapping`);
+    }
+    exports.getEsmExportName = getEsmExportName;
+    function regexpCode(rx) {
+      return new _Code(rx.toString());
+    }
+    exports.regexpCode = regexpCode;
+  });
+  require_scope2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = undefined;
+    const code_1 = require_code$12();
+    var ValueError = class extends Error {
+      constructor(name) {
+        super(`CodeGen: "code" for ${name} not defined`);
+        this.value = name.value;
+      }
+    };
+    var UsedValueState;
+    (function(UsedValueState) {
+      UsedValueState[UsedValueState["Started"] = 0] = "Started";
+      UsedValueState[UsedValueState["Completed"] = 1] = "Completed";
+    })(UsedValueState || (exports.UsedValueState = UsedValueState = {}));
+    exports.varKinds = {
+      const: new code_1.Name("const"),
+      let: new code_1.Name("let"),
+      var: new code_1.Name("var")
+    };
+    var Scope = class {
+      constructor({ prefixes, parent } = {}) {
+        this._names = {};
+        this._prefixes = prefixes;
+        this._parent = parent;
+      }
+      toName(nameOrPrefix) {
+        return nameOrPrefix instanceof code_1.Name ? nameOrPrefix : this.name(nameOrPrefix);
+      }
+      name(prefix) {
+        return new code_1.Name(this._newName(prefix));
+      }
+      _newName(prefix) {
+        const ng = this._names[prefix] || this._nameGroup(prefix);
+        return `${prefix}${ng.index++}`;
+      }
+      _nameGroup(prefix) {
+        var _a, _b;
+        if (((_b = (_a = this._parent) === null || _a === undefined ? undefined : _a._prefixes) === null || _b === undefined ? undefined : _b.has(prefix)) || this._prefixes && !this._prefixes.has(prefix))
+          throw new Error(`CodeGen: prefix "${prefix}" is not allowed in this scope`);
+        return this._names[prefix] = {
+          prefix,
+          index: 0
+        };
+      }
+    };
+    exports.Scope = Scope;
+    var ValueScopeName = class extends code_1.Name {
+      constructor(prefix, nameStr) {
+        super(nameStr);
+        this.prefix = prefix;
+      }
+      setValue(value, { property, itemIndex }) {
+        this.value = value;
+        this.scopePath = (0, code_1._)`.${new code_1.Name(property)}[${itemIndex}]`;
+      }
+    };
+    exports.ValueScopeName = ValueScopeName;
+    const line = (0, code_1._)`\n`;
+    var ValueScope = class extends Scope {
+      constructor(opts) {
+        super(opts);
+        this._values = {};
+        this._scope = opts.scope;
+        this.opts = {
+          ...opts,
+          _n: opts.lines ? line : code_1.nil
+        };
+      }
+      get() {
+        return this._scope;
+      }
+      name(prefix) {
+        return new ValueScopeName(prefix, this._newName(prefix));
+      }
+      value(nameOrPrefix, value) {
+        var _a;
+        if (value.ref === undefined)
+          throw new Error("CodeGen: ref must be passed in value");
+        const name = this.toName(nameOrPrefix);
+        const { prefix } = name;
+        const valueKey = (_a = value.key) !== null && _a !== undefined ? _a : value.ref;
+        let vs = this._values[prefix];
+        if (vs) {
+          const _name = vs.get(valueKey);
+          if (_name)
+            return _name;
+        } else
+          vs = this._values[prefix] = /* @__PURE__ */ new Map;
+        vs.set(valueKey, name);
+        const s = this._scope[prefix] || (this._scope[prefix] = []);
+        const itemIndex = s.length;
+        s[itemIndex] = value.ref;
+        name.setValue(value, {
+          property: prefix,
+          itemIndex
+        });
+        return name;
+      }
+      getValue(prefix, keyOrRef) {
+        const vs = this._values[prefix];
+        if (!vs)
+          return;
+        return vs.get(keyOrRef);
+      }
+      scopeRefs(scopeName, values = this._values) {
+        return this._reduceValues(values, (name) => {
+          if (name.scopePath === undefined)
+            throw new Error(`CodeGen: name "${name}" has no value`);
+          return (0, code_1._)`${scopeName}${name.scopePath}`;
+        });
+      }
+      scopeCode(values = this._values, usedValues, getCode) {
+        return this._reduceValues(values, (name) => {
+          if (name.value === undefined)
+            throw new Error(`CodeGen: name "${name}" has no value`);
+          return name.value.code;
+        }, usedValues, getCode);
+      }
+      _reduceValues(values, valueCode, usedValues = {}, getCode) {
+        let code = code_1.nil;
+        for (const prefix in values) {
+          const vs = values[prefix];
+          if (!vs)
+            continue;
+          const nameSet = usedValues[prefix] = usedValues[prefix] || /* @__PURE__ */ new Map;
+          vs.forEach((name) => {
+            if (nameSet.has(name))
+              return;
+            nameSet.set(name, UsedValueState.Started);
+            let c = valueCode(name);
+            if (c) {
+              const def = this.opts.es5 ? exports.varKinds.var : exports.varKinds.const;
+              code = (0, code_1._)`${code}${def} ${name} = ${c};${this.opts._n}`;
+            } else if (c = getCode === null || getCode === undefined ? undefined : getCode(name))
+              code = (0, code_1._)`${code}${c}${this.opts._n}`;
+            else
+              throw new ValueError(name);
+            nameSet.set(name, UsedValueState.Completed);
+          });
+        }
+        return code;
+      }
+    };
+    exports.ValueScope = ValueScope;
+  });
+  require_codegen2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.or = exports.and = exports.not = exports.CodeGen = exports.operators = exports.varKinds = exports.ValueScopeName = exports.ValueScope = exports.Scope = exports.Name = exports.regexpCode = exports.stringify = exports.getProperty = exports.nil = exports.strConcat = exports.str = exports._ = undefined;
+    const code_1 = require_code$12();
+    const scope_1 = require_scope2();
+    var code_2 = require_code$12();
+    Object.defineProperty(exports, "_", {
+      enumerable: true,
+      get: function() {
+        return code_2._;
+      }
+    });
+    Object.defineProperty(exports, "str", {
+      enumerable: true,
+      get: function() {
+        return code_2.str;
+      }
+    });
+    Object.defineProperty(exports, "strConcat", {
+      enumerable: true,
+      get: function() {
+        return code_2.strConcat;
+      }
+    });
+    Object.defineProperty(exports, "nil", {
+      enumerable: true,
+      get: function() {
+        return code_2.nil;
+      }
+    });
+    Object.defineProperty(exports, "getProperty", {
+      enumerable: true,
+      get: function() {
+        return code_2.getProperty;
+      }
+    });
+    Object.defineProperty(exports, "stringify", {
+      enumerable: true,
+      get: function() {
+        return code_2.stringify;
+      }
+    });
+    Object.defineProperty(exports, "regexpCode", {
+      enumerable: true,
+      get: function() {
+        return code_2.regexpCode;
+      }
+    });
+    Object.defineProperty(exports, "Name", {
+      enumerable: true,
+      get: function() {
+        return code_2.Name;
+      }
+    });
+    var scope_2 = require_scope2();
+    Object.defineProperty(exports, "Scope", {
+      enumerable: true,
+      get: function() {
+        return scope_2.Scope;
+      }
+    });
+    Object.defineProperty(exports, "ValueScope", {
+      enumerable: true,
+      get: function() {
+        return scope_2.ValueScope;
+      }
+    });
+    Object.defineProperty(exports, "ValueScopeName", {
+      enumerable: true,
+      get: function() {
+        return scope_2.ValueScopeName;
+      }
+    });
+    Object.defineProperty(exports, "varKinds", {
+      enumerable: true,
+      get: function() {
+        return scope_2.varKinds;
+      }
+    });
+    exports.operators = {
+      GT: new code_1._Code(">"),
+      GTE: new code_1._Code(">="),
+      LT: new code_1._Code("<"),
+      LTE: new code_1._Code("<="),
+      EQ: new code_1._Code("==="),
+      NEQ: new code_1._Code("!=="),
+      NOT: new code_1._Code("!"),
+      OR: new code_1._Code("||"),
+      AND: new code_1._Code("&&"),
+      ADD: new code_1._Code("+")
+    };
+    var Node = class {
+      optimizeNodes() {
+        return this;
+      }
+      optimizeNames(_names, _constants) {
+        return this;
+      }
+    };
+    var Def = class extends Node {
+      constructor(varKind, name, rhs) {
+        super();
+        this.varKind = varKind;
+        this.name = name;
+        this.rhs = rhs;
+      }
+      render({ es5, _n }) {
+        const varKind = es5 ? scope_1.varKinds.var : this.varKind;
+        const rhs = this.rhs === undefined ? "" : ` = ${this.rhs}`;
+        return `${varKind} ${this.name}${rhs};` + _n;
+      }
+      optimizeNames(names, constants) {
+        if (!names[this.name.str])
+          return;
+        if (this.rhs)
+          this.rhs = optimizeExpr(this.rhs, names, constants);
+        return this;
+      }
+      get names() {
+        return this.rhs instanceof code_1._CodeOrName ? this.rhs.names : {};
+      }
+    };
+    var Assign = class extends Node {
+      constructor(lhs, rhs, sideEffects) {
+        super();
+        this.lhs = lhs;
+        this.rhs = rhs;
+        this.sideEffects = sideEffects;
+      }
+      render({ _n }) {
+        return `${this.lhs} = ${this.rhs};` + _n;
+      }
+      optimizeNames(names, constants) {
+        if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
+          return;
+        this.rhs = optimizeExpr(this.rhs, names, constants);
+        return this;
+      }
+      get names() {
+        return addExprNames(this.lhs instanceof code_1.Name ? {} : { ...this.lhs.names }, this.rhs);
+      }
+    };
+    var AssignOp = class extends Assign {
+      constructor(lhs, op, rhs, sideEffects) {
+        super(lhs, rhs, sideEffects);
+        this.op = op;
+      }
+      render({ _n }) {
+        return `${this.lhs} ${this.op}= ${this.rhs};` + _n;
+      }
+    };
+    var Label = class extends Node {
+      constructor(label) {
+        super();
+        this.label = label;
+        this.names = {};
+      }
+      render({ _n }) {
+        return `${this.label}:` + _n;
+      }
+    };
+    var Break = class extends Node {
+      constructor(label) {
+        super();
+        this.label = label;
+        this.names = {};
+      }
+      render({ _n }) {
+        return `break${this.label ? ` ${this.label}` : ""};` + _n;
+      }
+    };
+    var Throw = class extends Node {
+      constructor(error) {
+        super();
+        this.error = error;
+      }
+      render({ _n }) {
+        return `throw ${this.error};` + _n;
+      }
+      get names() {
+        return this.error.names;
+      }
+    };
+    var AnyCode = class extends Node {
+      constructor(code) {
+        super();
+        this.code = code;
+      }
+      render({ _n }) {
+        return `${this.code};` + _n;
+      }
+      optimizeNodes() {
+        return `${this.code}` ? this : undefined;
+      }
+      optimizeNames(names, constants) {
+        this.code = optimizeExpr(this.code, names, constants);
+        return this;
+      }
+      get names() {
+        return this.code instanceof code_1._CodeOrName ? this.code.names : {};
+      }
+    };
+    var ParentNode = class extends Node {
+      constructor(nodes = []) {
+        super();
+        this.nodes = nodes;
+      }
+      render(opts) {
+        return this.nodes.reduce((code, n) => code + n.render(opts), "");
+      }
+      optimizeNodes() {
+        const { nodes } = this;
+        let i = nodes.length;
+        while (i--) {
+          const n = nodes[i].optimizeNodes();
+          if (Array.isArray(n))
+            nodes.splice(i, 1, ...n);
+          else if (n)
+            nodes[i] = n;
+          else
+            nodes.splice(i, 1);
+        }
+        return nodes.length > 0 ? this : undefined;
+      }
+      optimizeNames(names, constants) {
+        const { nodes } = this;
+        let i = nodes.length;
+        while (i--) {
+          const n = nodes[i];
+          if (n.optimizeNames(names, constants))
+            continue;
+          subtractNames(names, n.names);
+          nodes.splice(i, 1);
+        }
+        return nodes.length > 0 ? this : undefined;
+      }
+      get names() {
+        return this.nodes.reduce((names, n) => addNames(names, n.names), {});
+      }
+    };
+    var BlockNode = class extends ParentNode {
+      render(opts) {
+        return "{" + opts._n + super.render(opts) + "}" + opts._n;
+      }
+    };
+    var Root = class extends ParentNode {
+    };
+    var Else = class extends BlockNode {
+    };
+    Else.kind = "else";
+    var If = class If extends BlockNode {
+      constructor(condition, nodes) {
+        super(nodes);
+        this.condition = condition;
+      }
+      render(opts) {
+        let code = `if(${this.condition})` + super.render(opts);
+        if (this.else)
+          code += "else " + this.else.render(opts);
+        return code;
+      }
+      optimizeNodes() {
+        super.optimizeNodes();
+        const cond = this.condition;
+        if (cond === true)
+          return this.nodes;
+        let e = this.else;
+        if (e) {
+          const ns = e.optimizeNodes();
+          e = this.else = Array.isArray(ns) ? new Else(ns) : ns;
+        }
+        if (e) {
+          if (cond === false)
+            return e instanceof If ? e : e.nodes;
+          if (this.nodes.length)
+            return this;
+          return new If(not(cond), e instanceof If ? [e] : e.nodes);
+        }
+        if (cond === false || !this.nodes.length)
+          return;
+        return this;
+      }
+      optimizeNames(names, constants) {
+        var _a;
+        this.else = (_a = this.else) === null || _a === undefined ? undefined : _a.optimizeNames(names, constants);
+        if (!(super.optimizeNames(names, constants) || this.else))
+          return;
+        this.condition = optimizeExpr(this.condition, names, constants);
+        return this;
+      }
+      get names() {
+        const names = super.names;
+        addExprNames(names, this.condition);
+        if (this.else)
+          addNames(names, this.else.names);
+        return names;
+      }
+    };
+    If.kind = "if";
+    var For = class extends BlockNode {
+    };
+    For.kind = "for";
+    var ForLoop = class extends For {
+      constructor(iteration) {
+        super();
+        this.iteration = iteration;
+      }
+      render(opts) {
+        return `for(${this.iteration})` + super.render(opts);
+      }
+      optimizeNames(names, constants) {
+        if (!super.optimizeNames(names, constants))
+          return;
+        this.iteration = optimizeExpr(this.iteration, names, constants);
+        return this;
+      }
+      get names() {
+        return addNames(super.names, this.iteration.names);
+      }
+    };
+    var ForRange = class extends For {
+      constructor(varKind, name, from, to) {
+        super();
+        this.varKind = varKind;
+        this.name = name;
+        this.from = from;
+        this.to = to;
+      }
+      render(opts) {
+        const varKind = opts.es5 ? scope_1.varKinds.var : this.varKind;
+        const { name, from, to } = this;
+        return `for(${varKind} ${name}=${from}; ${name}<${to}; ${name}++)` + super.render(opts);
+      }
+      get names() {
+        return addExprNames(addExprNames(super.names, this.from), this.to);
+      }
+    };
+    var ForIter = class extends For {
+      constructor(loop, varKind, name, iterable) {
+        super();
+        this.loop = loop;
+        this.varKind = varKind;
+        this.name = name;
+        this.iterable = iterable;
+      }
+      render(opts) {
+        return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
+      }
+      optimizeNames(names, constants) {
+        if (!super.optimizeNames(names, constants))
+          return;
+        this.iterable = optimizeExpr(this.iterable, names, constants);
+        return this;
+      }
+      get names() {
+        return addNames(super.names, this.iterable.names);
+      }
+    };
+    var Func = class extends BlockNode {
+      constructor(name, args, async) {
+        super();
+        this.name = name;
+        this.args = args;
+        this.async = async;
+      }
+      render(opts) {
+        return `${this.async ? "async " : ""}function ${this.name}(${this.args})` + super.render(opts);
+      }
+    };
+    Func.kind = "func";
+    var Return = class extends ParentNode {
+      render(opts) {
+        return "return " + super.render(opts);
+      }
+    };
+    Return.kind = "return";
+    var Try = class extends BlockNode {
+      render(opts) {
+        let code = "try" + super.render(opts);
+        if (this.catch)
+          code += this.catch.render(opts);
+        if (this.finally)
+          code += this.finally.render(opts);
+        return code;
+      }
+      optimizeNodes() {
+        var _a, _b;
+        super.optimizeNodes();
+        (_a = this.catch) === null || _a === undefined || _a.optimizeNodes();
+        (_b = this.finally) === null || _b === undefined || _b.optimizeNodes();
+        return this;
+      }
+      optimizeNames(names, constants) {
+        var _a, _b;
+        super.optimizeNames(names, constants);
+        (_a = this.catch) === null || _a === undefined || _a.optimizeNames(names, constants);
+        (_b = this.finally) === null || _b === undefined || _b.optimizeNames(names, constants);
+        return this;
+      }
+      get names() {
+        const names = super.names;
+        if (this.catch)
+          addNames(names, this.catch.names);
+        if (this.finally)
+          addNames(names, this.finally.names);
+        return names;
+      }
+    };
+    var Catch = class extends BlockNode {
+      constructor(error) {
+        super();
+        this.error = error;
+      }
+      render(opts) {
+        return `catch(${this.error})` + super.render(opts);
+      }
+    };
+    Catch.kind = "catch";
+    var Finally = class extends BlockNode {
+      render(opts) {
+        return "finally" + super.render(opts);
+      }
+    };
+    Finally.kind = "finally";
+    var CodeGen = class {
+      constructor(extScope, opts = {}) {
+        this._values = {};
+        this._blockStarts = [];
+        this._constants = {};
+        this.opts = {
+          ...opts,
+          _n: opts.lines ? `
+` : ""
+        };
+        this._extScope = extScope;
+        this._scope = new scope_1.Scope({ parent: extScope });
+        this._nodes = [new Root];
+      }
+      toString() {
+        return this._root.render(this.opts);
+      }
+      name(prefix) {
+        return this._scope.name(prefix);
+      }
+      scopeName(prefix) {
+        return this._extScope.name(prefix);
+      }
+      scopeValue(prefixOrName, value) {
+        const name = this._extScope.value(prefixOrName, value);
+        (this._values[name.prefix] || (this._values[name.prefix] = /* @__PURE__ */ new Set)).add(name);
+        return name;
+      }
+      getScopeValue(prefix, keyOrRef) {
+        return this._extScope.getValue(prefix, keyOrRef);
+      }
+      scopeRefs(scopeName) {
+        return this._extScope.scopeRefs(scopeName, this._values);
+      }
+      scopeCode() {
+        return this._extScope.scopeCode(this._values);
+      }
+      _def(varKind, nameOrPrefix, rhs, constant) {
+        const name = this._scope.toName(nameOrPrefix);
+        if (rhs !== undefined && constant)
+          this._constants[name.str] = rhs;
+        this._leafNode(new Def(varKind, name, rhs));
+        return name;
+      }
+      const(nameOrPrefix, rhs, _constant) {
+        return this._def(scope_1.varKinds.const, nameOrPrefix, rhs, _constant);
+      }
+      let(nameOrPrefix, rhs, _constant) {
+        return this._def(scope_1.varKinds.let, nameOrPrefix, rhs, _constant);
+      }
+      var(nameOrPrefix, rhs, _constant) {
+        return this._def(scope_1.varKinds.var, nameOrPrefix, rhs, _constant);
+      }
+      assign(lhs, rhs, sideEffects) {
+        return this._leafNode(new Assign(lhs, rhs, sideEffects));
+      }
+      add(lhs, rhs) {
+        return this._leafNode(new AssignOp(lhs, exports.operators.ADD, rhs));
+      }
+      code(c) {
+        if (typeof c == "function")
+          c();
+        else if (c !== code_1.nil)
+          this._leafNode(new AnyCode(c));
+        return this;
+      }
+      object(...keyValues) {
+        const code = ["{"];
+        for (const [key, value] of keyValues) {
+          if (code.length > 1)
+            code.push(",");
+          code.push(key);
+          if (key !== value || this.opts.es5) {
+            code.push(":");
+            (0, code_1.addCodeArg)(code, value);
+          }
+        }
+        code.push("}");
+        return new code_1._Code(code);
+      }
+      if(condition, thenBody, elseBody) {
+        this._blockNode(new If(condition));
+        if (thenBody && elseBody)
+          this.code(thenBody).else().code(elseBody).endIf();
+        else if (thenBody)
+          this.code(thenBody).endIf();
+        else if (elseBody)
+          throw new Error('CodeGen: "else" body without "then" body');
+        return this;
+      }
+      elseIf(condition) {
+        return this._elseNode(new If(condition));
+      }
+      else() {
+        return this._elseNode(new Else);
+      }
+      endIf() {
+        return this._endBlockNode(If, Else);
+      }
+      _for(node, forBody) {
+        this._blockNode(node);
+        if (forBody)
+          this.code(forBody).endFor();
+        return this;
+      }
+      for(iteration, forBody) {
+        return this._for(new ForLoop(iteration), forBody);
+      }
+      forRange(nameOrPrefix, from, to, forBody, varKind = this.opts.es5 ? scope_1.varKinds.var : scope_1.varKinds.let) {
+        const name = this._scope.toName(nameOrPrefix);
+        return this._for(new ForRange(varKind, name, from, to), () => forBody(name));
+      }
+      forOf(nameOrPrefix, iterable, forBody, varKind = scope_1.varKinds.const) {
+        const name = this._scope.toName(nameOrPrefix);
+        if (this.opts.es5) {
+          const arr = iterable instanceof code_1.Name ? iterable : this.var("_arr", iterable);
+          return this.forRange("_i", 0, (0, code_1._)`${arr}.length`, (i) => {
+            this.var(name, (0, code_1._)`${arr}[${i}]`);
+            forBody(name);
+          });
+        }
+        return this._for(new ForIter("of", varKind, name, iterable), () => forBody(name));
+      }
+      forIn(nameOrPrefix, obj, forBody, varKind = this.opts.es5 ? scope_1.varKinds.var : scope_1.varKinds.const) {
+        if (this.opts.ownProperties)
+          return this.forOf(nameOrPrefix, (0, code_1._)`Object.keys(${obj})`, forBody);
+        const name = this._scope.toName(nameOrPrefix);
+        return this._for(new ForIter("in", varKind, name, obj), () => forBody(name));
+      }
+      endFor() {
+        return this._endBlockNode(For);
+      }
+      label(label) {
+        return this._leafNode(new Label(label));
+      }
+      break(label) {
+        return this._leafNode(new Break(label));
+      }
+      return(value) {
+        const node = new Return;
+        this._blockNode(node);
+        this.code(value);
+        if (node.nodes.length !== 1)
+          throw new Error('CodeGen: "return" should have one node');
+        return this._endBlockNode(Return);
+      }
+      try(tryBody, catchCode, finallyCode) {
+        if (!catchCode && !finallyCode)
+          throw new Error('CodeGen: "try" without "catch" and "finally"');
+        const node = new Try;
+        this._blockNode(node);
+        this.code(tryBody);
+        if (catchCode) {
+          const error = this.name("e");
+          this._currNode = node.catch = new Catch(error);
+          catchCode(error);
+        }
+        if (finallyCode) {
+          this._currNode = node.finally = new Finally;
+          this.code(finallyCode);
+        }
+        return this._endBlockNode(Catch, Finally);
+      }
+      throw(error) {
+        return this._leafNode(new Throw(error));
+      }
+      block(body, nodeCount) {
+        this._blockStarts.push(this._nodes.length);
+        if (body)
+          this.code(body).endBlock(nodeCount);
+        return this;
+      }
+      endBlock(nodeCount) {
+        const len = this._blockStarts.pop();
+        if (len === undefined)
+          throw new Error("CodeGen: not in self-balancing block");
+        const toClose = this._nodes.length - len;
+        if (toClose < 0 || nodeCount !== undefined && toClose !== nodeCount)
+          throw new Error(`CodeGen: wrong number of nodes: ${toClose} vs ${nodeCount} expected`);
+        this._nodes.length = len;
+        return this;
+      }
+      func(name, args = code_1.nil, async, funcBody) {
+        this._blockNode(new Func(name, args, async));
+        if (funcBody)
+          this.code(funcBody).endFunc();
+        return this;
+      }
+      endFunc() {
+        return this._endBlockNode(Func);
+      }
+      optimize(n = 1) {
+        while (n-- > 0) {
+          this._root.optimizeNodes();
+          this._root.optimizeNames(this._root.names, this._constants);
+        }
+      }
+      _leafNode(node) {
+        this._currNode.nodes.push(node);
+        return this;
+      }
+      _blockNode(node) {
+        this._currNode.nodes.push(node);
+        this._nodes.push(node);
+      }
+      _endBlockNode(N1, N2) {
+        const n = this._currNode;
+        if (n instanceof N1 || N2 && n instanceof N2) {
+          this._nodes.pop();
+          return this;
+        }
+        throw new Error(`CodeGen: not in block "${N2 ? `${N1.kind}/${N2.kind}` : N1.kind}"`);
+      }
+      _elseNode(node) {
+        const n = this._currNode;
+        if (!(n instanceof If))
+          throw new Error('CodeGen: "else" without "if"');
+        this._currNode = n.else = node;
+        return this;
+      }
+      get _root() {
+        return this._nodes[0];
+      }
+      get _currNode() {
+        const ns = this._nodes;
+        return ns[ns.length - 1];
+      }
+      set _currNode(node) {
+        const ns = this._nodes;
+        ns[ns.length - 1] = node;
+      }
+    };
+    exports.CodeGen = CodeGen;
+    function addNames(names, from) {
+      for (const n in from)
+        names[n] = (names[n] || 0) + (from[n] || 0);
+      return names;
+    }
+    function addExprNames(names, from) {
+      return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
+    }
+    function optimizeExpr(expr, names, constants) {
+      if (expr instanceof code_1.Name)
+        return replaceName(expr);
+      if (!canOptimize(expr))
+        return expr;
+      return new code_1._Code(expr._items.reduce((items, c) => {
+        if (c instanceof code_1.Name)
+          c = replaceName(c);
+        if (c instanceof code_1._Code)
+          items.push(...c._items);
+        else
+          items.push(c);
+        return items;
+      }, []));
+      function replaceName(n) {
+        const c = constants[n.str];
+        if (c === undefined || names[n.str] !== 1)
+          return n;
+        delete names[n.str];
+        return c;
+      }
+      function canOptimize(e) {
+        return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== undefined);
+      }
+    }
+    function subtractNames(names, from) {
+      for (const n in from)
+        names[n] = (names[n] || 0) - (from[n] || 0);
+    }
+    function not(x) {
+      return typeof x == "boolean" || typeof x == "number" || x === null ? !x : (0, code_1._)`!${par(x)}`;
+    }
+    exports.not = not;
+    const andCode = mappend(exports.operators.AND);
+    function and(...args) {
+      return args.reduce(andCode);
+    }
+    exports.and = and;
+    const orCode = mappend(exports.operators.OR);
+    function or(...args) {
+      return args.reduce(orCode);
+    }
+    exports.or = or;
+    function mappend(op) {
+      return (x, y) => x === code_1.nil ? y : y === code_1.nil ? x : (0, code_1._)`${par(x)} ${op} ${par(y)}`;
+    }
+    function par(x) {
+      return x instanceof code_1.Name ? x : (0, code_1._)`(${x})`;
+    }
+  });
+  require_util2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.checkStrictMode = exports.getErrorPath = exports.Type = exports.useFunc = exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = undefined;
+    const codegen_1 = require_codegen2();
+    const code_1 = require_code$12();
+    function toHash(arr) {
+      const hash = {};
+      for (const item of arr)
+        hash[item] = true;
+      return hash;
+    }
+    exports.toHash = toHash;
+    function alwaysValidSchema(it, schema) {
+      if (typeof schema == "boolean")
+        return schema;
+      if (Object.keys(schema).length === 0)
+        return true;
+      checkUnknownRules(it, schema);
+      return !schemaHasRules(schema, it.self.RULES.all);
+    }
+    exports.alwaysValidSchema = alwaysValidSchema;
+    function checkUnknownRules(it, schema = it.schema) {
+      const { opts, self: self2 } = it;
+      if (!opts.strictSchema)
+        return;
+      if (typeof schema === "boolean")
+        return;
+      const rules = self2.RULES.keywords;
+      for (const key in schema)
+        if (!rules[key])
+          checkStrictMode(it, `unknown keyword: "${key}"`);
+    }
+    exports.checkUnknownRules = checkUnknownRules;
+    function schemaHasRules(schema, rules) {
+      if (typeof schema == "boolean")
+        return !schema;
+      for (const key in schema)
+        if (rules[key])
+          return true;
+      return false;
+    }
+    exports.schemaHasRules = schemaHasRules;
+    function schemaHasRulesButRef(schema, RULES) {
+      if (typeof schema == "boolean")
+        return !schema;
+      for (const key in schema)
+        if (key !== "$ref" && RULES.all[key])
+          return true;
+      return false;
+    }
+    exports.schemaHasRulesButRef = schemaHasRulesButRef;
+    function schemaRefOrVal({ topSchemaRef, schemaPath }, schema, keyword, $data) {
+      if (!$data) {
+        if (typeof schema == "number" || typeof schema == "boolean")
+          return schema;
+        if (typeof schema == "string")
+          return (0, codegen_1._)`${schema}`;
+      }
+      return (0, codegen_1._)`${topSchemaRef}${schemaPath}${(0, codegen_1.getProperty)(keyword)}`;
+    }
+    exports.schemaRefOrVal = schemaRefOrVal;
+    function unescapeFragment(str) {
+      return unescapeJsonPointer(decodeURIComponent(str));
+    }
+    exports.unescapeFragment = unescapeFragment;
+    function escapeFragment(str) {
+      return encodeURIComponent(escapeJsonPointer(str));
+    }
+    exports.escapeFragment = escapeFragment;
+    function escapeJsonPointer(str) {
+      if (typeof str == "number")
+        return `${str}`;
+      return str.replace(/~/g, "~0").replace(/\//g, "~1");
+    }
+    exports.escapeJsonPointer = escapeJsonPointer;
+    function unescapeJsonPointer(str) {
+      return str.replace(/~1/g, "/").replace(/~0/g, "~");
+    }
+    exports.unescapeJsonPointer = unescapeJsonPointer;
+    function eachItem(xs, f) {
+      if (Array.isArray(xs))
+        for (const x of xs)
+          f(x);
+      else
+        f(xs);
+    }
+    exports.eachItem = eachItem;
+    function makeMergeEvaluated({ mergeNames, mergeToName, mergeValues, resultToName }) {
+      return (gen, from, to, toName) => {
+        const res = to === undefined ? from : to instanceof codegen_1.Name ? (from instanceof codegen_1.Name ? mergeNames(gen, from, to) : mergeToName(gen, from, to), to) : from instanceof codegen_1.Name ? (mergeToName(gen, to, from), from) : mergeValues(from, to);
+        return toName === codegen_1.Name && !(res instanceof codegen_1.Name) ? resultToName(gen, res) : res;
+      };
+    }
+    exports.mergeEvaluated = {
+      props: makeMergeEvaluated({
+        mergeNames: (gen, from, to) => gen.if((0, codegen_1._)`${to} !== true && ${from} !== undefined`, () => {
+          gen.if((0, codegen_1._)`${from} === true`, () => gen.assign(to, true), () => gen.assign(to, (0, codegen_1._)`${to} || {}`).code((0, codegen_1._)`Object.assign(${to}, ${from})`));
+        }),
+        mergeToName: (gen, from, to) => gen.if((0, codegen_1._)`${to} !== true`, () => {
+          if (from === true)
+            gen.assign(to, true);
+          else {
+            gen.assign(to, (0, codegen_1._)`${to} || {}`);
+            setEvaluated(gen, to, from);
+          }
+        }),
+        mergeValues: (from, to) => from === true ? true : {
+          ...from,
+          ...to
+        },
+        resultToName: evaluatedPropsToName
+      }),
+      items: makeMergeEvaluated({
+        mergeNames: (gen, from, to) => gen.if((0, codegen_1._)`${to} !== true && ${from} !== undefined`, () => gen.assign(to, (0, codegen_1._)`${from} === true ? true : ${to} > ${from} ? ${to} : ${from}`)),
+        mergeToName: (gen, from, to) => gen.if((0, codegen_1._)`${to} !== true`, () => gen.assign(to, from === true ? true : (0, codegen_1._)`${to} > ${from} ? ${to} : ${from}`)),
+        mergeValues: (from, to) => from === true ? true : Math.max(from, to),
+        resultToName: (gen, items) => gen.var("items", items)
+      })
+    };
+    function evaluatedPropsToName(gen, ps) {
+      if (ps === true)
+        return gen.var("props", true);
+      const props = gen.var("props", (0, codegen_1._)`{}`);
+      if (ps !== undefined)
+        setEvaluated(gen, props, ps);
+      return props;
+    }
+    exports.evaluatedPropsToName = evaluatedPropsToName;
+    function setEvaluated(gen, props, ps) {
+      Object.keys(ps).forEach((p) => gen.assign((0, codegen_1._)`${props}${(0, codegen_1.getProperty)(p)}`, true));
+    }
+    exports.setEvaluated = setEvaluated;
+    const snippets = {};
+    function useFunc(gen, f) {
+      return gen.scopeValue("func", {
+        ref: f,
+        code: snippets[f.code] || (snippets[f.code] = new code_1._Code(f.code))
+      });
+    }
+    exports.useFunc = useFunc;
+    var Type;
+    (function(Type) {
+      Type[Type["Num"] = 0] = "Num";
+      Type[Type["Str"] = 1] = "Str";
+    })(Type || (exports.Type = Type = {}));
+    function getErrorPath(dataProp, dataPropType, jsPropertySyntax) {
+      if (dataProp instanceof codegen_1.Name) {
+        const isNumber = dataPropType === Type.Num;
+        return jsPropertySyntax ? isNumber ? (0, codegen_1._)`"[" + ${dataProp} + "]"` : (0, codegen_1._)`"['" + ${dataProp} + "']"` : isNumber ? (0, codegen_1._)`"/" + ${dataProp}` : (0, codegen_1._)`"/" + ${dataProp}.replace(/~/g, "~0").replace(/\\//g, "~1")`;
+      }
+      return jsPropertySyntax ? (0, codegen_1.getProperty)(dataProp).toString() : "/" + escapeJsonPointer(dataProp);
+    }
+    exports.getErrorPath = getErrorPath;
+    function checkStrictMode(it, msg, mode = it.opts.strictSchema) {
+      if (!mode)
+        return;
+      msg = `strict mode: ${msg}`;
+      if (mode === true)
+        throw new Error(msg);
+      it.self.logger.warn(msg);
+    }
+    exports.checkStrictMode = checkStrictMode;
+  });
+  require_names2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const names = {
+      data: new codegen_1.Name("data"),
+      valCxt: new codegen_1.Name("valCxt"),
+      instancePath: new codegen_1.Name("instancePath"),
+      parentData: new codegen_1.Name("parentData"),
+      parentDataProperty: new codegen_1.Name("parentDataProperty"),
+      rootData: new codegen_1.Name("rootData"),
+      dynamicAnchors: new codegen_1.Name("dynamicAnchors"),
+      vErrors: new codegen_1.Name("vErrors"),
+      errors: new codegen_1.Name("errors"),
+      this: new codegen_1.Name("this"),
+      self: new codegen_1.Name("self"),
+      scope: new codegen_1.Name("scope"),
+      json: new codegen_1.Name("json"),
+      jsonPos: new codegen_1.Name("jsonPos"),
+      jsonLen: new codegen_1.Name("jsonLen"),
+      jsonPart: new codegen_1.Name("jsonPart")
+    };
+    exports.default = names;
+  });
+  require_errors2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.extendErrors = exports.resetErrorsCount = exports.reportExtraError = exports.reportError = exports.keyword$DataError = exports.keywordError = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const names_1 = require_names2();
+    exports.keywordError = { message: ({ keyword }) => (0, codegen_1.str)`must pass "${keyword}" keyword validation` };
+    exports.keyword$DataError = { message: ({ keyword, schemaType }) => schemaType ? (0, codegen_1.str)`"${keyword}" keyword must be ${schemaType} ($data)` : (0, codegen_1.str)`"${keyword}" keyword is invalid ($data)` };
+    function reportError(cxt, error = exports.keywordError, errorPaths, overrideAllErrors) {
+      const { it } = cxt;
+      const { gen, compositeRule, allErrors } = it;
+      const errObj = errorObjectCode(cxt, error, errorPaths);
+      if (overrideAllErrors !== null && overrideAllErrors !== undefined ? overrideAllErrors : compositeRule || allErrors)
+        addError(gen, errObj);
+      else
+        returnErrors(it, (0, codegen_1._)`[${errObj}]`);
+    }
+    exports.reportError = reportError;
+    function reportExtraError(cxt, error = exports.keywordError, errorPaths) {
+      const { it } = cxt;
+      const { gen, compositeRule, allErrors } = it;
+      addError(gen, errorObjectCode(cxt, error, errorPaths));
+      if (!(compositeRule || allErrors))
+        returnErrors(it, names_1.default.vErrors);
+    }
+    exports.reportExtraError = reportExtraError;
+    function resetErrorsCount(gen, errsCount) {
+      gen.assign(names_1.default.errors, errsCount);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} !== null`, () => gen.if(errsCount, () => gen.assign((0, codegen_1._)`${names_1.default.vErrors}.length`, errsCount), () => gen.assign(names_1.default.vErrors, null)));
+    }
+    exports.resetErrorsCount = resetErrorsCount;
+    function extendErrors({ gen, keyword, schemaValue, data, errsCount, it }) {
+      if (errsCount === undefined)
+        throw new Error("ajv implementation error");
+      const err = gen.name("err");
+      gen.forRange("i", errsCount, names_1.default.errors, (i) => {
+        gen.const(err, (0, codegen_1._)`${names_1.default.vErrors}[${i}]`);
+        gen.if((0, codegen_1._)`${err}.instancePath === undefined`, () => gen.assign((0, codegen_1._)`${err}.instancePath`, (0, codegen_1.strConcat)(names_1.default.instancePath, it.errorPath)));
+        gen.assign((0, codegen_1._)`${err}.schemaPath`, (0, codegen_1.str)`${it.errSchemaPath}/${keyword}`);
+        if (it.opts.verbose) {
+          gen.assign((0, codegen_1._)`${err}.schema`, schemaValue);
+          gen.assign((0, codegen_1._)`${err}.data`, data);
+        }
+      });
+    }
+    exports.extendErrors = extendErrors;
+    function addError(gen, errObj) {
+      const err = gen.const("err", errObj);
+      gen.if((0, codegen_1._)`${names_1.default.vErrors} === null`, () => gen.assign(names_1.default.vErrors, (0, codegen_1._)`[${err}]`), (0, codegen_1._)`${names_1.default.vErrors}.push(${err})`);
+      gen.code((0, codegen_1._)`${names_1.default.errors}++`);
+    }
+    function returnErrors(it, errs) {
+      const { gen, validateName, schemaEnv } = it;
+      if (schemaEnv.$async)
+        gen.throw((0, codegen_1._)`new ${it.ValidationError}(${errs})`);
+      else {
+        gen.assign((0, codegen_1._)`${validateName}.errors`, errs);
+        gen.return(false);
+      }
+    }
+    const E = {
+      keyword: new codegen_1.Name("keyword"),
+      schemaPath: new codegen_1.Name("schemaPath"),
+      params: new codegen_1.Name("params"),
+      propertyName: new codegen_1.Name("propertyName"),
+      message: new codegen_1.Name("message"),
+      schema: new codegen_1.Name("schema"),
+      parentSchema: new codegen_1.Name("parentSchema")
+    };
+    function errorObjectCode(cxt, error, errorPaths) {
+      const { createErrors } = cxt.it;
+      if (createErrors === false)
+        return (0, codegen_1._)`{}`;
+      return errorObject(cxt, error, errorPaths);
+    }
+    function errorObject(cxt, error, errorPaths = {}) {
+      const { gen, it } = cxt;
+      const keyValues = [errorInstancePath(it, errorPaths), errorSchemaPath(cxt, errorPaths)];
+      extraErrorProps(cxt, error, keyValues);
+      return gen.object(...keyValues);
+    }
+    function errorInstancePath({ errorPath }, { instancePath }) {
+      const instPath = instancePath ? (0, codegen_1.str)`${errorPath}${(0, util_1.getErrorPath)(instancePath, util_1.Type.Str)}` : errorPath;
+      return [names_1.default.instancePath, (0, codegen_1.strConcat)(names_1.default.instancePath, instPath)];
+    }
+    function errorSchemaPath({ keyword, it: { errSchemaPath } }, { schemaPath, parentSchema }) {
+      let schPath = parentSchema ? errSchemaPath : (0, codegen_1.str)`${errSchemaPath}/${keyword}`;
+      if (schemaPath)
+        schPath = (0, codegen_1.str)`${schPath}${(0, util_1.getErrorPath)(schemaPath, util_1.Type.Str)}`;
+      return [E.schemaPath, schPath];
+    }
+    function extraErrorProps(cxt, { params, message }, keyValues) {
+      const { keyword, data, schemaValue, it } = cxt;
+      const { opts, propertyName, topSchemaRef, schemaPath } = it;
+      keyValues.push([E.keyword, keyword], [E.params, typeof params == "function" ? params(cxt) : params || (0, codegen_1._)`{}`]);
+      if (opts.messages)
+        keyValues.push([E.message, typeof message == "function" ? message(cxt) : message]);
+      if (opts.verbose)
+        keyValues.push([E.schema, schemaValue], [E.parentSchema, (0, codegen_1._)`${topSchemaRef}${schemaPath}`], [names_1.default.data, data]);
+      if (propertyName)
+        keyValues.push([E.propertyName, propertyName]);
+    }
+  });
+  require_boolSchema2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.boolOrEmptySchema = exports.topBoolOrEmptySchema = undefined;
+    const errors_1 = require_errors2();
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const boolError = { message: "boolean schema is false" };
+    function topBoolOrEmptySchema(it) {
+      const { gen, schema, validateName } = it;
+      if (schema === false)
+        falseSchemaError(it, false);
+      else if (typeof schema == "object" && schema.$async === true)
+        gen.return(names_1.default.data);
+      else {
+        gen.assign((0, codegen_1._)`${validateName}.errors`, null);
+        gen.return(true);
+      }
+    }
+    exports.topBoolOrEmptySchema = topBoolOrEmptySchema;
+    function boolOrEmptySchema(it, valid) {
+      const { gen, schema } = it;
+      if (schema === false) {
+        gen.var(valid, false);
+        falseSchemaError(it);
+      } else
+        gen.var(valid, true);
+    }
+    exports.boolOrEmptySchema = boolOrEmptySchema;
+    function falseSchemaError(it, overrideAllErrors) {
+      const { gen, data } = it;
+      const cxt = {
+        gen,
+        keyword: "false schema",
+        data,
+        schema: false,
+        schemaCode: false,
+        schemaValue: false,
+        params: {},
+        it
+      };
+      (0, errors_1.reportError)(cxt, boolError, undefined, overrideAllErrors);
+    }
+  });
+  require_rules2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getRules = exports.isJSONType = undefined;
+    const jsonTypes = new Set([
+      "string",
+      "number",
+      "integer",
+      "boolean",
+      "null",
+      "object",
+      "array"
+    ]);
+    function isJSONType(x) {
+      return typeof x == "string" && jsonTypes.has(x);
+    }
+    exports.isJSONType = isJSONType;
+    function getRules() {
+      const groups = {
+        number: {
+          type: "number",
+          rules: []
+        },
+        string: {
+          type: "string",
+          rules: []
+        },
+        array: {
+          type: "array",
+          rules: []
+        },
+        object: {
+          type: "object",
+          rules: []
+        }
+      };
+      return {
+        types: {
+          ...groups,
+          integer: true,
+          boolean: true,
+          null: true
+        },
+        rules: [
+          { rules: [] },
+          groups.number,
+          groups.string,
+          groups.array,
+          groups.object
+        ],
+        post: { rules: [] },
+        all: {},
+        keywords: {}
+      };
+    }
+    exports.getRules = getRules;
+  });
+  require_applicability2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.shouldUseRule = exports.shouldUseGroup = exports.schemaHasRulesForType = undefined;
+    function schemaHasRulesForType({ schema, self: self2 }, type) {
+      const group = self2.RULES.types[type];
+      return group && group !== true && shouldUseGroup(schema, group);
+    }
+    exports.schemaHasRulesForType = schemaHasRulesForType;
+    function shouldUseGroup(schema, group) {
+      return group.rules.some((rule) => shouldUseRule(schema, rule));
+    }
+    exports.shouldUseGroup = shouldUseGroup;
+    function shouldUseRule(schema, rule) {
+      var _a;
+      return schema[rule.keyword] !== undefined || ((_a = rule.definition.implements) === null || _a === undefined ? undefined : _a.some((kwd) => schema[kwd] !== undefined));
+    }
+    exports.shouldUseRule = shouldUseRule;
+  });
+  require_dataType2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.reportTypeError = exports.checkDataTypes = exports.checkDataType = exports.coerceAndCheckDataType = exports.getJSONTypes = exports.getSchemaTypes = exports.DataType = undefined;
+    const rules_1 = require_rules2();
+    const applicability_1 = require_applicability2();
+    const errors_1 = require_errors2();
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    var DataType;
+    (function(DataType) {
+      DataType[DataType["Correct"] = 0] = "Correct";
+      DataType[DataType["Wrong"] = 1] = "Wrong";
+    })(DataType || (exports.DataType = DataType = {}));
+    function getSchemaTypes(schema) {
+      const types = getJSONTypes(schema.type);
+      if (types.includes("null")) {
+        if (schema.nullable === false)
+          throw new Error("type: null contradicts nullable: false");
+      } else {
+        if (!types.length && schema.nullable !== undefined)
+          throw new Error('"nullable" cannot be used without "type"');
+        if (schema.nullable === true)
+          types.push("null");
+      }
+      return types;
+    }
+    exports.getSchemaTypes = getSchemaTypes;
+    function getJSONTypes(ts) {
+      const types = Array.isArray(ts) ? ts : ts ? [ts] : [];
+      if (types.every(rules_1.isJSONType))
+        return types;
+      throw new Error("type must be JSONType or JSONType[]: " + types.join(","));
+    }
+    exports.getJSONTypes = getJSONTypes;
+    function coerceAndCheckDataType(it, types) {
+      const { gen, data, opts } = it;
+      const coerceTo = coerceToTypes(types, opts.coerceTypes);
+      const checkTypes = types.length > 0 && !(coerceTo.length === 0 && types.length === 1 && (0, applicability_1.schemaHasRulesForType)(it, types[0]));
+      if (checkTypes) {
+        const wrongType = checkDataTypes(types, data, opts.strictNumbers, DataType.Wrong);
+        gen.if(wrongType, () => {
+          if (coerceTo.length)
+            coerceData(it, types, coerceTo);
+          else
+            reportTypeError(it);
+        });
+      }
+      return checkTypes;
+    }
+    exports.coerceAndCheckDataType = coerceAndCheckDataType;
+    const COERCIBLE = new Set([
+      "string",
+      "number",
+      "integer",
+      "boolean",
+      "null"
+    ]);
+    function coerceToTypes(types, coerceTypes) {
+      return coerceTypes ? types.filter((t) => COERCIBLE.has(t) || coerceTypes === "array" && t === "array") : [];
+    }
+    function coerceData(it, types, coerceTo) {
+      const { gen, data, opts } = it;
+      const dataType = gen.let("dataType", (0, codegen_1._)`typeof ${data}`);
+      const coerced = gen.let("coerced", (0, codegen_1._)`undefined`);
+      if (opts.coerceTypes === "array")
+        gen.if((0, codegen_1._)`${dataType} == 'object' && Array.isArray(${data}) && ${data}.length == 1`, () => gen.assign(data, (0, codegen_1._)`${data}[0]`).assign(dataType, (0, codegen_1._)`typeof ${data}`).if(checkDataTypes(types, data, opts.strictNumbers), () => gen.assign(coerced, data)));
+      gen.if((0, codegen_1._)`${coerced} !== undefined`);
+      for (const t of coerceTo)
+        if (COERCIBLE.has(t) || t === "array" && opts.coerceTypes === "array")
+          coerceSpecificType(t);
+      gen.else();
+      reportTypeError(it);
+      gen.endIf();
+      gen.if((0, codegen_1._)`${coerced} !== undefined`, () => {
+        gen.assign(data, coerced);
+        assignParentData(it, coerced);
+      });
+      function coerceSpecificType(t) {
+        switch (t) {
+          case "string":
+            gen.elseIf((0, codegen_1._)`${dataType} == "number" || ${dataType} == "boolean"`).assign(coerced, (0, codegen_1._)`"" + ${data}`).elseIf((0, codegen_1._)`${data} === null`).assign(coerced, (0, codegen_1._)`""`);
+            return;
+          case "number":
+            gen.elseIf((0, codegen_1._)`${dataType} == "boolean" || ${data} === null
+              || (${dataType} == "string" && ${data} && ${data} == +${data})`).assign(coerced, (0, codegen_1._)`+${data}`);
+            return;
+          case "integer":
+            gen.elseIf((0, codegen_1._)`${dataType} === "boolean" || ${data} === null
+              || (${dataType} === "string" && ${data} && ${data} == +${data} && !(${data} % 1))`).assign(coerced, (0, codegen_1._)`+${data}`);
+            return;
+          case "boolean":
+            gen.elseIf((0, codegen_1._)`${data} === "false" || ${data} === 0 || ${data} === null`).assign(coerced, false).elseIf((0, codegen_1._)`${data} === "true" || ${data} === 1`).assign(coerced, true);
+            return;
+          case "null":
+            gen.elseIf((0, codegen_1._)`${data} === "" || ${data} === 0 || ${data} === false`);
+            gen.assign(coerced, null);
+            return;
+          case "array":
+            gen.elseIf((0, codegen_1._)`${dataType} === "string" || ${dataType} === "number"
+              || ${dataType} === "boolean" || ${data} === null`).assign(coerced, (0, codegen_1._)`[${data}]`);
+        }
+      }
+    }
+    function assignParentData({ gen, parentData, parentDataProperty }, expr) {
+      gen.if((0, codegen_1._)`${parentData} !== undefined`, () => gen.assign((0, codegen_1._)`${parentData}[${parentDataProperty}]`, expr));
+    }
+    function checkDataType(dataType, data, strictNums, correct = DataType.Correct) {
+      const EQ = correct === DataType.Correct ? codegen_1.operators.EQ : codegen_1.operators.NEQ;
+      let cond;
+      switch (dataType) {
+        case "null":
+          return (0, codegen_1._)`${data} ${EQ} null`;
+        case "array":
+          cond = (0, codegen_1._)`Array.isArray(${data})`;
+          break;
+        case "object":
+          cond = (0, codegen_1._)`${data} && typeof ${data} == "object" && !Array.isArray(${data})`;
+          break;
+        case "integer":
+          cond = numCond((0, codegen_1._)`!(${data} % 1) && !isNaN(${data})`);
+          break;
+        case "number":
+          cond = numCond();
+          break;
+        default:
+          return (0, codegen_1._)`typeof ${data} ${EQ} ${dataType}`;
+      }
+      return correct === DataType.Correct ? cond : (0, codegen_1.not)(cond);
+      function numCond(_cond = codegen_1.nil) {
+        return (0, codegen_1.and)((0, codegen_1._)`typeof ${data} == "number"`, _cond, strictNums ? (0, codegen_1._)`isFinite(${data})` : codegen_1.nil);
+      }
+    }
+    exports.checkDataType = checkDataType;
+    function checkDataTypes(dataTypes, data, strictNums, correct) {
+      if (dataTypes.length === 1)
+        return checkDataType(dataTypes[0], data, strictNums, correct);
+      let cond;
+      const types = (0, util_1.toHash)(dataTypes);
+      if (types.array && types.object) {
+        const notObj = (0, codegen_1._)`typeof ${data} != "object"`;
+        cond = types.null ? notObj : (0, codegen_1._)`!${data} || ${notObj}`;
+        delete types.null;
+        delete types.array;
+        delete types.object;
+      } else
+        cond = codegen_1.nil;
+      if (types.number)
+        delete types.integer;
+      for (const t in types)
+        cond = (0, codegen_1.and)(cond, checkDataType(t, data, strictNums, correct));
+      return cond;
+    }
+    exports.checkDataTypes = checkDataTypes;
+    const typeError = {
+      message: ({ schema }) => `must be ${schema}`,
+      params: ({ schema, schemaValue }) => typeof schema == "string" ? (0, codegen_1._)`{type: ${schema}}` : (0, codegen_1._)`{type: ${schemaValue}}`
+    };
+    function reportTypeError(it) {
+      const cxt = getTypeErrorContext(it);
+      (0, errors_1.reportError)(cxt, typeError);
+    }
+    exports.reportTypeError = reportTypeError;
+    function getTypeErrorContext(it) {
+      const { gen, data, schema } = it;
+      const schemaCode = (0, util_1.schemaRefOrVal)(it, schema, "type");
+      return {
+        gen,
+        keyword: "type",
+        data,
+        schema: schema.type,
+        schemaCode,
+        schemaValue: schemaCode,
+        parentSchema: schema,
+        params: {},
+        it
+      };
+    }
+  });
+  require_defaults3 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.assignDefaults = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    function assignDefaults(it, ty) {
+      const { properties, items } = it.schema;
+      if (ty === "object" && properties)
+        for (const key in properties)
+          assignDefault(it, key, properties[key].default);
+      else if (ty === "array" && Array.isArray(items))
+        items.forEach((sch, i) => assignDefault(it, i, sch.default));
+    }
+    exports.assignDefaults = assignDefaults;
+    function assignDefault(it, prop, defaultValue) {
+      const { gen, compositeRule, data, opts } = it;
+      if (defaultValue === undefined)
+        return;
+      const childData = (0, codegen_1._)`${data}${(0, codegen_1.getProperty)(prop)}`;
+      if (compositeRule) {
+        (0, util_1.checkStrictMode)(it, `default is ignored for: ${childData}`);
+        return;
+      }
+      let condition = (0, codegen_1._)`${childData} === undefined`;
+      if (opts.useDefaults === "empty")
+        condition = (0, codegen_1._)`${condition} || ${childData} === null || ${childData} === ""`;
+      gen.if(condition, (0, codegen_1._)`${childData} = ${(0, codegen_1.stringify)(defaultValue)}`);
+    }
+  });
+  require_code2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const names_1 = require_names2();
+    const util_2 = require_util2();
+    function checkReportMissingProp(cxt, prop) {
+      const { gen, data, it } = cxt;
+      gen.if(noPropertyInData(gen, data, prop, it.opts.ownProperties), () => {
+        cxt.setParams({ missingProperty: (0, codegen_1._)`${prop}` }, true);
+        cxt.error();
+      });
+    }
+    exports.checkReportMissingProp = checkReportMissingProp;
+    function checkMissingProp({ gen, data, it: { opts } }, properties, missing) {
+      return (0, codegen_1.or)(...properties.map((prop) => (0, codegen_1.and)(noPropertyInData(gen, data, prop, opts.ownProperties), (0, codegen_1._)`${missing} = ${prop}`)));
+    }
+    exports.checkMissingProp = checkMissingProp;
+    function reportMissingProp(cxt, missing) {
+      cxt.setParams({ missingProperty: missing }, true);
+      cxt.error();
+    }
+    exports.reportMissingProp = reportMissingProp;
+    function hasPropFunc(gen) {
+      return gen.scopeValue("func", {
+        ref: Object.prototype.hasOwnProperty,
+        code: (0, codegen_1._)`Object.prototype.hasOwnProperty`
+      });
+    }
+    exports.hasPropFunc = hasPropFunc;
+    function isOwnProperty(gen, data, property) {
+      return (0, codegen_1._)`${hasPropFunc(gen)}.call(${data}, ${property})`;
+    }
+    exports.isOwnProperty = isOwnProperty;
+    function propertyInData(gen, data, property, ownProperties) {
+      const cond = (0, codegen_1._)`${data}${(0, codegen_1.getProperty)(property)} !== undefined`;
+      return ownProperties ? (0, codegen_1._)`${cond} && ${isOwnProperty(gen, data, property)}` : cond;
+    }
+    exports.propertyInData = propertyInData;
+    function noPropertyInData(gen, data, property, ownProperties) {
+      const cond = (0, codegen_1._)`${data}${(0, codegen_1.getProperty)(property)} === undefined`;
+      return ownProperties ? (0, codegen_1.or)(cond, (0, codegen_1.not)(isOwnProperty(gen, data, property))) : cond;
+    }
+    exports.noPropertyInData = noPropertyInData;
+    function allSchemaProperties(schemaMap) {
+      return schemaMap ? Object.keys(schemaMap).filter((p) => p !== "__proto__") : [];
+    }
+    exports.allSchemaProperties = allSchemaProperties;
+    function schemaProperties(it, schemaMap) {
+      return allSchemaProperties(schemaMap).filter((p) => !(0, util_1.alwaysValidSchema)(it, schemaMap[p]));
+    }
+    exports.schemaProperties = schemaProperties;
+    function callValidateCode({ schemaCode, data, it: { gen, topSchemaRef, schemaPath, errorPath }, it }, func, context, passSchema) {
+      const dataAndSchema = passSchema ? (0, codegen_1._)`${schemaCode}, ${data}, ${topSchemaRef}${schemaPath}` : data;
+      const valCxt = [
+        [names_1.default.instancePath, (0, codegen_1.strConcat)(names_1.default.instancePath, errorPath)],
+        [names_1.default.parentData, it.parentData],
+        [names_1.default.parentDataProperty, it.parentDataProperty],
+        [names_1.default.rootData, names_1.default.rootData]
+      ];
+      if (it.opts.dynamicRef)
+        valCxt.push([names_1.default.dynamicAnchors, names_1.default.dynamicAnchors]);
+      const args = (0, codegen_1._)`${dataAndSchema}, ${gen.object(...valCxt)}`;
+      return context !== codegen_1.nil ? (0, codegen_1._)`${func}.call(${context}, ${args})` : (0, codegen_1._)`${func}(${args})`;
+    }
+    exports.callValidateCode = callValidateCode;
+    const newRegExp = (0, codegen_1._)`new RegExp`;
+    function usePattern({ gen, it: { opts } }, pattern) {
+      const u = opts.unicodeRegExp ? "u" : "";
+      const { regExp } = opts.code;
+      const rx = regExp(pattern, u);
+      return gen.scopeValue("pattern", {
+        key: rx.toString(),
+        ref: rx,
+        code: (0, codegen_1._)`${regExp.code === "new RegExp" ? newRegExp : (0, util_2.useFunc)(gen, regExp)}(${pattern}, ${u})`
+      });
+    }
+    exports.usePattern = usePattern;
+    function validateArray(cxt) {
+      const { gen, data, keyword, it } = cxt;
+      const valid = gen.name("valid");
+      if (it.allErrors) {
+        const validArr = gen.let("valid", true);
+        validateItems(() => gen.assign(validArr, false));
+        return validArr;
+      }
+      gen.var(valid, true);
+      validateItems(() => gen.break());
+      return valid;
+      function validateItems(notValid) {
+        const len = gen.const("len", (0, codegen_1._)`${data}.length`);
+        gen.forRange("i", 0, len, (i) => {
+          cxt.subschema({
+            keyword,
+            dataProp: i,
+            dataPropType: util_1.Type.Num
+          }, valid);
+          gen.if((0, codegen_1.not)(valid), notValid);
+        });
+      }
+    }
+    exports.validateArray = validateArray;
+    function validateUnion(cxt) {
+      const { gen, schema, keyword, it } = cxt;
+      if (!Array.isArray(schema))
+        throw new Error("ajv implementation error");
+      if (schema.some((sch) => (0, util_1.alwaysValidSchema)(it, sch)) && !it.opts.unevaluated)
+        return;
+      const valid = gen.let("valid", false);
+      const schValid = gen.name("_valid");
+      gen.block(() => schema.forEach((_sch, i) => {
+        const schCxt = cxt.subschema({
+          keyword,
+          schemaProp: i,
+          compositeRule: true
+        }, schValid);
+        gen.assign(valid, (0, codegen_1._)`${valid} || ${schValid}`);
+        if (!cxt.mergeValidEvaluated(schCxt, schValid))
+          gen.if((0, codegen_1.not)(valid));
+      }));
+      cxt.result(valid, () => cxt.reset(), () => cxt.error(true));
+    }
+    exports.validateUnion = validateUnion;
+  });
+  require_keyword2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateKeywordUsage = exports.validSchemaType = exports.funcKeywordCode = exports.macroKeywordCode = undefined;
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const code_1 = require_code2();
+    const errors_1 = require_errors2();
+    function macroKeywordCode(cxt, def) {
+      const { gen, keyword, schema, parentSchema, it } = cxt;
+      const macroSchema = def.macro.call(it.self, schema, parentSchema, it);
+      const schemaRef = useKeyword(gen, keyword, macroSchema);
+      if (it.opts.validateSchema !== false)
+        it.self.validateSchema(macroSchema, true);
+      const valid = gen.name("valid");
+      cxt.subschema({
+        schema: macroSchema,
+        schemaPath: codegen_1.nil,
+        errSchemaPath: `${it.errSchemaPath}/${keyword}`,
+        topSchemaRef: schemaRef,
+        compositeRule: true
+      }, valid);
+      cxt.pass(valid, () => cxt.error(true));
+    }
+    exports.macroKeywordCode = macroKeywordCode;
+    function funcKeywordCode(cxt, def) {
+      var _a;
+      const { gen, keyword, schema, parentSchema, $data, it } = cxt;
+      checkAsyncKeyword(it, def);
+      const validateRef = useKeyword(gen, keyword, !$data && def.compile ? def.compile.call(it.self, schema, parentSchema, it) : def.validate);
+      const valid = gen.let("valid");
+      cxt.block$data(valid, validateKeyword);
+      cxt.ok((_a = def.valid) !== null && _a !== undefined ? _a : valid);
+      function validateKeyword() {
+        if (def.errors === false) {
+          assignValid();
+          if (def.modifying)
+            modifyData(cxt);
+          reportErrs(() => cxt.error());
+        } else {
+          const ruleErrs = def.async ? validateAsync() : validateSync();
+          if (def.modifying)
+            modifyData(cxt);
+          reportErrs(() => addErrs(cxt, ruleErrs));
+        }
+      }
+      function validateAsync() {
+        const ruleErrs = gen.let("ruleErrs", null);
+        gen.try(() => assignValid((0, codegen_1._)`await `), (e) => gen.assign(valid, false).if((0, codegen_1._)`${e} instanceof ${it.ValidationError}`, () => gen.assign(ruleErrs, (0, codegen_1._)`${e}.errors`), () => gen.throw(e)));
+        return ruleErrs;
+      }
+      function validateSync() {
+        const validateErrs = (0, codegen_1._)`${validateRef}.errors`;
+        gen.assign(validateErrs, null);
+        assignValid(codegen_1.nil);
+        return validateErrs;
+      }
+      function assignValid(_await = def.async ? (0, codegen_1._)`await ` : codegen_1.nil) {
+        const passCxt = it.opts.passContext ? names_1.default.this : names_1.default.self;
+        const passSchema = !(("compile" in def) && !$data || def.schema === false);
+        gen.assign(valid, (0, codegen_1._)`${_await}${(0, code_1.callValidateCode)(cxt, validateRef, passCxt, passSchema)}`, def.modifying);
+      }
+      function reportErrs(errors) {
+        var _a$1;
+        gen.if((0, codegen_1.not)((_a$1 = def.valid) !== null && _a$1 !== undefined ? _a$1 : valid), errors);
+      }
+    }
+    exports.funcKeywordCode = funcKeywordCode;
+    function modifyData(cxt) {
+      const { gen, data, it } = cxt;
+      gen.if(it.parentData, () => gen.assign(data, (0, codegen_1._)`${it.parentData}[${it.parentDataProperty}]`));
+    }
+    function addErrs(cxt, errs) {
+      const { gen } = cxt;
+      gen.if((0, codegen_1._)`Array.isArray(${errs})`, () => {
+        gen.assign(names_1.default.vErrors, (0, codegen_1._)`${names_1.default.vErrors} === null ? ${errs} : ${names_1.default.vErrors}.concat(${errs})`).assign(names_1.default.errors, (0, codegen_1._)`${names_1.default.vErrors}.length`);
+        (0, errors_1.extendErrors)(cxt);
+      }, () => cxt.error());
+    }
+    function checkAsyncKeyword({ schemaEnv }, def) {
+      if (def.async && !schemaEnv.$async)
+        throw new Error("async keyword in sync schema");
+    }
+    function useKeyword(gen, keyword, result) {
+      if (result === undefined)
+        throw new Error(`keyword "${keyword}" failed to compile`);
+      return gen.scopeValue("keyword", typeof result == "function" ? { ref: result } : {
+        ref: result,
+        code: (0, codegen_1.stringify)(result)
+      });
+    }
+    function validSchemaType(schema, schemaType, allowUndefined = false) {
+      return !schemaType.length || schemaType.some((st) => st === "array" ? Array.isArray(schema) : st === "object" ? schema && typeof schema == "object" && !Array.isArray(schema) : typeof schema == st || allowUndefined && typeof schema == "undefined");
+    }
+    exports.validSchemaType = validSchemaType;
+    function validateKeywordUsage({ schema, opts, self: self2, errSchemaPath }, def, keyword) {
+      if (Array.isArray(def.keyword) ? !def.keyword.includes(keyword) : def.keyword !== keyword)
+        throw new Error("ajv implementation error");
+      const deps = def.dependencies;
+      if (deps === null || deps === undefined ? undefined : deps.some((kwd) => !Object.prototype.hasOwnProperty.call(schema, kwd)))
+        throw new Error(`parent schema must have dependencies of ${keyword}: ${deps.join(",")}`);
+      if (def.validateSchema) {
+        if (!def.validateSchema(schema[keyword])) {
+          const msg = `keyword "${keyword}" value is invalid at path "${errSchemaPath}": ` + self2.errorsText(def.validateSchema.errors);
+          if (opts.validateSchema === "log")
+            self2.logger.error(msg);
+          else
+            throw new Error(msg);
+        }
+      }
+    }
+    exports.validateKeywordUsage = validateKeywordUsage;
+  });
+  require_subschema2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.extendSubschemaMode = exports.extendSubschemaData = exports.getSubschema = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    function getSubschema(it, { keyword, schemaProp, schema, schemaPath, errSchemaPath, topSchemaRef }) {
+      if (keyword !== undefined && schema !== undefined)
+        throw new Error('both "keyword" and "schema" passed, only one allowed');
+      if (keyword !== undefined) {
+        const sch = it.schema[keyword];
+        return schemaProp === undefined ? {
+          schema: sch,
+          schemaPath: (0, codegen_1._)`${it.schemaPath}${(0, codegen_1.getProperty)(keyword)}`,
+          errSchemaPath: `${it.errSchemaPath}/${keyword}`
+        } : {
+          schema: sch[schemaProp],
+          schemaPath: (0, codegen_1._)`${it.schemaPath}${(0, codegen_1.getProperty)(keyword)}${(0, codegen_1.getProperty)(schemaProp)}`,
+          errSchemaPath: `${it.errSchemaPath}/${keyword}/${(0, util_1.escapeFragment)(schemaProp)}`
+        };
+      }
+      if (schema !== undefined) {
+        if (schemaPath === undefined || errSchemaPath === undefined || topSchemaRef === undefined)
+          throw new Error('"schemaPath", "errSchemaPath" and "topSchemaRef" are required with "schema"');
+        return {
+          schema,
+          schemaPath,
+          topSchemaRef,
+          errSchemaPath
+        };
+      }
+      throw new Error('either "keyword" or "schema" must be passed');
+    }
+    exports.getSubschema = getSubschema;
+    function extendSubschemaData(subschema, it, { dataProp, dataPropType: dpType, data, dataTypes, propertyName }) {
+      if (data !== undefined && dataProp !== undefined)
+        throw new Error('both "data" and "dataProp" passed, only one allowed');
+      const { gen } = it;
+      if (dataProp !== undefined) {
+        const { errorPath, dataPathArr, opts } = it;
+        dataContextProps(gen.let("data", (0, codegen_1._)`${it.data}${(0, codegen_1.getProperty)(dataProp)}`, true));
+        subschema.errorPath = (0, codegen_1.str)`${errorPath}${(0, util_1.getErrorPath)(dataProp, dpType, opts.jsPropertySyntax)}`;
+        subschema.parentDataProperty = (0, codegen_1._)`${dataProp}`;
+        subschema.dataPathArr = [...dataPathArr, subschema.parentDataProperty];
+      }
+      if (data !== undefined) {
+        dataContextProps(data instanceof codegen_1.Name ? data : gen.let("data", data, true));
+        if (propertyName !== undefined)
+          subschema.propertyName = propertyName;
+      }
+      if (dataTypes)
+        subschema.dataTypes = dataTypes;
+      function dataContextProps(_nextData) {
+        subschema.data = _nextData;
+        subschema.dataLevel = it.dataLevel + 1;
+        subschema.dataTypes = [];
+        it.definedProperties = /* @__PURE__ */ new Set;
+        subschema.parentData = it.data;
+        subschema.dataNames = [...it.dataNames, _nextData];
+      }
+    }
+    exports.extendSubschemaData = extendSubschemaData;
+    function extendSubschemaMode(subschema, { jtdDiscriminator, jtdMetadata, compositeRule, createErrors, allErrors }) {
+      if (compositeRule !== undefined)
+        subschema.compositeRule = compositeRule;
+      if (createErrors !== undefined)
+        subschema.createErrors = createErrors;
+      if (allErrors !== undefined)
+        subschema.allErrors = allErrors;
+      subschema.jtdDiscriminator = jtdDiscriminator;
+      subschema.jtdMetadata = jtdMetadata;
+    }
+    exports.extendSubschemaMode = extendSubschemaMode;
+  });
+  require_fast_deep_equal2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = function equal(a, b) {
+      if (a === b)
+        return true;
+      if (a && b && typeof a == "object" && typeof b == "object") {
+        if (a.constructor !== b.constructor)
+          return false;
+        var length, i, keys;
+        if (Array.isArray(a)) {
+          length = a.length;
+          if (length != b.length)
+            return false;
+          for (i = length;i-- !== 0; )
+            if (!equal(a[i], b[i]))
+              return false;
+          return true;
+        }
+        if (a.constructor === RegExp)
+          return a.source === b.source && a.flags === b.flags;
+        if (a.valueOf !== Object.prototype.valueOf)
+          return a.valueOf() === b.valueOf();
+        if (a.toString !== Object.prototype.toString)
+          return a.toString() === b.toString();
+        keys = Object.keys(a);
+        length = keys.length;
+        if (length !== Object.keys(b).length)
+          return false;
+        for (i = length;i-- !== 0; )
+          if (!Object.prototype.hasOwnProperty.call(b, keys[i]))
+            return false;
+        for (i = length;i-- !== 0; ) {
+          var key = keys[i];
+          if (!equal(a[key], b[key]))
+            return false;
+        }
+        return true;
+      }
+      return a !== a && b !== b;
+    };
+  });
+  require_json_schema_traverse2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    var traverse = module.exports = function(schema, opts, cb) {
+      if (typeof opts == "function") {
+        cb = opts;
+        opts = {};
+      }
+      cb = opts.cb || cb;
+      var pre = typeof cb == "function" ? cb : cb.pre || function() {};
+      var post = cb.post || function() {};
+      _traverse(opts, pre, post, schema, "", schema);
+    };
+    traverse.keywords = {
+      additionalItems: true,
+      items: true,
+      contains: true,
+      additionalProperties: true,
+      propertyNames: true,
+      not: true,
+      if: true,
+      then: true,
+      else: true
+    };
+    traverse.arrayKeywords = {
+      items: true,
+      allOf: true,
+      anyOf: true,
+      oneOf: true
+    };
+    traverse.propsKeywords = {
+      $defs: true,
+      definitions: true,
+      properties: true,
+      patternProperties: true,
+      dependencies: true
+    };
+    traverse.skipKeywords = {
+      default: true,
+      enum: true,
+      const: true,
+      required: true,
+      maximum: true,
+      minimum: true,
+      exclusiveMaximum: true,
+      exclusiveMinimum: true,
+      multipleOf: true,
+      maxLength: true,
+      minLength: true,
+      pattern: true,
+      format: true,
+      maxItems: true,
+      minItems: true,
+      uniqueItems: true,
+      maxProperties: true,
+      minProperties: true
+    };
+    function _traverse(opts, pre, post, schema, jsonPtr, rootSchema, parentJsonPtr, parentKeyword, parentSchema, keyIndex) {
+      if (schema && typeof schema == "object" && !Array.isArray(schema)) {
+        pre(schema, jsonPtr, rootSchema, parentJsonPtr, parentKeyword, parentSchema, keyIndex);
+        for (var key in schema) {
+          var sch = schema[key];
+          if (Array.isArray(sch)) {
+            if (key in traverse.arrayKeywords)
+              for (var i = 0;i < sch.length; i++)
+                _traverse(opts, pre, post, sch[i], jsonPtr + "/" + key + "/" + i, rootSchema, jsonPtr, key, schema, i);
+          } else if (key in traverse.propsKeywords) {
+            if (sch && typeof sch == "object")
+              for (var prop in sch)
+                _traverse(opts, pre, post, sch[prop], jsonPtr + "/" + key + "/" + escapeJsonPtr(prop), rootSchema, jsonPtr, key, schema, prop);
+          } else if (key in traverse.keywords || opts.allKeys && !(key in traverse.skipKeywords))
+            _traverse(opts, pre, post, sch, jsonPtr + "/" + key, rootSchema, jsonPtr, key, schema);
+        }
+        post(schema, jsonPtr, rootSchema, parentJsonPtr, parentKeyword, parentSchema, keyIndex);
+      }
+    }
+    function escapeJsonPtr(str) {
+      return str.replace(/~/g, "~0").replace(/\//g, "~1");
+    }
+  });
+  require_resolve2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getSchemaRefs = exports.resolveUrl = exports.normalizeId = exports._getFullPath = exports.getFullPath = exports.inlineRef = undefined;
+    const util_1 = require_util2();
+    const equal = require_fast_deep_equal2();
+    const traverse = require_json_schema_traverse2();
+    const SIMPLE_INLINED = new Set([
+      "type",
+      "format",
+      "pattern",
+      "maxLength",
+      "minLength",
+      "maxProperties",
+      "minProperties",
+      "maxItems",
+      "minItems",
+      "maximum",
+      "minimum",
+      "uniqueItems",
+      "multipleOf",
+      "required",
+      "enum",
+      "const"
+    ]);
+    function inlineRef(schema, limit = true) {
+      if (typeof schema == "boolean")
+        return true;
+      if (limit === true)
+        return !hasRef(schema);
+      if (!limit)
+        return false;
+      return countKeys(schema) <= limit;
+    }
+    exports.inlineRef = inlineRef;
+    const REF_KEYWORDS = new Set([
+      "$ref",
+      "$recursiveRef",
+      "$recursiveAnchor",
+      "$dynamicRef",
+      "$dynamicAnchor"
+    ]);
+    function hasRef(schema) {
+      for (const key in schema) {
+        if (REF_KEYWORDS.has(key))
+          return true;
+        const sch = schema[key];
+        if (Array.isArray(sch) && sch.some(hasRef))
+          return true;
+        if (typeof sch == "object" && hasRef(sch))
+          return true;
+      }
+      return false;
+    }
+    function countKeys(schema) {
+      let count = 0;
+      for (const key in schema) {
+        if (key === "$ref")
+          return Infinity;
+        count++;
+        if (SIMPLE_INLINED.has(key))
+          continue;
+        if (typeof schema[key] == "object")
+          (0, util_1.eachItem)(schema[key], (sch) => count += countKeys(sch));
+        if (count === Infinity)
+          return Infinity;
+      }
+      return count;
+    }
+    function getFullPath(resolver, id = "", normalize) {
+      if (normalize !== false)
+        id = normalizeId(id);
+      return _getFullPath(resolver, resolver.parse(id));
+    }
+    exports.getFullPath = getFullPath;
+    function _getFullPath(resolver, p) {
+      return resolver.serialize(p).split("#")[0] + "#";
+    }
+    exports._getFullPath = _getFullPath;
+    const TRAILING_SLASH_HASH = /#\/?$/;
+    function normalizeId(id) {
+      return id ? id.replace(TRAILING_SLASH_HASH, "") : "";
+    }
+    exports.normalizeId = normalizeId;
+    function resolveUrl(resolver, baseId, id) {
+      id = normalizeId(id);
+      return resolver.resolve(baseId, id);
+    }
+    exports.resolveUrl = resolveUrl;
+    const ANCHOR = /^[a-z_][-a-z0-9._]*$/i;
+    function getSchemaRefs(schema, baseId) {
+      if (typeof schema == "boolean")
+        return {};
+      const { schemaId, uriResolver } = this.opts;
+      const schId = normalizeId(schema[schemaId] || baseId);
+      const baseIds = { "": schId };
+      const pathPrefix = getFullPath(uriResolver, schId, false);
+      const localRefs = {};
+      const schemaRefs = /* @__PURE__ */ new Set;
+      traverse(schema, { allKeys: true }, (sch, jsonPtr, _, parentJsonPtr) => {
+        if (parentJsonPtr === undefined)
+          return;
+        const fullPath = pathPrefix + jsonPtr;
+        let innerBaseId = baseIds[parentJsonPtr];
+        if (typeof sch[schemaId] == "string")
+          innerBaseId = addRef.call(this, sch[schemaId]);
+        addAnchor.call(this, sch.$anchor);
+        addAnchor.call(this, sch.$dynamicAnchor);
+        baseIds[jsonPtr] = innerBaseId;
+        function addRef(ref) {
+          const _resolve = this.opts.uriResolver.resolve;
+          ref = normalizeId(innerBaseId ? _resolve(innerBaseId, ref) : ref);
+          if (schemaRefs.has(ref))
+            throw ambiguos(ref);
+          schemaRefs.add(ref);
+          let schOrRef = this.refs[ref];
+          if (typeof schOrRef == "string")
+            schOrRef = this.refs[schOrRef];
+          if (typeof schOrRef == "object")
+            checkAmbiguosRef(sch, schOrRef.schema, ref);
+          else if (ref !== normalizeId(fullPath))
+            if (ref[0] === "#") {
+              checkAmbiguosRef(sch, localRefs[ref], ref);
+              localRefs[ref] = sch;
+            } else
+              this.refs[ref] = fullPath;
+          return ref;
+        }
+        function addAnchor(anchor) {
+          if (typeof anchor == "string") {
+            if (!ANCHOR.test(anchor))
+              throw new Error(`invalid anchor "${anchor}"`);
+            addRef.call(this, `#${anchor}`);
+          }
+        }
+      });
+      return localRefs;
+      function checkAmbiguosRef(sch1, sch2, ref) {
+        if (sch2 !== undefined && !equal(sch1, sch2))
+          throw ambiguos(ref);
+      }
+      function ambiguos(ref) {
+        return /* @__PURE__ */ new Error(`reference "${ref}" resolves to more than one schema`);
+      }
+    }
+    exports.getSchemaRefs = getSchemaRefs;
+  });
+  require_validate2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getData = exports.KeywordCxt = exports.validateFunctionCode = undefined;
+    const boolSchema_1 = require_boolSchema2();
+    const dataType_1 = require_dataType2();
+    const applicability_1 = require_applicability2();
+    const dataType_2 = require_dataType2();
+    const defaults_1 = require_defaults3();
+    const keyword_1 = require_keyword2();
+    const subschema_1 = require_subschema2();
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const resolve_1 = require_resolve2();
+    const util_1 = require_util2();
+    const errors_1 = require_errors2();
+    function validateFunctionCode(it) {
+      if (isSchemaObj(it)) {
+        checkKeywords(it);
+        if (schemaCxtHasRules(it)) {
+          topSchemaObjCode(it);
+          return;
+        }
+      }
+      validateFunction(it, () => (0, boolSchema_1.topBoolOrEmptySchema)(it));
+    }
+    exports.validateFunctionCode = validateFunctionCode;
+    function validateFunction({ gen, validateName, schema, schemaEnv, opts }, body) {
+      if (opts.code.es5)
+        gen.func(validateName, (0, codegen_1._)`${names_1.default.data}, ${names_1.default.valCxt}`, schemaEnv.$async, () => {
+          gen.code((0, codegen_1._)`"use strict"; ${funcSourceUrl(schema, opts)}`);
+          destructureValCxtES5(gen, opts);
+          gen.code(body);
+        });
+      else
+        gen.func(validateName, (0, codegen_1._)`${names_1.default.data}, ${destructureValCxt(opts)}`, schemaEnv.$async, () => gen.code(funcSourceUrl(schema, opts)).code(body));
+    }
+    function destructureValCxt(opts) {
+      return (0, codegen_1._)`{${names_1.default.instancePath}="", ${names_1.default.parentData}, ${names_1.default.parentDataProperty}, ${names_1.default.rootData}=${names_1.default.data}${opts.dynamicRef ? (0, codegen_1._)`, ${names_1.default.dynamicAnchors}={}` : codegen_1.nil}}={}`;
+    }
+    function destructureValCxtES5(gen, opts) {
+      gen.if(names_1.default.valCxt, () => {
+        gen.var(names_1.default.instancePath, (0, codegen_1._)`${names_1.default.valCxt}.${names_1.default.instancePath}`);
+        gen.var(names_1.default.parentData, (0, codegen_1._)`${names_1.default.valCxt}.${names_1.default.parentData}`);
+        gen.var(names_1.default.parentDataProperty, (0, codegen_1._)`${names_1.default.valCxt}.${names_1.default.parentDataProperty}`);
+        gen.var(names_1.default.rootData, (0, codegen_1._)`${names_1.default.valCxt}.${names_1.default.rootData}`);
+        if (opts.dynamicRef)
+          gen.var(names_1.default.dynamicAnchors, (0, codegen_1._)`${names_1.default.valCxt}.${names_1.default.dynamicAnchors}`);
+      }, () => {
+        gen.var(names_1.default.instancePath, (0, codegen_1._)`""`);
+        gen.var(names_1.default.parentData, (0, codegen_1._)`undefined`);
+        gen.var(names_1.default.parentDataProperty, (0, codegen_1._)`undefined`);
+        gen.var(names_1.default.rootData, names_1.default.data);
+        if (opts.dynamicRef)
+          gen.var(names_1.default.dynamicAnchors, (0, codegen_1._)`{}`);
+      });
+    }
+    function topSchemaObjCode(it) {
+      const { schema, opts, gen } = it;
+      validateFunction(it, () => {
+        if (opts.$comment && schema.$comment)
+          commentKeyword(it);
+        checkNoDefault(it);
+        gen.let(names_1.default.vErrors, null);
+        gen.let(names_1.default.errors, 0);
+        if (opts.unevaluated)
+          resetEvaluated(it);
+        typeAndKeywords(it);
+        returnResults(it);
+      });
+    }
+    function resetEvaluated(it) {
+      const { gen, validateName } = it;
+      it.evaluated = gen.const("evaluated", (0, codegen_1._)`${validateName}.evaluated`);
+      gen.if((0, codegen_1._)`${it.evaluated}.dynamicProps`, () => gen.assign((0, codegen_1._)`${it.evaluated}.props`, (0, codegen_1._)`undefined`));
+      gen.if((0, codegen_1._)`${it.evaluated}.dynamicItems`, () => gen.assign((0, codegen_1._)`${it.evaluated}.items`, (0, codegen_1._)`undefined`));
+    }
+    function funcSourceUrl(schema, opts) {
+      const schId = typeof schema == "object" && schema[opts.schemaId];
+      return schId && (opts.code.source || opts.code.process) ? (0, codegen_1._)`/*# sourceURL=${schId} */` : codegen_1.nil;
+    }
+    function subschemaCode(it, valid) {
+      if (isSchemaObj(it)) {
+        checkKeywords(it);
+        if (schemaCxtHasRules(it)) {
+          subSchemaObjCode(it, valid);
+          return;
+        }
+      }
+      (0, boolSchema_1.boolOrEmptySchema)(it, valid);
+    }
+    function schemaCxtHasRules({ schema, self: self2 }) {
+      if (typeof schema == "boolean")
+        return !schema;
+      for (const key in schema)
+        if (self2.RULES.all[key])
+          return true;
+      return false;
+    }
+    function isSchemaObj(it) {
+      return typeof it.schema != "boolean";
+    }
+    function subSchemaObjCode(it, valid) {
+      const { schema, gen, opts } = it;
+      if (opts.$comment && schema.$comment)
+        commentKeyword(it);
+      updateContext(it);
+      checkAsyncSchema(it);
+      const errsCount = gen.const("_errs", names_1.default.errors);
+      typeAndKeywords(it, errsCount);
+      gen.var(valid, (0, codegen_1._)`${errsCount} === ${names_1.default.errors}`);
+    }
+    function checkKeywords(it) {
+      (0, util_1.checkUnknownRules)(it);
+      checkRefsAndKeywords(it);
+    }
+    function typeAndKeywords(it, errsCount) {
+      if (it.opts.jtd)
+        return schemaKeywords(it, [], false, errsCount);
+      const types = (0, dataType_1.getSchemaTypes)(it.schema);
+      schemaKeywords(it, types, !(0, dataType_1.coerceAndCheckDataType)(it, types), errsCount);
+    }
+    function checkRefsAndKeywords(it) {
+      const { schema, errSchemaPath, opts, self: self2 } = it;
+      if (schema.$ref && opts.ignoreKeywordsWithRef && (0, util_1.schemaHasRulesButRef)(schema, self2.RULES))
+        self2.logger.warn(`$ref: keywords ignored in schema at path "${errSchemaPath}"`);
+    }
+    function checkNoDefault(it) {
+      const { schema, opts } = it;
+      if (schema.default !== undefined && opts.useDefaults && opts.strictSchema)
+        (0, util_1.checkStrictMode)(it, "default is ignored in the schema root");
+    }
+    function updateContext(it) {
+      const schId = it.schema[it.opts.schemaId];
+      if (schId)
+        it.baseId = (0, resolve_1.resolveUrl)(it.opts.uriResolver, it.baseId, schId);
+    }
+    function checkAsyncSchema(it) {
+      if (it.schema.$async && !it.schemaEnv.$async)
+        throw new Error("async schema in sync schema");
+    }
+    function commentKeyword({ gen, schemaEnv, schema, errSchemaPath, opts }) {
+      const msg = schema.$comment;
+      if (opts.$comment === true)
+        gen.code((0, codegen_1._)`${names_1.default.self}.logger.log(${msg})`);
+      else if (typeof opts.$comment == "function") {
+        const schemaPath = (0, codegen_1.str)`${errSchemaPath}/$comment`;
+        const rootName = gen.scopeValue("root", { ref: schemaEnv.root });
+        gen.code((0, codegen_1._)`${names_1.default.self}.opts.$comment(${msg}, ${schemaPath}, ${rootName}.schema)`);
+      }
+    }
+    function returnResults(it) {
+      const { gen, schemaEnv, validateName, ValidationError, opts } = it;
+      if (schemaEnv.$async)
+        gen.if((0, codegen_1._)`${names_1.default.errors} === 0`, () => gen.return(names_1.default.data), () => gen.throw((0, codegen_1._)`new ${ValidationError}(${names_1.default.vErrors})`));
+      else {
+        gen.assign((0, codegen_1._)`${validateName}.errors`, names_1.default.vErrors);
+        if (opts.unevaluated)
+          assignEvaluated(it);
+        gen.return((0, codegen_1._)`${names_1.default.errors} === 0`);
+      }
+    }
+    function assignEvaluated({ gen, evaluated, props, items }) {
+      if (props instanceof codegen_1.Name)
+        gen.assign((0, codegen_1._)`${evaluated}.props`, props);
+      if (items instanceof codegen_1.Name)
+        gen.assign((0, codegen_1._)`${evaluated}.items`, items);
+    }
+    function schemaKeywords(it, types, typeErrors, errsCount) {
+      const { gen, schema, data, allErrors, opts, self: self2 } = it;
+      const { RULES } = self2;
+      if (schema.$ref && (opts.ignoreKeywordsWithRef || !(0, util_1.schemaHasRulesButRef)(schema, RULES))) {
+        gen.block(() => keywordCode(it, "$ref", RULES.all.$ref.definition));
+        return;
+      }
+      if (!opts.jtd)
+        checkStrictTypes(it, types);
+      gen.block(() => {
+        for (const group of RULES.rules)
+          groupKeywords(group);
+        groupKeywords(RULES.post);
+      });
+      function groupKeywords(group) {
+        if (!(0, applicability_1.shouldUseGroup)(schema, group))
+          return;
+        if (group.type) {
+          gen.if((0, dataType_2.checkDataType)(group.type, data, opts.strictNumbers));
+          iterateKeywords(it, group);
+          if (types.length === 1 && types[0] === group.type && typeErrors) {
+            gen.else();
+            (0, dataType_2.reportTypeError)(it);
+          }
+          gen.endIf();
+        } else
+          iterateKeywords(it, group);
+        if (!allErrors)
+          gen.if((0, codegen_1._)`${names_1.default.errors} === ${errsCount || 0}`);
+      }
+    }
+    function iterateKeywords(it, group) {
+      const { gen, schema, opts: { useDefaults } } = it;
+      if (useDefaults)
+        (0, defaults_1.assignDefaults)(it, group.type);
+      gen.block(() => {
+        for (const rule of group.rules)
+          if ((0, applicability_1.shouldUseRule)(schema, rule))
+            keywordCode(it, rule.keyword, rule.definition, group.type);
+      });
+    }
+    function checkStrictTypes(it, types) {
+      if (it.schemaEnv.meta || !it.opts.strictTypes)
+        return;
+      checkContextTypes(it, types);
+      if (!it.opts.allowUnionTypes)
+        checkMultipleTypes(it, types);
+      checkKeywordTypes(it, it.dataTypes);
+    }
+    function checkContextTypes(it, types) {
+      if (!types.length)
+        return;
+      if (!it.dataTypes.length) {
+        it.dataTypes = types;
+        return;
+      }
+      types.forEach((t) => {
+        if (!includesType(it.dataTypes, t))
+          strictTypesError(it, `type "${t}" not allowed by context "${it.dataTypes.join(",")}"`);
+      });
+      narrowSchemaTypes(it, types);
+    }
+    function checkMultipleTypes(it, ts) {
+      if (ts.length > 1 && !(ts.length === 2 && ts.includes("null")))
+        strictTypesError(it, "use allowUnionTypes to allow union type keyword");
+    }
+    function checkKeywordTypes(it, ts) {
+      const rules = it.self.RULES.all;
+      for (const keyword in rules) {
+        const rule = rules[keyword];
+        if (typeof rule == "object" && (0, applicability_1.shouldUseRule)(it.schema, rule)) {
+          const { type } = rule.definition;
+          if (type.length && !type.some((t) => hasApplicableType(ts, t)))
+            strictTypesError(it, `missing type "${type.join(",")}" for keyword "${keyword}"`);
+        }
+      }
+    }
+    function hasApplicableType(schTs, kwdT) {
+      return schTs.includes(kwdT) || kwdT === "number" && schTs.includes("integer");
+    }
+    function includesType(ts, t) {
+      return ts.includes(t) || t === "integer" && ts.includes("number");
+    }
+    function narrowSchemaTypes(it, withTypes) {
+      const ts = [];
+      for (const t of it.dataTypes)
+        if (includesType(withTypes, t))
+          ts.push(t);
+        else if (withTypes.includes("integer") && t === "number")
+          ts.push("integer");
+      it.dataTypes = ts;
+    }
+    function strictTypesError(it, msg) {
+      const schemaPath = it.schemaEnv.baseId + it.errSchemaPath;
+      msg += ` at "${schemaPath}" (strictTypes)`;
+      (0, util_1.checkStrictMode)(it, msg, it.opts.strictTypes);
+    }
+    var KeywordCxt = class {
+      constructor(it, def, keyword) {
+        (0, keyword_1.validateKeywordUsage)(it, def, keyword);
+        this.gen = it.gen;
+        this.allErrors = it.allErrors;
+        this.keyword = keyword;
+        this.data = it.data;
+        this.schema = it.schema[keyword];
+        this.$data = def.$data && it.opts.$data && this.schema && this.schema.$data;
+        this.schemaValue = (0, util_1.schemaRefOrVal)(it, this.schema, keyword, this.$data);
+        this.schemaType = def.schemaType;
+        this.parentSchema = it.schema;
+        this.params = {};
+        this.it = it;
+        this.def = def;
+        if (this.$data)
+          this.schemaCode = it.gen.const("vSchema", getData(this.$data, it));
+        else {
+          this.schemaCode = this.schemaValue;
+          if (!(0, keyword_1.validSchemaType)(this.schema, def.schemaType, def.allowUndefined))
+            throw new Error(`${keyword} value must be ${JSON.stringify(def.schemaType)}`);
+        }
+        if ("code" in def ? def.trackErrors : def.errors !== false)
+          this.errsCount = it.gen.const("_errs", names_1.default.errors);
+      }
+      result(condition, successAction, failAction) {
+        this.failResult((0, codegen_1.not)(condition), successAction, failAction);
+      }
+      failResult(condition, successAction, failAction) {
+        this.gen.if(condition);
+        if (failAction)
+          failAction();
+        else
+          this.error();
+        if (successAction) {
+          this.gen.else();
+          successAction();
+          if (this.allErrors)
+            this.gen.endIf();
+        } else if (this.allErrors)
+          this.gen.endIf();
+        else
+          this.gen.else();
+      }
+      pass(condition, failAction) {
+        this.failResult((0, codegen_1.not)(condition), undefined, failAction);
+      }
+      fail(condition) {
+        if (condition === undefined) {
+          this.error();
+          if (!this.allErrors)
+            this.gen.if(false);
+          return;
+        }
+        this.gen.if(condition);
+        this.error();
+        if (this.allErrors)
+          this.gen.endIf();
+        else
+          this.gen.else();
+      }
+      fail$data(condition) {
+        if (!this.$data)
+          return this.fail(condition);
+        const { schemaCode } = this;
+        this.fail((0, codegen_1._)`${schemaCode} !== undefined && (${(0, codegen_1.or)(this.invalid$data(), condition)})`);
+      }
+      error(append, errorParams, errorPaths) {
+        if (errorParams) {
+          this.setParams(errorParams);
+          this._error(append, errorPaths);
+          this.setParams({});
+          return;
+        }
+        this._error(append, errorPaths);
+      }
+      _error(append, errorPaths) {
+        (append ? errors_1.reportExtraError : errors_1.reportError)(this, this.def.error, errorPaths);
+      }
+      $dataError() {
+        (0, errors_1.reportError)(this, this.def.$dataError || errors_1.keyword$DataError);
+      }
+      reset() {
+        if (this.errsCount === undefined)
+          throw new Error('add "trackErrors" to keyword definition');
+        (0, errors_1.resetErrorsCount)(this.gen, this.errsCount);
+      }
+      ok(cond) {
+        if (!this.allErrors)
+          this.gen.if(cond);
+      }
+      setParams(obj, assign) {
+        if (assign)
+          Object.assign(this.params, obj);
+        else
+          this.params = obj;
+      }
+      block$data(valid, codeBlock, $dataValid = codegen_1.nil) {
+        this.gen.block(() => {
+          this.check$data(valid, $dataValid);
+          codeBlock();
+        });
+      }
+      check$data(valid = codegen_1.nil, $dataValid = codegen_1.nil) {
+        if (!this.$data)
+          return;
+        const { gen, schemaCode, schemaType, def } = this;
+        gen.if((0, codegen_1.or)((0, codegen_1._)`${schemaCode} === undefined`, $dataValid));
+        if (valid !== codegen_1.nil)
+          gen.assign(valid, true);
+        if (schemaType.length || def.validateSchema) {
+          gen.elseIf(this.invalid$data());
+          this.$dataError();
+          if (valid !== codegen_1.nil)
+            gen.assign(valid, false);
+        }
+        gen.else();
+      }
+      invalid$data() {
+        const { gen, schemaCode, schemaType, def, it } = this;
+        return (0, codegen_1.or)(wrong$DataType(), invalid$DataSchema());
+        function wrong$DataType() {
+          if (schemaType.length) {
+            if (!(schemaCode instanceof codegen_1.Name))
+              throw new Error("ajv implementation error");
+            const st = Array.isArray(schemaType) ? schemaType : [schemaType];
+            return (0, codegen_1._)`${(0, dataType_2.checkDataTypes)(st, schemaCode, it.opts.strictNumbers, dataType_2.DataType.Wrong)}`;
+          }
+          return codegen_1.nil;
+        }
+        function invalid$DataSchema() {
+          if (def.validateSchema) {
+            const validateSchemaRef = gen.scopeValue("validate$data", { ref: def.validateSchema });
+            return (0, codegen_1._)`!${validateSchemaRef}(${schemaCode})`;
+          }
+          return codegen_1.nil;
+        }
+      }
+      subschema(appl, valid) {
+        const subschema = (0, subschema_1.getSubschema)(this.it, appl);
+        (0, subschema_1.extendSubschemaData)(subschema, this.it, appl);
+        (0, subschema_1.extendSubschemaMode)(subschema, appl);
+        const nextContext = {
+          ...this.it,
+          ...subschema,
+          items: undefined,
+          props: undefined
+        };
+        subschemaCode(nextContext, valid);
+        return nextContext;
+      }
+      mergeEvaluated(schemaCxt, toName) {
+        const { it, gen } = this;
+        if (!it.opts.unevaluated)
+          return;
+        if (it.props !== true && schemaCxt.props !== undefined)
+          it.props = util_1.mergeEvaluated.props(gen, schemaCxt.props, it.props, toName);
+        if (it.items !== true && schemaCxt.items !== undefined)
+          it.items = util_1.mergeEvaluated.items(gen, schemaCxt.items, it.items, toName);
+      }
+      mergeValidEvaluated(schemaCxt, valid) {
+        const { it, gen } = this;
+        if (it.opts.unevaluated && (it.props !== true || it.items !== true)) {
+          gen.if(valid, () => this.mergeEvaluated(schemaCxt, codegen_1.Name));
+          return true;
+        }
+      }
+    };
+    exports.KeywordCxt = KeywordCxt;
+    function keywordCode(it, keyword, def, ruleType) {
+      const cxt = new KeywordCxt(it, def, keyword);
+      if ("code" in def)
+        def.code(cxt, ruleType);
+      else if (cxt.$data && def.validate)
+        (0, keyword_1.funcKeywordCode)(cxt, def);
+      else if ("macro" in def)
+        (0, keyword_1.macroKeywordCode)(cxt, def);
+      else if (def.compile || def.validate)
+        (0, keyword_1.funcKeywordCode)(cxt, def);
+    }
+    const JSON_POINTER = /^\/(?:[^~]|~0|~1)*$/;
+    const RELATIVE_JSON_POINTER = /^([0-9]+)(#|\/(?:[^~]|~0|~1)*)?$/;
+    function getData($data, { dataLevel, dataNames, dataPathArr }) {
+      let jsonPointer;
+      let data;
+      if ($data === "")
+        return names_1.default.rootData;
+      if ($data[0] === "/") {
+        if (!JSON_POINTER.test($data))
+          throw new Error(`Invalid JSON-pointer: ${$data}`);
+        jsonPointer = $data;
+        data = names_1.default.rootData;
+      } else {
+        const matches = RELATIVE_JSON_POINTER.exec($data);
+        if (!matches)
+          throw new Error(`Invalid JSON-pointer: ${$data}`);
+        const up = +matches[1];
+        jsonPointer = matches[2];
+        if (jsonPointer === "#") {
+          if (up >= dataLevel)
+            throw new Error(errorMsg("property/index", up));
+          return dataPathArr[dataLevel - up];
+        }
+        if (up > dataLevel)
+          throw new Error(errorMsg("data", up));
+        data = dataNames[dataLevel - up];
+        if (!jsonPointer)
+          return data;
+      }
+      let expr = data;
+      const segments = jsonPointer.split("/");
+      for (const segment of segments)
+        if (segment) {
+          data = (0, codegen_1._)`${data}${(0, codegen_1.getProperty)((0, util_1.unescapeJsonPointer)(segment))}`;
+          expr = (0, codegen_1._)`${expr} && ${data}`;
+        }
+      return expr;
+      function errorMsg(pointerType, up) {
+        return `Cannot access ${pointerType} ${up} levels up, current level is ${dataLevel}`;
+      }
+    }
+    exports.getData = getData;
+  });
+  require_validation_error2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    var ValidationError = class extends Error {
+      constructor(errors) {
+        super("validation failed");
+        this.errors = errors;
+        this.ajv = this.validation = true;
+      }
+    };
+    exports.default = ValidationError;
+  });
+  require_ref_error2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const resolve_1 = require_resolve2();
+    var MissingRefError = class extends Error {
+      constructor(resolver, baseId, ref, msg) {
+        super(msg || `can't resolve reference ${ref} from id ${baseId}`);
+        this.missingRef = (0, resolve_1.resolveUrl)(resolver, baseId, ref);
+        this.missingSchema = (0, resolve_1.normalizeId)((0, resolve_1.getFullPath)(resolver, this.missingRef));
+      }
+    };
+    exports.default = MissingRefError;
+  });
+  require_compile2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = undefined;
+    const codegen_1 = require_codegen2();
+    const validation_error_1 = require_validation_error2();
+    const names_1 = require_names2();
+    const resolve_1 = require_resolve2();
+    const util_1 = require_util2();
+    const validate_1 = require_validate2();
+    var SchemaEnv = class {
+      constructor(env) {
+        var _a;
+        this.refs = {};
+        this.dynamicAnchors = {};
+        let schema;
+        if (typeof env.schema == "object")
+          schema = env.schema;
+        this.schema = env.schema;
+        this.schemaId = env.schemaId;
+        this.root = env.root || this;
+        this.baseId = (_a = env.baseId) !== null && _a !== undefined ? _a : (0, resolve_1.normalizeId)(schema === null || schema === undefined ? undefined : schema[env.schemaId || "$id"]);
+        this.schemaPath = env.schemaPath;
+        this.localRefs = env.localRefs;
+        this.meta = env.meta;
+        this.$async = schema === null || schema === undefined ? undefined : schema.$async;
+        this.refs = {};
+      }
+    };
+    exports.SchemaEnv = SchemaEnv;
+    function compileSchema(sch) {
+      const _sch = getCompilingSchema.call(this, sch);
+      if (_sch)
+        return _sch;
+      const rootId = (0, resolve_1.getFullPath)(this.opts.uriResolver, sch.root.baseId);
+      const { es5, lines } = this.opts.code;
+      const { ownProperties } = this.opts;
+      const gen = new codegen_1.CodeGen(this.scope, {
+        es5,
+        lines,
+        ownProperties
+      });
+      let _ValidationError;
+      if (sch.$async)
+        _ValidationError = gen.scopeValue("Error", {
+          ref: validation_error_1.default,
+          code: (0, codegen_1._)`require("ajv/dist/runtime/validation_error").default`
+        });
+      const validateName = gen.scopeName("validate");
+      sch.validateName = validateName;
+      const schemaCxt = {
+        gen,
+        allErrors: this.opts.allErrors,
+        data: names_1.default.data,
+        parentData: names_1.default.parentData,
+        parentDataProperty: names_1.default.parentDataProperty,
+        dataNames: [names_1.default.data],
+        dataPathArr: [codegen_1.nil],
+        dataLevel: 0,
+        dataTypes: [],
+        definedProperties: /* @__PURE__ */ new Set,
+        topSchemaRef: gen.scopeValue("schema", this.opts.code.source === true ? {
+          ref: sch.schema,
+          code: (0, codegen_1.stringify)(sch.schema)
+        } : { ref: sch.schema }),
+        validateName,
+        ValidationError: _ValidationError,
+        schema: sch.schema,
+        schemaEnv: sch,
+        rootId,
+        baseId: sch.baseId || rootId,
+        schemaPath: codegen_1.nil,
+        errSchemaPath: sch.schemaPath || (this.opts.jtd ? "" : "#"),
+        errorPath: (0, codegen_1._)`""`,
+        opts: this.opts,
+        self: this
+      };
+      let sourceCode;
+      try {
+        this._compilations.add(sch);
+        (0, validate_1.validateFunctionCode)(schemaCxt);
+        gen.optimize(this.opts.code.optimize);
+        const validateCode = gen.toString();
+        sourceCode = `${gen.scopeRefs(names_1.default.scope)}return ${validateCode}`;
+        if (this.opts.code.process)
+          sourceCode = this.opts.code.process(sourceCode, sch);
+        const validate = new Function(`${names_1.default.self}`, `${names_1.default.scope}`, sourceCode)(this, this.scope.get());
+        this.scope.value(validateName, { ref: validate });
+        validate.errors = null;
+        validate.schema = sch.schema;
+        validate.schemaEnv = sch;
+        if (sch.$async)
+          validate.$async = true;
+        if (this.opts.code.source === true)
+          validate.source = {
+            validateName,
+            validateCode,
+            scopeValues: gen._values
+          };
+        if (this.opts.unevaluated) {
+          const { props, items } = schemaCxt;
+          validate.evaluated = {
+            props: props instanceof codegen_1.Name ? undefined : props,
+            items: items instanceof codegen_1.Name ? undefined : items,
+            dynamicProps: props instanceof codegen_1.Name,
+            dynamicItems: items instanceof codegen_1.Name
+          };
+          if (validate.source)
+            validate.source.evaluated = (0, codegen_1.stringify)(validate.evaluated);
+        }
+        sch.validate = validate;
+        return sch;
+      } catch (e) {
+        delete sch.validate;
+        delete sch.validateName;
+        if (sourceCode)
+          this.logger.error("Error compiling schema, function code:", sourceCode);
+        throw e;
+      } finally {
+        this._compilations.delete(sch);
+      }
+    }
+    exports.compileSchema = compileSchema;
+    function resolveRef(root, baseId, ref) {
+      var _a;
+      ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
+      const schOrFunc = root.refs[ref];
+      if (schOrFunc)
+        return schOrFunc;
+      let _sch = resolve.call(this, root, ref);
+      if (_sch === undefined) {
+        const schema = (_a = root.localRefs) === null || _a === undefined ? undefined : _a[ref];
+        const { schemaId } = this.opts;
+        if (schema)
+          _sch = new SchemaEnv({
+            schema,
+            schemaId,
+            root,
+            baseId
+          });
+      }
+      if (_sch === undefined)
+        return;
+      return root.refs[ref] = inlineOrCompile.call(this, _sch);
+    }
+    exports.resolveRef = resolveRef;
+    function inlineOrCompile(sch) {
+      if ((0, resolve_1.inlineRef)(sch.schema, this.opts.inlineRefs))
+        return sch.schema;
+      return sch.validate ? sch : compileSchema.call(this, sch);
+    }
+    function getCompilingSchema(schEnv) {
+      for (const sch of this._compilations)
+        if (sameSchemaEnv(sch, schEnv))
+          return sch;
+    }
+    exports.getCompilingSchema = getCompilingSchema;
+    function sameSchemaEnv(s1, s2) {
+      return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
+    }
+    function resolve(root, ref) {
+      let sch;
+      while (typeof (sch = this.refs[ref]) == "string")
+        ref = sch;
+      return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
+    }
+    function resolveSchema(root, ref) {
+      const p = this.opts.uriResolver.parse(ref);
+      const refPath = (0, resolve_1._getFullPath)(this.opts.uriResolver, p);
+      let baseId = (0, resolve_1.getFullPath)(this.opts.uriResolver, root.baseId, undefined);
+      if (Object.keys(root.schema).length > 0 && refPath === baseId)
+        return getJsonPointer.call(this, p, root);
+      const id = (0, resolve_1.normalizeId)(refPath);
+      const schOrRef = this.refs[id] || this.schemas[id];
+      if (typeof schOrRef == "string") {
+        const sch = resolveSchema.call(this, root, schOrRef);
+        if (typeof (sch === null || sch === undefined ? undefined : sch.schema) !== "object")
+          return;
+        return getJsonPointer.call(this, p, sch);
+      }
+      if (typeof (schOrRef === null || schOrRef === undefined ? undefined : schOrRef.schema) !== "object")
+        return;
+      if (!schOrRef.validate)
+        compileSchema.call(this, schOrRef);
+      if (id === (0, resolve_1.normalizeId)(ref)) {
+        const { schema } = schOrRef;
+        const { schemaId } = this.opts;
+        const schId = schema[schemaId];
+        if (schId)
+          baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
+        return new SchemaEnv({
+          schema,
+          schemaId,
+          root,
+          baseId
+        });
+      }
+      return getJsonPointer.call(this, p, schOrRef);
+    }
+    exports.resolveSchema = resolveSchema;
+    const PREVENT_SCOPE_CHANGE = new Set([
+      "properties",
+      "patternProperties",
+      "enum",
+      "dependencies",
+      "definitions"
+    ]);
+    function getJsonPointer(parsedRef, { baseId, schema, root }) {
+      var _a;
+      if (((_a = parsedRef.fragment) === null || _a === undefined ? undefined : _a[0]) !== "/")
+        return;
+      for (const part of parsedRef.fragment.slice(1).split("/")) {
+        if (typeof schema === "boolean")
+          return;
+        const partSchema = schema[(0, util_1.unescapeFragment)(part)];
+        if (partSchema === undefined)
+          return;
+        schema = partSchema;
+        const schId = typeof schema === "object" && schema[this.opts.schemaId];
+        if (!PREVENT_SCOPE_CHANGE.has(part) && schId)
+          baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
+      }
+      let env;
+      if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
+        const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
+        env = resolveSchema.call(this, root, $ref);
+      }
+      const { schemaId } = this.opts;
+      env = env || new SchemaEnv({
+        schema,
+        schemaId,
+        root,
+        baseId
+      });
+      if (env.schema !== env.root.schema)
+        return env;
+    }
+  });
+  require_data2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $id: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#",
+      description: "Meta-schema for $data reference (JSON AnySchema extension proposal)",
+      type: "object",
+      required: ["$data"],
+      properties: { $data: {
+        type: "string",
+        anyOf: [{ format: "relative-json-pointer" }, { format: "json-pointer" }]
+      } },
+      additionalProperties: false
+    };
+  });
+  require_utils13 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    const isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
+    const isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+    function stringArrayToHexStripped(input) {
+      let acc = "";
+      let code = 0;
+      let i = 0;
+      for (i = 0;i < input.length; i++) {
+        code = input[i].charCodeAt(0);
+        if (code === 48)
+          continue;
+        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102))
+          return "";
+        acc += input[i];
+        break;
+      }
+      for (i += 1;i < input.length; i++) {
+        code = input[i].charCodeAt(0);
+        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102))
+          return "";
+        acc += input[i];
+      }
+      return acc;
+    }
+    const nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
+    function consumeIsZone(buffer) {
+      buffer.length = 0;
+      return true;
+    }
+    function consumeHextets(buffer, address, output) {
+      if (buffer.length) {
+        const hex = stringArrayToHexStripped(buffer);
+        if (hex !== "")
+          address.push(hex);
+        else {
+          output.error = true;
+          return false;
+        }
+        buffer.length = 0;
+      }
+      return true;
+    }
+    function getIPV6(input) {
+      let tokenCount = 0;
+      const output = {
+        error: false,
+        address: "",
+        zone: ""
+      };
+      const address = [];
+      const buffer = [];
+      let endipv6Encountered = false;
+      let endIpv6 = false;
+      let consume = consumeHextets;
+      for (let i = 0;i < input.length; i++) {
+        const cursor = input[i];
+        if (cursor === "[" || cursor === "]")
+          continue;
+        if (cursor === ":") {
+          if (endipv6Encountered === true)
+            endIpv6 = true;
+          if (!consume(buffer, address, output))
+            break;
+          if (++tokenCount > 7) {
+            output.error = true;
+            break;
+          }
+          if (i > 0 && input[i - 1] === ":")
+            endipv6Encountered = true;
+          address.push(":");
+          continue;
+        } else if (cursor === "%") {
+          if (!consume(buffer, address, output))
+            break;
+          consume = consumeIsZone;
+        } else {
+          buffer.push(cursor);
+          continue;
+        }
+      }
+      if (buffer.length)
+        if (consume === consumeIsZone)
+          output.zone = buffer.join("");
+        else if (endIpv6)
+          address.push(buffer.join(""));
+        else
+          address.push(stringArrayToHexStripped(buffer));
+      output.address = address.join("");
+      return output;
+    }
+    function normalizeIPv6(host) {
+      if (findToken(host, ":") < 2)
+        return {
+          host,
+          isIPV6: false
+        };
+      const ipv6 = getIPV6(host);
+      if (!ipv6.error) {
+        let newHost = ipv6.address;
+        let escapedHost = ipv6.address;
+        if (ipv6.zone) {
+          newHost += "%" + ipv6.zone;
+          escapedHost += "%25" + ipv6.zone;
+        }
+        return {
+          host: newHost,
+          isIPV6: true,
+          escapedHost
+        };
+      } else
+        return {
+          host,
+          isIPV6: false
+        };
+    }
+    function findToken(str, token) {
+      let ind = 0;
+      for (let i = 0;i < str.length; i++)
+        if (str[i] === token)
+          ind++;
+      return ind;
+    }
+    function removeDotSegments(path) {
+      let input = path;
+      const output = [];
+      let nextSlash = -1;
+      let len = 0;
+      while (len = input.length) {
+        if (len === 1)
+          if (input === ".")
+            break;
+          else if (input === "/") {
+            output.push("/");
+            break;
+          } else {
+            output.push(input);
+            break;
+          }
+        else if (len === 2) {
+          if (input[0] === ".") {
+            if (input[1] === ".")
+              break;
+            else if (input[1] === "/") {
+              input = input.slice(2);
+              continue;
+            }
+          } else if (input[0] === "/") {
+            if (input[1] === "." || input[1] === "/") {
+              output.push("/");
+              break;
+            }
+          }
+        } else if (len === 3) {
+          if (input === "/..") {
+            if (output.length !== 0)
+              output.pop();
+            output.push("/");
+            break;
+          }
+        }
+        if (input[0] === ".") {
+          if (input[1] === ".") {
+            if (input[2] === "/") {
+              input = input.slice(3);
+              continue;
+            }
+          } else if (input[1] === "/") {
+            input = input.slice(2);
+            continue;
+          }
+        } else if (input[0] === "/") {
+          if (input[1] === ".") {
+            if (input[2] === "/") {
+              input = input.slice(2);
+              continue;
+            } else if (input[2] === ".") {
+              if (input[3] === "/") {
+                input = input.slice(3);
+                if (output.length !== 0)
+                  output.pop();
+                continue;
+              }
+            }
+          }
+        }
+        if ((nextSlash = input.indexOf("/", 1)) === -1) {
+          output.push(input);
+          break;
+        } else {
+          output.push(input.slice(0, nextSlash));
+          input = input.slice(nextSlash);
+        }
+      }
+      return output.join("");
+    }
+    function normalizeComponentEncoding(component, esc) {
+      const func = esc !== true ? escape : unescape;
+      if (component.scheme !== undefined)
+        component.scheme = func(component.scheme);
+      if (component.userinfo !== undefined)
+        component.userinfo = func(component.userinfo);
+      if (component.host !== undefined)
+        component.host = func(component.host);
+      if (component.path !== undefined)
+        component.path = func(component.path);
+      if (component.query !== undefined)
+        component.query = func(component.query);
+      if (component.fragment !== undefined)
+        component.fragment = func(component.fragment);
+      return component;
+    }
+    function recomposeAuthority(component) {
+      const uriTokens = [];
+      if (component.userinfo !== undefined) {
+        uriTokens.push(component.userinfo);
+        uriTokens.push("@");
+      }
+      if (component.host !== undefined) {
+        let host = unescape(component.host);
+        if (!isIPv4(host)) {
+          const ipV6res = normalizeIPv6(host);
+          if (ipV6res.isIPV6 === true)
+            host = `[${ipV6res.escapedHost}]`;
+          else
+            host = component.host;
+        }
+        uriTokens.push(host);
+      }
+      if (typeof component.port === "number" || typeof component.port === "string") {
+        uriTokens.push(":");
+        uriTokens.push(String(component.port));
+      }
+      return uriTokens.length ? uriTokens.join("") : undefined;
+    }
+    module.exports = {
+      nonSimpleDomain,
+      recomposeAuthority,
+      normalizeComponentEncoding,
+      removeDotSegments,
+      isIPv4,
+      isUUID,
+      normalizeIPv6,
+      stringArrayToHexStripped
+    };
+  });
+  require_schemes2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    const { isUUID } = require_utils13();
+    const URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
+    const supportedSchemeNames = [
+      "http",
+      "https",
+      "ws",
+      "wss",
+      "urn",
+      "urn:uuid"
+    ];
+    function isValidSchemeName(name) {
+      return supportedSchemeNames.indexOf(name) !== -1;
+    }
+    function wsIsSecure(wsComponent) {
+      if (wsComponent.secure === true)
+        return true;
+      else if (wsComponent.secure === false)
+        return false;
+      else if (wsComponent.scheme)
+        return wsComponent.scheme.length === 3 && (wsComponent.scheme[0] === "w" || wsComponent.scheme[0] === "W") && (wsComponent.scheme[1] === "s" || wsComponent.scheme[1] === "S") && (wsComponent.scheme[2] === "s" || wsComponent.scheme[2] === "S");
+      else
+        return false;
+    }
+    function httpParse(component) {
+      if (!component.host)
+        component.error = component.error || "HTTP URIs must have a host.";
+      return component;
+    }
+    function httpSerialize(component) {
+      const secure = String(component.scheme).toLowerCase() === "https";
+      if (component.port === (secure ? 443 : 80) || component.port === "")
+        component.port = undefined;
+      if (!component.path)
+        component.path = "/";
+      return component;
+    }
+    function wsParse(wsComponent) {
+      wsComponent.secure = wsIsSecure(wsComponent);
+      wsComponent.resourceName = (wsComponent.path || "/") + (wsComponent.query ? "?" + wsComponent.query : "");
+      wsComponent.path = undefined;
+      wsComponent.query = undefined;
+      return wsComponent;
+    }
+    function wsSerialize(wsComponent) {
+      if (wsComponent.port === (wsIsSecure(wsComponent) ? 443 : 80) || wsComponent.port === "")
+        wsComponent.port = undefined;
+      if (typeof wsComponent.secure === "boolean") {
+        wsComponent.scheme = wsComponent.secure ? "wss" : "ws";
+        wsComponent.secure = undefined;
+      }
+      if (wsComponent.resourceName) {
+        const [path, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path && path !== "/" ? path : undefined;
+        wsComponent.query = query;
+        wsComponent.resourceName = undefined;
+      }
+      wsComponent.fragment = undefined;
+      return wsComponent;
+    }
+    function urnParse(urnComponent, options) {
+      if (!urnComponent.path) {
+        urnComponent.error = "URN can not be parsed";
+        return urnComponent;
+      }
+      const matches = urnComponent.path.match(URN_REG);
+      if (matches) {
+        const scheme = options.scheme || urnComponent.scheme || "urn";
+        urnComponent.nid = matches[1].toLowerCase();
+        urnComponent.nss = matches[2];
+        const schemeHandler = getSchemeHandler(`${scheme}:${options.nid || urnComponent.nid}`);
+        urnComponent.path = undefined;
+        if (schemeHandler)
+          urnComponent = schemeHandler.parse(urnComponent, options);
+      } else
+        urnComponent.error = urnComponent.error || "URN can not be parsed.";
+      return urnComponent;
+    }
+    function urnSerialize(urnComponent, options) {
+      if (urnComponent.nid === undefined)
+        throw new Error("URN without nid cannot be serialized");
+      const scheme = options.scheme || urnComponent.scheme || "urn";
+      const nid = urnComponent.nid.toLowerCase();
+      const schemeHandler = getSchemeHandler(`${scheme}:${options.nid || nid}`);
+      if (schemeHandler)
+        urnComponent = schemeHandler.serialize(urnComponent, options);
+      const uriComponent = urnComponent;
+      const nss = urnComponent.nss;
+      uriComponent.path = `${nid || options.nid}:${nss}`;
+      options.skipEscape = true;
+      return uriComponent;
+    }
+    function urnuuidParse(urnComponent, options) {
+      const uuidComponent = urnComponent;
+      uuidComponent.uuid = uuidComponent.nss;
+      uuidComponent.nss = undefined;
+      if (!options.tolerant && (!uuidComponent.uuid || !isUUID(uuidComponent.uuid)))
+        uuidComponent.error = uuidComponent.error || "UUID is not valid.";
+      return uuidComponent;
+    }
+    function urnuuidSerialize(uuidComponent) {
+      const urnComponent = uuidComponent;
+      urnComponent.nss = (uuidComponent.uuid || "").toLowerCase();
+      return urnComponent;
+    }
+    const http = {
+      scheme: "http",
+      domainHost: true,
+      parse: httpParse,
+      serialize: httpSerialize
+    };
+    const https = {
+      scheme: "https",
+      domainHost: http.domainHost,
+      parse: httpParse,
+      serialize: httpSerialize
+    };
+    const ws = {
+      scheme: "ws",
+      domainHost: true,
+      parse: wsParse,
+      serialize: wsSerialize
+    };
+    const wss = {
+      scheme: "wss",
+      domainHost: ws.domainHost,
+      parse: ws.parse,
+      serialize: ws.serialize
+    };
+    const urn = {
+      scheme: "urn",
+      parse: urnParse,
+      serialize: urnSerialize,
+      skipNormalize: true
+    };
+    const urnuuid = {
+      scheme: "urn:uuid",
+      parse: urnuuidParse,
+      serialize: urnuuidSerialize,
+      skipNormalize: true
+    };
+    const SCHEMES = {
+      http,
+      https,
+      ws,
+      wss,
+      urn,
+      "urn:uuid": urnuuid
+    };
+    Object.setPrototypeOf(SCHEMES, null);
+    function getSchemeHandler(scheme) {
+      return scheme && (SCHEMES[scheme] || SCHEMES[scheme.toLowerCase()]) || undefined;
+    }
+    module.exports = {
+      wsIsSecure,
+      SCHEMES,
+      isValidSchemeName,
+      getSchemeHandler
+    };
+  });
+  require_fast_uri2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    const { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizeComponentEncoding, isIPv4, nonSimpleDomain } = require_utils13();
+    const { SCHEMES, getSchemeHandler } = require_schemes2();
+    function normalize(uri, options) {
+      if (typeof uri === "string")
+        uri = serialize(parse(uri, options), options);
+      else if (typeof uri === "object")
+        uri = parse(serialize(uri, options), options);
+      return uri;
+    }
+    function resolve(baseURI, relativeURI, options) {
+      const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
+      const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
+      schemelessOptions.skipEscape = true;
+      return serialize(resolved, schemelessOptions);
+    }
+    function resolveComponent(base, relative, options, skipNormalization) {
+      const target = {};
+      if (!skipNormalization) {
+        base = parse(serialize(base, options), options);
+        relative = parse(serialize(relative, options), options);
+      }
+      options = options || {};
+      if (!options.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        target.host = relative.host;
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
+      } else {
+        if (relative.userinfo !== undefined || relative.host !== undefined || relative.port !== undefined) {
+          target.userinfo = relative.userinfo;
+          target.host = relative.host;
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
+        } else {
+          if (!relative.path) {
+            target.path = base.path;
+            if (relative.query !== undefined)
+              target.query = relative.query;
+            else
+              target.query = base.query;
+          } else {
+            if (relative.path[0] === "/")
+              target.path = removeDotSegments(relative.path);
+            else {
+              if ((base.userinfo !== undefined || base.host !== undefined || base.port !== undefined) && !base.path)
+                target.path = "/" + relative.path;
+              else if (!base.path)
+                target.path = relative.path;
+              else
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+              target.path = removeDotSegments(target.path);
+            }
+            target.query = relative.query;
+          }
+          target.userinfo = base.userinfo;
+          target.host = base.host;
+          target.port = base.port;
+        }
+        target.scheme = base.scheme;
+      }
+      target.fragment = relative.fragment;
+      return target;
+    }
+    function equal(uriA, uriB, options) {
+      if (typeof uriA === "string") {
+        uriA = unescape(uriA);
+        uriA = serialize(normalizeComponentEncoding(parse(uriA, options), true), {
+          ...options,
+          skipEscape: true
+        });
+      } else if (typeof uriA === "object")
+        uriA = serialize(normalizeComponentEncoding(uriA, true), {
+          ...options,
+          skipEscape: true
+        });
+      if (typeof uriB === "string") {
+        uriB = unescape(uriB);
+        uriB = serialize(normalizeComponentEncoding(parse(uriB, options), true), {
+          ...options,
+          skipEscape: true
+        });
+      } else if (typeof uriB === "object")
+        uriB = serialize(normalizeComponentEncoding(uriB, true), {
+          ...options,
+          skipEscape: true
+        });
+      return uriA.toLowerCase() === uriB.toLowerCase();
+    }
+    function serialize(cmpts, opts) {
+      const component = {
+        host: cmpts.host,
+        scheme: cmpts.scheme,
+        userinfo: cmpts.userinfo,
+        port: cmpts.port,
+        path: cmpts.path,
+        query: cmpts.query,
+        nid: cmpts.nid,
+        nss: cmpts.nss,
+        uuid: cmpts.uuid,
+        fragment: cmpts.fragment,
+        reference: cmpts.reference,
+        resourceName: cmpts.resourceName,
+        secure: cmpts.secure,
+        error: ""
+      };
+      const options = Object.assign({}, opts);
+      const uriTokens = [];
+      const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
+      if (schemeHandler && schemeHandler.serialize)
+        schemeHandler.serialize(component, options);
+      if (component.path !== undefined)
+        if (!options.skipEscape) {
+          component.path = escape(component.path);
+          if (component.scheme !== undefined)
+            component.path = component.path.split("%3A").join(":");
+        } else
+          component.path = unescape(component.path);
+      if (options.reference !== "suffix" && component.scheme)
+        uriTokens.push(component.scheme, ":");
+      const authority = recomposeAuthority(component);
+      if (authority !== undefined) {
+        if (options.reference !== "suffix")
+          uriTokens.push("//");
+        uriTokens.push(authority);
+        if (component.path && component.path[0] !== "/")
+          uriTokens.push("/");
+      }
+      if (component.path !== undefined) {
+        let s = component.path;
+        if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath))
+          s = removeDotSegments(s);
+        if (authority === undefined && s[0] === "/" && s[1] === "/")
+          s = "/%2F" + s.slice(2);
+        uriTokens.push(s);
+      }
+      if (component.query !== undefined)
+        uriTokens.push("?", component.query);
+      if (component.fragment !== undefined)
+        uriTokens.push("#", component.fragment);
+      return uriTokens.join("");
+    }
+    const URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
+    function parse(uri, opts) {
+      const options = Object.assign({}, opts);
+      const parsed = {
+        scheme: undefined,
+        userinfo: undefined,
+        host: "",
+        port: undefined,
+        path: "",
+        query: undefined,
+        fragment: undefined
+      };
+      let isIP = false;
+      if (options.reference === "suffix")
+        if (options.scheme)
+          uri = options.scheme + ":" + uri;
+        else
+          uri = "//" + uri;
+      const matches = uri.match(URI_PARSE);
+      if (matches) {
+        parsed.scheme = matches[1];
+        parsed.userinfo = matches[3];
+        parsed.host = matches[4];
+        parsed.port = parseInt(matches[5], 10);
+        parsed.path = matches[6] || "";
+        parsed.query = matches[7];
+        parsed.fragment = matches[8];
+        if (isNaN(parsed.port))
+          parsed.port = matches[5];
+        if (parsed.host)
+          if (isIPv4(parsed.host) === false) {
+            const ipv6result = normalizeIPv6(parsed.host);
+            parsed.host = ipv6result.host.toLowerCase();
+            isIP = ipv6result.isIPV6;
+          } else
+            isIP = true;
+        if (parsed.scheme === undefined && parsed.userinfo === undefined && parsed.host === undefined && parsed.port === undefined && parsed.query === undefined && !parsed.path)
+          parsed.reference = "same-document";
+        else if (parsed.scheme === undefined)
+          parsed.reference = "relative";
+        else if (parsed.fragment === undefined)
+          parsed.reference = "absolute";
+        else
+          parsed.reference = "uri";
+        if (options.reference && options.reference !== "suffix" && options.reference !== parsed.reference)
+          parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
+        const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
+        if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
+          if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host))
+            try {
+              parsed.host = URL.domainToASCII(parsed.host.toLowerCase());
+            } catch (e) {
+              parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+            }
+        }
+        if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
+          if (uri.indexOf("%") !== -1) {
+            if (parsed.scheme !== undefined)
+              parsed.scheme = unescape(parsed.scheme);
+            if (parsed.host !== undefined)
+              parsed.host = unescape(parsed.host);
+          }
+          if (parsed.path)
+            parsed.path = escape(unescape(parsed.path));
+          if (parsed.fragment)
+            parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
+        }
+        if (schemeHandler && schemeHandler.parse)
+          schemeHandler.parse(parsed, options);
+      } else
+        parsed.error = parsed.error || "URI can not be parsed.";
+      return parsed;
+    }
+    const fastUri = {
+      SCHEMES,
+      normalize,
+      resolve,
+      resolveComponent,
+      equal,
+      serialize,
+      parse
+    };
+    module.exports = fastUri;
+    module.exports.default = fastUri;
+    module.exports.fastUri = fastUri;
+  });
+  require_uri3 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const uri = require_fast_uri2();
+    uri.code = 'require("ajv/dist/runtime/uri").default';
+    exports.default = uri;
+  });
+  require_core$32 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = undefined;
+    var validate_1 = require_validate2();
+    Object.defineProperty(exports, "KeywordCxt", {
+      enumerable: true,
+      get: function() {
+        return validate_1.KeywordCxt;
+      }
+    });
+    var codegen_1 = require_codegen2();
+    Object.defineProperty(exports, "_", {
+      enumerable: true,
+      get: function() {
+        return codegen_1._;
+      }
+    });
+    Object.defineProperty(exports, "str", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.str;
+      }
+    });
+    Object.defineProperty(exports, "stringify", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.stringify;
+      }
+    });
+    Object.defineProperty(exports, "nil", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.nil;
+      }
+    });
+    Object.defineProperty(exports, "Name", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.Name;
+      }
+    });
+    Object.defineProperty(exports, "CodeGen", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.CodeGen;
+      }
+    });
+    const validation_error_1 = require_validation_error2();
+    const ref_error_1 = require_ref_error2();
+    const rules_1 = require_rules2();
+    const compile_1 = require_compile2();
+    const codegen_2 = require_codegen2();
+    const resolve_1 = require_resolve2();
+    const dataType_1 = require_dataType2();
+    const util_1 = require_util2();
+    const $dataRefSchema = require_data2();
+    const uri_1 = require_uri3();
+    const defaultRegExp = (str, flags) => new RegExp(str, flags);
+    defaultRegExp.code = "new RegExp";
+    const META_IGNORE_OPTIONS = [
+      "removeAdditional",
+      "useDefaults",
+      "coerceTypes"
+    ];
+    const EXT_SCOPE_NAMES = new Set([
+      "validate",
+      "serialize",
+      "parse",
+      "wrapper",
+      "root",
+      "schema",
+      "keyword",
+      "pattern",
+      "formats",
+      "validate$data",
+      "func",
+      "obj",
+      "Error"
+    ]);
+    const removedOptions = {
+      errorDataPath: "",
+      format: "`validateFormats: false` can be used instead.",
+      nullable: '"nullable" keyword is supported by default.',
+      jsonPointers: "Deprecated jsPropertySyntax can be used instead.",
+      extendRefs: "Deprecated ignoreKeywordsWithRef can be used instead.",
+      missingRefs: "Pass empty schema with $id that should be ignored to ajv.addSchema.",
+      processCode: "Use option `code: {process: (code, schemaEnv: object) => string}`",
+      sourceCode: "Use option `code: {source: true}`",
+      strictDefaults: "It is default now, see option `strict`.",
+      strictKeywords: "It is default now, see option `strict`.",
+      uniqueItems: '"uniqueItems" keyword is always validated.',
+      unknownFormats: "Disable strict mode or pass `true` to `ajv.addFormat` (or `formats` option).",
+      cache: "Map is used as cache, schema object as key.",
+      serialize: "Map is used as cache, schema object as key.",
+      ajvErrors: "It is default now."
+    };
+    const deprecatedOptions = {
+      ignoreKeywordsWithRef: "",
+      jsPropertySyntax: "",
+      unicode: '"minLength"/"maxLength" account for unicode characters by default.'
+    };
+    const MAX_EXPRESSION = 200;
+    function requiredOptions(o) {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
+      const s = o.strict;
+      const _optz = (_a = o.code) === null || _a === undefined ? undefined : _a.optimize;
+      const optimize = _optz === true || _optz === undefined ? 1 : _optz || 0;
+      const regExp = (_c = (_b = o.code) === null || _b === undefined ? undefined : _b.regExp) !== null && _c !== undefined ? _c : defaultRegExp;
+      const uriResolver = (_d = o.uriResolver) !== null && _d !== undefined ? _d : uri_1.default;
+      return {
+        strictSchema: (_f = (_e = o.strictSchema) !== null && _e !== undefined ? _e : s) !== null && _f !== undefined ? _f : true,
+        strictNumbers: (_h = (_g = o.strictNumbers) !== null && _g !== undefined ? _g : s) !== null && _h !== undefined ? _h : true,
+        strictTypes: (_k = (_j = o.strictTypes) !== null && _j !== undefined ? _j : s) !== null && _k !== undefined ? _k : "log",
+        strictTuples: (_m = (_l = o.strictTuples) !== null && _l !== undefined ? _l : s) !== null && _m !== undefined ? _m : "log",
+        strictRequired: (_p = (_o = o.strictRequired) !== null && _o !== undefined ? _o : s) !== null && _p !== undefined ? _p : false,
+        code: o.code ? {
+          ...o.code,
+          optimize,
+          regExp
+        } : {
+          optimize,
+          regExp
+        },
+        loopRequired: (_q = o.loopRequired) !== null && _q !== undefined ? _q : MAX_EXPRESSION,
+        loopEnum: (_r = o.loopEnum) !== null && _r !== undefined ? _r : MAX_EXPRESSION,
+        meta: (_s = o.meta) !== null && _s !== undefined ? _s : true,
+        messages: (_t = o.messages) !== null && _t !== undefined ? _t : true,
+        inlineRefs: (_u = o.inlineRefs) !== null && _u !== undefined ? _u : true,
+        schemaId: (_v = o.schemaId) !== null && _v !== undefined ? _v : "$id",
+        addUsedSchema: (_w = o.addUsedSchema) !== null && _w !== undefined ? _w : true,
+        validateSchema: (_x = o.validateSchema) !== null && _x !== undefined ? _x : true,
+        validateFormats: (_y = o.validateFormats) !== null && _y !== undefined ? _y : true,
+        unicodeRegExp: (_z = o.unicodeRegExp) !== null && _z !== undefined ? _z : true,
+        int32range: (_0 = o.int32range) !== null && _0 !== undefined ? _0 : true,
+        uriResolver
+      };
+    }
+    var Ajv = class {
+      constructor(opts = {}) {
+        this.schemas = {};
+        this.refs = {};
+        this.formats = {};
+        this._compilations = /* @__PURE__ */ new Set;
+        this._loading = {};
+        this._cache = /* @__PURE__ */ new Map;
+        opts = this.opts = {
+          ...opts,
+          ...requiredOptions(opts)
+        };
+        const { es5, lines } = this.opts.code;
+        this.scope = new codegen_2.ValueScope({
+          scope: {},
+          prefixes: EXT_SCOPE_NAMES,
+          es5,
+          lines
+        });
+        this.logger = getLogger(opts.logger);
+        const formatOpt = opts.validateFormats;
+        opts.validateFormats = false;
+        this.RULES = (0, rules_1.getRules)();
+        checkOptions.call(this, removedOptions, opts, "NOT SUPPORTED");
+        checkOptions.call(this, deprecatedOptions, opts, "DEPRECATED", "warn");
+        this._metaOpts = getMetaSchemaOptions.call(this);
+        if (opts.formats)
+          addInitialFormats.call(this);
+        this._addVocabularies();
+        this._addDefaultMetaSchema();
+        if (opts.keywords)
+          addInitialKeywords.call(this, opts.keywords);
+        if (typeof opts.meta == "object")
+          this.addMetaSchema(opts.meta);
+        addInitialSchemas.call(this);
+        opts.validateFormats = formatOpt;
+      }
+      _addVocabularies() {
+        this.addKeyword("$async");
+      }
+      _addDefaultMetaSchema() {
+        const { $data, meta, schemaId } = this.opts;
+        let _dataRefSchema = $dataRefSchema;
+        if (schemaId === "id") {
+          _dataRefSchema = { ...$dataRefSchema };
+          _dataRefSchema.id = _dataRefSchema.$id;
+          delete _dataRefSchema.$id;
+        }
+        if (meta && $data)
+          this.addMetaSchema(_dataRefSchema, _dataRefSchema[schemaId], false);
+      }
+      defaultMeta() {
+        const { meta, schemaId } = this.opts;
+        return this.opts.defaultMeta = typeof meta == "object" ? meta[schemaId] || meta : undefined;
+      }
+      validate(schemaKeyRef, data) {
+        let v;
+        if (typeof schemaKeyRef == "string") {
+          v = this.getSchema(schemaKeyRef);
+          if (!v)
+            throw new Error(`no schema with key or ref "${schemaKeyRef}"`);
+        } else
+          v = this.compile(schemaKeyRef);
+        const valid = v(data);
+        if (!("$async" in v))
+          this.errors = v.errors;
+        return valid;
+      }
+      compile(schema, _meta) {
+        const sch = this._addSchema(schema, _meta);
+        return sch.validate || this._compileSchemaEnv(sch);
+      }
+      compileAsync(schema, meta) {
+        if (typeof this.opts.loadSchema != "function")
+          throw new Error("options.loadSchema should be a function");
+        const { loadSchema } = this.opts;
+        return runCompileAsync.call(this, schema, meta);
+        async function runCompileAsync(_schema, _meta) {
+          await loadMetaSchema.call(this, _schema.$schema);
+          const sch = this._addSchema(_schema, _meta);
+          return sch.validate || _compileAsync.call(this, sch);
+        }
+        async function loadMetaSchema($ref) {
+          if ($ref && !this.getSchema($ref))
+            await runCompileAsync.call(this, { $ref }, true);
+        }
+        async function _compileAsync(sch) {
+          try {
+            return this._compileSchemaEnv(sch);
+          } catch (e) {
+            if (!(e instanceof ref_error_1.default))
+              throw e;
+            checkLoaded.call(this, e);
+            await loadMissingSchema.call(this, e.missingSchema);
+            return _compileAsync.call(this, sch);
+          }
+        }
+        function checkLoaded({ missingSchema: ref, missingRef }) {
+          if (this.refs[ref])
+            throw new Error(`AnySchema ${ref} is loaded but ${missingRef} cannot be resolved`);
+        }
+        async function loadMissingSchema(ref) {
+          const _schema = await _loadSchema.call(this, ref);
+          if (!this.refs[ref])
+            await loadMetaSchema.call(this, _schema.$schema);
+          if (!this.refs[ref])
+            this.addSchema(_schema, ref, meta);
+        }
+        async function _loadSchema(ref) {
+          const p = this._loading[ref];
+          if (p)
+            return p;
+          try {
+            return await (this._loading[ref] = loadSchema(ref));
+          } finally {
+            delete this._loading[ref];
+          }
+        }
+      }
+      addSchema(schema, key, _meta, _validateSchema = this.opts.validateSchema) {
+        if (Array.isArray(schema)) {
+          for (const sch of schema)
+            this.addSchema(sch, undefined, _meta, _validateSchema);
+          return this;
+        }
+        let id;
+        if (typeof schema === "object") {
+          const { schemaId } = this.opts;
+          id = schema[schemaId];
+          if (id !== undefined && typeof id != "string")
+            throw new Error(`schema ${schemaId} must be string`);
+        }
+        key = (0, resolve_1.normalizeId)(key || id);
+        this._checkUnique(key);
+        this.schemas[key] = this._addSchema(schema, _meta, key, _validateSchema, true);
+        return this;
+      }
+      addMetaSchema(schema, key, _validateSchema = this.opts.validateSchema) {
+        this.addSchema(schema, key, true, _validateSchema);
+        return this;
+      }
+      validateSchema(schema, throwOrLogError) {
+        if (typeof schema == "boolean")
+          return true;
+        let $schema;
+        $schema = schema.$schema;
+        if ($schema !== undefined && typeof $schema != "string")
+          throw new Error("$schema must be a string");
+        $schema = $schema || this.opts.defaultMeta || this.defaultMeta();
+        if (!$schema) {
+          this.logger.warn("meta-schema not available");
+          this.errors = null;
+          return true;
+        }
+        const valid = this.validate($schema, schema);
+        if (!valid && throwOrLogError) {
+          const message = "schema is invalid: " + this.errorsText();
+          if (this.opts.validateSchema === "log")
+            this.logger.error(message);
+          else
+            throw new Error(message);
+        }
+        return valid;
+      }
+      getSchema(keyRef) {
+        let sch;
+        while (typeof (sch = getSchEnv.call(this, keyRef)) == "string")
+          keyRef = sch;
+        if (sch === undefined) {
+          const { schemaId } = this.opts;
+          const root = new compile_1.SchemaEnv({
+            schema: {},
+            schemaId
+          });
+          sch = compile_1.resolveSchema.call(this, root, keyRef);
+          if (!sch)
+            return;
+          this.refs[keyRef] = sch;
+        }
+        return sch.validate || this._compileSchemaEnv(sch);
+      }
+      removeSchema(schemaKeyRef) {
+        if (schemaKeyRef instanceof RegExp) {
+          this._removeAllSchemas(this.schemas, schemaKeyRef);
+          this._removeAllSchemas(this.refs, schemaKeyRef);
+          return this;
+        }
+        switch (typeof schemaKeyRef) {
+          case "undefined":
+            this._removeAllSchemas(this.schemas);
+            this._removeAllSchemas(this.refs);
+            this._cache.clear();
+            return this;
+          case "string": {
+            const sch = getSchEnv.call(this, schemaKeyRef);
+            if (typeof sch == "object")
+              this._cache.delete(sch.schema);
+            delete this.schemas[schemaKeyRef];
+            delete this.refs[schemaKeyRef];
+            return this;
+          }
+          case "object": {
+            const cacheKey = schemaKeyRef;
+            this._cache.delete(cacheKey);
+            let id = schemaKeyRef[this.opts.schemaId];
+            if (id) {
+              id = (0, resolve_1.normalizeId)(id);
+              delete this.schemas[id];
+              delete this.refs[id];
+            }
+            return this;
+          }
+          default:
+            throw new Error("ajv.removeSchema: invalid parameter");
+        }
+      }
+      addVocabulary(definitions) {
+        for (const def of definitions)
+          this.addKeyword(def);
+        return this;
+      }
+      addKeyword(kwdOrDef, def) {
+        let keyword;
+        if (typeof kwdOrDef == "string") {
+          keyword = kwdOrDef;
+          if (typeof def == "object") {
+            this.logger.warn("these parameters are deprecated, see docs for addKeyword");
+            def.keyword = keyword;
+          }
+        } else if (typeof kwdOrDef == "object" && def === undefined) {
+          def = kwdOrDef;
+          keyword = def.keyword;
+          if (Array.isArray(keyword) && !keyword.length)
+            throw new Error("addKeywords: keyword must be string or non-empty array");
+        } else
+          throw new Error("invalid addKeywords parameters");
+        checkKeyword.call(this, keyword, def);
+        if (!def) {
+          (0, util_1.eachItem)(keyword, (kwd) => addRule.call(this, kwd));
+          return this;
+        }
+        keywordMetaschema.call(this, def);
+        const definition = {
+          ...def,
+          type: (0, dataType_1.getJSONTypes)(def.type),
+          schemaType: (0, dataType_1.getJSONTypes)(def.schemaType)
+        };
+        (0, util_1.eachItem)(keyword, definition.type.length === 0 ? (k) => addRule.call(this, k, definition) : (k) => definition.type.forEach((t) => addRule.call(this, k, definition, t)));
+        return this;
+      }
+      getKeyword(keyword) {
+        const rule = this.RULES.all[keyword];
+        return typeof rule == "object" ? rule.definition : !!rule;
+      }
+      removeKeyword(keyword) {
+        const { RULES } = this;
+        delete RULES.keywords[keyword];
+        delete RULES.all[keyword];
+        for (const group of RULES.rules) {
+          const i = group.rules.findIndex((rule) => rule.keyword === keyword);
+          if (i >= 0)
+            group.rules.splice(i, 1);
+        }
+        return this;
+      }
+      addFormat(name, format) {
+        if (typeof format == "string")
+          format = new RegExp(format);
+        this.formats[name] = format;
+        return this;
+      }
+      errorsText(errors = this.errors, { separator = ", ", dataVar = "data" } = {}) {
+        if (!errors || errors.length === 0)
+          return "No errors";
+        return errors.map((e) => `${dataVar}${e.instancePath} ${e.message}`).reduce((text, msg) => text + separator + msg);
+      }
+      $dataMetaSchema(metaSchema, keywordsJsonPointers) {
+        const rules = this.RULES.all;
+        metaSchema = JSON.parse(JSON.stringify(metaSchema));
+        for (const jsonPointer of keywordsJsonPointers) {
+          const segments = jsonPointer.split("/").slice(1);
+          let keywords = metaSchema;
+          for (const seg of segments)
+            keywords = keywords[seg];
+          for (const key in rules) {
+            const rule = rules[key];
+            if (typeof rule != "object")
+              continue;
+            const { $data } = rule.definition;
+            const schema = keywords[key];
+            if ($data && schema)
+              keywords[key] = schemaOrData(schema);
+          }
+        }
+        return metaSchema;
+      }
+      _removeAllSchemas(schemas, regex) {
+        for (const keyRef in schemas) {
+          const sch = schemas[keyRef];
+          if (!regex || regex.test(keyRef)) {
+            if (typeof sch == "string")
+              delete schemas[keyRef];
+            else if (sch && !sch.meta) {
+              this._cache.delete(sch.schema);
+              delete schemas[keyRef];
+            }
+          }
+        }
+      }
+      _addSchema(schema, meta, baseId, validateSchema = this.opts.validateSchema, addSchema = this.opts.addUsedSchema) {
+        let id;
+        const { schemaId } = this.opts;
+        if (typeof schema == "object")
+          id = schema[schemaId];
+        else if (this.opts.jtd)
+          throw new Error("schema must be object");
+        else if (typeof schema != "boolean")
+          throw new Error("schema must be object or boolean");
+        let sch = this._cache.get(schema);
+        if (sch !== undefined)
+          return sch;
+        baseId = (0, resolve_1.normalizeId)(id || baseId);
+        const localRefs = resolve_1.getSchemaRefs.call(this, schema, baseId);
+        sch = new compile_1.SchemaEnv({
+          schema,
+          schemaId,
+          meta,
+          baseId,
+          localRefs
+        });
+        this._cache.set(sch.schema, sch);
+        if (addSchema && !baseId.startsWith("#")) {
+          if (baseId)
+            this._checkUnique(baseId);
+          this.refs[baseId] = sch;
+        }
+        if (validateSchema)
+          this.validateSchema(schema, true);
+        return sch;
+      }
+      _checkUnique(id) {
+        if (this.schemas[id] || this.refs[id])
+          throw new Error(`schema with key or id "${id}" already exists`);
+      }
+      _compileSchemaEnv(sch) {
+        if (sch.meta)
+          this._compileMetaSchema(sch);
+        else
+          compile_1.compileSchema.call(this, sch);
+        if (!sch.validate)
+          throw new Error("ajv implementation error");
+        return sch.validate;
+      }
+      _compileMetaSchema(sch) {
+        const currentOpts = this.opts;
+        this.opts = this._metaOpts;
+        try {
+          compile_1.compileSchema.call(this, sch);
+        } finally {
+          this.opts = currentOpts;
+        }
+      }
+    };
+    Ajv.ValidationError = validation_error_1.default;
+    Ajv.MissingRefError = ref_error_1.default;
+    exports.default = Ajv;
+    function checkOptions(checkOpts, options, msg, log = "error") {
+      for (const key in checkOpts) {
+        const opt = key;
+        if (opt in options)
+          this.logger[log](`${msg}: option ${key}. ${checkOpts[opt]}`);
+      }
+    }
+    function getSchEnv(keyRef) {
+      keyRef = (0, resolve_1.normalizeId)(keyRef);
+      return this.schemas[keyRef] || this.refs[keyRef];
+    }
+    function addInitialSchemas() {
+      const optsSchemas = this.opts.schemas;
+      if (!optsSchemas)
+        return;
+      if (Array.isArray(optsSchemas))
+        this.addSchema(optsSchemas);
+      else
+        for (const key in optsSchemas)
+          this.addSchema(optsSchemas[key], key);
+    }
+    function addInitialFormats() {
+      for (const name in this.opts.formats) {
+        const format = this.opts.formats[name];
+        if (format)
+          this.addFormat(name, format);
+      }
+    }
+    function addInitialKeywords(defs) {
+      if (Array.isArray(defs)) {
+        this.addVocabulary(defs);
+        return;
+      }
+      this.logger.warn("keywords option as map is deprecated, pass array");
+      for (const keyword in defs) {
+        const def = defs[keyword];
+        if (!def.keyword)
+          def.keyword = keyword;
+        this.addKeyword(def);
+      }
+    }
+    function getMetaSchemaOptions() {
+      const metaOpts = { ...this.opts };
+      for (const opt of META_IGNORE_OPTIONS)
+        delete metaOpts[opt];
+      return metaOpts;
+    }
+    const noLogs = {
+      log() {},
+      warn() {},
+      error() {}
+    };
+    function getLogger(logger) {
+      if (logger === false)
+        return noLogs;
+      if (logger === undefined)
+        return console;
+      if (logger.log && logger.warn && logger.error)
+        return logger;
+      throw new Error("logger must implement log, warn and error methods");
+    }
+    const KEYWORD_NAME = /^[a-z_$][a-z0-9_$:-]*$/i;
+    function checkKeyword(keyword, def) {
+      const { RULES } = this;
+      (0, util_1.eachItem)(keyword, (kwd) => {
+        if (RULES.keywords[kwd])
+          throw new Error(`Keyword ${kwd} is already defined`);
+        if (!KEYWORD_NAME.test(kwd))
+          throw new Error(`Keyword ${kwd} has invalid name`);
+      });
+      if (!def)
+        return;
+      if (def.$data && !(("code" in def) || ("validate" in def)))
+        throw new Error('$data keyword must have "code" or "validate" function');
+    }
+    function addRule(keyword, definition, dataType) {
+      var _a;
+      const post = definition === null || definition === undefined ? undefined : definition.post;
+      if (dataType && post)
+        throw new Error('keyword with "post" flag cannot have "type"');
+      const { RULES } = this;
+      let ruleGroup = post ? RULES.post : RULES.rules.find(({ type: t }) => t === dataType);
+      if (!ruleGroup) {
+        ruleGroup = {
+          type: dataType,
+          rules: []
+        };
+        RULES.rules.push(ruleGroup);
+      }
+      RULES.keywords[keyword] = true;
+      if (!definition)
+        return;
+      const rule = {
+        keyword,
+        definition: {
+          ...definition,
+          type: (0, dataType_1.getJSONTypes)(definition.type),
+          schemaType: (0, dataType_1.getJSONTypes)(definition.schemaType)
+        }
+      };
+      if (definition.before)
+        addBeforeRule.call(this, ruleGroup, rule, definition.before);
+      else
+        ruleGroup.rules.push(rule);
+      RULES.all[keyword] = rule;
+      (_a = definition.implements) === null || _a === undefined || _a.forEach((kwd) => this.addKeyword(kwd));
+    }
+    function addBeforeRule(ruleGroup, rule, before) {
+      const i = ruleGroup.rules.findIndex((_rule) => _rule.keyword === before);
+      if (i >= 0)
+        ruleGroup.rules.splice(i, 0, rule);
+      else {
+        ruleGroup.rules.push(rule);
+        this.logger.warn(`rule ${before} is not defined`);
+      }
+    }
+    function keywordMetaschema(def) {
+      let { metaSchema } = def;
+      if (metaSchema === undefined)
+        return;
+      if (def.$data && this.opts.$data)
+        metaSchema = schemaOrData(metaSchema);
+      def.validateSchema = this.compile(metaSchema, true);
+    }
+    const $dataRef = { $ref: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#" };
+    function schemaOrData(schema) {
+      return { anyOf: [schema, $dataRef] };
+    }
+  });
+  require_id2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const def = {
+      keyword: "id",
+      code() {
+        throw new Error('NOT SUPPORTED: keyword "id", use "$id" for schema ID');
+      }
+    };
+    exports.default = def;
+  });
+  require_ref4 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.callRef = exports.getValidate = undefined;
+    const ref_error_1 = require_ref_error2();
+    const code_1 = require_code2();
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const compile_1 = require_compile2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "$ref",
+      schemaType: "string",
+      code(cxt) {
+        const { gen, schema: $ref, it } = cxt;
+        const { baseId, schemaEnv: env, validateName, opts, self: self2 } = it;
+        const { root } = env;
+        if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
+          return callRootRef();
+        const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
+        if (schOrEnv === undefined)
+          throw new ref_error_1.default(it.opts.uriResolver, baseId, $ref);
+        if (schOrEnv instanceof compile_1.SchemaEnv)
+          return callValidate(schOrEnv);
+        return inlineRefSchema(schOrEnv);
+        function callRootRef() {
+          if (env === root)
+            return callRef(cxt, validateName, env, env.$async);
+          const rootName = gen.scopeValue("root", { ref: root });
+          return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
+        }
+        function callValidate(sch) {
+          callRef(cxt, getValidate(cxt, sch), sch, sch.$async);
+        }
+        function inlineRefSchema(sch) {
+          const schName = gen.scopeValue("schema", opts.code.source === true ? {
+            ref: sch,
+            code: (0, codegen_1.stringify)(sch)
+          } : { ref: sch });
+          const valid = gen.name("valid");
+          const schCxt = cxt.subschema({
+            schema: sch,
+            dataTypes: [],
+            schemaPath: codegen_1.nil,
+            topSchemaRef: schName,
+            errSchemaPath: $ref
+          }, valid);
+          cxt.mergeEvaluated(schCxt);
+          cxt.ok(valid);
+        }
+      }
+    };
+    function getValidate(cxt, sch) {
+      const { gen } = cxt;
+      return sch.validate ? gen.scopeValue("validate", { ref: sch.validate }) : (0, codegen_1._)`${gen.scopeValue("wrapper", { ref: sch })}.validate`;
+    }
+    exports.getValidate = getValidate;
+    function callRef(cxt, v, sch, $async) {
+      const { gen, it } = cxt;
+      const { allErrors, schemaEnv: env, opts } = it;
+      const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
+      if ($async)
+        callAsyncRef();
+      else
+        callSyncRef();
+      function callAsyncRef() {
+        if (!env.$async)
+          throw new Error("async schema referenced by sync schema");
+        const valid = gen.let("valid");
+        gen.try(() => {
+          gen.code((0, codegen_1._)`await ${(0, code_1.callValidateCode)(cxt, v, passCxt)}`);
+          addEvaluatedFrom(v);
+          if (!allErrors)
+            gen.assign(valid, true);
+        }, (e) => {
+          gen.if((0, codegen_1._)`!(${e} instanceof ${it.ValidationError})`, () => gen.throw(e));
+          addErrorsFrom(e);
+          if (!allErrors)
+            gen.assign(valid, false);
+        });
+        cxt.ok(valid);
+      }
+      function callSyncRef() {
+        cxt.result((0, code_1.callValidateCode)(cxt, v, passCxt), () => addEvaluatedFrom(v), () => addErrorsFrom(v));
+      }
+      function addErrorsFrom(source) {
+        const errs = (0, codegen_1._)`${source}.errors`;
+        gen.assign(names_1.default.vErrors, (0, codegen_1._)`${names_1.default.vErrors} === null ? ${errs} : ${names_1.default.vErrors}.concat(${errs})`);
+        gen.assign(names_1.default.errors, (0, codegen_1._)`${names_1.default.vErrors}.length`);
+      }
+      function addEvaluatedFrom(source) {
+        var _a;
+        if (!it.opts.unevaluated)
+          return;
+        const schEvaluated = (_a = sch === null || sch === undefined ? undefined : sch.validate) === null || _a === undefined ? undefined : _a.evaluated;
+        if (it.props !== true)
+          if (schEvaluated && !schEvaluated.dynamicProps) {
+            if (schEvaluated.props !== undefined)
+              it.props = util_1.mergeEvaluated.props(gen, schEvaluated.props, it.props);
+          } else {
+            const props = gen.var("props", (0, codegen_1._)`${source}.evaluated.props`);
+            it.props = util_1.mergeEvaluated.props(gen, props, it.props, codegen_1.Name);
+          }
+        if (it.items !== true)
+          if (schEvaluated && !schEvaluated.dynamicItems) {
+            if (schEvaluated.items !== undefined)
+              it.items = util_1.mergeEvaluated.items(gen, schEvaluated.items, it.items);
+          } else {
+            const items = gen.var("items", (0, codegen_1._)`${source}.evaluated.items`);
+            it.items = util_1.mergeEvaluated.items(gen, items, it.items, codegen_1.Name);
+          }
+      }
+    }
+    exports.callRef = callRef;
+    exports.default = def;
+  });
+  require_core$22 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const id_1 = require_id2();
+    const ref_1 = require_ref4();
+    const core = [
+      "$schema",
+      "$id",
+      "$defs",
+      "$vocabulary",
+      { keyword: "$comment" },
+      "definitions",
+      id_1.default,
+      ref_1.default
+    ];
+    exports.default = core;
+  });
+  require_limitNumber2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const ops = codegen_1.operators;
+    const KWDs = {
+      maximum: {
+        okStr: "<=",
+        ok: ops.LTE,
+        fail: ops.GT
+      },
+      minimum: {
+        okStr: ">=",
+        ok: ops.GTE,
+        fail: ops.LT
+      },
+      exclusiveMaximum: {
+        okStr: "<",
+        ok: ops.LT,
+        fail: ops.GTE
+      },
+      exclusiveMinimum: {
+        okStr: ">",
+        ok: ops.GT,
+        fail: ops.LTE
+      }
+    };
+    const def = {
+      keyword: Object.keys(KWDs),
+      type: "number",
+      schemaType: "number",
+      $data: true,
+      error: {
+        message: ({ keyword, schemaCode }) => (0, codegen_1.str)`must be ${KWDs[keyword].okStr} ${schemaCode}`,
+        params: ({ keyword, schemaCode }) => (0, codegen_1._)`{comparison: ${KWDs[keyword].okStr}, limit: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { keyword, data, schemaCode } = cxt;
+        cxt.fail$data((0, codegen_1._)`${data} ${KWDs[keyword].fail} ${schemaCode} || isNaN(${data})`);
+      }
+    };
+    exports.default = def;
+  });
+  require_multipleOf2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const def = {
+      keyword: "multipleOf",
+      type: "number",
+      schemaType: "number",
+      $data: true,
+      error: {
+        message: ({ schemaCode }) => (0, codegen_1.str)`must be multiple of ${schemaCode}`,
+        params: ({ schemaCode }) => (0, codegen_1._)`{multipleOf: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { gen, data, schemaCode, it } = cxt;
+        const prec = it.opts.multipleOfPrecision;
+        const res = gen.let("res");
+        const invalid = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
+        cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid}))`);
+      }
+    };
+    exports.default = def;
+  });
+  require_ucs2length2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    function ucs2length(str) {
+      const len = str.length;
+      let length = 0;
+      let pos = 0;
+      let value;
+      while (pos < len) {
+        length++;
+        value = str.charCodeAt(pos++);
+        if (value >= 55296 && value <= 56319 && pos < len) {
+          value = str.charCodeAt(pos);
+          if ((value & 64512) === 56320)
+            pos++;
+        }
+      }
+      return length;
+    }
+    exports.default = ucs2length;
+    ucs2length.code = 'require("ajv/dist/runtime/ucs2length").default';
+  });
+  require_limitLength2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const ucs2length_1 = require_ucs2length2();
+    const def = {
+      keyword: ["maxLength", "minLength"],
+      type: "string",
+      schemaType: "number",
+      $data: true,
+      error: {
+        message({ keyword, schemaCode }) {
+          const comp = keyword === "maxLength" ? "more" : "fewer";
+          return (0, codegen_1.str)`must NOT have ${comp} than ${schemaCode} characters`;
+        },
+        params: ({ schemaCode }) => (0, codegen_1._)`{limit: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { keyword, data, schemaCode, it } = cxt;
+        const op = keyword === "maxLength" ? codegen_1.operators.GT : codegen_1.operators.LT;
+        const len = it.opts.unicode === false ? (0, codegen_1._)`${data}.length` : (0, codegen_1._)`${(0, util_1.useFunc)(cxt.gen, ucs2length_1.default)}(${data})`;
+        cxt.fail$data((0, codegen_1._)`${len} ${op} ${schemaCode}`);
+      }
+    };
+    exports.default = def;
+  });
+  require_pattern2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const code_1 = require_code2();
+    const util_1 = require_util2();
+    const codegen_1 = require_codegen2();
+    const def = {
+      keyword: "pattern",
+      type: "string",
+      schemaType: "string",
+      $data: true,
+      error: {
+        message: ({ schemaCode }) => (0, codegen_1.str)`must match pattern "${schemaCode}"`,
+        params: ({ schemaCode }) => (0, codegen_1._)`{pattern: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { gen, data, $data, schema, schemaCode, it } = cxt;
+        const u = it.opts.unicodeRegExp ? "u" : "";
+        if ($data) {
+          const { regExp } = it.opts.code;
+          const regExpCode = regExp.code === "new RegExp" ? (0, codegen_1._)`new RegExp` : (0, util_1.useFunc)(gen, regExp);
+          const valid = gen.let("valid");
+          gen.try(() => gen.assign(valid, (0, codegen_1._)`${regExpCode}(${schemaCode}, ${u}).test(${data})`), () => gen.assign(valid, false));
+          cxt.fail$data((0, codegen_1._)`!${valid}`);
+        } else {
+          const regExp = (0, code_1.usePattern)(cxt, schema);
+          cxt.fail$data((0, codegen_1._)`!${regExp}.test(${data})`);
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_limitProperties2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const def = {
+      keyword: ["maxProperties", "minProperties"],
+      type: "object",
+      schemaType: "number",
+      $data: true,
+      error: {
+        message({ keyword, schemaCode }) {
+          const comp = keyword === "maxProperties" ? "more" : "fewer";
+          return (0, codegen_1.str)`must NOT have ${comp} than ${schemaCode} properties`;
+        },
+        params: ({ schemaCode }) => (0, codegen_1._)`{limit: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { keyword, data, schemaCode } = cxt;
+        const op = keyword === "maxProperties" ? codegen_1.operators.GT : codegen_1.operators.LT;
+        cxt.fail$data((0, codegen_1._)`Object.keys(${data}).length ${op} ${schemaCode}`);
+      }
+    };
+    exports.default = def;
+  });
+  require_required2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const code_1 = require_code2();
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "required",
+      type: "object",
+      schemaType: "array",
+      $data: true,
+      error: {
+        message: ({ params: { missingProperty } }) => (0, codegen_1.str)`must have required property '${missingProperty}'`,
+        params: ({ params: { missingProperty } }) => (0, codegen_1._)`{missingProperty: ${missingProperty}}`
+      },
+      code(cxt) {
+        const { gen, schema, schemaCode, data, $data, it } = cxt;
+        const { opts } = it;
+        if (!$data && schema.length === 0)
+          return;
+        const useLoop = schema.length >= opts.loopRequired;
+        if (it.allErrors)
+          allErrorsMode();
+        else
+          exitOnErrorMode();
+        if (opts.strictRequired) {
+          const props = cxt.parentSchema.properties;
+          const { definedProperties } = cxt.it;
+          for (const requiredKey of schema)
+            if ((props === null || props === undefined ? undefined : props[requiredKey]) === undefined && !definedProperties.has(requiredKey)) {
+              const msg = `required property "${requiredKey}" is not defined at "${it.schemaEnv.baseId + it.errSchemaPath}" (strictRequired)`;
+              (0, util_1.checkStrictMode)(it, msg, it.opts.strictRequired);
+            }
+        }
+        function allErrorsMode() {
+          if (useLoop || $data)
+            cxt.block$data(codegen_1.nil, loopAllRequired);
+          else
+            for (const prop of schema)
+              (0, code_1.checkReportMissingProp)(cxt, prop);
+        }
+        function exitOnErrorMode() {
+          const missing = gen.let("missing");
+          if (useLoop || $data) {
+            const valid = gen.let("valid", true);
+            cxt.block$data(valid, () => loopUntilMissing(missing, valid));
+            cxt.ok(valid);
+          } else {
+            gen.if((0, code_1.checkMissingProp)(cxt, schema, missing));
+            (0, code_1.reportMissingProp)(cxt, missing);
+            gen.else();
+          }
+        }
+        function loopAllRequired() {
+          gen.forOf("prop", schemaCode, (prop) => {
+            cxt.setParams({ missingProperty: prop });
+            gen.if((0, code_1.noPropertyInData)(gen, data, prop, opts.ownProperties), () => cxt.error());
+          });
+        }
+        function loopUntilMissing(missing, valid) {
+          cxt.setParams({ missingProperty: missing });
+          gen.forOf(missing, schemaCode, () => {
+            gen.assign(valid, (0, code_1.propertyInData)(gen, data, missing, opts.ownProperties));
+            gen.if((0, codegen_1.not)(valid), () => {
+              cxt.error();
+              gen.break();
+            });
+          }, codegen_1.nil);
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_limitItems2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const def = {
+      keyword: ["maxItems", "minItems"],
+      type: "array",
+      schemaType: "number",
+      $data: true,
+      error: {
+        message({ keyword, schemaCode }) {
+          const comp = keyword === "maxItems" ? "more" : "fewer";
+          return (0, codegen_1.str)`must NOT have ${comp} than ${schemaCode} items`;
+        },
+        params: ({ schemaCode }) => (0, codegen_1._)`{limit: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { keyword, data, schemaCode } = cxt;
+        const op = keyword === "maxItems" ? codegen_1.operators.GT : codegen_1.operators.LT;
+        cxt.fail$data((0, codegen_1._)`${data}.length ${op} ${schemaCode}`);
+      }
+    };
+    exports.default = def;
+  });
+  require_equal2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const equal = require_fast_deep_equal2();
+    equal.code = 'require("ajv/dist/runtime/equal").default';
+    exports.default = equal;
+  });
+  require_uniqueItems2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dataType_1 = require_dataType2();
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const equal_1 = require_equal2();
+    const def = {
+      keyword: "uniqueItems",
+      type: "array",
+      schemaType: "boolean",
+      $data: true,
+      error: {
+        message: ({ params: { i, j } }) => (0, codegen_1.str)`must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
+        params: ({ params: { i, j } }) => (0, codegen_1._)`{i: ${i}, j: ${j}}`
+      },
+      code(cxt) {
+        const { gen, data, $data, schema, parentSchema, schemaCode, it } = cxt;
+        if (!$data && !schema)
+          return;
+        const valid = gen.let("valid");
+        const itemTypes = parentSchema.items ? (0, dataType_1.getSchemaTypes)(parentSchema.items) : [];
+        cxt.block$data(valid, validateUniqueItems, (0, codegen_1._)`${schemaCode} === false`);
+        cxt.ok(valid);
+        function validateUniqueItems() {
+          const i = gen.let("i", (0, codegen_1._)`${data}.length`);
+          const j = gen.let("j");
+          cxt.setParams({
+            i,
+            j
+          });
+          gen.assign(valid, true);
+          gen.if((0, codegen_1._)`${i} > 1`, () => (canOptimize() ? loopN : loopN2)(i, j));
+        }
+        function canOptimize() {
+          return itemTypes.length > 0 && !itemTypes.some((t) => t === "object" || t === "array");
+        }
+        function loopN(i, j) {
+          const item = gen.name("item");
+          const wrongType = (0, dataType_1.checkDataTypes)(itemTypes, item, it.opts.strictNumbers, dataType_1.DataType.Wrong);
+          const indices = gen.const("indices", (0, codegen_1._)`{}`);
+          gen.for((0, codegen_1._)`;${i}--;`, () => {
+            gen.let(item, (0, codegen_1._)`${data}[${i}]`);
+            gen.if(wrongType, (0, codegen_1._)`continue`);
+            if (itemTypes.length > 1)
+              gen.if((0, codegen_1._)`typeof ${item} == "string"`, (0, codegen_1._)`${item} += "_"`);
+            gen.if((0, codegen_1._)`typeof ${indices}[${item}] == "number"`, () => {
+              gen.assign(j, (0, codegen_1._)`${indices}[${item}]`);
+              cxt.error();
+              gen.assign(valid, false).break();
+            }).code((0, codegen_1._)`${indices}[${item}] = ${i}`);
+          });
+        }
+        function loopN2(i, j) {
+          const eql = (0, util_1.useFunc)(gen, equal_1.default);
+          const outer = gen.name("outer");
+          gen.label(outer).for((0, codegen_1._)`;${i}--;`, () => gen.for((0, codegen_1._)`${j} = ${i}; ${j}--;`, () => gen.if((0, codegen_1._)`${eql}(${data}[${i}], ${data}[${j}])`, () => {
+            cxt.error();
+            gen.assign(valid, false).break(outer);
+          })));
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_const2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const equal_1 = require_equal2();
+    const def = {
+      keyword: "const",
+      $data: true,
+      error: {
+        message: "must be equal to constant",
+        params: ({ schemaCode }) => (0, codegen_1._)`{allowedValue: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { gen, data, $data, schemaCode, schema } = cxt;
+        if ($data || schema && typeof schema == "object")
+          cxt.fail$data((0, codegen_1._)`!${(0, util_1.useFunc)(gen, equal_1.default)}(${data}, ${schemaCode})`);
+        else
+          cxt.fail((0, codegen_1._)`${schema} !== ${data}`);
+      }
+    };
+    exports.default = def;
+  });
+  require_enum2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const equal_1 = require_equal2();
+    const def = {
+      keyword: "enum",
+      schemaType: "array",
+      $data: true,
+      error: {
+        message: "must be equal to one of the allowed values",
+        params: ({ schemaCode }) => (0, codegen_1._)`{allowedValues: ${schemaCode}}`
+      },
+      code(cxt) {
+        const { gen, data, $data, schema, schemaCode, it } = cxt;
+        if (!$data && schema.length === 0)
+          throw new Error("enum must have non-empty array");
+        const useLoop = schema.length >= it.opts.loopEnum;
+        let eql;
+        const getEql = () => eql !== null && eql !== undefined ? eql : eql = (0, util_1.useFunc)(gen, equal_1.default);
+        let valid;
+        if (useLoop || $data) {
+          valid = gen.let("valid");
+          cxt.block$data(valid, loopEnum);
+        } else {
+          if (!Array.isArray(schema))
+            throw new Error("ajv implementation error");
+          const vSchema = gen.const("vSchema", schemaCode);
+          valid = (0, codegen_1.or)(...schema.map((_x, i) => equalCode(vSchema, i)));
+        }
+        cxt.pass(valid);
+        function loopEnum() {
+          gen.assign(valid, false);
+          gen.forOf("v", schemaCode, (v) => gen.if((0, codegen_1._)`${getEql()}(${data}, ${v})`, () => gen.assign(valid, true).break()));
+        }
+        function equalCode(vSchema, i) {
+          const sch = schema[i];
+          return typeof sch === "object" && sch !== null ? (0, codegen_1._)`${getEql()}(${data}, ${vSchema}[${i}])` : (0, codegen_1._)`${data} === ${sch}`;
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_validation$22 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const limitNumber_1 = require_limitNumber2();
+    const multipleOf_1 = require_multipleOf2();
+    const limitLength_1 = require_limitLength2();
+    const pattern_1 = require_pattern2();
+    const limitProperties_1 = require_limitProperties2();
+    const required_1 = require_required2();
+    const limitItems_1 = require_limitItems2();
+    const uniqueItems_1 = require_uniqueItems2();
+    const const_1 = require_const2();
+    const enum_1 = require_enum2();
+    const validation = [
+      limitNumber_1.default,
+      multipleOf_1.default,
+      limitLength_1.default,
+      pattern_1.default,
+      limitProperties_1.default,
+      required_1.default,
+      limitItems_1.default,
+      uniqueItems_1.default,
+      {
+        keyword: "type",
+        schemaType: ["string", "array"]
+      },
+      {
+        keyword: "nullable",
+        schemaType: "boolean"
+      },
+      const_1.default,
+      enum_1.default
+    ];
+    exports.default = validation;
+  });
+  require_additionalItems2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateAdditionalItems = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "additionalItems",
+      type: "array",
+      schemaType: ["boolean", "object"],
+      before: "uniqueItems",
+      error: {
+        message: ({ params: { len } }) => (0, codegen_1.str)`must NOT have more than ${len} items`,
+        params: ({ params: { len } }) => (0, codegen_1._)`{limit: ${len}}`
+      },
+      code(cxt) {
+        const { parentSchema, it } = cxt;
+        const { items } = parentSchema;
+        if (!Array.isArray(items)) {
+          (0, util_1.checkStrictMode)(it, '"additionalItems" is ignored when "items" is not an array of schemas');
+          return;
+        }
+        validateAdditionalItems(cxt, items);
+      }
+    };
+    function validateAdditionalItems(cxt, items) {
+      const { gen, schema, data, keyword, it } = cxt;
+      it.items = true;
+      const len = gen.const("len", (0, codegen_1._)`${data}.length`);
+      if (schema === false) {
+        cxt.setParams({ len: items.length });
+        cxt.pass((0, codegen_1._)`${len} <= ${items.length}`);
+      } else if (typeof schema == "object" && !(0, util_1.alwaysValidSchema)(it, schema)) {
+        const valid = gen.var("valid", (0, codegen_1._)`${len} <= ${items.length}`);
+        gen.if((0, codegen_1.not)(valid), () => validateItems(valid));
+        cxt.ok(valid);
+      }
+      function validateItems(valid) {
+        gen.forRange("i", items.length, len, (i) => {
+          cxt.subschema({
+            keyword,
+            dataProp: i,
+            dataPropType: util_1.Type.Num
+          }, valid);
+          if (!it.allErrors)
+            gen.if((0, codegen_1.not)(valid), () => gen.break());
+        });
+      }
+    }
+    exports.validateAdditionalItems = validateAdditionalItems;
+    exports.default = def;
+  });
+  require_items2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateTuple = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const code_1 = require_code2();
+    const def = {
+      keyword: "items",
+      type: "array",
+      schemaType: [
+        "object",
+        "array",
+        "boolean"
+      ],
+      before: "uniqueItems",
+      code(cxt) {
+        const { schema, it } = cxt;
+        if (Array.isArray(schema))
+          return validateTuple(cxt, "additionalItems", schema);
+        it.items = true;
+        if ((0, util_1.alwaysValidSchema)(it, schema))
+          return;
+        cxt.ok((0, code_1.validateArray)(cxt));
+      }
+    };
+    function validateTuple(cxt, extraItems, schArr = cxt.schema) {
+      const { gen, parentSchema, data, keyword, it } = cxt;
+      checkStrictTuple(parentSchema);
+      if (it.opts.unevaluated && schArr.length && it.items !== true)
+        it.items = util_1.mergeEvaluated.items(gen, schArr.length, it.items);
+      const valid = gen.name("valid");
+      const len = gen.const("len", (0, codegen_1._)`${data}.length`);
+      schArr.forEach((sch, i) => {
+        if ((0, util_1.alwaysValidSchema)(it, sch))
+          return;
+        gen.if((0, codegen_1._)`${len} > ${i}`, () => cxt.subschema({
+          keyword,
+          schemaProp: i,
+          dataProp: i
+        }, valid));
+        cxt.ok(valid);
+      });
+      function checkStrictTuple(sch) {
+        const { opts, errSchemaPath } = it;
+        const l = schArr.length;
+        const fullTuple = l === sch.minItems && (l === sch.maxItems || sch[extraItems] === false);
+        if (opts.strictTuples && !fullTuple) {
+          const msg = `"${keyword}" is ${l}-tuple, but minItems or maxItems/${extraItems} are not specified or different at path "${errSchemaPath}"`;
+          (0, util_1.checkStrictMode)(it, msg, opts.strictTuples);
+        }
+      }
+    }
+    exports.validateTuple = validateTuple;
+    exports.default = def;
+  });
+  require_prefixItems2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const items_1 = require_items2();
+    const def = {
+      keyword: "prefixItems",
+      type: "array",
+      schemaType: ["array"],
+      before: "uniqueItems",
+      code: (cxt) => (0, items_1.validateTuple)(cxt, "items")
+    };
+    exports.default = def;
+  });
+  require_items20202 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const code_1 = require_code2();
+    const additionalItems_1 = require_additionalItems2();
+    const def = {
+      keyword: "items",
+      type: "array",
+      schemaType: ["object", "boolean"],
+      before: "uniqueItems",
+      error: {
+        message: ({ params: { len } }) => (0, codegen_1.str)`must NOT have more than ${len} items`,
+        params: ({ params: { len } }) => (0, codegen_1._)`{limit: ${len}}`
+      },
+      code(cxt) {
+        const { schema, parentSchema, it } = cxt;
+        const { prefixItems } = parentSchema;
+        it.items = true;
+        if ((0, util_1.alwaysValidSchema)(it, schema))
+          return;
+        if (prefixItems)
+          (0, additionalItems_1.validateAdditionalItems)(cxt, prefixItems);
+        else
+          cxt.ok((0, code_1.validateArray)(cxt));
+      }
+    };
+    exports.default = def;
+  });
+  require_contains2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "contains",
+      type: "array",
+      schemaType: ["object", "boolean"],
+      before: "uniqueItems",
+      trackErrors: true,
+      error: {
+        message: ({ params: { min, max } }) => max === undefined ? (0, codegen_1.str)`must contain at least ${min} valid item(s)` : (0, codegen_1.str)`must contain at least ${min} and no more than ${max} valid item(s)`,
+        params: ({ params: { min, max } }) => max === undefined ? (0, codegen_1._)`{minContains: ${min}}` : (0, codegen_1._)`{minContains: ${min}, maxContains: ${max}}`
+      },
+      code(cxt) {
+        const { gen, schema, parentSchema, data, it } = cxt;
+        let min;
+        let max;
+        const { minContains, maxContains } = parentSchema;
+        if (it.opts.next) {
+          min = minContains === undefined ? 1 : minContains;
+          max = maxContains;
+        } else
+          min = 1;
+        const len = gen.const("len", (0, codegen_1._)`${data}.length`);
+        cxt.setParams({
+          min,
+          max
+        });
+        if (max === undefined && min === 0) {
+          (0, util_1.checkStrictMode)(it, `"minContains" == 0 without "maxContains": "contains" keyword ignored`);
+          return;
+        }
+        if (max !== undefined && min > max) {
+          (0, util_1.checkStrictMode)(it, `"minContains" > "maxContains" is always invalid`);
+          cxt.fail();
+          return;
+        }
+        if ((0, util_1.alwaysValidSchema)(it, schema)) {
+          let cond = (0, codegen_1._)`${len} >= ${min}`;
+          if (max !== undefined)
+            cond = (0, codegen_1._)`${cond} && ${len} <= ${max}`;
+          cxt.pass(cond);
+          return;
+        }
+        it.items = true;
+        const valid = gen.name("valid");
+        if (max === undefined && min === 1)
+          validateItems(valid, () => gen.if(valid, () => gen.break()));
+        else if (min === 0) {
+          gen.let(valid, true);
+          if (max !== undefined)
+            gen.if((0, codegen_1._)`${data}.length > 0`, validateItemsWithCount);
+        } else {
+          gen.let(valid, false);
+          validateItemsWithCount();
+        }
+        cxt.result(valid, () => cxt.reset());
+        function validateItemsWithCount() {
+          const schValid = gen.name("_valid");
+          const count = gen.let("count", 0);
+          validateItems(schValid, () => gen.if(schValid, () => checkLimits(count)));
+        }
+        function validateItems(_valid, block) {
+          gen.forRange("i", 0, len, (i) => {
+            cxt.subschema({
+              keyword: "contains",
+              dataProp: i,
+              dataPropType: util_1.Type.Num,
+              compositeRule: true
+            }, _valid);
+            block();
+          });
+        }
+        function checkLimits(count) {
+          gen.code((0, codegen_1._)`${count}++`);
+          if (max === undefined)
+            gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true).break());
+          else {
+            gen.if((0, codegen_1._)`${count} > ${max}`, () => gen.assign(valid, false).break());
+            if (min === 1)
+              gen.assign(valid, true);
+            else
+              gen.if((0, codegen_1._)`${count} >= ${min}`, () => gen.assign(valid, true));
+          }
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_dependencies2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateSchemaDeps = exports.validatePropertyDeps = exports.error = undefined;
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const code_1 = require_code2();
+    exports.error = {
+      message: ({ params: { property, depsCount, deps } }) => {
+        const property_ies = depsCount === 1 ? "property" : "properties";
+        return (0, codegen_1.str)`must have ${property_ies} ${deps} when property ${property} is present`;
+      },
+      params: ({ params: { property, depsCount, deps, missingProperty } }) => (0, codegen_1._)`{property: ${property},
+    missingProperty: ${missingProperty},
+    depsCount: ${depsCount},
+    deps: ${deps}}`
+    };
+    const def = {
+      keyword: "dependencies",
+      type: "object",
+      schemaType: "object",
+      error: exports.error,
+      code(cxt) {
+        const [propDeps, schDeps] = splitDependencies(cxt);
+        validatePropertyDeps(cxt, propDeps);
+        validateSchemaDeps(cxt, schDeps);
+      }
+    };
+    function splitDependencies({ schema }) {
+      const propertyDeps = {};
+      const schemaDeps = {};
+      for (const key in schema) {
+        if (key === "__proto__")
+          continue;
+        const deps = Array.isArray(schema[key]) ? propertyDeps : schemaDeps;
+        deps[key] = schema[key];
+      }
+      return [propertyDeps, schemaDeps];
+    }
+    function validatePropertyDeps(cxt, propertyDeps = cxt.schema) {
+      const { gen, data, it } = cxt;
+      if (Object.keys(propertyDeps).length === 0)
+        return;
+      const missing = gen.let("missing");
+      for (const prop in propertyDeps) {
+        const deps = propertyDeps[prop];
+        if (deps.length === 0)
+          continue;
+        const hasProperty = (0, code_1.propertyInData)(gen, data, prop, it.opts.ownProperties);
+        cxt.setParams({
+          property: prop,
+          depsCount: deps.length,
+          deps: deps.join(", ")
+        });
+        if (it.allErrors)
+          gen.if(hasProperty, () => {
+            for (const depProp of deps)
+              (0, code_1.checkReportMissingProp)(cxt, depProp);
+          });
+        else {
+          gen.if((0, codegen_1._)`${hasProperty} && (${(0, code_1.checkMissingProp)(cxt, deps, missing)})`);
+          (0, code_1.reportMissingProp)(cxt, missing);
+          gen.else();
+        }
+      }
+    }
+    exports.validatePropertyDeps = validatePropertyDeps;
+    function validateSchemaDeps(cxt, schemaDeps = cxt.schema) {
+      const { gen, data, keyword, it } = cxt;
+      const valid = gen.name("valid");
+      for (const prop in schemaDeps) {
+        if ((0, util_1.alwaysValidSchema)(it, schemaDeps[prop]))
+          continue;
+        gen.if((0, code_1.propertyInData)(gen, data, prop, it.opts.ownProperties), () => {
+          const schCxt = cxt.subschema({
+            keyword,
+            schemaProp: prop
+          }, valid);
+          cxt.mergeValidEvaluated(schCxt, valid);
+        }, () => gen.var(valid, true));
+        cxt.ok(valid);
+      }
+    }
+    exports.validateSchemaDeps = validateSchemaDeps;
+    exports.default = def;
+  });
+  require_propertyNames2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "propertyNames",
+      type: "object",
+      schemaType: ["object", "boolean"],
+      error: {
+        message: "property name must be valid",
+        params: ({ params }) => (0, codegen_1._)`{propertyName: ${params.propertyName}}`
+      },
+      code(cxt) {
+        const { gen, schema, data, it } = cxt;
+        if ((0, util_1.alwaysValidSchema)(it, schema))
+          return;
+        const valid = gen.name("valid");
+        gen.forIn("key", data, (key) => {
+          cxt.setParams({ propertyName: key });
+          cxt.subschema({
+            keyword: "propertyNames",
+            data: key,
+            dataTypes: ["string"],
+            propertyName: key,
+            compositeRule: true
+          }, valid);
+          gen.if((0, codegen_1.not)(valid), () => {
+            cxt.error(true);
+            if (!it.allErrors)
+              gen.break();
+          });
+        });
+        cxt.ok(valid);
+      }
+    };
+    exports.default = def;
+  });
+  require_additionalProperties2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const code_1 = require_code2();
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "additionalProperties",
+      type: ["object"],
+      schemaType: ["boolean", "object"],
+      allowUndefined: true,
+      trackErrors: true,
+      error: {
+        message: "must NOT have additional properties",
+        params: ({ params }) => (0, codegen_1._)`{additionalProperty: ${params.additionalProperty}}`
+      },
+      code(cxt) {
+        const { gen, schema, parentSchema, data, errsCount, it } = cxt;
+        if (!errsCount)
+          throw new Error("ajv implementation error");
+        const { allErrors, opts } = it;
+        it.props = true;
+        if (opts.removeAdditional !== "all" && (0, util_1.alwaysValidSchema)(it, schema))
+          return;
+        const props = (0, code_1.allSchemaProperties)(parentSchema.properties);
+        const patProps = (0, code_1.allSchemaProperties)(parentSchema.patternProperties);
+        checkAdditionalProperties();
+        cxt.ok((0, codegen_1._)`${errsCount} === ${names_1.default.errors}`);
+        function checkAdditionalProperties() {
+          gen.forIn("key", data, (key) => {
+            if (!props.length && !patProps.length)
+              additionalPropertyCode(key);
+            else
+              gen.if(isAdditional(key), () => additionalPropertyCode(key));
+          });
+        }
+        function isAdditional(key) {
+          let definedProp;
+          if (props.length > 8) {
+            const propsSchema = (0, util_1.schemaRefOrVal)(it, parentSchema.properties, "properties");
+            definedProp = (0, code_1.isOwnProperty)(gen, propsSchema, key);
+          } else if (props.length)
+            definedProp = (0, codegen_1.or)(...props.map((p) => (0, codegen_1._)`${key} === ${p}`));
+          else
+            definedProp = codegen_1.nil;
+          if (patProps.length)
+            definedProp = (0, codegen_1.or)(definedProp, ...patProps.map((p) => (0, codegen_1._)`${(0, code_1.usePattern)(cxt, p)}.test(${key})`));
+          return (0, codegen_1.not)(definedProp);
+        }
+        function deleteAdditional(key) {
+          gen.code((0, codegen_1._)`delete ${data}[${key}]`);
+        }
+        function additionalPropertyCode(key) {
+          if (opts.removeAdditional === "all" || opts.removeAdditional && schema === false) {
+            deleteAdditional(key);
+            return;
+          }
+          if (schema === false) {
+            cxt.setParams({ additionalProperty: key });
+            cxt.error();
+            if (!allErrors)
+              gen.break();
+            return;
+          }
+          if (typeof schema == "object" && !(0, util_1.alwaysValidSchema)(it, schema)) {
+            const valid = gen.name("valid");
+            if (opts.removeAdditional === "failing") {
+              applyAdditionalSchema(key, valid, false);
+              gen.if((0, codegen_1.not)(valid), () => {
+                cxt.reset();
+                deleteAdditional(key);
+              });
+            } else {
+              applyAdditionalSchema(key, valid);
+              if (!allErrors)
+                gen.if((0, codegen_1.not)(valid), () => gen.break());
+            }
+          }
+        }
+        function applyAdditionalSchema(key, valid, errors) {
+          const subschema = {
+            keyword: "additionalProperties",
+            dataProp: key,
+            dataPropType: util_1.Type.Str
+          };
+          if (errors === false)
+            Object.assign(subschema, {
+              compositeRule: true,
+              createErrors: false,
+              allErrors: false
+            });
+          cxt.subschema(subschema, valid);
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_properties2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const validate_1 = require_validate2();
+    const code_1 = require_code2();
+    const util_1 = require_util2();
+    const additionalProperties_1 = require_additionalProperties2();
+    const def = {
+      keyword: "properties",
+      type: "object",
+      schemaType: "object",
+      code(cxt) {
+        const { gen, schema, parentSchema, data, it } = cxt;
+        if (it.opts.removeAdditional === "all" && parentSchema.additionalProperties === undefined)
+          additionalProperties_1.default.code(new validate_1.KeywordCxt(it, additionalProperties_1.default, "additionalProperties"));
+        const allProps = (0, code_1.allSchemaProperties)(schema);
+        for (const prop of allProps)
+          it.definedProperties.add(prop);
+        if (it.opts.unevaluated && allProps.length && it.props !== true)
+          it.props = util_1.mergeEvaluated.props(gen, (0, util_1.toHash)(allProps), it.props);
+        const properties = allProps.filter((p) => !(0, util_1.alwaysValidSchema)(it, schema[p]));
+        if (properties.length === 0)
+          return;
+        const valid = gen.name("valid");
+        for (const prop of properties) {
+          if (hasDefault(prop))
+            applyPropertySchema(prop);
+          else {
+            gen.if((0, code_1.propertyInData)(gen, data, prop, it.opts.ownProperties));
+            applyPropertySchema(prop);
+            if (!it.allErrors)
+              gen.else().var(valid, true);
+            gen.endIf();
+          }
+          cxt.it.definedProperties.add(prop);
+          cxt.ok(valid);
+        }
+        function hasDefault(prop) {
+          return it.opts.useDefaults && !it.compositeRule && schema[prop].default !== undefined;
+        }
+        function applyPropertySchema(prop) {
+          cxt.subschema({
+            keyword: "properties",
+            schemaProp: prop,
+            dataProp: prop
+          }, valid);
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_patternProperties2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const code_1 = require_code2();
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const util_2 = require_util2();
+    const def = {
+      keyword: "patternProperties",
+      type: "object",
+      schemaType: "object",
+      code(cxt) {
+        const { gen, schema, data, parentSchema, it } = cxt;
+        const { opts } = it;
+        const patterns = (0, code_1.allSchemaProperties)(schema);
+        const alwaysValidPatterns = patterns.filter((p) => (0, util_1.alwaysValidSchema)(it, schema[p]));
+        if (patterns.length === 0 || alwaysValidPatterns.length === patterns.length && (!it.opts.unevaluated || it.props === true))
+          return;
+        const checkProperties = opts.strictSchema && !opts.allowMatchingProperties && parentSchema.properties;
+        const valid = gen.name("valid");
+        if (it.props !== true && !(it.props instanceof codegen_1.Name))
+          it.props = (0, util_2.evaluatedPropsToName)(gen, it.props);
+        const { props } = it;
+        validatePatternProperties();
+        function validatePatternProperties() {
+          for (const pat of patterns) {
+            if (checkProperties)
+              checkMatchingProperties(pat);
+            if (it.allErrors)
+              validateProperties(pat);
+            else {
+              gen.var(valid, true);
+              validateProperties(pat);
+              gen.if(valid);
+            }
+          }
+        }
+        function checkMatchingProperties(pat) {
+          for (const prop in checkProperties)
+            if (new RegExp(pat).test(prop))
+              (0, util_1.checkStrictMode)(it, `property ${prop} matches pattern ${pat} (use allowMatchingProperties)`);
+        }
+        function validateProperties(pat) {
+          gen.forIn("key", data, (key) => {
+            gen.if((0, codegen_1._)`${(0, code_1.usePattern)(cxt, pat)}.test(${key})`, () => {
+              const alwaysValid = alwaysValidPatterns.includes(pat);
+              if (!alwaysValid)
+                cxt.subschema({
+                  keyword: "patternProperties",
+                  schemaProp: pat,
+                  dataProp: key,
+                  dataPropType: util_2.Type.Str
+                }, valid);
+              if (it.opts.unevaluated && props !== true)
+                gen.assign((0, codegen_1._)`${props}[${key}]`, true);
+              else if (!alwaysValid && !it.allErrors)
+                gen.if((0, codegen_1.not)(valid), () => gen.break());
+            });
+          });
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_not2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const util_1 = require_util2();
+    const def = {
+      keyword: "not",
+      schemaType: ["object", "boolean"],
+      trackErrors: true,
+      code(cxt) {
+        const { gen, schema, it } = cxt;
+        if ((0, util_1.alwaysValidSchema)(it, schema)) {
+          cxt.fail();
+          return;
+        }
+        const valid = gen.name("valid");
+        cxt.subschema({
+          keyword: "not",
+          compositeRule: true,
+          createErrors: false,
+          allErrors: false
+        }, valid);
+        cxt.failResult(valid, () => cxt.reset(), () => cxt.error());
+      },
+      error: { message: "must NOT be valid" }
+    };
+    exports.default = def;
+  });
+  require_anyOf2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const def = {
+      keyword: "anyOf",
+      schemaType: "array",
+      trackErrors: true,
+      code: require_code2().validateUnion,
+      error: { message: "must match a schema in anyOf" }
+    };
+    exports.default = def;
+  });
+  require_oneOf2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "oneOf",
+      schemaType: "array",
+      trackErrors: true,
+      error: {
+        message: "must match exactly one schema in oneOf",
+        params: ({ params }) => (0, codegen_1._)`{passingSchemas: ${params.passing}}`
+      },
+      code(cxt) {
+        const { gen, schema, parentSchema, it } = cxt;
+        if (!Array.isArray(schema))
+          throw new Error("ajv implementation error");
+        if (it.opts.discriminator && parentSchema.discriminator)
+          return;
+        const schArr = schema;
+        const valid = gen.let("valid", false);
+        const passing = gen.let("passing", null);
+        const schValid = gen.name("_valid");
+        cxt.setParams({ passing });
+        gen.block(validateOneOf);
+        cxt.result(valid, () => cxt.reset(), () => cxt.error(true));
+        function validateOneOf() {
+          schArr.forEach((sch, i) => {
+            let schCxt;
+            if ((0, util_1.alwaysValidSchema)(it, sch))
+              gen.var(schValid, true);
+            else
+              schCxt = cxt.subschema({
+                keyword: "oneOf",
+                schemaProp: i,
+                compositeRule: true
+              }, schValid);
+            if (i > 0)
+              gen.if((0, codegen_1._)`${schValid} && ${valid}`).assign(valid, false).assign(passing, (0, codegen_1._)`[${passing}, ${i}]`).else();
+            gen.if(schValid, () => {
+              gen.assign(valid, true);
+              gen.assign(passing, i);
+              if (schCxt)
+                cxt.mergeEvaluated(schCxt, codegen_1.Name);
+            });
+          });
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_allOf2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const util_1 = require_util2();
+    const def = {
+      keyword: "allOf",
+      schemaType: "array",
+      code(cxt) {
+        const { gen, schema, it } = cxt;
+        if (!Array.isArray(schema))
+          throw new Error("ajv implementation error");
+        const valid = gen.name("valid");
+        schema.forEach((sch, i) => {
+          if ((0, util_1.alwaysValidSchema)(it, sch))
+            return;
+          const schCxt = cxt.subschema({
+            keyword: "allOf",
+            schemaProp: i
+          }, valid);
+          cxt.ok(valid);
+          cxt.mergeEvaluated(schCxt);
+        });
+      }
+    };
+    exports.default = def;
+  });
+  require_if2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "if",
+      schemaType: ["object", "boolean"],
+      trackErrors: true,
+      error: {
+        message: ({ params }) => (0, codegen_1.str)`must match "${params.ifClause}" schema`,
+        params: ({ params }) => (0, codegen_1._)`{failingKeyword: ${params.ifClause}}`
+      },
+      code(cxt) {
+        const { gen, parentSchema, it } = cxt;
+        if (parentSchema.then === undefined && parentSchema.else === undefined)
+          (0, util_1.checkStrictMode)(it, '"if" without "then" and "else" is ignored');
+        const hasThen = hasSchema(it, "then");
+        const hasElse = hasSchema(it, "else");
+        if (!hasThen && !hasElse)
+          return;
+        const valid = gen.let("valid", true);
+        const schValid = gen.name("_valid");
+        validateIf();
+        cxt.reset();
+        if (hasThen && hasElse) {
+          const ifClause = gen.let("ifClause");
+          cxt.setParams({ ifClause });
+          gen.if(schValid, validateClause("then", ifClause), validateClause("else", ifClause));
+        } else if (hasThen)
+          gen.if(schValid, validateClause("then"));
+        else
+          gen.if((0, codegen_1.not)(schValid), validateClause("else"));
+        cxt.pass(valid, () => cxt.error(true));
+        function validateIf() {
+          const schCxt = cxt.subschema({
+            keyword: "if",
+            compositeRule: true,
+            createErrors: false,
+            allErrors: false
+          }, schValid);
+          cxt.mergeEvaluated(schCxt);
+        }
+        function validateClause(keyword, ifClause) {
+          return () => {
+            const schCxt = cxt.subschema({ keyword }, schValid);
+            gen.assign(valid, schValid);
+            cxt.mergeValidEvaluated(schCxt, valid);
+            if (ifClause)
+              gen.assign(ifClause, (0, codegen_1._)`${keyword}`);
+            else
+              cxt.setParams({ ifClause: keyword });
+          };
+        }
+      }
+    };
+    function hasSchema(it, keyword) {
+      const schema = it.schema[keyword];
+      return schema !== undefined && !(0, util_1.alwaysValidSchema)(it, schema);
+    }
+    exports.default = def;
+  });
+  require_thenElse2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const util_1 = require_util2();
+    const def = {
+      keyword: ["then", "else"],
+      schemaType: ["object", "boolean"],
+      code({ keyword, parentSchema, it }) {
+        if (parentSchema.if === undefined)
+          (0, util_1.checkStrictMode)(it, `"${keyword}" without "if" is ignored`);
+      }
+    };
+    exports.default = def;
+  });
+  require_applicator$22 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const additionalItems_1 = require_additionalItems2();
+    const prefixItems_1 = require_prefixItems2();
+    const items_1 = require_items2();
+    const items2020_1 = require_items20202();
+    const contains_1 = require_contains2();
+    const dependencies_1 = require_dependencies2();
+    const propertyNames_1 = require_propertyNames2();
+    const additionalProperties_1 = require_additionalProperties2();
+    const properties_1 = require_properties2();
+    const patternProperties_1 = require_patternProperties2();
+    const not_1 = require_not2();
+    const anyOf_1 = require_anyOf2();
+    const oneOf_1 = require_oneOf2();
+    const allOf_1 = require_allOf2();
+    const if_1 = require_if2();
+    const thenElse_1 = require_thenElse2();
+    function getApplicator(draft2020 = false) {
+      const applicator = [
+        not_1.default,
+        anyOf_1.default,
+        oneOf_1.default,
+        allOf_1.default,
+        if_1.default,
+        thenElse_1.default,
+        propertyNames_1.default,
+        additionalProperties_1.default,
+        dependencies_1.default,
+        properties_1.default,
+        patternProperties_1.default
+      ];
+      if (draft2020)
+        applicator.push(prefixItems_1.default, items2020_1.default);
+      else
+        applicator.push(additionalItems_1.default, items_1.default);
+      applicator.push(contains_1.default);
+      return applicator;
+    }
+    exports.default = getApplicator;
+  });
+  require_format$22 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const def = {
+      keyword: "format",
+      type: ["number", "string"],
+      schemaType: "string",
+      $data: true,
+      error: {
+        message: ({ schemaCode }) => (0, codegen_1.str)`must match format "${schemaCode}"`,
+        params: ({ schemaCode }) => (0, codegen_1._)`{format: ${schemaCode}}`
+      },
+      code(cxt, ruleType) {
+        const { gen, data, $data, schema, schemaCode, it } = cxt;
+        const { opts, errSchemaPath, schemaEnv, self: self2 } = it;
+        if (!opts.validateFormats)
+          return;
+        if ($data)
+          validate$DataFormat();
+        else
+          validateFormat();
+        function validate$DataFormat() {
+          const fmts = gen.scopeValue("formats", {
+            ref: self2.formats,
+            code: opts.code.formats
+          });
+          const fDef = gen.const("fDef", (0, codegen_1._)`${fmts}[${schemaCode}]`);
+          const fType = gen.let("fType");
+          const format = gen.let("format");
+          gen.if((0, codegen_1._)`typeof ${fDef} == "object" && !(${fDef} instanceof RegExp)`, () => gen.assign(fType, (0, codegen_1._)`${fDef}.type || "string"`).assign(format, (0, codegen_1._)`${fDef}.validate`), () => gen.assign(fType, (0, codegen_1._)`"string"`).assign(format, fDef));
+          cxt.fail$data((0, codegen_1.or)(unknownFmt(), invalidFmt()));
+          function unknownFmt() {
+            if (opts.strictSchema === false)
+              return codegen_1.nil;
+            return (0, codegen_1._)`${schemaCode} && !${format}`;
+          }
+          function invalidFmt() {
+            const callFormat = schemaEnv.$async ? (0, codegen_1._)`(${fDef}.async ? await ${format}(${data}) : ${format}(${data}))` : (0, codegen_1._)`${format}(${data})`;
+            const validData = (0, codegen_1._)`(typeof ${format} == "function" ? ${callFormat} : ${format}.test(${data}))`;
+            return (0, codegen_1._)`${format} && ${format} !== true && ${fType} === ${ruleType} && !${validData}`;
+          }
+        }
+        function validateFormat() {
+          const formatDef = self2.formats[schema];
+          if (!formatDef) {
+            unknownFormat();
+            return;
+          }
+          if (formatDef === true)
+            return;
+          const [fmtType, format, fmtRef] = getFormat(formatDef);
+          if (fmtType === ruleType)
+            cxt.pass(validCondition());
+          function unknownFormat() {
+            if (opts.strictSchema === false) {
+              self2.logger.warn(unknownMsg());
+              return;
+            }
+            throw new Error(unknownMsg());
+            function unknownMsg() {
+              return `unknown format "${schema}" ignored in schema at path "${errSchemaPath}"`;
+            }
+          }
+          function getFormat(fmtDef) {
+            const code = fmtDef instanceof RegExp ? (0, codegen_1.regexpCode)(fmtDef) : opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(schema)}` : undefined;
+            const fmt = gen.scopeValue("formats", {
+              key: schema,
+              ref: fmtDef,
+              code
+            });
+            if (typeof fmtDef == "object" && !(fmtDef instanceof RegExp))
+              return [
+                fmtDef.type || "string",
+                fmtDef.validate,
+                (0, codegen_1._)`${fmt}.validate`
+              ];
+            return [
+              "string",
+              fmtDef,
+              fmt
+            ];
+          }
+          function validCondition() {
+            if (typeof formatDef == "object" && !(formatDef instanceof RegExp) && formatDef.async) {
+              if (!schemaEnv.$async)
+                throw new Error("async format in sync schema");
+              return (0, codegen_1._)`await ${fmtRef}(${data})`;
+            }
+            return typeof format == "function" ? (0, codegen_1._)`${fmtRef}(${data})` : (0, codegen_1._)`${fmtRef}.test(${data})`;
+          }
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_format$12 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const format = [require_format$22().default];
+    exports.default = format;
+  });
+  require_metadata2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.contentVocabulary = exports.metadataVocabulary = undefined;
+    exports.metadataVocabulary = [
+      "title",
+      "description",
+      "default",
+      "deprecated",
+      "readOnly",
+      "writeOnly",
+      "examples"
+    ];
+    exports.contentVocabulary = [
+      "contentMediaType",
+      "contentEncoding",
+      "contentSchema"
+    ];
+  });
+  require_draft72 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const core_1 = require_core$22();
+    const validation_1 = require_validation$22();
+    const applicator_1 = require_applicator$22();
+    const format_1 = require_format$12();
+    const metadata_1 = require_metadata2();
+    const draft7Vocabularies = [
+      core_1.default,
+      validation_1.default,
+      (0, applicator_1.default)(),
+      format_1.default,
+      metadata_1.metadataVocabulary,
+      metadata_1.contentVocabulary
+    ];
+    exports.default = draft7Vocabularies;
+  });
+  require_types8 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.DiscrError = undefined;
+    var DiscrError;
+    (function(DiscrError) {
+      DiscrError["Tag"] = "tag";
+      DiscrError["Mapping"] = "mapping";
+    })(DiscrError || (exports.DiscrError = DiscrError = {}));
+  });
+  require_discriminator2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const types_1 = require_types8();
+    const compile_1 = require_compile2();
+    const ref_error_1 = require_ref_error2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "discriminator",
+      type: "object",
+      schemaType: "object",
+      error: {
+        message: ({ params: { discrError, tagName } }) => discrError === types_1.DiscrError.Tag ? `tag "${tagName}" must be string` : `value of tag "${tagName}" must be in oneOf`,
+        params: ({ params: { discrError, tag, tagName } }) => (0, codegen_1._)`{error: ${discrError}, tag: ${tagName}, tagValue: ${tag}}`
+      },
+      code(cxt) {
+        const { gen, data, schema, parentSchema, it } = cxt;
+        const { oneOf } = parentSchema;
+        if (!it.opts.discriminator)
+          throw new Error("discriminator: requires discriminator option");
+        const tagName = schema.propertyName;
+        if (typeof tagName != "string")
+          throw new Error("discriminator: requires propertyName");
+        if (schema.mapping)
+          throw new Error("discriminator: mapping is not supported");
+        if (!oneOf)
+          throw new Error("discriminator: requires oneOf keyword");
+        const valid = gen.let("valid", false);
+        const tag = gen.const("tag", (0, codegen_1._)`${data}${(0, codegen_1.getProperty)(tagName)}`);
+        gen.if((0, codegen_1._)`typeof ${tag} == "string"`, () => validateMapping(), () => cxt.error(false, {
+          discrError: types_1.DiscrError.Tag,
+          tag,
+          tagName
+        }));
+        cxt.ok(valid);
+        function validateMapping() {
+          const mapping = getMapping();
+          gen.if(false);
+          for (const tagValue in mapping) {
+            gen.elseIf((0, codegen_1._)`${tag} === ${tagValue}`);
+            gen.assign(valid, applyTagSchema(mapping[tagValue]));
+          }
+          gen.else();
+          cxt.error(false, {
+            discrError: types_1.DiscrError.Mapping,
+            tag,
+            tagName
+          });
+          gen.endIf();
+        }
+        function applyTagSchema(schemaProp) {
+          const _valid = gen.name("valid");
+          const schCxt = cxt.subschema({
+            keyword: "oneOf",
+            schemaProp
+          }, _valid);
+          cxt.mergeEvaluated(schCxt, codegen_1.Name);
+          return _valid;
+        }
+        function getMapping() {
+          var _a;
+          const oneOfMapping = {};
+          const topRequired = hasRequired(parentSchema);
+          let tagRequired = true;
+          for (let i = 0;i < oneOf.length; i++) {
+            let sch = oneOf[i];
+            if ((sch === null || sch === undefined ? undefined : sch.$ref) && !(0, util_1.schemaHasRulesButRef)(sch, it.self.RULES)) {
+              const ref = sch.$ref;
+              sch = compile_1.resolveRef.call(it.self, it.schemaEnv.root, it.baseId, ref);
+              if (sch instanceof compile_1.SchemaEnv)
+                sch = sch.schema;
+              if (sch === undefined)
+                throw new ref_error_1.default(it.opts.uriResolver, it.baseId, ref);
+            }
+            const propSch = (_a = sch === null || sch === undefined ? undefined : sch.properties) === null || _a === undefined ? undefined : _a[tagName];
+            if (typeof propSch != "object")
+              throw new Error(`discriminator: oneOf subschemas (or referenced schemas) must have "properties/${tagName}"`);
+            tagRequired = tagRequired && (topRequired || hasRequired(sch));
+            addMappings(propSch, i);
+          }
+          if (!tagRequired)
+            throw new Error(`discriminator: "${tagName}" must be required`);
+          return oneOfMapping;
+          function hasRequired({ required }) {
+            return Array.isArray(required) && required.includes(tagName);
+          }
+          function addMappings(sch, i) {
+            if (sch.const)
+              addMapping(sch.const, i);
+            else if (sch.enum)
+              for (const tagValue of sch.enum)
+                addMapping(tagValue, i);
+            else
+              throw new Error(`discriminator: "properties/${tagName}" must have "const" or "enum"`);
+          }
+          function addMapping(tagValue, i) {
+            if (typeof tagValue != "string" || tagValue in oneOfMapping)
+              throw new Error(`discriminator: "${tagName}" values must be unique strings`);
+            oneOfMapping[tagValue] = i;
+          }
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_json_schema_draft_072 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      $id: "http://json-schema.org/draft-07/schema#",
+      title: "Core schema meta-schema",
+      definitions: {
+        schemaArray: {
+          type: "array",
+          minItems: 1,
+          items: { $ref: "#" }
+        },
+        nonNegativeInteger: {
+          type: "integer",
+          minimum: 0
+        },
+        nonNegativeIntegerDefault0: { allOf: [{ $ref: "#/definitions/nonNegativeInteger" }, { default: 0 }] },
+        simpleTypes: { enum: [
+          "array",
+          "boolean",
+          "integer",
+          "null",
+          "number",
+          "object",
+          "string"
+        ] },
+        stringArray: {
+          type: "array",
+          items: { type: "string" },
+          uniqueItems: true,
+          default: []
+        }
+      },
+      type: ["object", "boolean"],
+      properties: {
+        $id: {
+          type: "string",
+          format: "uri-reference"
+        },
+        $schema: {
+          type: "string",
+          format: "uri"
+        },
+        $ref: {
+          type: "string",
+          format: "uri-reference"
+        },
+        $comment: { type: "string" },
+        title: { type: "string" },
+        description: { type: "string" },
+        default: true,
+        readOnly: {
+          type: "boolean",
+          default: false
+        },
+        examples: {
+          type: "array",
+          items: true
+        },
+        multipleOf: {
+          type: "number",
+          exclusiveMinimum: 0
+        },
+        maximum: { type: "number" },
+        exclusiveMaximum: { type: "number" },
+        minimum: { type: "number" },
+        exclusiveMinimum: { type: "number" },
+        maxLength: { $ref: "#/definitions/nonNegativeInteger" },
+        minLength: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
+        pattern: {
+          type: "string",
+          format: "regex"
+        },
+        additionalItems: { $ref: "#" },
+        items: {
+          anyOf: [{ $ref: "#" }, { $ref: "#/definitions/schemaArray" }],
+          default: true
+        },
+        maxItems: { $ref: "#/definitions/nonNegativeInteger" },
+        minItems: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
+        uniqueItems: {
+          type: "boolean",
+          default: false
+        },
+        contains: { $ref: "#" },
+        maxProperties: { $ref: "#/definitions/nonNegativeInteger" },
+        minProperties: { $ref: "#/definitions/nonNegativeIntegerDefault0" },
+        required: { $ref: "#/definitions/stringArray" },
+        additionalProperties: { $ref: "#" },
+        definitions: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          default: {}
+        },
+        properties: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          default: {}
+        },
+        patternProperties: {
+          type: "object",
+          additionalProperties: { $ref: "#" },
+          propertyNames: { format: "regex" },
+          default: {}
+        },
+        dependencies: {
+          type: "object",
+          additionalProperties: { anyOf: [{ $ref: "#" }, { $ref: "#/definitions/stringArray" }] }
+        },
+        propertyNames: { $ref: "#" },
+        const: true,
+        enum: {
+          type: "array",
+          items: true,
+          minItems: 1,
+          uniqueItems: true
+        },
+        type: { anyOf: [{ $ref: "#/definitions/simpleTypes" }, {
+          type: "array",
+          items: { $ref: "#/definitions/simpleTypes" },
+          minItems: 1,
+          uniqueItems: true
+        }] },
+        format: { type: "string" },
+        contentMediaType: { type: "string" },
+        contentEncoding: { type: "string" },
+        if: { $ref: "#" },
+        then: { $ref: "#" },
+        else: { $ref: "#" },
+        allOf: { $ref: "#/definitions/schemaArray" },
+        anyOf: { $ref: "#/definitions/schemaArray" },
+        oneOf: { $ref: "#/definitions/schemaArray" },
+        not: { $ref: "#" }
+      },
+      default: true
+    };
+  });
+  require_ajv2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = undefined;
+    const core_1 = require_core$32();
+    const draft7_1 = require_draft72();
+    const discriminator_1 = require_discriminator2();
+    const draft7MetaSchema = require_json_schema_draft_072();
+    const META_SUPPORT_DATA = ["/properties"];
+    const META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
+    var Ajv = class extends core_1.default {
+      _addVocabularies() {
+        super._addVocabularies();
+        draft7_1.default.forEach((v) => this.addVocabulary(v));
+        if (this.opts.discriminator)
+          this.addKeyword(discriminator_1.default);
+      }
+      _addDefaultMetaSchema() {
+        super._addDefaultMetaSchema();
+        if (!this.opts.meta)
+          return;
+        const metaSchema = this.opts.$data ? this.$dataMetaSchema(draft7MetaSchema, META_SUPPORT_DATA) : draft7MetaSchema;
+        this.addMetaSchema(metaSchema, META_SCHEMA_ID, false);
+        this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
+      }
+      defaultMeta() {
+        return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : undefined);
+      }
+    };
+    exports.Ajv = Ajv;
+    module.exports = exports = Ajv;
+    module.exports.Ajv = Ajv;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = Ajv;
+    var validate_1 = require_validate2();
+    Object.defineProperty(exports, "KeywordCxt", {
+      enumerable: true,
+      get: function() {
+        return validate_1.KeywordCxt;
+      }
+    });
+    var codegen_1 = require_codegen2();
+    Object.defineProperty(exports, "_", {
+      enumerable: true,
+      get: function() {
+        return codegen_1._;
+      }
+    });
+    Object.defineProperty(exports, "str", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.str;
+      }
+    });
+    Object.defineProperty(exports, "stringify", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.stringify;
+      }
+    });
+    Object.defineProperty(exports, "nil", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.nil;
+      }
+    });
+    Object.defineProperty(exports, "Name", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.Name;
+      }
+    });
+    Object.defineProperty(exports, "CodeGen", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.CodeGen;
+      }
+    });
+    var validation_error_1 = require_validation_error2();
+    Object.defineProperty(exports, "ValidationError", {
+      enumerable: true,
+      get: function() {
+        return validation_error_1.default;
+      }
+    });
+    var ref_error_1 = require_ref_error2();
+    Object.defineProperty(exports, "MissingRefError", {
+      enumerable: true,
+      get: function() {
+        return ref_error_1.default;
+      }
+    });
+  });
+  require_dynamicAnchor2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.dynamicAnchor = undefined;
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const compile_1 = require_compile2();
+    const ref_1 = require_ref4();
+    const def = {
+      keyword: "$dynamicAnchor",
+      schemaType: "string",
+      code: (cxt) => dynamicAnchor(cxt, cxt.schema)
+    };
+    function dynamicAnchor(cxt, anchor) {
+      const { gen, it } = cxt;
+      it.schemaEnv.root.dynamicAnchors[anchor] = true;
+      const v = (0, codegen_1._)`${names_1.default.dynamicAnchors}${(0, codegen_1.getProperty)(anchor)}`;
+      const validate = it.errSchemaPath === "#" ? it.validateName : _getValidate(cxt);
+      gen.if((0, codegen_1._)`!${v}`, () => gen.assign(v, validate));
+    }
+    exports.dynamicAnchor = dynamicAnchor;
+    function _getValidate(cxt) {
+      const { schemaEnv, schema, self: self2 } = cxt.it;
+      const { root, baseId, localRefs, meta } = schemaEnv.root;
+      const { schemaId } = self2.opts;
+      const sch = new compile_1.SchemaEnv({
+        schema,
+        schemaId,
+        root,
+        baseId,
+        localRefs,
+        meta
+      });
+      compile_1.compileSchema.call(self2, sch);
+      return (0, ref_1.getValidate)(cxt, sch);
+    }
+    exports.default = def;
+  });
+  require_dynamicRef2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.dynamicRef = undefined;
+    const codegen_1 = require_codegen2();
+    const names_1 = require_names2();
+    const ref_1 = require_ref4();
+    const def = {
+      keyword: "$dynamicRef",
+      schemaType: "string",
+      code: (cxt) => dynamicRef(cxt, cxt.schema)
+    };
+    function dynamicRef(cxt, ref) {
+      const { gen, keyword, it } = cxt;
+      if (ref[0] !== "#")
+        throw new Error(`"${keyword}" only supports hash fragment reference`);
+      const anchor = ref.slice(1);
+      if (it.allErrors)
+        _dynamicRef();
+      else {
+        const valid = gen.let("valid", false);
+        _dynamicRef(valid);
+        cxt.ok(valid);
+      }
+      function _dynamicRef(valid) {
+        if (it.schemaEnv.root.dynamicAnchors[anchor]) {
+          const v = gen.let("_v", (0, codegen_1._)`${names_1.default.dynamicAnchors}${(0, codegen_1.getProperty)(anchor)}`);
+          gen.if(v, _callRef(v, valid), _callRef(it.validateName, valid));
+        } else
+          _callRef(it.validateName, valid)();
+      }
+      function _callRef(validate, valid) {
+        return valid ? () => gen.block(() => {
+          (0, ref_1.callRef)(cxt, validate);
+          gen.let(valid, true);
+        }) : () => (0, ref_1.callRef)(cxt, validate);
+      }
+    }
+    exports.dynamicRef = dynamicRef;
+    exports.default = def;
+  });
+  require_recursiveAnchor2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dynamicAnchor_1 = require_dynamicAnchor2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "$recursiveAnchor",
+      schemaType: "boolean",
+      code(cxt) {
+        if (cxt.schema)
+          (0, dynamicAnchor_1.dynamicAnchor)(cxt, "");
+        else
+          (0, util_1.checkStrictMode)(cxt.it, "$recursiveAnchor: false is ignored");
+      }
+    };
+    exports.default = def;
+  });
+  require_recursiveRef2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dynamicRef_1 = require_dynamicRef2();
+    const def = {
+      keyword: "$recursiveRef",
+      schemaType: "string",
+      code: (cxt) => (0, dynamicRef_1.dynamicRef)(cxt, cxt.schema)
+    };
+    exports.default = def;
+  });
+  require_dynamic2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dynamicAnchor_1 = require_dynamicAnchor2();
+    const dynamicRef_1 = require_dynamicRef2();
+    const recursiveAnchor_1 = require_recursiveAnchor2();
+    const recursiveRef_1 = require_recursiveRef2();
+    const dynamic = [
+      dynamicAnchor_1.default,
+      dynamicRef_1.default,
+      recursiveAnchor_1.default,
+      recursiveRef_1.default
+    ];
+    exports.default = dynamic;
+  });
+  require_dependentRequired2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dependencies_1 = require_dependencies2();
+    const def = {
+      keyword: "dependentRequired",
+      type: "object",
+      schemaType: "object",
+      error: dependencies_1.error,
+      code: (cxt) => (0, dependencies_1.validatePropertyDeps)(cxt)
+    };
+    exports.default = def;
+  });
+  require_dependentSchemas2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dependencies_1 = require_dependencies2();
+    const def = {
+      keyword: "dependentSchemas",
+      type: "object",
+      schemaType: "object",
+      code: (cxt) => (0, dependencies_1.validateSchemaDeps)(cxt)
+    };
+    exports.default = def;
+  });
+  require_limitContains2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const util_1 = require_util2();
+    const def = {
+      keyword: ["maxContains", "minContains"],
+      type: "array",
+      schemaType: "number",
+      code({ keyword, parentSchema, it }) {
+        if (parentSchema.contains === undefined)
+          (0, util_1.checkStrictMode)(it, `"${keyword}" without "contains" is ignored`);
+      }
+    };
+    exports.default = def;
+  });
+  require_next2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const dependentRequired_1 = require_dependentRequired2();
+    const dependentSchemas_1 = require_dependentSchemas2();
+    const limitContains_1 = require_limitContains2();
+    const next = [
+      dependentRequired_1.default,
+      dependentSchemas_1.default,
+      limitContains_1.default
+    ];
+    exports.default = next;
+  });
+  require_unevaluatedProperties2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const names_1 = require_names2();
+    const def = {
+      keyword: "unevaluatedProperties",
+      type: "object",
+      schemaType: ["boolean", "object"],
+      trackErrors: true,
+      error: {
+        message: "must NOT have unevaluated properties",
+        params: ({ params }) => (0, codegen_1._)`{unevaluatedProperty: ${params.unevaluatedProperty}}`
+      },
+      code(cxt) {
+        const { gen, schema, data, errsCount, it } = cxt;
+        if (!errsCount)
+          throw new Error("ajv implementation error");
+        const { allErrors, props } = it;
+        if (props instanceof codegen_1.Name)
+          gen.if((0, codegen_1._)`${props} !== true`, () => gen.forIn("key", data, (key) => gen.if(unevaluatedDynamic(props, key), () => unevaluatedPropCode(key))));
+        else if (props !== true)
+          gen.forIn("key", data, (key) => props === undefined ? unevaluatedPropCode(key) : gen.if(unevaluatedStatic(props, key), () => unevaluatedPropCode(key)));
+        it.props = true;
+        cxt.ok((0, codegen_1._)`${errsCount} === ${names_1.default.errors}`);
+        function unevaluatedPropCode(key) {
+          if (schema === false) {
+            cxt.setParams({ unevaluatedProperty: key });
+            cxt.error();
+            if (!allErrors)
+              gen.break();
+            return;
+          }
+          if (!(0, util_1.alwaysValidSchema)(it, schema)) {
+            const valid = gen.name("valid");
+            cxt.subschema({
+              keyword: "unevaluatedProperties",
+              dataProp: key,
+              dataPropType: util_1.Type.Str
+            }, valid);
+            if (!allErrors)
+              gen.if((0, codegen_1.not)(valid), () => gen.break());
+          }
+        }
+        function unevaluatedDynamic(evaluatedProps, key) {
+          return (0, codegen_1._)`!${evaluatedProps} || !${evaluatedProps}[${key}]`;
+        }
+        function unevaluatedStatic(evaluatedProps, key) {
+          const ps = [];
+          for (const p in evaluatedProps)
+            if (evaluatedProps[p] === true)
+              ps.push((0, codegen_1._)`${key} !== ${p}`);
+          return (0, codegen_1.and)(...ps);
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_unevaluatedItems2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const codegen_1 = require_codegen2();
+    const util_1 = require_util2();
+    const def = {
+      keyword: "unevaluatedItems",
+      type: "array",
+      schemaType: ["boolean", "object"],
+      error: {
+        message: ({ params: { len } }) => (0, codegen_1.str)`must NOT have more than ${len} items`,
+        params: ({ params: { len } }) => (0, codegen_1._)`{limit: ${len}}`
+      },
+      code(cxt) {
+        const { gen, schema, data, it } = cxt;
+        const items = it.items || 0;
+        if (items === true)
+          return;
+        const len = gen.const("len", (0, codegen_1._)`${data}.length`);
+        if (schema === false) {
+          cxt.setParams({ len: items });
+          cxt.fail((0, codegen_1._)`${len} > ${items}`);
+        } else if (typeof schema == "object" && !(0, util_1.alwaysValidSchema)(it, schema)) {
+          const valid = gen.var("valid", (0, codegen_1._)`${len} <= ${items}`);
+          gen.if((0, codegen_1.not)(valid), () => validateItems(valid, items));
+          cxt.ok(valid);
+        }
+        it.items = true;
+        function validateItems(valid, from) {
+          gen.forRange("i", from, len, (i) => {
+            cxt.subschema({
+              keyword: "unevaluatedItems",
+              dataProp: i,
+              dataPropType: util_1.Type.Num
+            }, valid);
+            if (!it.allErrors)
+              gen.if((0, codegen_1.not)(valid), () => gen.break());
+          });
+        }
+      }
+    };
+    exports.default = def;
+  });
+  require_unevaluated$12 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const unevaluatedProperties_1 = require_unevaluatedProperties2();
+    const unevaluatedItems_1 = require_unevaluatedItems2();
+    const unevaluated = [unevaluatedProperties_1.default, unevaluatedItems_1.default];
+    exports.default = unevaluated;
+  });
+  require_schema$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/schema",
+      $vocabulary: {
+        "https://json-schema.org/draft/2019-09/vocab/core": true,
+        "https://json-schema.org/draft/2019-09/vocab/applicator": true,
+        "https://json-schema.org/draft/2019-09/vocab/validation": true,
+        "https://json-schema.org/draft/2019-09/vocab/meta-data": true,
+        "https://json-schema.org/draft/2019-09/vocab/format": false,
+        "https://json-schema.org/draft/2019-09/vocab/content": true
+      },
+      $recursiveAnchor: true,
+      title: "Core and Validation specifications meta-schema",
+      allOf: [
+        { $ref: "meta/core" },
+        { $ref: "meta/applicator" },
+        { $ref: "meta/validation" },
+        { $ref: "meta/meta-data" },
+        { $ref: "meta/format" },
+        { $ref: "meta/content" }
+      ],
+      type: ["object", "boolean"],
+      properties: {
+        definitions: {
+          $comment: "While no longer an official keyword as it is replaced by $defs, this keyword is retained in the meta-schema to prevent incompatible extensions as it remains in common use.",
+          type: "object",
+          additionalProperties: { $recursiveRef: "#" },
+          default: {}
+        },
+        dependencies: {
+          $comment: '"dependencies" is no longer a keyword, but schema authors should avoid redefining it to facilitate a smooth transition to "dependentSchemas" and "dependentRequired"',
+          type: "object",
+          additionalProperties: { anyOf: [{ $recursiveRef: "#" }, { $ref: "meta/validation#/$defs/stringArray" }] }
+        }
+      }
+    };
+  });
+  require_applicator$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/applicator",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/applicator": true },
+      $recursiveAnchor: true,
+      title: "Applicator vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        additionalItems: { $recursiveRef: "#" },
+        unevaluatedItems: { $recursiveRef: "#" },
+        items: { anyOf: [{ $recursiveRef: "#" }, { $ref: "#/$defs/schemaArray" }] },
+        contains: { $recursiveRef: "#" },
+        additionalProperties: { $recursiveRef: "#" },
+        unevaluatedProperties: { $recursiveRef: "#" },
+        properties: {
+          type: "object",
+          additionalProperties: { $recursiveRef: "#" },
+          default: {}
+        },
+        patternProperties: {
+          type: "object",
+          additionalProperties: { $recursiveRef: "#" },
+          propertyNames: { format: "regex" },
+          default: {}
+        },
+        dependentSchemas: {
+          type: "object",
+          additionalProperties: { $recursiveRef: "#" }
+        },
+        propertyNames: { $recursiveRef: "#" },
+        if: { $recursiveRef: "#" },
+        then: { $recursiveRef: "#" },
+        else: { $recursiveRef: "#" },
+        allOf: { $ref: "#/$defs/schemaArray" },
+        anyOf: { $ref: "#/$defs/schemaArray" },
+        oneOf: { $ref: "#/$defs/schemaArray" },
+        not: { $recursiveRef: "#" }
+      },
+      $defs: { schemaArray: {
+        type: "array",
+        minItems: 1,
+        items: { $recursiveRef: "#" }
+      } }
+    };
+  });
+  require_content$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/content",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/content": true },
+      $recursiveAnchor: true,
+      title: "Content vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        contentMediaType: { type: "string" },
+        contentEncoding: { type: "string" },
+        contentSchema: { $recursiveRef: "#" }
+      }
+    };
+  });
+  require_core$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/core",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/core": true },
+      $recursiveAnchor: true,
+      title: "Core vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        $id: {
+          type: "string",
+          format: "uri-reference",
+          $comment: "Non-empty fragments not allowed.",
+          pattern: "^[^#]*#?$"
+        },
+        $schema: {
+          type: "string",
+          format: "uri"
+        },
+        $anchor: {
+          type: "string",
+          pattern: "^[A-Za-z][-A-Za-z0-9.:_]*$"
+        },
+        $ref: {
+          type: "string",
+          format: "uri-reference"
+        },
+        $recursiveRef: {
+          type: "string",
+          format: "uri-reference"
+        },
+        $recursiveAnchor: {
+          type: "boolean",
+          default: false
+        },
+        $vocabulary: {
+          type: "object",
+          propertyNames: {
+            type: "string",
+            format: "uri"
+          },
+          additionalProperties: { type: "boolean" }
+        },
+        $comment: { type: "string" },
+        $defs: {
+          type: "object",
+          additionalProperties: { $recursiveRef: "#" },
+          default: {}
+        }
+      }
+    };
+  });
+  require_format2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/format",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/format": true },
+      $recursiveAnchor: true,
+      title: "Format vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: { format: { type: "string" } }
+    };
+  });
+  require_meta_data$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/meta-data",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/meta-data": true },
+      $recursiveAnchor: true,
+      title: "Meta-data vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        default: true,
+        deprecated: {
+          type: "boolean",
+          default: false
+        },
+        readOnly: {
+          type: "boolean",
+          default: false
+        },
+        writeOnly: {
+          type: "boolean",
+          default: false
+        },
+        examples: {
+          type: "array",
+          items: true
+        }
+      }
+    };
+  });
+  require_validation$12 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2019-09/schema",
+      $id: "https://json-schema.org/draft/2019-09/meta/validation",
+      $vocabulary: { "https://json-schema.org/draft/2019-09/vocab/validation": true },
+      $recursiveAnchor: true,
+      title: "Validation vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        multipleOf: {
+          type: "number",
+          exclusiveMinimum: 0
+        },
+        maximum: { type: "number" },
+        exclusiveMaximum: { type: "number" },
+        minimum: { type: "number" },
+        exclusiveMinimum: { type: "number" },
+        maxLength: { $ref: "#/$defs/nonNegativeInteger" },
+        minLength: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        pattern: {
+          type: "string",
+          format: "regex"
+        },
+        maxItems: { $ref: "#/$defs/nonNegativeInteger" },
+        minItems: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        uniqueItems: {
+          type: "boolean",
+          default: false
+        },
+        maxContains: { $ref: "#/$defs/nonNegativeInteger" },
+        minContains: {
+          $ref: "#/$defs/nonNegativeInteger",
+          default: 1
+        },
+        maxProperties: { $ref: "#/$defs/nonNegativeInteger" },
+        minProperties: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        required: { $ref: "#/$defs/stringArray" },
+        dependentRequired: {
+          type: "object",
+          additionalProperties: { $ref: "#/$defs/stringArray" }
+        },
+        const: true,
+        enum: {
+          type: "array",
+          items: true
+        },
+        type: { anyOf: [{ $ref: "#/$defs/simpleTypes" }, {
+          type: "array",
+          items: { $ref: "#/$defs/simpleTypes" },
+          minItems: 1,
+          uniqueItems: true
+        }] }
+      },
+      $defs: {
+        nonNegativeInteger: {
+          type: "integer",
+          minimum: 0
+        },
+        nonNegativeIntegerDefault0: {
+          $ref: "#/$defs/nonNegativeInteger",
+          default: 0
+        },
+        simpleTypes: { enum: [
+          "array",
+          "boolean",
+          "integer",
+          "null",
+          "number",
+          "object",
+          "string"
+        ] },
+        stringArray: {
+          type: "array",
+          items: { type: "string" },
+          uniqueItems: true,
+          default: []
+        }
+      }
+    };
+  });
+  require_json_schema_2019_092 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const metaSchema = require_schema$12();
+    const applicator = require_applicator$12();
+    const content = require_content$12();
+    const core = require_core$12();
+    const format = require_format2();
+    const metadata = require_meta_data$12();
+    const validation = require_validation$12();
+    const META_SUPPORT_DATA = ["/properties"];
+    function addMetaSchema2019($data) {
+      [
+        metaSchema,
+        applicator,
+        content,
+        core,
+        with$data(this, format),
+        metadata,
+        with$data(this, validation)
+      ].forEach((sch) => this.addMetaSchema(sch, undefined, false));
+      return this;
+      function with$data(ajv, sch) {
+        return $data ? ajv.$dataMetaSchema(sch, META_SUPPORT_DATA) : sch;
+      }
+    }
+    exports.default = addMetaSchema2019;
+  });
+  require__20192 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv2019 = undefined;
+    const core_1 = require_core$32();
+    const draft7_1 = require_draft72();
+    const dynamic_1 = require_dynamic2();
+    const next_1 = require_next2();
+    const unevaluated_1 = require_unevaluated$12();
+    const discriminator_1 = require_discriminator2();
+    const json_schema_2019_09_1 = require_json_schema_2019_092();
+    const META_SCHEMA_ID = "https://json-schema.org/draft/2019-09/schema";
+    var Ajv2019 = class extends core_1.default {
+      constructor(opts = {}) {
+        super({
+          ...opts,
+          dynamicRef: true,
+          next: true,
+          unevaluated: true
+        });
+      }
+      _addVocabularies() {
+        super._addVocabularies();
+        this.addVocabulary(dynamic_1.default);
+        draft7_1.default.forEach((v) => this.addVocabulary(v));
+        this.addVocabulary(next_1.default);
+        this.addVocabulary(unevaluated_1.default);
+        if (this.opts.discriminator)
+          this.addKeyword(discriminator_1.default);
+      }
+      _addDefaultMetaSchema() {
+        super._addDefaultMetaSchema();
+        const { $data, meta } = this.opts;
+        if (!meta)
+          return;
+        json_schema_2019_09_1.default.call(this, $data);
+        this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
+      }
+      defaultMeta() {
+        return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : undefined);
+      }
+    };
+    exports.Ajv2019 = Ajv2019;
+    module.exports = exports = Ajv2019;
+    module.exports.Ajv2019 = Ajv2019;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = Ajv2019;
+    var validate_1 = require_validate2();
+    Object.defineProperty(exports, "KeywordCxt", {
+      enumerable: true,
+      get: function() {
+        return validate_1.KeywordCxt;
+      }
+    });
+    var codegen_1 = require_codegen2();
+    Object.defineProperty(exports, "_", {
+      enumerable: true,
+      get: function() {
+        return codegen_1._;
+      }
+    });
+    Object.defineProperty(exports, "str", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.str;
+      }
+    });
+    Object.defineProperty(exports, "stringify", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.stringify;
+      }
+    });
+    Object.defineProperty(exports, "nil", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.nil;
+      }
+    });
+    Object.defineProperty(exports, "Name", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.Name;
+      }
+    });
+    Object.defineProperty(exports, "CodeGen", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.CodeGen;
+      }
+    });
+    var validation_error_1 = require_validation_error2();
+    Object.defineProperty(exports, "ValidationError", {
+      enumerable: true,
+      get: function() {
+        return validation_error_1.default;
+      }
+    });
+    var ref_error_1 = require_ref_error2();
+    Object.defineProperty(exports, "MissingRefError", {
+      enumerable: true,
+      get: function() {
+        return ref_error_1.default;
+      }
+    });
+  });
+  require_draft20202 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const core_1 = require_core$22();
+    const validation_1 = require_validation$22();
+    const applicator_1 = require_applicator$22();
+    const dynamic_1 = require_dynamic2();
+    const next_1 = require_next2();
+    const unevaluated_1 = require_unevaluated$12();
+    const format_1 = require_format$12();
+    const metadata_1 = require_metadata2();
+    const draft2020Vocabularies = [
+      dynamic_1.default,
+      core_1.default,
+      validation_1.default,
+      (0, applicator_1.default)(true),
+      format_1.default,
+      metadata_1.metadataVocabulary,
+      metadata_1.contentVocabulary,
+      next_1.default,
+      unevaluated_1.default
+    ];
+    exports.default = draft2020Vocabularies;
+  });
+  require_schema2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/schema",
+      $vocabulary: {
+        "https://json-schema.org/draft/2020-12/vocab/core": true,
+        "https://json-schema.org/draft/2020-12/vocab/applicator": true,
+        "https://json-schema.org/draft/2020-12/vocab/unevaluated": true,
+        "https://json-schema.org/draft/2020-12/vocab/validation": true,
+        "https://json-schema.org/draft/2020-12/vocab/meta-data": true,
+        "https://json-schema.org/draft/2020-12/vocab/format-annotation": true,
+        "https://json-schema.org/draft/2020-12/vocab/content": true
+      },
+      $dynamicAnchor: "meta",
+      title: "Core and Validation specifications meta-schema",
+      allOf: [
+        { $ref: "meta/core" },
+        { $ref: "meta/applicator" },
+        { $ref: "meta/unevaluated" },
+        { $ref: "meta/validation" },
+        { $ref: "meta/meta-data" },
+        { $ref: "meta/format-annotation" },
+        { $ref: "meta/content" }
+      ],
+      type: ["object", "boolean"],
+      $comment: "This meta-schema also defines keywords that have appeared in previous drafts in order to prevent incompatible extensions as they remain in common use.",
+      properties: {
+        definitions: {
+          $comment: '"definitions" has been replaced by "$defs".',
+          type: "object",
+          additionalProperties: { $dynamicRef: "#meta" },
+          deprecated: true,
+          default: {}
+        },
+        dependencies: {
+          $comment: '"dependencies" has been split and replaced by "dependentSchemas" and "dependentRequired" in order to serve their differing semantics.',
+          type: "object",
+          additionalProperties: { anyOf: [{ $dynamicRef: "#meta" }, { $ref: "meta/validation#/$defs/stringArray" }] },
+          deprecated: true,
+          default: {}
+        },
+        $recursiveAnchor: {
+          $comment: '"$recursiveAnchor" has been replaced by "$dynamicAnchor".',
+          $ref: "meta/core#/$defs/anchorString",
+          deprecated: true
+        },
+        $recursiveRef: {
+          $comment: '"$recursiveRef" has been replaced by "$dynamicRef".',
+          $ref: "meta/core#/$defs/uriReferenceString",
+          deprecated: true
+        }
+      }
+    };
+  });
+  require_applicator2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/applicator",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/applicator": true },
+      $dynamicAnchor: "meta",
+      title: "Applicator vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        prefixItems: { $ref: "#/$defs/schemaArray" },
+        items: { $dynamicRef: "#meta" },
+        contains: { $dynamicRef: "#meta" },
+        additionalProperties: { $dynamicRef: "#meta" },
+        properties: {
+          type: "object",
+          additionalProperties: { $dynamicRef: "#meta" },
+          default: {}
+        },
+        patternProperties: {
+          type: "object",
+          additionalProperties: { $dynamicRef: "#meta" },
+          propertyNames: { format: "regex" },
+          default: {}
+        },
+        dependentSchemas: {
+          type: "object",
+          additionalProperties: { $dynamicRef: "#meta" },
+          default: {}
+        },
+        propertyNames: { $dynamicRef: "#meta" },
+        if: { $dynamicRef: "#meta" },
+        then: { $dynamicRef: "#meta" },
+        else: { $dynamicRef: "#meta" },
+        allOf: { $ref: "#/$defs/schemaArray" },
+        anyOf: { $ref: "#/$defs/schemaArray" },
+        oneOf: { $ref: "#/$defs/schemaArray" },
+        not: { $dynamicRef: "#meta" }
+      },
+      $defs: { schemaArray: {
+        type: "array",
+        minItems: 1,
+        items: { $dynamicRef: "#meta" }
+      } }
+    };
+  });
+  require_unevaluated2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/unevaluated",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/unevaluated": true },
+      $dynamicAnchor: "meta",
+      title: "Unevaluated applicator vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        unevaluatedItems: { $dynamicRef: "#meta" },
+        unevaluatedProperties: { $dynamicRef: "#meta" }
+      }
+    };
+  });
+  require_content2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/content",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/content": true },
+      $dynamicAnchor: "meta",
+      title: "Content vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        contentEncoding: { type: "string" },
+        contentMediaType: { type: "string" },
+        contentSchema: { $dynamicRef: "#meta" }
+      }
+    };
+  });
+  require_core2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/core",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/core": true },
+      $dynamicAnchor: "meta",
+      title: "Core vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        $id: {
+          $ref: "#/$defs/uriReferenceString",
+          $comment: "Non-empty fragments not allowed.",
+          pattern: "^[^#]*#?$"
+        },
+        $schema: { $ref: "#/$defs/uriString" },
+        $ref: { $ref: "#/$defs/uriReferenceString" },
+        $anchor: { $ref: "#/$defs/anchorString" },
+        $dynamicRef: { $ref: "#/$defs/uriReferenceString" },
+        $dynamicAnchor: { $ref: "#/$defs/anchorString" },
+        $vocabulary: {
+          type: "object",
+          propertyNames: { $ref: "#/$defs/uriString" },
+          additionalProperties: { type: "boolean" }
+        },
+        $comment: { type: "string" },
+        $defs: {
+          type: "object",
+          additionalProperties: { $dynamicRef: "#meta" }
+        }
+      },
+      $defs: {
+        anchorString: {
+          type: "string",
+          pattern: "^[A-Za-z_][-A-Za-z0-9._]*$"
+        },
+        uriString: {
+          type: "string",
+          format: "uri"
+        },
+        uriReferenceString: {
+          type: "string",
+          format: "uri-reference"
+        }
+      }
+    };
+  });
+  require_format_annotation2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/format-annotation",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/format-annotation": true },
+      $dynamicAnchor: "meta",
+      title: "Format vocabulary meta-schema for annotation results",
+      type: ["object", "boolean"],
+      properties: { format: { type: "string" } }
+    };
+  });
+  require_meta_data2 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/meta-data",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/meta-data": true },
+      $dynamicAnchor: "meta",
+      title: "Meta-data vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        default: true,
+        deprecated: {
+          type: "boolean",
+          default: false
+        },
+        readOnly: {
+          type: "boolean",
+          default: false
+        },
+        writeOnly: {
+          type: "boolean",
+          default: false
+        },
+        examples: {
+          type: "array",
+          items: true
+        }
+      }
+    };
+  });
+  require_validation3 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    module.exports = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://json-schema.org/draft/2020-12/meta/validation",
+      $vocabulary: { "https://json-schema.org/draft/2020-12/vocab/validation": true },
+      $dynamicAnchor: "meta",
+      title: "Validation vocabulary meta-schema",
+      type: ["object", "boolean"],
+      properties: {
+        type: { anyOf: [{ $ref: "#/$defs/simpleTypes" }, {
+          type: "array",
+          items: { $ref: "#/$defs/simpleTypes" },
+          minItems: 1,
+          uniqueItems: true
+        }] },
+        const: true,
+        enum: {
+          type: "array",
+          items: true
+        },
+        multipleOf: {
+          type: "number",
+          exclusiveMinimum: 0
+        },
+        maximum: { type: "number" },
+        exclusiveMaximum: { type: "number" },
+        minimum: { type: "number" },
+        exclusiveMinimum: { type: "number" },
+        maxLength: { $ref: "#/$defs/nonNegativeInteger" },
+        minLength: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        pattern: {
+          type: "string",
+          format: "regex"
+        },
+        maxItems: { $ref: "#/$defs/nonNegativeInteger" },
+        minItems: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        uniqueItems: {
+          type: "boolean",
+          default: false
+        },
+        maxContains: { $ref: "#/$defs/nonNegativeInteger" },
+        minContains: {
+          $ref: "#/$defs/nonNegativeInteger",
+          default: 1
+        },
+        maxProperties: { $ref: "#/$defs/nonNegativeInteger" },
+        minProperties: { $ref: "#/$defs/nonNegativeIntegerDefault0" },
+        required: { $ref: "#/$defs/stringArray" },
+        dependentRequired: {
+          type: "object",
+          additionalProperties: { $ref: "#/$defs/stringArray" }
+        }
+      },
+      $defs: {
+        nonNegativeInteger: {
+          type: "integer",
+          minimum: 0
+        },
+        nonNegativeIntegerDefault0: {
+          $ref: "#/$defs/nonNegativeInteger",
+          default: 0
+        },
+        simpleTypes: { enum: [
+          "array",
+          "boolean",
+          "integer",
+          "null",
+          "number",
+          "object",
+          "string"
+        ] },
+        stringArray: {
+          type: "array",
+          items: { type: "string" },
+          uniqueItems: true,
+          default: []
+        }
+      }
+    };
+  });
+  require_json_schema_2020_122 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const metaSchema = require_schema2();
+    const applicator = require_applicator2();
+    const unevaluated = require_unevaluated2();
+    const content = require_content2();
+    const core = require_core2();
+    const format = require_format_annotation2();
+    const metadata = require_meta_data2();
+    const validation = require_validation3();
+    const META_SUPPORT_DATA = ["/properties"];
+    function addMetaSchema2020($data) {
+      [
+        metaSchema,
+        applicator,
+        unevaluated,
+        content,
+        core,
+        with$data(this, format),
+        metadata,
+        with$data(this, validation)
+      ].forEach((sch) => this.addMetaSchema(sch, undefined, false));
+      return this;
+      function with$data(ajv, sch) {
+        return $data ? ajv.$dataMetaSchema(sch, META_SUPPORT_DATA) : sch;
+      }
+    }
+    exports.default = addMetaSchema2020;
+  });
+  require__20202 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv2020 = undefined;
+    const core_1 = require_core$32();
+    const draft2020_1 = require_draft20202();
+    const discriminator_1 = require_discriminator2();
+    const json_schema_2020_12_1 = require_json_schema_2020_122();
+    const META_SCHEMA_ID = "https://json-schema.org/draft/2020-12/schema";
+    var Ajv2020 = class extends core_1.default {
+      constructor(opts = {}) {
+        super({
+          ...opts,
+          dynamicRef: true,
+          next: true,
+          unevaluated: true
+        });
+      }
+      _addVocabularies() {
+        super._addVocabularies();
+        draft2020_1.default.forEach((v) => this.addVocabulary(v));
+        if (this.opts.discriminator)
+          this.addKeyword(discriminator_1.default);
+      }
+      _addDefaultMetaSchema() {
+        super._addDefaultMetaSchema();
+        const { $data, meta } = this.opts;
+        if (!meta)
+          return;
+        json_schema_2020_12_1.default.call(this, $data);
+        this.refs["http://json-schema.org/schema"] = META_SCHEMA_ID;
+      }
+      defaultMeta() {
+        return this.opts.defaultMeta = super.defaultMeta() || (this.getSchema(META_SCHEMA_ID) ? META_SCHEMA_ID : undefined);
+      }
+    };
+    exports.Ajv2020 = Ajv2020;
+    module.exports = exports = Ajv2020;
+    module.exports.Ajv2020 = Ajv2020;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = Ajv2020;
+    var validate_1 = require_validate2();
+    Object.defineProperty(exports, "KeywordCxt", {
+      enumerable: true,
+      get: function() {
+        return validate_1.KeywordCxt;
+      }
+    });
+    var codegen_1 = require_codegen2();
+    Object.defineProperty(exports, "_", {
+      enumerable: true,
+      get: function() {
+        return codegen_1._;
+      }
+    });
+    Object.defineProperty(exports, "str", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.str;
+      }
+    });
+    Object.defineProperty(exports, "stringify", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.stringify;
+      }
+    });
+    Object.defineProperty(exports, "nil", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.nil;
+      }
+    });
+    Object.defineProperty(exports, "Name", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.Name;
+      }
+    });
+    Object.defineProperty(exports, "CodeGen", {
+      enumerable: true,
+      get: function() {
+        return codegen_1.CodeGen;
+      }
+    });
+    var validation_error_1 = require_validation_error2();
+    Object.defineProperty(exports, "ValidationError", {
+      enumerable: true,
+      get: function() {
+        return validation_error_1.default;
+      }
+    });
+    var ref_error_1 = require_ref_error2();
+    Object.defineProperty(exports, "MissingRefError", {
+      enumerable: true,
+      get: function() {
+        return ref_error_1.default;
+      }
+    });
+  });
+  require_formats3 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.formatNames = exports.fastFormats = exports.fullFormats = undefined;
+    function fmtDef(validate, compare) {
+      return {
+        validate,
+        compare
+      };
+    }
+    exports.fullFormats = {
+      date: fmtDef(date, compareDate),
+      time: fmtDef(getTime(true), compareTime),
+      "date-time": fmtDef(getDateTime(true), compareDateTime),
+      "iso-time": fmtDef(getTime(), compareIsoTime),
+      "iso-date-time": fmtDef(getDateTime(), compareIsoDateTime),
+      duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/,
+      uri,
+      "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i,
+      "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i,
+      url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu,
+      email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i,
+      hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i,
+      ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/,
+      ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i,
+      regex,
+      uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
+      "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/,
+      "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i,
+      "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/,
+      byte,
+      int32: {
+        type: "number",
+        validate: validateInt32
+      },
+      int64: {
+        type: "number",
+        validate: validateInt64
+      },
+      float: {
+        type: "number",
+        validate: validateNumber
+      },
+      double: {
+        type: "number",
+        validate: validateNumber
+      },
+      password: true,
+      binary: true
+    };
+    exports.fastFormats = {
+      ...exports.fullFormats,
+      date: fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, compareDate),
+      time: fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareTime),
+      "date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareDateTime),
+      "iso-time": fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoTime),
+      "iso-date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoDateTime),
+      uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i,
+      "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i,
+      email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i
+    };
+    exports.formatNames = Object.keys(exports.fullFormats);
+    function isLeapYear(year) {
+      return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    }
+    const DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
+    const DAYS = [
+      0,
+      31,
+      28,
+      31,
+      30,
+      31,
+      30,
+      31,
+      31,
+      30,
+      31,
+      30,
+      31
+    ];
+    function date(str) {
+      const matches = DATE.exec(str);
+      if (!matches)
+        return false;
+      const year = +matches[1];
+      const month = +matches[2];
+      const day = +matches[3];
+      return month >= 1 && month <= 12 && day >= 1 && day <= (month === 2 && isLeapYear(year) ? 29 : DAYS[month]);
+    }
+    function compareDate(d1, d2) {
+      if (!(d1 && d2))
+        return;
+      if (d1 > d2)
+        return 1;
+      if (d1 < d2)
+        return -1;
+      return 0;
+    }
+    const TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
+    function getTime(strictTimeZone) {
+      return function time(str) {
+        const matches = TIME.exec(str);
+        if (!matches)
+          return false;
+        const hr = +matches[1];
+        const min = +matches[2];
+        const sec = +matches[3];
+        const tz = matches[4];
+        const tzSign = matches[5] === "-" ? -1 : 1;
+        const tzH = +(matches[6] || 0);
+        const tzM = +(matches[7] || 0);
+        if (tzH > 23 || tzM > 59 || strictTimeZone && !tz)
+          return false;
+        if (hr <= 23 && min <= 59 && sec < 60)
+          return true;
+        const utcMin = min - tzM * tzSign;
+        const utcHr = hr - tzH * tzSign - (utcMin < 0 ? 1 : 0);
+        return (utcHr === 23 || utcHr === -1) && (utcMin === 59 || utcMin === -1) && sec < 61;
+      };
+    }
+    function compareTime(s1, s2) {
+      if (!(s1 && s2))
+        return;
+      const t1 = (/* @__PURE__ */ new Date("2020-01-01T" + s1)).valueOf();
+      const t2 = (/* @__PURE__ */ new Date("2020-01-01T" + s2)).valueOf();
+      if (!(t1 && t2))
+        return;
+      return t1 - t2;
+    }
+    function compareIsoTime(t1, t2) {
+      if (!(t1 && t2))
+        return;
+      const a1 = TIME.exec(t1);
+      const a2 = TIME.exec(t2);
+      if (!(a1 && a2))
+        return;
+      t1 = a1[1] + a1[2] + a1[3];
+      t2 = a2[1] + a2[2] + a2[3];
+      if (t1 > t2)
+        return 1;
+      if (t1 < t2)
+        return -1;
+      return 0;
+    }
+    const DATE_TIME_SEPARATOR = /t|\s/i;
+    function getDateTime(strictTimeZone) {
+      const time = getTime(strictTimeZone);
+      return function date_time(str) {
+        const dateTime = str.split(DATE_TIME_SEPARATOR);
+        return dateTime.length === 2 && date(dateTime[0]) && time(dateTime[1]);
+      };
+    }
+    function compareDateTime(dt1, dt2) {
+      if (!(dt1 && dt2))
+        return;
+      const d1 = new Date(dt1).valueOf();
+      const d2 = new Date(dt2).valueOf();
+      if (!(d1 && d2))
+        return;
+      return d1 - d2;
+    }
+    function compareIsoDateTime(dt1, dt2) {
+      if (!(dt1 && dt2))
+        return;
+      const [d1, t1] = dt1.split(DATE_TIME_SEPARATOR);
+      const [d2, t2] = dt2.split(DATE_TIME_SEPARATOR);
+      const res = compareDate(d1, d2);
+      if (res === undefined)
+        return;
+      return res || compareTime(t1, t2);
+    }
+    const NOT_URI_FRAGMENT = /\/|:/;
+    const URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
+    function uri(str) {
+      return NOT_URI_FRAGMENT.test(str) && URI.test(str);
+    }
+    const BYTE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
+    function byte(str) {
+      BYTE.lastIndex = 0;
+      return BYTE.test(str);
+    }
+    const MIN_INT32 = -(2 ** 31);
+    const MAX_INT32 = 2 ** 31 - 1;
+    function validateInt32(value) {
+      return Number.isInteger(value) && value <= MAX_INT32 && value >= MIN_INT32;
+    }
+    function validateInt64(value) {
+      return Number.isInteger(value);
+    }
+    function validateNumber() {
+      return true;
+    }
+    const Z_ANCHOR = /[^\\]\\Z/;
+    function regex(str) {
+      if (Z_ANCHOR.test(str))
+        return false;
+      try {
+        new RegExp(str);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+  });
+  require_limit2 = /* @__PURE__ */ __commonJSMin2((exports) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.formatLimitDefinition = undefined;
+    const ajv_1 = require_ajv2();
+    const codegen_1 = require_codegen2();
+    const ops = codegen_1.operators;
+    const KWDs = {
+      formatMaximum: {
+        okStr: "<=",
+        ok: ops.LTE,
+        fail: ops.GT
+      },
+      formatMinimum: {
+        okStr: ">=",
+        ok: ops.GTE,
+        fail: ops.LT
+      },
+      formatExclusiveMaximum: {
+        okStr: "<",
+        ok: ops.LT,
+        fail: ops.GTE
+      },
+      formatExclusiveMinimum: {
+        okStr: ">",
+        ok: ops.GT,
+        fail: ops.LTE
+      }
+    };
+    const error = {
+      message: ({ keyword, schemaCode }) => (0, codegen_1.str)`should be ${KWDs[keyword].okStr} ${schemaCode}`,
+      params: ({ keyword, schemaCode }) => (0, codegen_1._)`{comparison: ${KWDs[keyword].okStr}, limit: ${schemaCode}}`
+    };
+    exports.formatLimitDefinition = {
+      keyword: Object.keys(KWDs),
+      type: "string",
+      schemaType: "string",
+      $data: true,
+      error,
+      code(cxt) {
+        const { gen, data, schemaCode, keyword, it } = cxt;
+        const { opts, self: self2 } = it;
+        if (!opts.validateFormats)
+          return;
+        const fCxt = new ajv_1.KeywordCxt(it, self2.RULES.all.format.definition, "format");
+        if (fCxt.$data)
+          validate$DataFormat();
+        else
+          validateFormat();
+        function validate$DataFormat() {
+          const fmts = gen.scopeValue("formats", {
+            ref: self2.formats,
+            code: opts.code.formats
+          });
+          const fmt = gen.const("fmt", (0, codegen_1._)`${fmts}[${fCxt.schemaCode}]`);
+          cxt.fail$data((0, codegen_1.or)((0, codegen_1._)`typeof ${fmt} != "object"`, (0, codegen_1._)`${fmt} instanceof RegExp`, (0, codegen_1._)`typeof ${fmt}.compare != "function"`, compareCode(fmt)));
+        }
+        function validateFormat() {
+          const format = fCxt.schema;
+          const fmtDef = self2.formats[format];
+          if (!fmtDef || fmtDef === true)
+            return;
+          if (typeof fmtDef != "object" || fmtDef instanceof RegExp || typeof fmtDef.compare != "function")
+            throw new Error(`"${keyword}": format "${format}" does not define "compare" function`);
+          const fmt = gen.scopeValue("formats", {
+            key: format,
+            ref: fmtDef,
+            code: opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(format)}` : undefined
+          });
+          cxt.fail$data(compareCode(fmt));
+        }
+        function compareCode(fmt) {
+          return (0, codegen_1._)`${fmt}.compare(${data}, ${schemaCode}) ${KWDs[keyword].fail} 0`;
+        }
+      },
+      dependencies: ["format"]
+    };
+    const formatLimitPlugin = (ajv) => {
+      ajv.addKeyword(exports.formatLimitDefinition);
+      return ajv;
+    };
+    exports.default = formatLimitPlugin;
+  });
+  require_dist8 = /* @__PURE__ */ __commonJSMin2((exports, module) => {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    const formats_1 = require_formats3();
+    const limit_1 = require_limit2();
+    const codegen_1 = require_codegen2();
+    const fullName = new codegen_1.Name("fullFormats");
+    const fastName = new codegen_1.Name("fastFormats");
+    const formatsPlugin = (ajv, opts = { keywords: true }) => {
+      if (Array.isArray(opts)) {
+        addFormats(ajv, opts, formats_1.fullFormats, fullName);
+        return ajv;
+      }
+      const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
+      addFormats(ajv, opts.formats || formats_1.formatNames, formats, exportName);
+      if (opts.keywords)
+        (0, limit_1.default)(ajv);
+      return ajv;
+    };
+    formatsPlugin.get = (name, mode = "full") => {
+      const f = (mode === "fast" ? formats_1.fastFormats : formats_1.fullFormats)[name];
+      if (!f)
+        throw new Error(`Unknown format "${name}"`);
+      return f;
+    };
+    function addFormats(ajv, list, fs, exportName) {
+      var _a;
+      var _b;
+      (_a = (_b = ajv.opts.code).formats) !== null && _a !== undefined || (_b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`);
+      for (const f of list)
+        ajv.addFormat(f, fs[f]);
+    }
+    module.exports = exports = formatsPlugin;
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.default = formatsPlugin;
+  });
+  import_ajv2 = require_ajv2();
+  import__20192 = require__20192();
+  import__20202 = require__20202();
+  import_dist2 = /* @__PURE__ */ __toESM4(require_dist8(), 1);
+  addFormats2 = import_dist2.default;
+  Ajv2 = import_ajv2.Ajv;
+});
+
+// node_modules/@modelcontextprotocol/client/dist/shimsNode.mjs
+var init_shimsNode2 = __esm(() => {
+  init_ajvProvider_97rDpkRx();
+});
+
+// node_modules/pkce-challenge/dist/index.node.js
+var crypto2;
+var init_index_node = __esm(() => {
+  crypto2 = globalThis.crypto?.webcrypto ?? globalThis.crypto ?? import("node:crypto").then((m) => m.webcrypto);
+});
+
+// node_modules/@modelcontextprotocol/client/dist/index.mjs
+var OAuthClientFlowError, IssuerMismatchError, RegistrationRejectedError, InsecureTokenEndpointError, AuthorizationServerMismatchError, InsufficientScopeError, UnauthorizedError, CAP_EXEMPT_METHODS, AUTH_SEAM, NOT_PROBE_RECOGNIZED, SseError, RESERVED_REQUEST_HEADER_NAMES;
+var init_dist12 = __esm(() => {
+  init_src_D_zzAWoS();
+  init_shimsNode2();
+  init_index_node();
+  OAuthClientFlowError = class extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.OAuthClientFlowError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(message) {
+      super(message);
+      this.name = new.target.name;
+      stampErrorBrands2(this, new.target);
+    }
+  };
+  IssuerMismatchError = class extends OAuthClientFlowError {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.IssuerMismatchError" });
+    }
+    kind;
+    expected;
+    received;
+    constructor(kind, expected, received) {
+      super(`Issuer mismatch in ${kind === "metadata" ? "authorization server metadata (RFC 8414 §3.3)" : "authorization response (RFC 9207)"}: expected ${JSON.stringify(expected)}, received ${JSON.stringify(received)}`);
+      this.kind = kind;
+      this.expected = expected;
+      this.received = received;
+    }
+  };
+  RegistrationRejectedError = class extends OAuthClientFlowError {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.RegistrationRejectedError" });
+    }
+    status;
+    body;
+    submittedMetadata;
+    constructor(args) {
+      super(`Dynamic Client Registration rejected (HTTP ${args.status}): ${args.body}`);
+      this.status = args.status;
+      this.body = args.body;
+      this.submittedMetadata = args.submittedMetadata;
+    }
+  };
+  InsecureTokenEndpointError = class extends OAuthClientFlowError {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.InsecureTokenEndpointError" });
+    }
+    tokenEndpoint;
+    constructor(tokenEndpoint) {
+      super(`Refusing to send credentials to non-https token endpoint '${tokenEndpoint}'. OAuth token requests MUST use TLS (localhost / 127.0.0.1 / ::1 are exempt).`);
+      this.tokenEndpoint = tokenEndpoint;
+    }
+  };
+  AuthorizationServerMismatchError = class extends OAuthClientFlowError {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.AuthorizationServerMismatchError" });
+    }
+    constructor(recordedIssuer, currentIssuer) {
+      super(`Authorization server changed between redirect and callback (redirected to ${JSON.stringify(recordedIssuer)}, callback resolved ${JSON.stringify(currentIssuer)}); refusing to send authorization_code/code_verifier to a different token endpoint`);
+      this.recordedIssuer = recordedIssuer;
+      this.currentIssuer = currentIssuer;
+    }
+  };
+  InsufficientScopeError = class extends OAuthClientFlowError {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.InsufficientScopeError" });
+    }
+    requiredScope;
+    resourceMetadataUrl;
+    errorDescription;
+    constructor(init) {
+      super(`Insufficient scope${init.requiredScope ? `: required "${init.requiredScope}"` : ""}`);
+      this.requiredScope = init.requiredScope;
+      this.resourceMetadataUrl = init.resourceMetadataUrl;
+      this.errorDescription = init.errorDescription;
+    }
+  };
+  UnauthorizedError = class extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.UnauthorizedError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(message) {
+      super(message ?? "Unauthorized");
+      this.name = "UnauthorizedError";
+      stampErrorBrands2(this, new.target);
+    }
+  };
+  CAP_EXEMPT_METHODS = new Set([
+    "tools/list",
+    "prompts/list",
+    "resources/list",
+    "resources/templates/list",
+    "server/discover"
+  ]);
+  AUTH_SEAM = Symbol.for("mcp.authSeamEscape");
+  NOT_PROBE_RECOGNIZED = new Set([
+    -32001,
+    -32020,
+    -32021
+  ]);
+  SseError = class extends Error {
+    static {
+      Object.defineProperty(this, "mcpBrand", { value: "mcp.SseError" });
+    }
+    static [Symbol.hasInstance](value) {
+      return brandedHasInstance2(this, value);
+    }
+    static isInstance(value) {
+      if (typeof this !== "function")
+        throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
+      return brandedHasInstance2(this, value);
+    }
+    constructor(code, message, event) {
+      super(`SSE error: ${message}`);
+      this.code = code;
+      this.event = event;
+      stampErrorBrands2(this, new.target);
+    }
+  };
+  RESERVED_REQUEST_HEADER_NAMES = new Set([
+    "authorization",
+    "content-type",
+    "mcp-protocol-version",
+    "mcp-method",
+    "mcp-name",
+    "mcp-session-id"
+  ]);
+});
+
+// utils/mcpProtocol.ts
+function readMcpProtocolPolicy(env = process.env) {
+  const value = env.MCP_LEGACY_COMPATIBILITY;
+  if (value !== undefined && value !== "true" && value !== "false")
+    throw new Error("MCP_LEGACY_COMPATIBILITY must be true or false");
+  const legacyCompatibility = value !== "false";
+  return { legacyCompatibility, supportedVersions: [...new Set([MCP_PRIMARY_PROTOCOL, ...legacyCompatibility ? SUPPORTED_PROTOCOL_VERSIONS : []])] };
+}
+var MCP_PRIMARY_PROTOCOL = "2026-07-28";
+var init_mcpProtocol = __esm(() => {
+  init_dist12();
+});
+
+// utils/mcpToolExecution.ts
+function withMcpToolExecution(server, era, flow = new McpApprovalFlow) {
   return new Proxy(server, {
     get(target, property, receiver) {
-      if (property !== "registerTool") {
+      if (property !== "registerTool")
         return Reflect.get(target, property, receiver);
-      }
-      return (...args) => {
-        const [name, config, callback] = args;
-        if (typeof name !== "string" || !isToolCallback(callback)) {
-          return Reflect.apply(target.registerTool, target, args);
+      return (...registration) => {
+        const [name, config, callback] = registration;
+        if (typeof name !== "string" || typeof callback !== "function") {
+          return Reflect.apply(target.registerTool, target, registration);
         }
         return Reflect.apply(target.registerTool, target, [
           name,
           config,
-          applyModernToolPolicy(era, name, callback)
+          async (...args) => {
+            const ctx = args.at(-1);
+            if (era === "legacy")
+              return runWithLegacyApprovalContext(target, ctx, () => callback(...args));
+            const input = args.length > 1 ? args[0] : undefined;
+            const envelopeCapabilities = ctx.mcpReq.envelope ? Reflect.get(ctx.mcpReq.envelope, CLIENT_CAPABILITIES_META_KEY) : undefined;
+            const capabilities = envelopeCapabilities ?? target.server.getClientCapabilities();
+            return flow.run(name, input, ctx, Boolean(capabilities?.elicitation?.form), (signal) => {
+              const operationContext = {
+                ...ctx,
+                mcpReq: { ...ctx.mcpReq, signal }
+              };
+              const invocation = args.length > 1 ? [input, operationContext] : [operationContext];
+              return Promise.resolve(callback(...invocation));
+            });
+          }
         ]);
       };
     }
   });
 }
-var MODERN_READ_TOOL_ALLOWLIST, modernReadToolNames;
-var init_modernToolPolicy = __esm(() => {
-  MODERN_READ_TOOL_ALLOWLIST = Object.freeze([
-    "bsv_read",
-    "ordinals_read",
-    "wallet_read",
-    "utility",
-    "app_explorer_data",
-    "app_ordinals_data",
-    "app_sweep_scan",
-    "app_wallet_data",
-    "bsv_dashboard",
-    "bap_getCurrentAddress",
-    "bap_getId",
-    "bmap_readFollows",
-    "bmap_readLikes",
-    "bmap_readPosts",
-    "bsv_decodeTransaction",
-    "bsv_explore",
-    "bsv_getPrice",
-    "bsv_status",
-    "bsocial_readPosts",
-    "mnee_getBalance",
-    "mnee_parseTx",
-    "ordinals_getInscription",
-    "ordinals_getTokenByIdOrTicker",
-    "ordinals_marketListings",
-    "ordinals_marketSales",
-    "ordinals_searchInscriptions",
-    "utils_convertData",
-    "utils_find_skills",
-    "wallet_getAddress",
-    "wallet_getBalance",
-    "wallet_getBsv21Balances",
-    "wallet_getLockData",
-    "wallet_getOrdinals",
-    "wallet_listTokens",
-    "droplit_discover"
-  ]);
-  modernReadToolNames = new Set(MODERN_READ_TOOL_ALLOWLIST);
-});
-
-// utils/passphrasePrompt.ts
-import { join as join15 } from "node:path";
-function setServerInstance(server) {
-  serverInstance2 = server;
-}
-var LOCK_DIR, LOCK_FILE, serverInstance2 = null;
-var init_passphrasePrompt = __esm(() => {
-  LOCK_DIR = join15(process.env.HOME || "", ".bsv-mcp");
-  LOCK_FILE = join15(LOCK_DIR, "prompt.lock");
+var init_mcpToolExecution = __esm(() => {
+  init_dist();
+  init_mcpApprovalFlow();
 });
 
 // utils/vaultProfileDerivation.ts
@@ -297835,328 +310731,8 @@ var init_projectRoleBindings = __esm(() => {
   }).strict();
 });
 
-// utils/vaultProfileBinding.ts
-function parseVaultProfileBinding(input) {
-  const result = vaultProfileBindingSchema.safeParse(input);
-  if (!result.success)
-    throw new VaultProfileDerivationError("VAULT_PROFILE_BINDING_UNSUPPORTED");
-  return result.data.key;
-}
-function resolveVaultProfileBindingKey(access, input, reason, api) {
-  return resolveVaultProfilePrivateKey(access, parseVaultProfileBinding(input), reason, api);
-}
-var vaultProfileBindingSchema;
-var init_vaultProfileBinding = __esm(() => {
-  init_zod();
-  init_projectRoleBindings();
-  init_vaultProfileDerivation();
-  vaultProfileBindingSchema = object2({
-    keyUseContract: _enum(["brc157-leaf-v1", "yours-legacy-leaf-v1"]),
-    key: projectVaultKeyReferenceSchema
-  }).strict().superRefine((binding, ctx) => {
-    const expected = binding.keyUseContract === "brc157-leaf-v1" ? "brc157" : "yours-legacy-bip32";
-    if (binding.key.derivation?.scheme !== expected)
-      ctx.addIssue({
-        code: "custom",
-        path: ["key", "derivation"],
-        message: "Profile contract and derivation must match"
-      });
-  });
-});
-
-// utils/vaultWallet.ts
-import { isAbsolute as isAbsolute7 } from "node:path";
-function createOplVaultLoader(module) {
-  return async (path, passphrase) => {
-    let vault;
-    try {
-      vault = await module.openVault(path, new module.PassphraseProvider(passphrase));
-      const id = vault.toDocument().id;
-      const current = () => {
-        if (!vault)
-          throw new VaultWalletError("SESSION_LOCKED", "Vault session is locked.");
-        return vault;
-      };
-      return {
-        id,
-        get: (entryId) => current().get(entryId),
-        unlock: (reason, ttl) => current().unlock(reason, ttl),
-        reveal: (entryId, reason) => current().reveal(entryId, reason),
-        lock: () => {
-          try {
-            vault?.lock();
-          } finally {
-            vault = undefined;
-          }
-        }
-      };
-    } catch {
-      try {
-        vault?.lock();
-      } catch {}
-      vault = undefined;
-      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
-    }
-  };
-}
-async function openVaultWalletSession(selection, passphrase, dependencies) {
-  const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
-  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute7(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
-    throw new VaultWalletError("INVALID_SELECTION", "Select a valid Vault entry and existing wallet account.");
-  }
-  const ttl = selection.ttlSeconds ?? 300;
-  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 3600) {
-    throw new VaultWalletError("INVALID_TTL", "Vault wallet sessions must last 1–3600 seconds.");
-  }
-  const binding = parsed.data;
-  if (binding.derivation?.scheme === "brc157") {
-    Object.freeze(binding.derivation.leaf.protocolID);
-    Object.freeze(binding.derivation.leaf);
-  }
-  if (binding.derivation)
-    Object.freeze(binding.derivation);
-  Object.freeze(binding);
-  if (binding.keyUseContract !== "direct-v1" && !dependencies.profileDerivationApi)
-    throw new VaultWalletError("PROFILE_API_UNAVAILABLE", "The installed Vault profile derivation API is unavailable.");
-  const pinned = Object.freeze({ ...selection, binding, ttlSeconds: ttl });
-  const now = dependencies.now ?? Date.now;
-  const controller = new AbortController;
-  let access;
-  let initialized;
-  let key;
-  let state = "ready";
-  let expiresAt = 0;
-  let timer;
-  let closing;
-  const pending = new Set;
-  const close = (reason) => {
-    if (closing)
-      return closing;
-    state = reason;
-    controller.abort(new VaultWalletError("SESSION_LOCKED", "Vault wallet session is no longer active."));
-    clearTimeout(timer);
-    try {
-      access?.lock();
-    } catch {}
-    access = undefined;
-    key = undefined;
-    closing = (async () => {
-      await Promise.allSettled([...pending]);
-      const current = initialized;
-      initialized = undefined;
-      try {
-        await current?.destroy();
-      } catch {
-        throw new VaultWalletError("CLEANUP_FAILED", "Wallet session closed, but resource cleanup failed.");
-      }
-    })();
-    return closing;
-  };
-  const assertActive = () => {
-    if (state === "ready" && now() >= expiresAt) {
-      close("expired").catch(() => {});
-    }
-    if (state !== "ready") {
-      throw new VaultWalletError(state === "expired" ? "SESSION_EXPIRED" : "SESSION_LOCKED", "Unlock the selected Vault wallet again before using it.");
-    }
-  };
-  try {
-    try {
-      access = await dependencies.openVault(pinned.vaultPath, passphrase);
-    } catch {
-      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
-    }
-    if (access.id !== binding.vaultId) {
-      throw new VaultWalletError("VAULT_MISMATCH", "The selected Vault does not match this binding.");
-    }
-    let entry;
-    try {
-      entry = access.get(binding.entryId);
-    } catch {
-      throw new VaultWalletError("ENTRY_UNAVAILABLE", "The selected Vault entry is unavailable.");
-    }
-    if (binding.keyUseContract === "direct-v1" && entry.kind !== "private" && entry.kind !== "wif") {
-      throw new VaultWalletError("UNSUPPORTED_ENTRY", "This wallet requires an explicitly selected private-key or WIF entry.");
-    }
-    if (binding.keyUseContract === "direct-v1" && entry.publicKey !== undefined && entry.publicKey.toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
-      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected entry does not match the approved wallet identity.");
-    }
-    expiresAt = now() + ttl * 1000;
-    access.unlock(pinned.reason, ttl);
-    timer = setTimeout(() => {
-      close("expired").catch(() => {});
-    }, Math.max(0, expiresAt - now()));
-    timer.unref?.();
-    try {
-      if (binding.keyUseContract !== "direct-v1") {
-        const profileApi = dependencies.profileDerivationApi;
-        if (!profileApi)
-          throw new Error("Profile API unavailable");
-        const profileAccess = access;
-        key = resolveVaultProfileBindingKey({
-          id: access.id,
-          assertActive,
-          get: (id) => profileAccess.get(id),
-          reveal: (id, reason) => profileAccess.reveal(id, reason)
-        }, {
-          keyUseContract: binding.keyUseContract,
-          key: {
-            vaultId: binding.vaultId,
-            entryId: binding.entryId,
-            expectedPublicKey: binding.expectedPublicKey,
-            derivation: binding.derivation
-          }
-        }, pinned.reason, profileApi);
-      } else {
-        const value = access.reveal(binding.entryId, pinned.reason);
-        key = entry.kind === "private" ? PrivateKey.fromHex(value) : PrivateKey.fromWif(value);
-      }
-    } catch {
-      throw new VaultWalletError("KEY_UNAVAILABLE", "The selected key is invalid or Vault reveal is disabled.");
-    }
-    if (key.toPublicKey().toString().toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
-      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected key does not match the approved wallet identity.");
-    }
-    assertActive();
-    const initialize = dependencies.initializeWallet ?? ((privateKey, selected, signal) => initWallet(privateKey, selected.chain, {
-      accountName: selected.accountName,
-      trackActive: false,
-      sessionSignal: signal
-    }));
-    initialized = await initialize(key, pinned, controller.signal);
-    key = undefined;
-    if (controller.signal.aborted) {
-      const late = initialized;
-      initialized = undefined;
-      await late.destroy().catch(() => {});
-      throw new VaultWalletError("SESSION_EXPIRED", "Unlock the selected Vault wallet again before using it.");
-    }
-    access.lock();
-    access = undefined;
-    assertActive();
-    const invoke = (name) => {
-      const method = (...args) => {
-        try {
-          assertActive();
-        } catch (error) {
-          return Promise.reject(error);
-        }
-        const current = initialized;
-        if (!current)
-          return Promise.reject(new VaultWalletError("SESSION_LOCKED", "Wallet session is closed."));
-        const call = Promise.resolve().then(() => {
-          assertActive();
-          return Reflect.apply(current.wallet[name], current.wallet, args);
-        });
-        pending.add(call);
-        call.then(() => pending.delete(call), () => pending.delete(call));
-        return call;
-      };
-      return method;
-    };
-    const wallet = Object.freeze({
-      getPublicKey: invoke("getPublicKey"),
-      revealCounterpartyKeyLinkage: invoke("revealCounterpartyKeyLinkage"),
-      revealSpecificKeyLinkage: invoke("revealSpecificKeyLinkage"),
-      encrypt: invoke("encrypt"),
-      decrypt: invoke("decrypt"),
-      createHmac: invoke("createHmac"),
-      verifyHmac: invoke("verifyHmac"),
-      createSignature: invoke("createSignature"),
-      verifySignature: invoke("verifySignature"),
-      createAction: invoke("createAction"),
-      signAction: invoke("signAction"),
-      abortAction: invoke("abortAction"),
-      listActions: invoke("listActions"),
-      internalizeAction: invoke("internalizeAction"),
-      listOutputs: invoke("listOutputs"),
-      relinquishOutput: invoke("relinquishOutput"),
-      acquireCertificate: invoke("acquireCertificate"),
-      listCertificates: invoke("listCertificates"),
-      proveCertificate: invoke("proveCertificate"),
-      relinquishCertificate: invoke("relinquishCertificate"),
-      discoverByIdentityKey: invoke("discoverByIdentityKey"),
-      discoverByAttributes: invoke("discoverByAttributes"),
-      isAuthenticated: invoke("isAuthenticated"),
-      waitForAuthentication: invoke("waitForAuthentication"),
-      getHeight: invoke("getHeight"),
-      getHeaderForHeight: invoke("getHeaderForHeight"),
-      getNetwork: invoke("getNetwork"),
-      getVersion: invoke("getVersion")
-    });
-    const ctx = Object.freeze({ ...initialized.ctx, wallet });
-    const depositAddress = initialized.depositAddress;
-    return Object.freeze({
-      binding,
-      get state() {
-        if (state === "ready" && now() >= expiresAt)
-          close("expired").catch(() => {});
-        return state;
-      },
-      expiresAt,
-      depositAddress,
-      wallet,
-      ctx,
-      lock: () => close("locked")
-    });
-  } catch (error) {
-    await close("locked").catch(() => {});
-    if (error instanceof VaultWalletError)
-      throw error;
-    throw new VaultWalletError("INITIALIZATION_FAILED", "Cannot initialize the selected Vault wallet.");
-  }
-}
-var vaultWalletBindingSchema, VaultWalletError;
-var init_vaultWallet = __esm(() => {
-  init_mod();
-  init_zod();
-  init_accounts();
-  init_vaultProfileBinding();
-  init_vaultProfileDerivation();
-  init_walletInit();
-  vaultWalletBindingSchema = object2({
-    projectId: string2().min(1),
-    revision: number2().int().nonnegative(),
-    bindingId: string2().min(1),
-    accountId: string2().min(1),
-    vaultId: string2().min(1),
-    entryId: string2().min(1),
-    expectedPublicKey: string2().regex(/^(02|03)[0-9a-fA-F]{64}$/),
-    keyUseContract: _enum([
-      "direct-v1",
-      "brc157-leaf-v1",
-      "yours-legacy-leaf-v1"
-    ]),
-    derivation: vaultProfileDerivationSchema.optional()
-  }).strict().superRefine((binding, ctx) => {
-    const valid = binding.keyUseContract === "direct-v1" ? binding.derivation === undefined : vaultProfileBindingSchema.safeParse({
-      keyUseContract: binding.keyUseContract,
-      key: {
-        vaultId: binding.vaultId,
-        entryId: binding.entryId,
-        expectedPublicKey: binding.expectedPublicKey,
-        derivation: binding.derivation
-      }
-    }).success;
-    if (!valid)
-      ctx.addIssue({
-        code: "custom",
-        path: ["derivation"],
-        message: "Explicit contract and derivation must match"
-      });
-  });
-  VaultWalletError = class VaultWalletError extends Error {
-    code;
-    constructor(code, message) {
-      super(message);
-      this.code = code;
-      this.name = "VaultWalletError";
-    }
-  };
-});
-
 // utils/projectRoleBindingsStore.ts
-import { randomUUID as randomUUID4 } from "node:crypto";
+import { randomUUID as randomUUID6 } from "node:crypto";
 import { constants as constants4 } from "node:fs";
 import {
   lstat as lstat2,
@@ -298303,7 +310879,7 @@ async function saveProjectRoleBindings(projectRoot, input, options) {
 `;
     if (Buffer.byteLength(serialized, "utf8") > MAX_CONFIG_BYTES)
       fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
-    temporaryPath = join16(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID4()}.tmp`);
+    temporaryPath = join16(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID6()}.tmp`);
     const temporary = await open4(temporaryPath, "wx", 384);
     try {
       await temporary.writeFile(serialized, "utf8");
@@ -298344,8 +310920,336 @@ var init_projectRoleBindingsStore = __esm(() => {
   };
 });
 
-// utils/vaultWalletController.ts
+// utils/vaultProfileBinding.ts
+function parseVaultProfileBinding(input) {
+  const result = vaultProfileBindingSchema.safeParse(input);
+  if (!result.success)
+    throw new VaultProfileDerivationError("VAULT_PROFILE_BINDING_UNSUPPORTED");
+  return result.data.key;
+}
+function resolveVaultProfileBindingKey(access, input, reason, api) {
+  return resolveVaultProfilePrivateKey(access, parseVaultProfileBinding(input), reason, api);
+}
+var vaultProfileBindingSchema;
+var init_vaultProfileBinding = __esm(() => {
+  init_zod();
+  init_projectRoleBindings();
+  init_vaultProfileDerivation();
+  vaultProfileBindingSchema = object2({
+    keyUseContract: _enum(["brc157-leaf-v1", "yours-legacy-leaf-v1"]),
+    key: projectVaultKeyReferenceSchema
+  }).strict().superRefine((binding, ctx) => {
+    const expected = binding.keyUseContract === "brc157-leaf-v1" ? "brc157" : "yours-legacy-bip32";
+    if (binding.key.derivation?.scheme !== expected)
+      ctx.addIssue({
+        code: "custom",
+        path: ["key", "derivation"],
+        message: "Profile contract and derivation must match"
+      });
+  });
+});
+
+// utils/vaultWallet.ts
 import { isAbsolute as isAbsolute9 } from "node:path";
+function createOplVaultLoader(module) {
+  return async (path, passphrase) => {
+    let vault;
+    try {
+      vault = await module.openVault(path, new module.PassphraseProvider(passphrase));
+      const id = vault.toDocument().id;
+      const current = () => {
+        if (!vault)
+          throw new VaultWalletError("SESSION_LOCKED", "Vault session is locked.");
+        return vault;
+      };
+      return {
+        id,
+        get: (entryId) => current().get(entryId),
+        unlock: (reason, ttl) => current().unlock(reason, ttl),
+        reveal: (entryId, reason) => current().reveal(entryId, reason),
+        lock: () => {
+          try {
+            vault?.lock();
+          } finally {
+            vault = undefined;
+          }
+        }
+      };
+    } catch {
+      try {
+        vault?.lock();
+      } catch {}
+      vault = undefined;
+      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
+    }
+  };
+}
+async function openVaultWalletSession(selection, passphrase, dependencies) {
+  const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
+  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute9(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
+    throw new VaultWalletError("INVALID_SELECTION", "Select a valid Vault entry and existing wallet account.");
+  }
+  const ttl = selection.ttlSeconds ?? 300;
+  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 3600) {
+    throw new VaultWalletError("INVALID_TTL", "Vault wallet sessions must last 1–3600 seconds.");
+  }
+  const binding = parsed.data;
+  if (binding.derivation?.scheme === "brc157") {
+    Object.freeze(binding.derivation.leaf.protocolID);
+    Object.freeze(binding.derivation.leaf);
+  }
+  if (binding.derivation?.scheme === "brc42")
+    Object.freeze(binding.derivation.protocolID);
+  if (binding.derivation)
+    Object.freeze(binding.derivation);
+  Object.freeze(binding);
+  if ((binding.keyUseContract === "brc157-leaf-v1" || binding.keyUseContract === "yours-legacy-leaf-v1") && !dependencies.profileDerivationApi)
+    throw new VaultWalletError("PROFILE_API_UNAVAILABLE", "The installed Vault profile derivation API is unavailable.");
+  const pinned = Object.freeze({ ...selection, binding, ttlSeconds: ttl });
+  const now = dependencies.now ?? Date.now;
+  const controller = new AbortController;
+  let access;
+  let initialized;
+  let key;
+  let state = "ready";
+  let expiresAt = 0;
+  let timer;
+  let closing;
+  const pending = new Set;
+  const close = (reason) => {
+    if (closing)
+      return closing;
+    state = reason;
+    controller.abort(new VaultWalletError("SESSION_LOCKED", "Vault wallet session is no longer active."));
+    clearTimeout(timer);
+    try {
+      access?.lock();
+    } catch {}
+    access = undefined;
+    key = undefined;
+    closing = (async () => {
+      await Promise.allSettled([...pending]);
+      const current = initialized;
+      initialized = undefined;
+      try {
+        await current?.destroy();
+      } catch {
+        throw new VaultWalletError("CLEANUP_FAILED", "Wallet session closed, but resource cleanup failed.");
+      }
+    })();
+    return closing;
+  };
+  const assertActive = () => {
+    if (state === "ready" && now() >= expiresAt) {
+      close("expired").catch(() => {});
+    }
+    if (state !== "ready") {
+      throw new VaultWalletError(state === "expired" ? "SESSION_EXPIRED" : "SESSION_LOCKED", "Unlock the selected Vault wallet again before using it.");
+    }
+  };
+  try {
+    try {
+      access = await dependencies.openVault(pinned.vaultPath, passphrase);
+    } catch {
+      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
+    }
+    if (access.id !== binding.vaultId) {
+      throw new VaultWalletError("VAULT_MISMATCH", "The selected Vault does not match this binding.");
+    }
+    let entry;
+    try {
+      entry = access.get(binding.entryId);
+    } catch {
+      throw new VaultWalletError("ENTRY_UNAVAILABLE", "The selected Vault entry is unavailable.");
+    }
+    if ((binding.keyUseContract === "direct-v1" || binding.keyUseContract === "brc42-leaf-v1") && entry.kind !== "private" && entry.kind !== "wif") {
+      throw new VaultWalletError("UNSUPPORTED_ENTRY", "This wallet requires an explicitly selected private-key or WIF entry.");
+    }
+    if (binding.keyUseContract === "direct-v1" && entry.publicKey !== undefined && entry.publicKey.toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
+      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected entry does not match the approved wallet identity.");
+    }
+    expiresAt = now() + ttl * 1000;
+    access.unlock(pinned.reason, ttl);
+    timer = setTimeout(() => {
+      close("expired").catch(() => {});
+    }, Math.max(0, expiresAt - now()));
+    timer.unref?.();
+    try {
+      if (binding.keyUseContract === "brc157-leaf-v1" || binding.keyUseContract === "yours-legacy-leaf-v1") {
+        const profileApi = dependencies.profileDerivationApi;
+        if (!profileApi)
+          throw new Error("Profile API unavailable");
+        const profileAccess = access;
+        key = resolveVaultProfileBindingKey({
+          id: access.id,
+          assertActive,
+          get: (id) => profileAccess.get(id),
+          reveal: (id, reason) => profileAccess.reveal(id, reason)
+        }, {
+          keyUseContract: binding.keyUseContract,
+          key: {
+            vaultId: binding.vaultId,
+            entryId: binding.entryId,
+            expectedPublicKey: binding.expectedPublicKey,
+            derivation: binding.derivation
+          }
+        }, pinned.reason, profileApi);
+      } else {
+        const value = access.reveal(binding.entryId, pinned.reason);
+        key = entry.kind === "private" ? PrivateKey.fromHex(value) : PrivateKey.fromWif(value);
+        if (binding.derivation?.scheme === "brc42") {
+          const { protocolID, keyID, counterparty } = binding.derivation;
+          key = new KeyDeriver(key).derivePrivateKey(protocolID, keyID, counterparty);
+        }
+      }
+    } catch {
+      throw new VaultWalletError("KEY_UNAVAILABLE", "The selected key is invalid or Vault reveal is disabled.");
+    }
+    if (key.toPublicKey().toString().toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
+      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected key does not match the approved wallet identity.");
+    }
+    assertActive();
+    const initialize = dependencies.initializeWallet ?? ((privateKey, selected, signal) => initWallet(privateKey, selected.chain, {
+      ...walletStorageForKey(selected.accountName, selected.binding.expectedPublicKey),
+      trackActive: false,
+      sessionSignal: signal
+    }));
+    initialized = await initialize(key, pinned, controller.signal);
+    key = undefined;
+    if (controller.signal.aborted) {
+      const late = initialized;
+      initialized = undefined;
+      await late.destroy().catch(() => {});
+      throw new VaultWalletError("SESSION_EXPIRED", "Unlock the selected Vault wallet again before using it.");
+    }
+    access.lock();
+    access = undefined;
+    assertActive();
+    const invoke = (name) => {
+      const method = (...args) => {
+        try {
+          assertActive();
+        } catch (error) {
+          return Promise.reject(error);
+        }
+        const current = initialized;
+        if (!current)
+          return Promise.reject(new VaultWalletError("SESSION_LOCKED", "Wallet session is closed."));
+        const call = Promise.resolve().then(() => {
+          assertActive();
+          return Reflect.apply(current.wallet[name], current.wallet, args);
+        });
+        pending.add(call);
+        call.then(() => pending.delete(call), () => pending.delete(call));
+        return call;
+      };
+      return method;
+    };
+    const wallet = Object.freeze({
+      getPublicKey: invoke("getPublicKey"),
+      revealCounterpartyKeyLinkage: invoke("revealCounterpartyKeyLinkage"),
+      revealSpecificKeyLinkage: invoke("revealSpecificKeyLinkage"),
+      encrypt: invoke("encrypt"),
+      decrypt: invoke("decrypt"),
+      createHmac: invoke("createHmac"),
+      verifyHmac: invoke("verifyHmac"),
+      createSignature: invoke("createSignature"),
+      verifySignature: invoke("verifySignature"),
+      createAction: invoke("createAction"),
+      signAction: invoke("signAction"),
+      abortAction: invoke("abortAction"),
+      listActions: invoke("listActions"),
+      internalizeAction: invoke("internalizeAction"),
+      listOutputs: invoke("listOutputs"),
+      relinquishOutput: invoke("relinquishOutput"),
+      acquireCertificate: invoke("acquireCertificate"),
+      listCertificates: invoke("listCertificates"),
+      proveCertificate: invoke("proveCertificate"),
+      relinquishCertificate: invoke("relinquishCertificate"),
+      discoverByIdentityKey: invoke("discoverByIdentityKey"),
+      discoverByAttributes: invoke("discoverByAttributes"),
+      isAuthenticated: invoke("isAuthenticated"),
+      waitForAuthentication: invoke("waitForAuthentication"),
+      getHeight: invoke("getHeight"),
+      getHeaderForHeight: invoke("getHeaderForHeight"),
+      getNetwork: invoke("getNetwork"),
+      getVersion: invoke("getVersion")
+    });
+    const ctx = Object.freeze({ ...initialized.ctx, wallet });
+    const depositAddress = initialized.depositAddress;
+    return Object.freeze({
+      binding,
+      get state() {
+        if (state === "ready" && now() >= expiresAt)
+          close("expired").catch(() => {});
+        return state;
+      },
+      expiresAt,
+      depositAddress,
+      wallet,
+      ctx,
+      lock: () => close("locked")
+    });
+  } catch (error) {
+    await close("locked").catch(() => {});
+    if (error instanceof VaultWalletError)
+      throw error;
+    throw new VaultWalletError("INITIALIZATION_FAILED", "Cannot initialize the selected Vault wallet.");
+  }
+}
+var vaultWalletBindingSchema, VaultWalletError;
+var init_vaultWallet = __esm(() => {
+  init_mod();
+  init_zod();
+  init_accounts();
+  init_vaultProfileBinding();
+  init_vaultProfileDerivation();
+  init_walletInit();
+  init_walletKeyStorage();
+  vaultWalletBindingSchema = object2({
+    projectId: string2().min(1),
+    revision: number2().int().nonnegative(),
+    bindingId: string2().min(1),
+    accountId: string2().min(1),
+    vaultId: string2().min(1),
+    entryId: string2().min(1),
+    expectedPublicKey: string2().regex(/^(02|03)[0-9a-fA-F]{64}$/),
+    keyUseContract: _enum([
+      "direct-v1",
+      "brc42-leaf-v1",
+      "brc157-leaf-v1",
+      "yours-legacy-leaf-v1"
+    ]),
+    derivation: union([vaultProfileDerivationSchema, vaultProfileLeafSchema]).optional()
+  }).strict().superRefine((binding, ctx) => {
+    const valid = binding.keyUseContract === "direct-v1" ? binding.derivation === undefined : binding.keyUseContract === "brc42-leaf-v1" ? binding.derivation?.scheme === "brc42" : vaultProfileBindingSchema.safeParse({
+      keyUseContract: binding.keyUseContract,
+      key: {
+        vaultId: binding.vaultId,
+        entryId: binding.entryId,
+        expectedPublicKey: binding.expectedPublicKey,
+        derivation: binding.derivation
+      }
+    }).success;
+    if (!valid)
+      ctx.addIssue({
+        code: "custom",
+        path: ["derivation"],
+        message: "Explicit contract and derivation must match"
+      });
+  });
+  VaultWalletError = class VaultWalletError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.code = code;
+      this.name = "VaultWalletError";
+    }
+  };
+});
+
+// utils/vaultWalletController.ts
+import { isAbsolute as isAbsolute10 } from "node:path";
 async function loadInstalledVaultModule(importModule = (specifier) => import(specifier)) {
   let module;
   try {
@@ -298380,25 +311284,43 @@ function vaultSelectionFromSnapshot(snapshot, options) {
   };
 }
 function createVaultWalletController(options) {
-  if (!isAbsolute9(options.projectRoot) || !options.expectedProjectId)
+  if (!isAbsolute10(options.projectRoot) || !options.expectedProjectId)
     throw new VaultWalletError("PROJECT_REQUIRED", "An explicit absolute project root and project ID are required.");
   const projectRoot = options.projectRoot;
   const expectedProjectId = options.expectedProjectId;
-  let active;
-  let generation = 0;
-  const lock = async () => {
-    generation += 1;
-    const previous = active;
-    active = undefined;
+  const active = new Map;
+  const generations = new Map;
+  const generationOf = (role) => generations.get(role) ?? 0;
+  const lockRole = async (role) => {
+    generations.set(role, generationOf(role) + 1);
+    const previous = active.get(role);
+    active.delete(role);
     await previous?.session.lock();
+  };
+  const lockAll = async () => {
+    const roles = new Set([
+      ...generations.keys(),
+      ...active.keys()
+    ]);
+    for (const role of roles)
+      generations.set(role, (generations.get(role) ?? 0) + 1);
+    const previous = [...active.values()];
+    active.clear();
+    await Promise.all(previous.map((entry) => entry.session.lock()));
+  };
+  const lock = async (role) => {
+    if (role === undefined)
+      await lockAll();
+    else
+      await lockRole(role);
   };
   const load = () => (options.loadBindings ?? loadProjectRoleBindings)(projectRoot, expectedProjectId);
   return Object.freeze({
     projectRoot,
     lock,
     async unlock(role, passphrase, reason, ttlSeconds = 300) {
-      const closing = lock();
-      const attempt = generation;
+      const closing = lockRole(role);
+      const attempt = generationOf(role);
       await closing;
       const snapshot = resolveProjectRoleBinding(await load(), expectedProjectId, role);
       const account = (options.readSelectedAccount ?? readAccount)(snapshot.binding.accountId);
@@ -298411,7 +311333,7 @@ function createVaultWalletController(options) {
         ttlSeconds
       });
       const module = await (options.loadVaultModule ?? loadInstalledVaultModule)();
-      if (attempt !== generation)
+      if (attempt !== generationOf(role))
         throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
       const session = await openVaultWalletSession(selection, passphrase, {
         ...options.walletDependencies,
@@ -298424,12 +311346,12 @@ function createVaultWalletController(options) {
         ].every((name) => typeof module[name] === "function") ? module : undefined)
       });
       try {
-        if (attempt !== generation)
+        if (attempt !== generationOf(role))
           throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
         assertProjectRoleSnapshotCurrent(await load(), snapshot);
-        if (attempt !== generation)
+        if (attempt !== generationOf(role))
           throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
-        active = { snapshot, session };
+        active.set(role, { snapshot, session });
         return Object.freeze({
           projectId: snapshot.projectId,
           role,
@@ -298446,17 +311368,17 @@ function createVaultWalletController(options) {
       }
     },
     async run(role, operation) {
-      const current = active;
+      const current = active.get(role);
       if (!current || current.snapshot.binding.role !== role)
         throw new VaultWalletError("SESSION_LOCKED", "Unlock the explicitly assigned project role first.");
       try {
         assertProjectRoleSnapshotCurrent(await load(), current.snapshot);
       } catch (error) {
-        if (active === current)
-          await lock();
+        if (active.get(role) === current)
+          await lockRole(role);
         throw error;
       }
-      if (active !== current || current.session.state !== "ready")
+      if (active.get(role) !== current || current.session.state !== "ready")
         throw new VaultWalletError("SESSION_LOCKED", "Unlock the explicitly assigned project role again.");
       return operation(current.session);
     }
@@ -298471,16 +311393,16 @@ var init_vaultWalletController = __esm(() => {
 });
 
 // utils/projectWalletRuntime.ts
-import { isAbsolute as isAbsolute10, resolve as resolve4 } from "node:path";
+import { isAbsolute as isAbsolute11, resolve as resolve5 } from "node:path";
 function fail5(code, message) {
   throw new VaultWalletError(code, message);
 }
 function explicitPath(value, name) {
   if (!value?.trim())
     fail5("PROJECT_PATH_INVALID", `${name} is required`);
-  if (!isAbsolute10(value))
+  if (!isAbsolute11(value))
     fail5("PROJECT_PATH_INVALID", `${name} must be an absolute path`);
-  return resolve4(value);
+  return resolve5(value);
 }
 function readProjectWalletConfig(env = process.env, argv = process.argv) {
   const root = env.BSV_MCP_PROJECT_ROOT;
@@ -298491,6 +311413,18 @@ function readProjectWalletConfig(env = process.env, argv = process.argv) {
     fail5("PROJECT_CONFIG_INCOMPLETE", "BSV_MCP_PROJECT_ROOT and BSV_MCP_PROJECT_ID must be configured together");
   if (!(argv.includes("--stdio") || env.TRANSPORT?.toLowerCase() === "stdio"))
     fail5("PROJECT_STDIO_REQUIRED", "Project-bound wallets are available only through the stdio transport");
+  if (env.BRC100_WALLET_URL !== undefined) {
+    for (const name of [
+      "BSV_MCP_ACCOUNT",
+      "REMOTE_STORAGE_URL",
+      "BSV_MCP_PASSPHRASE",
+      "BSV_MCP_PASSWORD"
+    ])
+      if (env[name] !== undefined)
+        fail5("PROJECT_WALLET_CONFLICT", `External project wallet conflicts with ${name}`);
+    readExternalWalletConfig(env);
+    return;
+  }
   for (const name of PROJECT_CONFLICTS) {
     if (env[name] !== undefined)
       fail5("PROJECT_WALLET_CONFLICT", `Project-bound wallet conflicts with ${name}; select one wallet mode`);
@@ -298539,14 +311473,45 @@ async function createProjectWalletRuntime(options = {}) {
     resolveVaultPath,
     loadVaultModule: module
   });
-  const status = await controller.unlock(PROJECT_WALLET_ROLE, passphrase, options.reason ?? "BSV MCP project payments session", options.ttlSeconds);
-  let guardedContext;
-  await controller.run(PROJECT_WALLET_ROLE, async (session) => {
-    const wallet = createGuardedWallet(controller, PROJECT_WALLET_ROLE, session.wallet);
-    guardedContext = createGuardedContext(session.ctx, wallet);
-  });
-  if (!guardedContext)
+  const bindings = projectRoleBindingsSchema.parse(await (options.controllerOptions?.loadBindings ?? loadProjectRoleBindings)(projectRoot, projectId));
+  if (bindings.projectId !== projectId)
+    fail5("PROJECT_CONFIG_INVALID", "Project binding belongs to another project");
+  const assigned = PROJECT_KEY_ROLES2.filter((role) => bindings.current[role] !== null);
+  if (!assigned.length)
+    fail5("PROJECT_ROLES_UNASSIGNED", "Assign at least one project key role before starting the wallet");
+  const contexts = {};
+  const statuses = new Map;
+  try {
+    for (const role of assigned) {
+      const unlocked = await controller.unlock(role, passphrase, options.reason ?? `BSV MCP project ${role} session`, options.ttlSeconds);
+      statuses.set(role, unlocked);
+    }
+    for (const role of assigned)
+      await controller.run(role, async (session) => {
+        contexts[role] = createGuardedContext(session.ctx, createGuardedWallet(controller, role, session.wallet));
+      });
+  } catch (error) {
+    await controller.lock();
+    throw error;
+  }
+  const primaryRole = contexts.payments ? "payments" : assigned[0];
+  const guardedContext = contexts[primaryRole];
+  const status = statuses.get(primaryRole);
+  if (!guardedContext || !status) {
+    await controller.lock();
     fail5("PROJECT_CONTEXT_UNAVAILABLE", "Project wallet context could not be initialized");
+  }
+  if (Object.values(contexts).some((context) => context.chain !== guardedContext.chain)) {
+    await controller.lock();
+    fail5("PROJECT_NETWORK_MISMATCH", "Project wallet roles must use the same Bitcoin network");
+  }
+  const expiresAt = Math.min(...[...statuses.values()].map((value) => value.expiresAt));
+  const roleContexts = {
+    payments: contexts.payments,
+    identity: contexts["identity-signing"],
+    ordinals: contexts["one-sat"],
+    encryption: contexts.encryption ?? null
+  };
   let timer;
   let cleaned = false;
   const now = options.now ?? Date.now;
@@ -298577,7 +311542,7 @@ async function createProjectWalletRuntime(options = {}) {
       }
     })().catch((error) => console.error("Project wallet expiry cleanup failed:", error instanceof Error ? error.message : String(error)));
   };
-  timer = (options.schedule ?? setTimeout)(expire, Math.max(0, status.expiresAt - now()));
+  timer = (options.schedule ?? setTimeout)(expire, Math.max(0, expiresAt - now()));
   const cleanup = async () => {
     if (cleaned)
       return;
@@ -298589,12 +311554,14 @@ async function createProjectWalletRuntime(options = {}) {
   return Object.freeze({
     projectRoot,
     projectId,
-    role: PROJECT_WALLET_ROLE,
+    role: primaryRole,
+    roleContexts: Object.freeze(roleContexts),
+    roles: Object.freeze(contexts),
     ctx: guardedContext,
     wallet: guardedContext.wallet,
     services: guardedContext.services,
     depositAddress: status.depositAddress,
-    expiresAt: status.expiresAt,
+    expiresAt,
     controller,
     cleanup
   });
@@ -298627,8 +311594,11 @@ function createGuardedContext(initial, wallet) {
   });
   return context;
 }
-var PROJECT_WALLET_ROLE = "payments", PROJECT_CONFLICTS, PROJECT_ID_PATTERN;
+var PROJECT_CONFLICTS, PROJECT_ID_PATTERN;
 var init_projectWalletRuntime = __esm(() => {
+  init_externalWalletConfig();
+  init_projectRoleBindings();
+  init_projectRoleBindingsStore();
   init_vaultWallet();
   init_vaultWalletController();
   PROJECT_CONFLICTS = [
@@ -298753,14 +311723,14 @@ var init_projectRoleSelection = __esm(() => {
 });
 
 // utils/vaultMigrationJournal.ts
-import { randomUUID as randomUUID5 } from "node:crypto";
+import { randomUUID as randomUUID7 } from "node:crypto";
 import { existsSync as existsSync11, lstatSync as lstatSync6, readFileSync as readFileSync6, realpathSync as realpathSync3 } from "node:fs";
 import { open as open5, rename as rename4, rm as rm4 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute11, join as join17, resolve as resolve5 } from "node:path";
+import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute12, join as join17, resolve as resolve6 } from "node:path";
 function canonicalMigrationPath(input) {
-  if (!isAbsolute11(input))
+  if (!isAbsolute12(input))
     throw new VaultWalletError("INVALID_PATH", "Migration paths must be absolute.");
-  let parent = resolve5(input);
+  let parent = resolve6(input);
   const tail = [];
   while (!existsSync11(parent)) {
     const next = dirname5(parent);
@@ -298782,7 +311752,7 @@ async function writeMigrationJournal(journal) {
   const checked = migrationJournalSchema.parse(journal);
   const path = migrationJournalPaths(checked.vaultPath, checked.sessionId).journal;
   regularPath(path);
-  const temporary = `${path}.${randomUUID5()}.tmp`;
+  const temporary = `${path}.${randomUUID7()}.tmp`;
   const handle = await open5(temporary, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify(checked));
@@ -298855,7 +311825,7 @@ var init_vaultMigrationJournal = __esm(() => {
 });
 
 // utils/vaultMigrationBackend.ts
-import { createHash as createHash6, randomUUID as randomUUID6 } from "node:crypto";
+import { createHash as createHash8, randomUUID as randomUUID8 } from "node:crypto";
 import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync7 } from "node:fs";
 import {
   chmod as chmod4,
@@ -298867,7 +311837,7 @@ import {
   rename as rename5,
   rm as rm5
 } from "node:fs/promises";
-import { dirname as dirname6, isAbsolute as isAbsolute12, join as join18, sep as sep2 } from "node:path";
+import { dirname as dirname6, isAbsolute as isAbsolute13, join as join18, sep as sep2 } from "node:path";
 function roleCandidates(prepared) {
   return Object.entries(prepared.entries).flatMap(([candidateId, entry]) => entry?.publicKey ? [
     {
@@ -298904,14 +311874,14 @@ function sameDestination(prepared, destination) {
   return destination.accountName === prepared.accountName && canonicalMigrationPath(destination.vaultPath) === prepared.session.vaultPath && destination.vaultEntryId === prepared.session.vaultEntryId && (destination.expectedPublicKey === undefined || destination.expectedPublicKey === prepared.session.publicKey);
 }
 async function createAccountVaultMigrationBackend(options) {
-  if (!isAbsolute12(options.projectRoot) || !isAbsolute12(options.vaultPath) || !options.expectedProjectId)
+  if (!isAbsolute13(options.projectRoot) || !isAbsolute13(options.vaultPath) || !options.expectedProjectId)
     throw failure4("PROJECT_REQUIRED", "Configure an explicit project root, project ID and absolute Vault path.");
   const projectRoot = canonicalMigrationPath(options.projectRoot);
   const expectedProjectId = options.expectedProjectId;
   const roleAssignments = Object.freeze({ ...options.roleAssignments });
   const vaultPath = canonicalMigrationPath(options.vaultPath);
   const root = canonicalMigrationPath(options.accountsDirectory ?? accountsRoot());
-  if (!isAbsolute12(root))
+  if (!isAbsolute13(root))
     throw failure4("PROJECT_REQUIRED", "The account directory must be an explicit absolute path.");
   const now = options.now ?? Date.now;
   if (vaultPath === root || vaultPath === dirname6(vaultPath) || vaultPath.startsWith(`${root}${sep2}`))
@@ -299028,7 +311998,7 @@ async function createAccountVaultMigrationBackend(options) {
         if (keys.xprv) {
           const at = new Date(now()).toISOString();
           vault.adoptEntry({
-            id: randomUUID6(),
+            id: randomUUID8(),
             kind: "hd-private",
             label: `${name} retained HD identity`,
             tags: [],
@@ -299057,7 +312027,7 @@ async function createAccountVaultMigrationBackend(options) {
         if (digest3(sourceBytes) !== sourceHashes.get("keys.bep") || digest3(configBytes) !== sourceHashes.get("config.json"))
           throw failure4("SOURCE_CHANGED", "The source changed while unlocking. Try again.");
         const session = {
-          sessionId: randomUUID6(),
+          sessionId: randomUUID8(),
           expiresAt: now() + ttl,
           vaultPath,
           vaultEntryId: "new",
@@ -299147,7 +312117,7 @@ async function createAccountVaultMigrationBackend(options) {
           throw failure4("ROLE_SELECTION_REQUIRED", "Choose explicit project key roles before cutover.");
         if (selectionRequest)
           prepareProjectRoleSelection(prepared.projectConfig, roleCandidates(prepared), selectionRequest, {
-            createBindingId: () => randomUUID6(),
+            createBindingId: () => randomUUID8(),
             now: new Date(now()).toISOString(),
             expectedProjectId
           });
@@ -299267,7 +312237,7 @@ async function createAccountVaultMigrationBackend(options) {
           return {
             role,
             binding: {
-              bindingId: randomUUID6(),
+              bindingId: randomUUID8(),
               accountId: prepared.accountName,
               key: {
                 vaultId: prepared.vault.toDocument().id,
@@ -299281,7 +312251,7 @@ async function createAccountVaultMigrationBackend(options) {
         });
         const selection = input.roleSelection;
         const next = selection ? prepareProjectRoleSelection(prepared.projectConfig, roleCandidates(prepared), selection, {
-          createBindingId: () => randomUUID6(),
+          createBindingId: () => randomUUID8(),
           now: new Date(now()).toISOString(),
           expectedProjectId
         }) : changeProjectRoleBindings(base, {
@@ -299401,7 +312371,7 @@ async function createAccountVaultMigrationBackend(options) {
     lock: close
   };
 }
-var digest3 = (data) => createHash6("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
+var digest3 = (data) => createHash8("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
 var init_vaultMigrationBackend = __esm(() => {
   init_mod();
   init_accounts();
@@ -299415,8 +312385,8 @@ var init_vaultMigrationBackend = __esm(() => {
 });
 
 // utils/vaultSetupBootstrap.ts
-import { homedir as homedir9 } from "node:os";
-import { isAbsolute as isAbsolute13, join as join19 } from "node:path";
+import { homedir as homedir10 } from "node:os";
+import { isAbsolute as isAbsolute14, join as join19 } from "node:path";
 function unavailable3(reason) {
   const fail = async () => {
     throw new Error(reason);
@@ -299433,10 +312403,10 @@ function unavailable3(reason) {
 async function createConfiguredVaultSetupBackend(env = process.env, dependencies = {}) {
   const projectRoot = env.BSV_MCP_PROJECT_ROOT;
   const projectId = env.BSV_MCP_PROJECT_ID;
-  if (!projectRoot || !projectId || !isAbsolute13(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
+  if (!projectRoot || !projectId || !isAbsolute14(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
     return unavailable3("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
-  const vaultPath = env.VAULT_PATH ?? join19(dependencies.home ?? homedir9(), ".bsv", "vault.bep");
-  if (!vaultPath || !isAbsolute13(vaultPath))
+  const vaultPath = env.VAULT_PATH ?? join19(dependencies.home ?? homedir10(), ".bsv", "vault.bep");
+  if (!vaultPath || !isAbsolute14(vaultPath))
     return unavailable3("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
   try {
     return await (dependencies.createBackend ?? createAccountVaultMigrationBackend)({
@@ -299456,7 +312426,7 @@ async function runConfiguredVaultSetup(options = {}) {
 `));
   await (options.run ?? runVaultSetupCommand)({
     start: () => {
-      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join19(homedir9(), ".bsv", "vault.bep");
+      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join19(homedir10(), ".bsv", "vault.bep");
       return (options.start ?? startVaultSetup)({
         migrationBackend,
         embeddedActions: options.embeddedActions ?? createEmbeddedSetupActions({
@@ -299466,7 +312436,7 @@ async function runConfiguredVaultSetup(options = {}) {
           }
         }),
         flow: migrationBackend.available && (options.env ?? process.env).BSV_MCP_PROJECT_ROOT ? "project" : options.embeddedActions ? "embedded" : "standalone",
-        ...isAbsolute13(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
+        ...isAbsolute14(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
       });
     },
     open: options.open,
@@ -299571,7 +312541,7 @@ var init_walletOnboarding = __esm(() => {
 
 // server.ts
 import { readFile as readFile5 } from "node:fs/promises";
-import { homedir as homedir10 } from "node:os";
+import { homedir as homedir11 } from "node:os";
 import path4, { dirname as dirname7, join as join20 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function getConfiguredTools(server) {
@@ -299579,7 +312549,7 @@ function getConfiguredTools(server) {
 }
 function createConfiguredServer(opts) {
   const nativeServer = new McpServer({ name: package_default.name, version: package_default.version }, {
-    supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
+    supportedProtocolVersions: CONFIG.protocol.supportedVersions,
     capabilities: {
       resources: {},
       tools: {},
@@ -299595,7 +312565,7 @@ function createConfiguredServer(opts) {
 				Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first.
 			`
   });
-  const policyServer = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
+  const policyServer = withMcpToolExecution(nativeServer, opts.era ?? "modern", opts.approvalFlow);
   const registrations = [];
   const toolRegistrations = [];
   const srv = new Proxy(policyServer, {
@@ -299655,11 +312625,11 @@ function registerMcpAppTools(server, config) {
   const appServices = config.ctx?.services ?? config.services;
   const walletAvailable = !config.droplitMode && Boolean(config.ctx || config.wallet);
   const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
-  const wholeWalletBalanceAvailable = walletAvailable && !externalWallet && config.walletScope !== "payments";
+  const wholeWalletBalanceAvailable = walletAvailable && (!config.roleContexts || !!config.roleContexts.payments) && !externalWallet && config.walletScope !== "payments";
   const sweepPrepareAvailable = Boolean(config.walletScope !== "payments" && config.ctx && appServices && typeof config.ctx.wallet.createAction === "function");
   const sweepCompleteAvailable = Boolean(config.walletScope !== "payments" && config.ctx && appServices && typeof config.ctx.wallet.signAction === "function");
   const broadcastingEnabled = process.env.DISABLE_BROADCASTING !== "true" && config.disableBroadcasting !== true;
-  const ctx = config.ctx;
+  const ctx = config.roleContexts ? config.roleContexts.payments : config.ctx;
   const wallet = config.wallet;
   const disableBroadcasting = config.disableBroadcasting ?? false;
   registerAppTool(server, "bsv_dashboard", {
@@ -299832,17 +312802,13 @@ function registerMcpAppTools(server, config) {
         let utxoCount = 0;
         let utxos = [];
         if (ctx) {
-          await Promise.resolve().then(() => init_dist7());
-          const { derivations } = await deriveDepositAddresses.execute(ctx, {
-            prefix: "mcp"
-          });
-          address = derivations[0]?.address;
-          const result = await ctx.wallet.listOutputs({ basket: "default" });
-          totalSatoshis = result.outputs.reduce((sum, output) => sum + output.satoshis, 0);
-          utxoCount = result.totalOutputs;
-          utxos = result.outputs.slice(0, 50).map((o) => {
-            const [txid = "", voutStr = "0"] = (o.outpoint ?? "").split(".");
-            return { txid, vout: Number(voutStr), satoshis: o.satoshis };
+          address = await walletDepositAddress(ctx);
+          const balance = await readWalletBalance(ctx);
+          totalSatoshis = balance.satoshis;
+          utxoCount = balance.utxoCount;
+          utxos = balance.outputs.map((output) => {
+            const [txid = "", vout = "0"] = output.outpoint.split(".");
+            return { txid, vout: Number(vout), satoshis: output.satoshis };
           });
         } else if (wallet) {
           address = wallet.getAddress();
@@ -300033,191 +312999,65 @@ function registerMcpAppTools(server, config) {
       }
     });
   }
-  if (walletToolsEnabled && sweepPrepareAvailable) {
+  const sweep = config.ctx ? createAppSweep(config.ctx, config.roleContexts) : undefined;
+  if (walletToolsEnabled && sweepPrepareAvailable && sweep) {
     registerAppTool(server, "app_sweep_prepare", {
       title: "Sweep Prepare",
-      description: "App-only: builds an unsigned sweep transaction. Returns BEEF hex and reference for client-side signing.",
-      inputSchema: object2({
-        sweepType: _enum(["bsv", "ordinals", "bsv21"]).describe("Type of assets to sweep"),
-        inputs: array(object2({
-          outpoint: string2().describe("Outpoint (txid_vout)"),
-          satoshis: number2().int().describe("Satoshis in output"),
-          lockingScript: string2().describe("Locking script hex")
-        })).describe("UTXOs to sweep")
-      }),
-      _meta: {
-        ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] }
-      }
-    }, async (args) => {
-      const { sweepType, inputs } = args;
-      if (!ctx || !appServices) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "BRC-100 wallet context not available"
-            }
-          ],
-          structuredContent: { error: "No wallet context" }
-        };
-      }
+      description: "App-only: verify source transactions and prepare a sweep that preserves ordinals and token amounts. Source private keys remain in the browser.",
+      inputSchema: appSweepInputSchema,
+      _meta: { ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] } }
+    }, async (args, context) => {
       try {
-        if (!appServices)
-          throw new Error("Services not available");
-        if (!inputs.length)
-          throw new Error("No inputs provided");
-        const txids = [
-          ...new Set(inputs.map((i) => {
-            const txid = i.outpoint.split("_")[0];
-            if (!txid)
-              throw new Error("Invalid input outpoint");
-            return txid;
-          }))
-        ];
-        const [firstTxid, ...remainingTxids] = txids;
-        if (!firstTxid)
-          throw new Error("No input transactions provided");
-        const firstBeef = await appServices.getBeefForTxid(firstTxid);
-        for (const txid of remainingTxids) {
-          const additionalBeef = await appServices.getBeefForTxid(txid);
-          firstBeef.mergeBeef(additionalBeef);
-        }
-        const inputDescriptors = inputs.map((input) => {
-          const [txid, voutStr] = input.outpoint.split("_");
-          return {
-            outpoint: `${txid}.${Number(voutStr)}`,
-            inputDescription: `Sweep ${sweepType} input`,
-            unlockingScriptLength: 108,
-            sequenceNumber: 4294967295
-          };
-        });
-        const inputTotal = inputs.reduce((sum, i) => sum + i.satoshis, 0);
-        const createResult = await ctx.wallet.createAction({
-          description: `Sweep ${inputTotal} sats (${sweepType})`,
-          inputBEEF: firstBeef.toBinary(),
-          inputs: inputDescriptors,
-          outputs: [],
-          options: {
-            signAndProcess: false,
-            ...sweepType !== "bsv" && {
-              randomizeOutputs: false
-            }
-          }
-        });
-        if ("error" in createResult && createResult.error) {
-          throw new Error(String(createResult.error));
-        }
-        if (!createResult.signableTransaction) {
-          throw new Error("No signable transaction returned");
-        }
-        await Promise.resolve().then(() => init_mod());
-        const tx = Transaction.fromBEEF(createResult.signableTransaction.tx);
-        const ourOutpoints = new Set(inputs.map((i) => {
-          const [txid, voutStr] = i.outpoint.split("_");
-          return `${txid}.${Number(voutStr)}`;
-        }));
-        const inputsToSign = [];
-        for (const [idx, txInput] of tx.inputs.entries()) {
-          const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
-          if (ourOutpoints.has(op)) {
-            const match = inputs.find((i) => {
-              const [t, v] = i.outpoint.split("_");
-              return `${t}.${Number(v)}` === op;
-            });
-            if (match) {
-              inputsToSign.push({
-                index: idx,
-                outpoint: match.outpoint,
-                satoshis: match.satoshis,
-                lockingScript: match.lockingScript
-              });
-            }
-          }
-        }
-        const txHex = toHex2(createResult.signableTransaction.tx);
+        const prepared = await sweep.prepare(args, getMcpSessionPrincipal(context.http?.authInfo));
         return {
           content: [
             {
               type: "text",
-              text: `Prepared ${sweepType} sweep: ${inputsToSign.length} inputs to sign`
+              text: `Prepared ${prepared.inputsToSign.length} sweep inputs`
             }
           ],
-          structuredContent: {
-            txHex,
-            reference: createResult.signableTransaction.reference,
-            inputsToSign
-          }
+          structuredContent: prepared
         };
-      } catch (err) {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`
-            }
-          ],
-          structuredContent: { error: String(err) }
+          content: [{ type: "text", text: message }],
+          structuredContent: { error: message },
+          isError: true
         };
       }
     });
   }
-  if (walletToolsEnabled && sweepCompleteAvailable && broadcastingEnabled) {
+  if (walletToolsEnabled && sweepCompleteAvailable && broadcastingEnabled && sweep) {
     registerAppTool(server, "app_sweep_complete", {
       title: "Sweep Complete",
-      description: "App-only: completes a sweep by broadcasting the transaction with client-signed unlocking scripts.",
+      description: "App-only: verify browser signatures and submit the exact previously prepared sweep once.",
       inputSchema: object2({
-        reference: string2().describe("Opaque reference from app_sweep_prepare"),
-        spends: record(string2(), object2({
-          unlockingScript: string2().describe("Signed unlocking script hex")
-        })).describe("Map of input index to signed unlocking script")
+        reference: string2().uuid(),
+        spends: record(string2().regex(/^(0|[1-9][0-9]*)$/), object2({
+          unlockingScript: string2().regex(/^(?:[0-9a-f]{2}){1,108}$/i)
+        }))
       }),
-      _meta: {
-        ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] }
-      }
-    }, async (args) => {
-      const { reference, spends } = args;
-      if (!ctx || !appServices) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "BRC-100 wallet context not available"
-            }
-          ],
-          structuredContent: { error: "No wallet context" }
-        };
-      }
+      _meta: { ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] } }
+    }, async (args, context) => {
       try {
         assertBroadcastAllowed("app_sweep_complete", disableBroadcasting);
-        const signResult = await ctx.wallet.signAction({
-          reference,
-          spends,
-          options: { acceptDelayedBroadcast: false }
-        });
-        if ("error" in signResult) {
-          throw new Error(String(signResult.error));
-        }
+        const complete = await sweep.complete(args.reference, args.spends, getMcpSessionPrincipal(context.http?.authInfo));
         return {
           content: [
             {
               type: "text",
-              text: `Sweep broadcast: ${signResult.txid}`
+              text: `Sweep broadcast: ${complete.txid}`
             }
           ],
-          structuredContent: {
-            txid: signResult.txid,
-            success: true
-          }
+          structuredContent: complete
         };
-      } catch (err) {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`
-            }
-          ],
-          structuredContent: { error: String(err) }
+          content: [{ type: "text", text: message }],
+          structuredContent: { error: message },
+          isError: true
         };
       }
     });
@@ -300433,7 +313273,7 @@ Authentication:
     openWalletSetup = createWalletSetupLauncher({
       embeddedActions: createEmbeddedSetupActions({
         getAvailableTools: () => server ? getConfiguredTools(server) : [],
-        vaultPath: process.env.VAULT_PATH ?? join20(homedir10(), ".bsv", "vault.bep"),
+        vaultPath: process.env.VAULT_PATH ?? join20(homedir11(), ".bsv", "vault.bep"),
         onActivated: async (result, selectedAccountName) => {
           const refresh = server ? refreshConfiguredCatalog.get(server) : undefined;
           if (!refresh)
@@ -300449,6 +313289,7 @@ Authentication:
             walletSetupNeeded: false,
             openWalletSetup: undefined,
             localAccountAvailable: true,
+            bapPublicOnly: false,
             enableAccountTools: !result.roleContexts,
             enableWalletTools: CONFIG.loadWalletTools,
             enableOrdinalsTools: CONFIG.loadOrdinalsTools,
@@ -300463,13 +313304,10 @@ Authentication:
     });
     logFunc2(`Embedded wallet setup required (${walletSetupReason ?? "no-wallet"}). Public tools remain available; invoke wallet onboarding to configure locally.`);
   } else if (projectRuntime) {
-    effectiveConfig.bapPublicOnly = true;
-    effectiveConfig.loadOrdinalsTools = false;
+    effectiveConfig.bapPublicOnly = false;
     effectiveConfig.loadMneeTools = false;
-    effectiveConfig.loadBapTools = false;
   } else if (externalWallet) {
-    effectiveConfig.bapPublicOnly = true;
-    effectiveConfig.loadBsocialTools = false;
+    effectiveConfig.bapPublicOnly = false;
     effectiveConfig.loadMneeTools = false;
     logFunc2("External BRC-100 signer selected; local key loading and generation bypassed.");
   }
@@ -300562,16 +313400,19 @@ Effective Component Status:`);
   let integratedWallet;
   let remoteCtx;
   let remoteServices;
+  let externalRuntime;
+  let embeddedRuntime;
   if (CONFIG.loadTools) {
     if (projectRuntime) {
       remoteCtx = projectRuntime.ctx;
       remoteServices = projectRuntime.services;
-      logFunc2(`Project payments wallet ready for ${projectRuntime.projectId}. Deposit address: ${projectRuntime.depositAddress}`);
+      logFunc2(`Project wallet ready for ${projectRuntime.projectId}; roles: ${Object.keys(projectRuntime.roles).join(", ")}. Primary deposit address: ${projectRuntime.depositAddress}`);
     } else if (externalWallet) {
       const chain = process.env.BSV_CHAIN ?? "main";
       if (chain !== "main" && chain !== "test")
         throw new Error("BSV_CHAIN must be main or test");
-      const result = await initExternalWallet(externalWallet, chain);
+      const result = await createExternalWalletRuntime(externalWallet, chain);
+      externalRuntime = result;
       remoteCtx = result.ctx;
       remoteServices = result.services;
       logFunc2(`External BRC-100 signer ready. Identity: ${result.identityKey}`);
@@ -300627,7 +313468,13 @@ Effective Component Status:`);
         }
         try {
           const chain = readAccount()?.chain ?? (process.env.BSV_CHAIN === "test" ? "test" : "main");
-          const remoteResult = await initWallet(payPk.toWif(), chain);
+          const remoteResult = await createEmbeddedWalletRuntime(payPk, identityPk, chain);
+          embeddedRuntime = remoteResult;
+          if (remoteResult.roleContexts) {
+            wallet = undefined;
+            integratedWallet = undefined;
+            effectiveConfig.loadMneeTools = false;
+          }
           remoteCtx = remoteResult.ctx;
           remoteServices = remoteResult.services;
           logFunc2(`\x1B[32mINFO: Remote BRC-100 wallet initialized. Deposit address: ${remoteResult.depositAddress}\x1B[0m`);
@@ -300653,13 +313500,14 @@ Effective Component Status:`);
     externalWallet: !!externalWallet,
     enableAccountTools: walletSetupNeeded ? false : !externalWallet && !projectRuntime && !CONFIG.useDroplitApi,
     enableBsvTools: effectiveConfig.loadBsvTools,
-    enableOrdinalsTools: !projectRuntime && effectiveConfig.loadOrdinalsTools,
+    enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
     enableUtilsTools: effectiveConfig.loadUtilsTools,
-    enableBapTools: !projectRuntime && effectiveConfig.loadBapTools,
+    enableBapTools: effectiveConfig.loadBapTools,
     enableBsocialTools: effectiveConfig.loadBsocialTools,
     enableWalletTools: effectiveConfig.loadWalletTools,
     enableMneeTools: !projectRuntime && effectiveConfig.loadMneeTools,
-    walletScope: projectRuntime ? "payments" : "full",
+    walletScope: "full",
+    roleContexts: projectRuntime?.roleContexts ?? externalRuntime?.roleContexts ?? embeddedRuntime?.roleContexts,
     identityPk,
     payPk,
     xprv,
@@ -300682,42 +313530,57 @@ Effective Component Status:`);
     enableMneeTools: false,
     disableBroadcasting: true
   };
+  const approvalFlow = new McpApprovalFlow;
   const serverFactoryOpts = {
+    approvalFlow,
     toolsConfig,
     wallet,
     ctx: remoteCtx,
     loadPrompts: effectiveConfig.loadPrompts,
     loadResources: effectiveConfig.loadResources
   };
+  let stopTransport;
+  let shutdown;
+  const cleanup = () => shutdown ??= (async () => {
+    approvalFlow.close();
+    await Promise.allSettled([
+      Promise.resolve().then(() => stopTransport?.()),
+      projectRuntime?.cleanup(),
+      externalRuntime?.destroy(),
+      embeddedRuntime?.destroy(),
+      activatedWalletCleanup?.(),
+      destroyWallet()
+    ]);
+  })();
   for (const sig of ["SIGINT", "SIGTERM"]) {
     process.once(sig, () => {
-      Promise.allSettled([
-        projectRuntime?.cleanup(),
-        activatedWalletCleanup?.(),
-        destroyWallet()
-      ]).catch(() => {});
+      cleanup();
     });
   }
   if (CONFIG.transportMode === "stdio") {
-    serveStdio((requestContext) => {
+    const stdio = serveStdio((requestContext) => {
       const configured = createConfiguredServer({
         ...serverFactoryOpts,
         era: requestContext.era
       });
       server = configured;
-      setServerInstance(configured);
-      setSpendingApprovalServerInstance(configured);
       return configured;
     }, {
-      legacy: "serve",
+      legacy: CONFIG.protocol.legacyCompatibility ? "serve" : "reject",
       onerror: (error) => logFunc2(`MCP stdio error: ${error}`)
+    });
+    stopTransport = () => stdio.close();
+    process.stdin.once("end", () => {
+      cleanup();
+    });
+    process.stdin.once("close", () => {
+      cleanup();
     });
     logFunc2("BSV MCP Server running on stdio");
   } else {
     const port = CONFIG.port;
     const resourceUrl = CONFIG.resourceUrl || `http://localhost:${port}`;
     const jwtValidator = CONFIG.enableOAuth ? createMCPJWTValidator(resourceUrl) : null;
-    const sessions = new Map;
     logFunc2(`Starting BSV MCP Server in Streamable HTTP mode on port ${port}...`);
     if (CONFIG.enableOAuth) {
       logFunc2(`OAuth 2.1 authentication enabled`);
@@ -300725,6 +313588,7 @@ Effective Component Status:`);
       logFunc2(`  Resource: ${resourceUrl}`);
     }
     const authServer = process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
+    const sessions = new Map;
     const modernHandler = createMcpHandler((requestContext) => {
       const configured = createConfiguredServer({
         ...serverFactoryOpts,
@@ -300755,7 +313619,7 @@ Effective Component Status:`);
       logFunc2(`Authenticated: ${userContext.sub} (pubkey: ${userContext.pubkey?.substring(0, 20)}...)`);
       return userContext;
     }
-    Bun.serve({
+    const httpServer = Bun.serve({
       hostname: process.env.HOST || "0.0.0.0",
       port,
       async fetch(req) {
@@ -300836,7 +313700,7 @@ Effective Component Status:`);
               }
             });
           }
-          if (!await isLegacyRequest(req)) {
+          if (!CONFIG.protocol.legacyCompatibility || !await isLegacyRequest(req)) {
             const response = await modernHandler.fetch(req, { authInfo });
             for (const [k, v] of Object.entries(corsHeaders)) {
               if (!response.headers.has(k))
@@ -300921,12 +313785,13 @@ ${error.stack}`);
         return new Response("Internal Server Error", { status: 500 });
       }
     });
+    stopTransport = () => httpServer.stop(true);
     logFunc2(`Bun server listening on http://localhost:${port}`);
     logFunc2("  MCP Endpoint: /mcp (Streamable HTTP)");
     logFunc2("  OAuth Discovery: /.well-known/oauth-protected-resource");
   }
 }
-var server, refreshConfiguredCatalog, configuredTools, CONFIG, SUPPORTED_MCP_PROTOCOL_VERSIONS, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
+var server, refreshConfiguredCatalog, configuredTools, CONFIG, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
 var init_server2 = __esm(() => {
   init_stdioGuard();
   init_server();
@@ -300942,23 +313807,29 @@ var init_server2 = __esm(() => {
   init_wallet3();
   init_accountCommands();
   init_accounts();
-  init_walletRoleDefaults();
+  init_appSweep();
   init_backends();
   init_droplit();
   init_embeddedSetupActions();
+  init_embeddedWalletRuntime();
   init_externalWalletConfig();
+  init_externalWalletRuntime();
   init_jwtValidator();
   init_keyManager();
   init_mcpAppRegistration();
-  init_modernToolPolicy();
-  init_passphrasePrompt();
+  init_mcpApprovalFlow();
+  init_mcpProtocol();
+  init_mcpToolExecution();
   init_projectWalletRuntime();
   init_vaultMigration();
+  init_walletDepositAddress();
   init_walletInit();
   init_walletOnboarding();
+  init_walletRoleDefaults();
   refreshConfiguredCatalog = new WeakMap;
   configuredTools = new WeakMap;
   CONFIG = {
+    protocol: readMcpProtocolPolicy(),
     loadPrompts: process.env.DISABLE_PROMPTS !== "true",
     loadResources: process.env.DISABLE_RESOURCES !== "true",
     loadTools: process.env.DISABLE_TOOLS !== "true",
@@ -300980,10 +313851,6 @@ var init_server2 = __esm(() => {
     oauthIssuer: process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
     resourceUrl: process.env.RESOURCE_URL || ""
   };
-  SUPPORTED_MCP_PROTOCOL_VERSIONS = [
-    ...SUPPORTED_PROTOCOL_VERSIONS,
-    "2026-07-28"
-  ];
   logFunc2 = console.error;
   KEY_FILE_PATH = path4.join(accountDir(), "keys.bep");
   initializeKeys = initializeSecureKeys;

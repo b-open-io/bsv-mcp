@@ -11,11 +11,11 @@ Run it with an executable and its arguments after `--`:
 bun run scripts/benchmark-mcp.ts -- bun --no-env-file dist/index.js --stdio
 ```
 
-The default client is the legacy `@modelcontextprotocol/sdk` client. The v2
-client is opt-in, so it can be compared with the same target:
+The default client is the modern split SDK v2 client. For comparison with a
+legacy client, explicitly enable server compatibility:
 
 ```sh
-bun run scripts/benchmark-mcp.ts --client both --runs 5 -- \
+MCP_LEGACY_COMPATIBILITY=true bun run scripts/benchmark-mcp.ts --client both --runs 5 -- \
   bun --no-env-file dist/index.js --stdio
 ```
 
@@ -84,7 +84,7 @@ session-child counters.
 Useful options are:
 
 ```text
---client legacy|modern|both   Client implementation (default: legacy)
+--client legacy|modern|both   Client implementation (default: modern)
 --runs N                      Repetitions per selected client (default: 1)
 --timeout-ms N                Per-request timeout (default: 10000)
 --cwd PATH                    Child working directory

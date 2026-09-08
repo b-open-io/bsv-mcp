@@ -197,21 +197,8 @@ describe("local Vault controller", () => {
 		expect(f.destroy).not.toHaveBeenCalled();
 		expect(f.openVault).not.toHaveBeenCalled();
 	});
-	it("supersedes overlapping unlocks and leaves only the latest role active", async () => {
+	it("supersedes overlapping unlocks of the same role only", async () => {
 		const f = setup();
-		f.config.current.encryption = "encryption";
-		f.config.bindings.push({
-			bindingId: "encryption",
-			role: "encryption",
-			accountId: "selected",
-			key: {
-				vaultId: "vault",
-				entryId: "entry",
-				expectedPublicKey: key.toPublicKey().toString(),
-			},
-			keyUseContract: "direct-v1",
-			createdAt: "2026-09-08T00:01:00Z",
-		});
 		let releaseFirstModule!: () => void;
 		const firstModuleRelease = new Promise<void>((resolve) => {
 			releaseFirstModule = resolve;
@@ -234,21 +221,164 @@ describe("local Vault controller", () => {
 		const controller = createVaultWalletController(f.options);
 		const first = controller.unlock("payments", "first", "switch");
 		await firstModuleReady;
-		const second = await controller.unlock("encryption", "second", "switch");
-		expect(second.role).toBe("encryption");
+		const second = await controller.unlock("payments", "second", "switch");
+		expect(second.role).toBe("payments");
 		releaseFirstModule();
 		await expect(first).rejects.toMatchObject({ code: "UNLOCK_SUPERSEDED" });
 		expect(f.openVault).toHaveBeenCalledTimes(1);
-		await expect(
-			controller.run("payments", async () => true),
-		).rejects.toMatchObject({
-			code: "SESSION_LOCKED",
-		});
-		expect(await controller.run("encryption", async () => "latest")).toBe(
+		expect(await controller.run("payments", async () => "latest")).toBe(
 			"latest",
 		);
 		await controller.lock();
 		expect(f.destroy).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps payments and identity-signing sessions active simultaneously", async () => {
+		const paymentKey = PrivateKey.fromHex("11");
+		const identityKey = PrivateKey.fromHex("22");
+		const f = setup();
+		f.config.current["identity-signing"] = "identity";
+		f.config.bindings.push({
+			bindingId: "identity",
+			role: "identity-signing",
+			accountId: "selected-identity",
+			key: {
+				vaultId: "vault",
+				entryId: "identity-entry",
+				expectedPublicKey: identityKey.toPublicKey().toString(),
+			},
+			keyUseContract: "direct-v1",
+			createdAt: "2026-09-08T00:01:00Z",
+		});
+		const paymentBinding = f.config.bindings[0];
+		if (!paymentBinding) throw new Error("missing fixture");
+		paymentBinding.key.expectedPublicKey = paymentKey.toPublicKey().toString();
+		const byEntry: Record<string, PrivateKey> = {
+			entry: paymentKey,
+			"identity-entry": identityKey,
+		};
+		(f.options as unknown as { openVault: unknown }).openVault = mock(
+			async () => ({
+				toDocument: () => ({ id: "vault" }),
+				get: () => ({ kind: "private" }),
+				reveal: (id: string) => byEntry[id]?.toHex() ?? paymentKey.toHex(),
+				unlock: () => {},
+				lock: () => {},
+			}),
+		);
+		f.options.loadVaultModule = async () => ({
+			PassphraseProvider: class {
+				constructor(readonly passphrase: string) {}
+			},
+			openVault: (f.options as unknown as { openVault: unknown })
+				.openVault as never,
+		});
+		(
+			f.options.walletDependencies as unknown as { initializeWallet: unknown }
+		).initializeWallet = mock(
+			async (
+				revealed: PrivateKey,
+				selection: { accountName: string },
+			): Promise<WalletInitResult> => {
+				const wallet = new ProtoWallet(revealed) as unknown as WalletInterface;
+				return {
+					wallet,
+					ctx: { wallet } as WalletInitResult["ctx"],
+					services: {} as WalletInitResult["services"],
+					depositAddress: `synthetic-${selection.accountName}`,
+					destroy: async () => {},
+				};
+			},
+		);
+		(
+			f.options as unknown as { readSelectedAccount: unknown }
+		).readSelectedAccount = mock((name: string) => {
+			expect(["selected", "selected-identity"]).toContain(name);
+			return {
+				chain: "test" as const,
+				storageIdentityKey: "test",
+				depositPrefix: "mcp" as const,
+			};
+		});
+
+		const controller = createVaultWalletController(f.options);
+		const paymentStatus = await controller.unlock(
+			"payments",
+			"pass",
+			"payments session",
+		);
+		const identityStatus = await controller.unlock(
+			"identity-signing",
+			"pass",
+			"identity session",
+		);
+		expect(paymentStatus.bindingId).toBe("payment");
+		expect(identityStatus.bindingId).toBe("identity");
+		expect(identityStatus.publicKey).toBe(identityKey.toPublicKey().toString());
+		const paymentPub = await controller.run(
+			"payments",
+			async (session) =>
+				(await session.wallet.getPublicKey({ identityKey: true })).publicKey,
+		);
+		const identityPub = await controller.run(
+			"identity-signing",
+			async (session) =>
+				(await session.wallet.getPublicKey({ identityKey: true })).publicKey,
+		);
+		expect(paymentPub).toBe(paymentKey.toPublicKey().toString());
+		expect(identityPub).toBe(identityKey.toPublicKey().toString());
+		expect(paymentPub).not.toBe(identityPub);
+		await controller.lock("payments");
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({ code: "SESSION_LOCKED" });
+		expect(
+			await controller.run("identity-signing", async () => "still-active"),
+		).toBe("still-active");
+		await controller.lock();
+		await expect(
+			controller.run("identity-signing", async () => true),
+		).rejects.toMatchObject({ code: "SESSION_LOCKED" });
+	});
+
+	it("revokes only the stale role and never falls back across roles", async () => {
+		const f = setup();
+		f.config.current["identity-signing"] = "identity";
+		f.config.bindings.push({
+			bindingId: "identity",
+			role: "identity-signing",
+			accountId: "selected",
+			key: {
+				vaultId: "vault",
+				entryId: "identity-entry",
+				expectedPublicKey: key.toPublicKey().toString(),
+			},
+			keyUseContract: "direct-v1",
+			createdAt: "2026-09-08T00:01:00Z",
+		});
+		const controller = createVaultWalletController(f.options);
+		await controller.unlock("payments", "pass", "test");
+		await controller.unlock("identity-signing", "pass", "test");
+		const paymentBinding = f.config.bindings.find(
+			(item) => item.bindingId === "payment",
+		);
+		if (!paymentBinding) throw new Error("missing fixture");
+		paymentBinding.key.entryId = "rotated-entry";
+		const operation = mock(async () => true);
+		await expect(controller.run("payments", operation)).rejects.toThrow(
+			"STALE",
+		);
+		expect(operation).not.toHaveBeenCalled();
+		expect(
+			await controller.run("identity-signing", async () => "other-role-ok"),
+		).toBe("other-role-ok");
+		await controller.lock("identity-signing");
+		await expect(
+			controller.run("identity-signing", async () => true),
+		).rejects.toMatchObject({ code: "SESSION_LOCKED" });
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({ code: "SESSION_LOCKED" });
 	});
 
 	it("locks and disposes a session that finishes after a concurrent controller lock", async () => {

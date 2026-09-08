@@ -61,12 +61,12 @@ test("registers public social reads without a local wallet", async () => {
 	expect(await registeredSocialTools()).toEqual(publicSocialReadTools);
 });
 
-test("registers public social reads for an external context without writes", async () => {
+test("registers BRC-100 social posting for an external identity context", async () => {
 	expect(
 		await registeredSocialTools({
 			ctx: createContext(new WalletClient()),
 		}),
-	).toEqual(publicSocialReadTools);
+	).toEqual([...publicSocialReadTools, "bsocial_createPost"].sort());
 });
 
 test("keeps post writing available only with a custom wallet", async () => {

@@ -14,43 +14,10 @@ import {
 import { createServer } from "node:http";
 import { platform } from "node:os";
 import { join } from "node:path";
-import type { McpServer } from "@modelcontextprotocol/server";
 
 // Global lock to prevent multiple simultaneous prompts
 const LOCK_DIR = join(process.env.HOME || "", ".bsv-mcp");
 const LOCK_FILE = join(LOCK_DIR, "prompt.lock");
-
-// Server instance to check transport type
-let serverInstance: McpServer | null = null;
-
-/**
- * Set the server instance so we can detect transport type
- */
-export function setServerInstance(server: McpServer): void {
-	serverInstance = server;
-}
-
-/**
- * Detect if we're running in MCP stdio mode by checking the actual transport
- * The stdio entry point owns the transport lifecycle in SDK v2. This helper
- * therefore only trusts an explicit transport selection (or a server transport
- * whose constructor identifies the legacy stdio transport).
- */
-function _isStdioMode(): boolean {
-	if (
-		process.argv.includes("--stdio") ||
-		process.env.TRANSPORT?.toLowerCase() === "stdio"
-	) {
-		return true;
-	}
-
-	// Kept for callers using the v1 connect(transport) lifecycle. Avoid an
-	// instanceof import so this remains compatible with the v2 package split.
-	return (
-		serverInstance?.server?.transport?.constructor?.name ===
-		"StdioServerTransport"
-	);
-}
 
 /**
  * Check if another prompt is already active

@@ -206,7 +206,8 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "claude-code",
 		label: "Claude Code",
-		command: "claude plugin install bsv-mcp@b-open-io",
+		command:
+			"claude plugin marketplace add b-open-io/claude-plugins\nclaude plugin install bsv-mcp@b-open-io",
 		altCommands: [
 			{
 				label: "Or register the local server yourself",
@@ -250,16 +251,19 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "grok",
 		label: "Grok Build",
-		command: "grok mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
+		command: "grok plugin install b-open-io/bsv-mcp",
 		altCommands: [
+			{
+				label: "Or register the local server directly",
+				command: "grok mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
+			},
 			{
 				label: "Or use the hosted server",
 				command: "grok mcp add --transport http bsv-mcp https://bsvmcp.com",
 			},
 		],
-		configPath: "~/.grok/config.toml",
-		config: STDIO_TOML,
-		docsUrl: "https://docs.x.ai/build/features/mcp-servers",
+		note: "Grok supports Claude-format plugins. The plugin launches the bundled local server; no config file needs to be edited.",
+		docsUrl: "https://docs.x.ai/build/features/skills-plugins-marketplaces",
 	},
 	{
 		key: "opencode",

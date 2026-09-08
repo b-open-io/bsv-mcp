@@ -31,8 +31,8 @@ import {
 import { backendUrl, onesatUrl } from "./backends";
 import {
 	EMBEDDED_OWNER_ORIGINATOR,
-	withEmbeddedOwnerDefaultBasketRead,
 	withEmbeddedMcpOriginator,
+	withEmbeddedOwnerDefaultBasketRead,
 	withEmbeddedOwnerDerivation,
 } from "./embeddedOwnerRead";
 import {
@@ -45,8 +45,9 @@ import {
 	type SpendingPermissionRequest,
 } from "./spendingApproval.ts";
 import { denyStoragePayment } from "./storagePayment";
+import { WALLET_DEPOSIT_PREFIX } from "./walletDepositAddress";
+import type { WalletRoleContexts } from "./walletRoles";
 
-export { setSpendingApprovalServerInstance } from "./spendingApproval.ts";
 
 /**
  * The originator that bypasses every permission check in
@@ -87,11 +88,7 @@ export interface WalletInitResult {
 	ctx: OneSatContext;
 	depositAddress: string;
 	destroy: () => Promise<void>;
-	roleContexts?: {
-		payments: OneSatContext;
-		identity?: OneSatContext;
-		ordinals?: OneSatContext;
-	};
+	roleContexts?: WalletRoleContexts;
 }
 
 let activeResult: Pick<NodeWalletResult, "destroy"> | null = null;
@@ -156,6 +153,8 @@ export async function initWallet(
 	const result = await createNodeWallet(nodeWalletConfig).finally(() =>
 		process.umask(oldMask),
 	);
+	let destruction: Promise<void> | undefined;
+	const destroy = () => destruction ??= result.destroy();
 	try {
 		chmodSync(filename, 0o600);
 
@@ -204,7 +203,10 @@ export async function initWallet(
 				isBaseWallet: true,
 				log: (entry) => writeAuditLog(dataDir, entry),
 			}),
-			{ [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR },
+			{
+				[EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR,
+				[WALLET_DEPOSIT_PREFIX]: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
+			},
 		);
 		const internalCtx = {
 			...ctx,
@@ -218,16 +220,16 @@ export async function initWallet(
 			throw new Error("Could not derive a deposit address for the wallet");
 		}
 		options.sessionSignal?.throwIfAborted();
-		if (options.trackActive !== false) activeResult = result;
+		if (options.trackActive !== false) activeResult = { destroy };
 		return {
 			wallet,
 			services: result.services,
 			ctx,
 			depositAddress,
-			destroy: result.destroy,
+			destroy,
 		};
 	} catch (error) {
-		await result.destroy().catch(() => {});
+		await destroy().catch(() => {});
 		throw error;
 	}
 }
@@ -265,6 +267,14 @@ export async function initExternalWallet(
 		}
 		PublicKey.fromString(identity.publicKey);
 		identityKey = identity.publicKey;
+		if (
+			config.expectedPublicKey &&
+			identityKey.toLowerCase() !== config.expectedPublicKey.toLowerCase()
+		) {
+			throw new Error(
+				"External signer identity does not match its configured public key",
+			);
+		}
 	} catch (error) {
 		throw new Error(
 			"External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.",

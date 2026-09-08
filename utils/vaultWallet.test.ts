@@ -1,5 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
-import { PrivateKey, ProtoWallet, type WalletInterface } from "@bsv/sdk";
+import {
+	KeyDeriver,
+	PrivateKey,
+	ProtoWallet,
+	type WalletInterface,
+} from "@bsv/sdk";
 import {
 	createOplVaultLoader,
 	openVaultWalletSession,
@@ -55,6 +60,69 @@ function setup() {
 	const openVault = mock(async () => access);
 	return { selection, access, raw, destroy, initializeWallet, openVault };
 }
+
+it("flat BRC-42 project bindings initialize only the pinned child and support BRC-100 signing", async () => {
+	for (const counterparty of [
+		"self",
+		"anyone",
+		PrivateKey.fromHex("2").toPublicKey().toString(),
+	]) {
+		const f = setup();
+		const derivation = {
+			scheme: "brc42" as const,
+			protocolID: [2, "project signing"] as [2, string],
+			keyID: "project-a",
+			counterparty,
+		};
+		const expected = new KeyDeriver(key).derivePrivateKey(
+			derivation.protocolID,
+			derivation.keyID,
+			counterparty,
+		);
+		f.selection.binding = {
+			...f.selection.binding,
+			keyUseContract: "brc42-leaf-v1",
+			derivation,
+			expectedPublicKey: expected.toPublicKey().toString(),
+		};
+		f.initializeWallet.mockImplementation(async (selected) => {
+			const wallet = new ProtoWallet(selected) as unknown as WalletInterface;
+			return {
+				wallet,
+				ctx: { wallet } as WalletInitResult["ctx"],
+				services: {} as WalletInitResult["services"],
+				depositAddress: "synthetic",
+				destroy: f.destroy,
+			};
+		});
+		const session = await openVaultWalletSession(f.selection, "synthetic", f);
+		expect(f.initializeWallet.mock.calls[0]?.[0].toPublicKey().toString()).toBe(
+			expected.toPublicKey().toString(),
+		);
+		expect(expected.toPublicKey().toString()).not.toBe(
+			key.toPublicKey().toString(),
+		);
+		const parameters = {
+			protocolID: [2, "application signing"] as [2, string],
+			keyID: "invoice-42",
+			counterparty: "self",
+			data: [1, 2, 3],
+		};
+		const signed = await session.wallet.createSignature(parameters);
+		expect(
+			(
+				await session.wallet.verifySignature({
+					...parameters,
+					signature: signed.signature,
+				})
+			).valid,
+		).toBe(true);
+		await session.lock();
+		await expect(
+			session.wallet.createSignature(parameters),
+		).rejects.toMatchObject({ code: "SESSION_LOCKED" });
+	}
+});
 
 describe("Vault wallet session", () => {
 	it("rejects a different account before unlocking or opening its database", async () => {
@@ -340,7 +408,8 @@ it("rejects unsupported profile APIs, source types, mismatched pins and expiry b
 			expect(f.openVault).not.toHaveBeenCalled();
 	}
 });
-const realProfilePath = process.env.BSV_MCP_TEST_VAULT_MODULE;
+const realProfilePath =
+	process.env.BSV_MCP_TEST_VAULT_MODULE ?? "@opl.dev/vault";
 const realProfileModule = realProfilePath
 	? await import(realProfilePath)
 	: undefined;

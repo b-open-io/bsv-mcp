@@ -6,7 +6,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { withMcpAuth } from "mcp-handler";
 import { z } from "zod";
-import { withModernToolPolicy } from "../utils/modernToolPolicy";
+import { withMcpToolExecution } from "../utils/mcpToolExecution";
 
 const protocol2026Headers = {
 	"Mcp-Protocol-Version": "2026-07-28",
@@ -57,7 +57,7 @@ function createTestHandler(
 				{ name: "adapter-test", version: "1" },
 				{ capabilities: { tools: {} } },
 			);
-			const server = withModernToolPolicy(nativeServer, requestContext.era);
+			const server = withMcpToolExecution(nativeServer, requestContext.era);
 
 			server.registerTool(
 				"proof_echo",
@@ -104,7 +104,7 @@ function createTestHandler(
 
 			return server;
 		},
-		{ legacy: "stateless" },
+		{ legacy: "reject" },
 	);
 
 	return (req: Request) => sdkHandler.fetch(req, { authInfo: req.auth });
@@ -132,7 +132,7 @@ test("v2 adapter lists tools for modern requests", async () => {
 	).toBe(true);
 });
 
-test("hosted adapter guards modern writes while preserving reads and auth", async () => {
+test("adapter preserves modern callback execution and request authentication", async () => {
 	const state: TestState = { readCalls: 0, writeCalls: 0, eras: [] };
 	const handler = withMcpAuth(
 		createTestHandler(state),
@@ -155,10 +155,10 @@ test("hosted adapter guards modern writes while preserving reads and auth", asyn
 
 	const list = await handler(
 		request(
-			{ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+			{ jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: modernEnvelope } },
 			{
 				Authorization: "Bearer test-token",
-				"Mcp-Protocol-Version": "2025-11-25",
+				...protocol2026Headers,
 			},
 		),
 	);
@@ -220,68 +220,15 @@ test("hosted adapter guards modern writes while preserving reads and auth", asyn
 	);
 	expect(modernWrite.status).toBe(200);
 	const modernWriteData = await responseBody(modernWrite);
-	expect(modernWriteData.result.isError).toBe(true);
-	expect(modernWriteData.result.content[0].text).toContain(
-		"proof_echo is unavailable",
-	);
-	expect(state.writeCalls).toBe(0);
-
-	const call = await handler(
-		request(
-			{
-				jsonrpc: "2.0",
-				id: 5,
-				method: "tools/call",
-				params: {
-					name: "bsv_getPrice",
-					arguments: { message: "legacy-read" },
-				},
-			},
-			{
-				Authorization: "Bearer test-token",
-				"Mcp-Protocol-Version": "2025-11-25",
-			},
-		),
-	);
-	expect(call.status).toBe(200);
-	const callData = await responseBody(call);
-	expect(JSON.parse(callData.result.content[0].text)).toEqual({
-		message: "legacy-read",
-		userId: "user-123",
-	});
-	expect(state.readCalls).toBe(2);
-
-	const legacyWrite = await handler(
-		request(
-			{
-				jsonrpc: "2.0",
-				id: 6,
-				method: "tools/call",
-				params: {
-					name: "proof_echo",
-					arguments: { message: "legacy-write" },
-				},
-			},
-			{
-				Authorization: "Bearer test-token",
-				"Mcp-Protocol-Version": "2025-11-25",
-			},
-		),
-	);
-	expect(legacyWrite.status).toBe(200);
-	const legacyWriteData = await responseBody(legacyWrite);
-	expect(JSON.parse(legacyWriteData.result.content[0].text)).toEqual({
-		message: "legacy-write",
+	expect(modernWriteData.result.isError).not.toBe(true);
+	expect(JSON.parse(modernWriteData.result.content[0].text)).toEqual({
+		message: "modern-write",
 		userId: "user-123",
 	});
 	expect(state.writeCalls).toBe(1);
-	expect(state.eras).toEqual([
-		"legacy",
-		"modern",
-		"modern",
-		"legacy",
-		"legacy",
-	]);
+
+	expect(state.readCalls).toBe(1);
+	expect(state.eras).toEqual(["modern", "modern", "modern"]);
 });
 
 test("v2 adapter returns a bearer challenge when auth is required", async () => {

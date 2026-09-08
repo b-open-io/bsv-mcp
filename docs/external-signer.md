@@ -9,10 +9,8 @@ BRC100_WALLET_ORIGINATOR=bsv-mcp.local
 
 The URL must point to signer RPC. `/1sat/wallet` and `1sat serve wallet` expose storage RPC and are not substitutes. Remove `PRIVATE_KEY_WIF`, `IDENTITY_KEY_WIF`, and local-account password variables from the external launcher's environment. The MCP process then bypasses local key loading and storage provisioning. Your signer controls permissions.
 
-The launcher uses the server's default `main` chain for external mode. The
-launcher has no chain selector yet; a testnet external signer requires a
-separate process configuration that passes `BSV_CHAIN=test` directly to the
-server.
+The launcher defaults to `main`. Set `BSV_CHAIN=test` in its environment for
+a testnet signer; invalid chain values are rejected.
 
 ## Register external mode from a source checkout
 
@@ -55,8 +53,48 @@ SDK wallet method. The child receives no WIF or account password variables.
 The bundled signer can prompt for its password in a local terminal. When a client launches it headlessly, arrange `BSV_MCP_PASSWORD` in the signer's environment. The wrapper removes that value from the child environment. Do not commit passwords or paste them into chat.
 
 The Vault controller and migration preview are present in the source tree but
-are not connected to this signer wrapper. `vault-setup` is read-only and
-`wallet_migrate` still creates the existing encrypted account format. Complete
+are not connected to this signer wrapper. `vault-setup` offers local Vault configuration, while
+`wallet_migrate` creates the existing encrypted account format. Complete
 any account migration before replacing an existing signer wrapper. Preserve the
 account's storage identity, database and deposit prefix. Do not create another
 wallet to make a failing connection succeed.
+
+## Project scope and separate role keys
+
+Use paired `BSV_MCP_PROJECT_ROOT` (absolute) and `BSV_MCP_PROJECT_ID` in a
+stdio registration with `BRC100_WALLET_URL`. This selects external project mode
+without opening a local Vault. A deterministic project permission origin is
+used unless `BRC100_WALLET_ORIGINATOR` explicitly overrides it. Different
+projects receive different default origins.
+
+`BRC100_WALLET_PUBLIC_KEY` optionally pins the default signer's compressed
+identity public key. Startup fails on a mismatch. `BRC100_WALLET_ROLES` accepts
+this JSON shape (all fields are public configuration):
+
+```json
+{
+  "payments": { "url": "http://127.0.0.1:3321", "expectedPublicKey": "<compressed public key>" },
+  "identity": { "url": "http://127.0.0.1:3322", "expectedPublicKey": "<compressed public key>" },
+  "ordinals": { "url": "http://127.0.0.1:3323" },
+  "encryption": null
+}
+```
+
+Replace placeholders with actual public keys. Each role can override
+`originator`; otherwise it inherits the project/default origin. Omitted or null
+roles in an explicit object are unassigned, and at least one must be assigned.
+Without a roles object, the existing single signer handles all operations.
+BRC-100 protocolID/keyID/counterparty arguments derive application keys inside
+the chosen provider. BSV MCP does not request its root private key.
+
+The local launcher forwards validated role configuration and public-key pins:
+
+```sh
+bun --no-env-file scripts/local-mcp-launcher.ts external \
+  --project-root /absolute/path/to/project --project-id project.example
+```
+
+Supply signer configuration in the launcher's environment. Broadcasting is
+initially disabled by the launcher; `DISABLE_BROADCASTING=false` enables it,
+with approval still controlled by the signer. Modern MCP is primary; set
+`MCP_LEGACY_COMPATIBILITY=true` only for a client that needs the 2025 protocol.

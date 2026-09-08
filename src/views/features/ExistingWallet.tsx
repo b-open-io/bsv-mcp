@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { MigrationSource } from "../../../utils/vaultMigration";
 import type { AvailableSetupTool } from "../../../utils/vaultSetup";
 import { AvailableTools } from "../components/AvailableTools";
+import { WalletReady } from "../components/WalletReady";
 import {
 	Button,
 	LocalShell,
@@ -139,6 +140,8 @@ export function ExistingWallet({
 			setPending(false);
 		}
 	}
+	if (ready && !standalone) return <LocalShell navigation={false}><WalletReady tools={tools} /></LocalShell>;
+
 	return (
 		<LocalShell navigation={false}>
 			<PageHeader

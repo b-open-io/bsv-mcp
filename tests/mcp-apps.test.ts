@@ -219,9 +219,9 @@ test("app_sweep_complete honors the environment guard through registration", asy
 	);
 });
 
-test("app_sweep_complete forwards the reference and spends when enabled", async () => {
+test("app_sweep_complete rejects unprepared references before invoking either wallet mode", async () => {
 	process.env.DISABLE_BROADCASTING = "false";
-	const reference = "enabled-reference";
+	const reference = "12345678-1234-4234-8234-123456789012";
 	const spends = { "0": { unlockingScript: "51" } };
 
 	for (const isBaseWallet of [true, false]) {
@@ -237,19 +237,11 @@ test("app_sweep_complete forwards the reference and spends when enabled", async 
 					arguments: { reference, spends },
 				});
 
-				expect(result.structuredContent).toEqual({
-					txid: isBaseWallet
-						? "local-remote-sweep-txid"
-						: "external-sweep-txid",
-					success: true,
-				});
-				expect(calls).toEqual([
-					{
-						reference,
-						spends,
-						options: { acceptDelayedBroadcast: false },
-					},
-				]);
+				expect(result.isError).toBe(true);
+				expect(JSON.stringify(result.structuredContent)).toContain(
+					"unauthorized sweep reference",
+				);
+				expect(calls).toEqual([]);
 			},
 			{
 				ctx,

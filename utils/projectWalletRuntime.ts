@@ -2,12 +2,20 @@ import { isAbsolute, resolve } from "node:path";
 import type { OneSatContext } from "@1sat/actions";
 import type { OneSatServices } from "@1sat/client";
 import type { WalletInterface } from "@bsv/sdk";
+import { readExternalWalletConfig } from "./externalWalletConfig";
+import {
+	PROJECT_KEY_ROLES,
+	type ProjectKeyRole,
+	projectRoleBindingsSchema,
+} from "./projectRoleBindings";
+import { loadProjectRoleBindings } from "./projectRoleBindingsStore";
 import { VaultWalletError } from "./vaultWallet";
 import {
 	createVaultWalletController,
 	loadInstalledVaultModule,
 	type VaultControllerOptions,
 } from "./vaultWalletController";
+import type { WalletRoleContexts } from "./walletRoles";
 
 export const PROJECT_WALLET_ROLE = "payments" as const;
 
@@ -78,6 +86,23 @@ export function readProjectWalletConfig(
 			"PROJECT_STDIO_REQUIRED",
 			"Project-bound wallets are available only through the stdio transport",
 		);
+	// An explicitly selected external signer uses the project as its permission
+	// origin. It does not open local Vault bindings or request a passphrase.
+	if (env.BRC100_WALLET_URL !== undefined) {
+		for (const name of [
+			"BSV_MCP_ACCOUNT",
+			"REMOTE_STORAGE_URL",
+			"BSV_MCP_PASSPHRASE",
+			"BSV_MCP_PASSWORD",
+		])
+			if (env[name] !== undefined)
+				fail(
+					"PROJECT_WALLET_CONFLICT",
+					`External project wallet conflicts with ${name}`,
+				);
+		readExternalWalletConfig(env);
+		return undefined;
+	}
 	for (const name of PROJECT_CONFLICTS) {
 		if (env[name] !== undefined)
 			fail(
@@ -142,7 +167,9 @@ export interface ProjectWalletRuntimeOptions {
 export interface ProjectWalletRuntime {
 	readonly projectRoot: string;
 	readonly projectId: string;
-	readonly role: typeof PROJECT_WALLET_ROLE;
+	readonly role: ProjectKeyRole;
+	readonly roleContexts: WalletRoleContexts;
+	readonly roles: Readonly<Partial<Record<ProjectKeyRole, OneSatContext>>>;
 	readonly ctx: OneSatContext;
 	readonly wallet: WalletInterface;
 	readonly services?: OneSatServices;
@@ -154,7 +181,7 @@ export interface ProjectWalletRuntime {
 }
 
 /**
- * Unlock the explicitly assigned payments role for one stdio child.
+ * Unlock every explicitly assigned role for one project stdio child.
  *
  * The raw session wallet is retained only behind a revocable proxy. Every
  * operation re-enters the controller, so expiry or a stale project file is
@@ -206,27 +233,83 @@ export async function createProjectWalletRuntime(
 		resolveVaultPath,
 		loadVaultModule: module,
 	});
-	const status = await controller.unlock(
-		PROJECT_WALLET_ROLE,
-		passphrase,
-		options.reason ?? "BSV MCP project payments session",
-		options.ttlSeconds,
+	const bindings = projectRoleBindingsSchema.parse(
+		await (options.controllerOptions?.loadBindings ?? loadProjectRoleBindings)(
+			projectRoot,
+			projectId,
+		),
 	);
-
-	let guardedContext: OneSatContext | undefined;
-	await controller.run(PROJECT_WALLET_ROLE, async (session) => {
-		const wallet = createGuardedWallet(
-			controller,
-			PROJECT_WALLET_ROLE,
-			session.wallet,
+	if (bindings.projectId !== projectId)
+		fail(
+			"PROJECT_CONFIG_INVALID",
+			"Project binding belongs to another project",
 		);
-		guardedContext = createGuardedContext(session.ctx, wallet);
-	});
-	if (!guardedContext)
+	const assigned = PROJECT_KEY_ROLES.filter(
+		(role) => bindings.current[role] !== null,
+	);
+	if (!assigned.length)
+		fail(
+			"PROJECT_ROLES_UNASSIGNED",
+			"Assign at least one project key role before starting the wallet",
+		);
+	const contexts: Partial<Record<ProjectKeyRole, OneSatContext>> = {};
+	const statuses = new Map<
+		ProjectKeyRole,
+		Awaited<ReturnType<typeof controller.unlock>>
+	>();
+	try {
+		for (const role of assigned) {
+			const unlocked = await controller.unlock(
+				role,
+				passphrase,
+				options.reason ?? `BSV MCP project ${role} session`,
+				options.ttlSeconds,
+			);
+			statuses.set(role, unlocked);
+		}
+		// Revalidate every snapshot after the whole selection has opened. A
+		// project edited during multi-role activation must not yield a mixed set.
+		for (const role of assigned)
+			await controller.run(role, async (session) => {
+				contexts[role] = createGuardedContext(
+					session.ctx,
+					createGuardedWallet(controller, role, session.wallet),
+				);
+			});
+	} catch (error) {
+		await controller.lock();
+		throw error;
+	}
+	const primaryRole = contexts.payments ? "payments" : assigned[0];
+	const guardedContext = contexts[primaryRole];
+	const status = statuses.get(primaryRole);
+	if (!guardedContext || !status) {
+		await controller.lock();
 		fail(
 			"PROJECT_CONTEXT_UNAVAILABLE",
 			"Project wallet context could not be initialized",
 		);
+	}
+	if (
+		Object.values(contexts).some(
+			(context) => context.chain !== guardedContext.chain,
+		)
+	) {
+		await controller.lock();
+		fail(
+			"PROJECT_NETWORK_MISMATCH",
+			"Project wallet roles must use the same Bitcoin network",
+		);
+	}
+	const expiresAt = Math.min(
+		...[...statuses.values()].map((value) => value.expiresAt),
+	);
+	const roleContexts: WalletRoleContexts = {
+		payments: contexts.payments,
+		identity: contexts["identity-signing"],
+		ordinals: contexts["one-sat"],
+		encryption: contexts.encryption ?? null,
+	};
 
 	let timer: TimerHandle | undefined;
 	let cleaned = false;
@@ -275,7 +358,7 @@ export async function createProjectWalletRuntime(
 	};
 	timer = (options.schedule ?? setTimeout)(
 		expire,
-		Math.max(0, status.expiresAt - now()),
+		Math.max(0, expiresAt - now()),
 	);
 
 	const cleanup = async () => {
@@ -287,12 +370,14 @@ export async function createProjectWalletRuntime(
 	return Object.freeze({
 		projectRoot,
 		projectId,
-		role: PROJECT_WALLET_ROLE,
+		role: primaryRole,
+		roleContexts: Object.freeze(roleContexts),
+		roles: Object.freeze(contexts),
 		ctx: guardedContext,
 		wallet: guardedContext.wallet,
 		services: guardedContext.services,
 		depositAddress: status.depositAddress,
-		expiresAt: status.expiresAt,
+		expiresAt,
 		controller,
 		cleanup,
 	});
@@ -300,7 +385,7 @@ export async function createProjectWalletRuntime(
 
 function createGuardedWallet(
 	controller: ReturnType<typeof createVaultWalletController>,
-	role: typeof PROJECT_WALLET_ROLE,
+	role: ProjectKeyRole,
 	initial: WalletInterface,
 ): WalletInterface {
 	// Do not proxy the SDK wallet object itself: permission wrappers may expose

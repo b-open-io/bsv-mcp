@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { PrivateKey, type WalletInterface } from "@bsv/sdk";
+import { KeyDeriver, PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { z } from "zod";
 import { accountNameSchema } from "./accounts";
 import {
@@ -9,8 +9,10 @@ import {
 import {
 	type VaultProfileDerivationApi,
 	vaultProfileDerivationSchema,
+	vaultProfileLeafSchema,
 } from "./vaultProfileDerivation";
 import { initWallet, type WalletInitResult } from "./walletInit";
+import { walletStorageForKey } from "./walletKeyStorage";
 
 /** Public, immutable selection from a trusted project-role resolver. */
 export const vaultWalletBindingSchema = z
@@ -24,25 +26,30 @@ export const vaultWalletBindingSchema = z
 		expectedPublicKey: z.string().regex(/^(02|03)[0-9a-fA-F]{64}$/),
 		keyUseContract: z.enum([
 			"direct-v1",
+			"brc42-leaf-v1",
 			"brc157-leaf-v1",
 			"yours-legacy-leaf-v1",
 		]),
-		derivation: vaultProfileDerivationSchema.optional(),
+		derivation: z
+			.union([vaultProfileDerivationSchema, vaultProfileLeafSchema])
+			.optional(),
 	})
 	.strict()
 	.superRefine((binding, ctx) => {
 		const valid =
 			binding.keyUseContract === "direct-v1"
 				? binding.derivation === undefined
-				: vaultProfileBindingSchema.safeParse({
-						keyUseContract: binding.keyUseContract,
-						key: {
-							vaultId: binding.vaultId,
-							entryId: binding.entryId,
-							expectedPublicKey: binding.expectedPublicKey,
-							derivation: binding.derivation,
-						},
-					}).success;
+				: binding.keyUseContract === "brc42-leaf-v1"
+					? binding.derivation?.scheme === "brc42"
+					: vaultProfileBindingSchema.safeParse({
+							keyUseContract: binding.keyUseContract,
+							key: {
+								vaultId: binding.vaultId,
+								entryId: binding.entryId,
+								expectedPublicKey: binding.expectedPublicKey,
+								derivation: binding.derivation,
+							},
+						}).success;
 		if (!valid)
 			ctx.addIssue({
 				code: "custom",
@@ -217,10 +224,13 @@ export async function openVaultWalletSession(
 		Object.freeze(binding.derivation.leaf.protocolID);
 		Object.freeze(binding.derivation.leaf);
 	}
+	if (binding.derivation?.scheme === "brc42")
+		Object.freeze(binding.derivation.protocolID);
 	if (binding.derivation) Object.freeze(binding.derivation);
 	Object.freeze(binding);
 	if (
-		binding.keyUseContract !== "direct-v1" &&
+		(binding.keyUseContract === "brc157-leaf-v1" ||
+			binding.keyUseContract === "yours-legacy-leaf-v1") &&
 		!dependencies.profileDerivationApi
 	)
 		throw new VaultWalletError(
@@ -309,7 +319,8 @@ export async function openVaultWalletSession(
 			);
 		}
 		if (
-			binding.keyUseContract === "direct-v1" &&
+			(binding.keyUseContract === "direct-v1" ||
+				binding.keyUseContract === "brc42-leaf-v1") &&
 			entry.kind !== "private" &&
 			entry.kind !== "wif"
 		) {
@@ -338,7 +349,10 @@ export async function openVaultWalletSession(
 		);
 		timer.unref?.();
 		try {
-			if (binding.keyUseContract !== "direct-v1") {
+			if (
+				binding.keyUseContract === "brc157-leaf-v1" ||
+				binding.keyUseContract === "yours-legacy-leaf-v1"
+			) {
 				const profileApi = dependencies.profileDerivationApi;
 				if (!profileApi) throw new Error("Profile API unavailable");
 				const profileAccess = access;
@@ -367,6 +381,14 @@ export async function openVaultWalletSession(
 					entry.kind === "private"
 						? PrivateKey.fromHex(value)
 						: PrivateKey.fromWif(value);
+				if (binding.derivation?.scheme === "brc42") {
+					const { protocolID, keyID, counterparty } = binding.derivation;
+					key = new KeyDeriver(key).derivePrivateKey(
+						protocolID,
+						keyID,
+						counterparty,
+					);
+				}
 			}
 		} catch {
 			throw new VaultWalletError(
@@ -388,7 +410,10 @@ export async function openVaultWalletSession(
 			dependencies.initializeWallet ??
 			((privateKey, selected, signal) =>
 				initWallet(privateKey, selected.chain, {
-					accountName: selected.accountName,
+					...walletStorageForKey(
+						selected.accountName,
+						selected.binding.expectedPublicKey,
+					),
 					trackActive: false,
 					sessionSignal: signal,
 				}));
