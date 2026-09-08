@@ -570,40 +570,54 @@ export async function createAccountVaultMigrationBackend(
 			return preview;
 		},
 		async cutover(input, onProgress) {
-			const prepared = current(input.sessionId);
-			assertRequest(prepared, input);
-			if (input.confirmation !== "MIGRATE_AND_SWITCH")
-				throw failure(
-					"CONFIRMATION_REQUIRED",
-					"Confirm migration before writing the encrypted destination.",
-				);
-			if (prepared.busy)
-				throw failure("MIGRATION_BUSY", "This migration is already running.");
-			const selectionRequest = (
-				input as typeof input & { roleSelection?: ProjectRoleSelectionRequest }
-			).roleSelection;
-			if (!selectionRequest && Object.keys(roleAssignments).length === 0)
-				throw failure(
-					"ROLE_SELECTION_REQUIRED",
-					"Choose explicit project key roles before cutover.",
-				);
-			if (selectionRequest)
-				prepareProjectRoleSelection(
-					prepared.projectConfig,
-					roleCandidates(prepared),
-					selectionRequest,
-					{
-						createBindingId: () => randomUUID(),
-						now: new Date(now()).toISOString(),
-						expectedProjectId,
-					},
-				);
+			// A repeated operation may already have durable effects, even if this call
+			// fails validation. Only a fresh live session can prove a no-effect failure.
+			const priorOutcome = outcomes.has(input.sessionId);
+			let prepared: Prepared;
+			try {
+				prepared = current(input.sessionId);
+				assertRequest(prepared, input);
+				if (input.confirmation !== "MIGRATE_AND_SWITCH")
+					throw failure(
+						"CONFIRMATION_REQUIRED",
+						"Confirm migration before writing the encrypted destination.",
+					);
+				if (prepared.busy)
+					throw failure("MIGRATION_BUSY", "This migration is already running.");
+				const selectionRequest = (
+					input as typeof input & {
+						roleSelection?: ProjectRoleSelectionRequest;
+					}
+				).roleSelection;
+				if (!selectionRequest && Object.keys(roleAssignments).length === 0)
+					throw failure(
+						"ROLE_SELECTION_REQUIRED",
+						"Choose explicit project key roles before cutover.",
+					);
+				if (selectionRequest)
+					prepareProjectRoleSelection(
+						prepared.projectConfig,
+						roleCandidates(prepared),
+						selectionRequest,
+						{
+							createBindingId: () => randomUUID(),
+							now: new Date(now()).toISOString(),
+							expectedProjectId,
+						},
+					);
+			} catch (error) {
+				const known = sessions.get(input.sessionId);
+				if (known && !known.busy && !priorOutcome)
+					throw Object.assign(noSecrets(error), { noEffect: true as const });
+				throw noSecrets(error);
+			}
 			prepared.busy = true;
 			const outcome = { activationAttempted: false } as {
 				activationAttempted: boolean;
 				result?: VaultMigrationCutoverResult;
 			};
 			outcomes.set(input.sessionId, outcome);
+			let durableWriteAttempted = false;
 			let stageDirectory: string | undefined;
 			const journal: MigrationJournal = {
 				version: 1,
@@ -642,6 +656,8 @@ export async function createAccountVaultMigrationBackend(
 			try {
 				checkSource(prepared);
 				current(input.sessionId);
+				// Set before the first filesystem mutation; failures from here require reconciliation.
+				durableWriteAttempted = true;
 				await mkdir(dirname(vaultPath), { recursive: true, mode: 0o700 });
 				regularPath(dirname(vaultPath), true);
 				regularPath(lockPath);
@@ -893,7 +909,10 @@ export async function createAccountVaultMigrationBackend(
 				await close(input.sessionId);
 				return result;
 			} catch (error) {
-				throw noSecrets(error);
+				const safe = noSecrets(error);
+				if (!durableWriteAttempted && !priorOutcome)
+					throw Object.assign(safe, { noEffect: true as const });
+				throw safe;
 			} finally {
 				prepared.busy = false;
 				if (lockHandle) {

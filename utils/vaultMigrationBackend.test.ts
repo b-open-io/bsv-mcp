@@ -261,7 +261,7 @@ describe.skipIf(!actual)("actual Vault encrypted migration fixtures", () => {
 				confirmation: "MIGRATE_AND_SWITCH",
 				resolutions: {},
 			}),
-		).rejects.toMatchObject({ code: "SOURCE_CHANGED" });
+		).rejects.toMatchObject({ code: "SOURCE_CHANGED", noEffect: true });
 		expect(await loadProjectRoleBindings(f.project, "project")).toBeNull();
 		await backend.lock(session.sessionId);
 	});
@@ -291,6 +291,33 @@ describe.skipIf(!actual)("actual Vault encrypted migration fixtures", () => {
 		expect(await loadProjectRoleBindings(f.project, "project")).toBeNull();
 		await backend.lock(session.sessionId);
 	});
+	it("marks only fresh preflight errors as having no effect", async () => {
+		const f = await fixture();
+		const backend = await createAccountVaultMigrationBackend(f.options);
+		const session = await backend.beginUnlock(f.input);
+		const request = {
+			sessionId: session.sessionId,
+			source: f.source,
+			destination: f.destination,
+			confirmation: "MIGRATE_AND_SWITCH" as const,
+			resolutions: {},
+		};
+		await expect(
+			backend.cutover({ ...request, confirmation: "WRONG" as never }),
+		).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED", noEffect: true });
+		const error = await backend
+			.cutover(request, () => {
+				throw new Error("synthetic interruption after journal write");
+			})
+			.catch((error) => error);
+		expect(error.noEffect).not.toBe(true);
+		const retryError = await backend
+			.cutover({ ...request, confirmation: "WRONG" as never })
+			.catch((error) => error);
+		expect(retryError.noEffect).not.toBe(true);
+		await backend.lock(session.sessionId);
+	});
+
 	it("locks before cutover and rejects mismatched source accounts", async () => {
 		const f = await fixture();
 		const backend = await createAccountVaultMigrationBackend(f.options);
