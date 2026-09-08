@@ -1,7 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { buyBsv21, buyOrdinal } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { legacyOrdinalsUrl } from "../../utils/backends";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 import {
@@ -24,10 +23,13 @@ export function registerPurchaseListingTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_purchaseListing",
-		"Purchases a listing from the Bitcoin SV ordinals marketplace. Supports both NFT purchases and BSV21 token purchases.",
-		{ ...purchaseListingArgsSchema.shape },
+		{
+			description:
+				"Purchases a listing from the Bitcoin SV ordinals marketplace. Supports both NFT purchases and BSV21 token purchases.",
+			inputSchema: purchaseListingArgsSchema,
+		},
 		async ({
 			listingOutpoint,
 			listingType,

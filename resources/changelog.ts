@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 const CHANGELOG_URL =
 	"https://raw.githubusercontent.com/b-open-io/bsv-mcp/master/CHANGELOG.md";
@@ -29,7 +29,7 @@ async function fetchChangelog(): Promise<string> {
  * @param server The MCP server instance
  */
 export function registerChangelogResource(server: McpServer): void {
-	server.resource(
+	server.registerResource(
 		"bsv-mcp-changelog",
 		"https://github.com/b-open-io/bsv-mcp/blob/main/CHANGELOG.md",
 		{

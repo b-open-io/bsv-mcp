@@ -1,9 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 /**
  * BSV SDK Wallet Prompt
@@ -168,10 +163,13 @@ For complete API documentation and additional wallet features, refer to the offi
  * @param server The MCP server instance
  */
 export function registerWalletPrompt(server: McpServer): void {
-	server.prompt(
+	server.registerPrompt(
 		"bitcoin_sv_sdk_wallet",
-		"Detailed information about the wallet functionality in the BSV SDK, including key management, address handling, and UTXO management.",
-		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		{
+			description:
+				"Detailed information about the wallet functionality in the BSV SDK, including key management, address handling, and UTXO management.",
+		},
+		async (_ctx) => {
 			return {
 				messages: [
 					{

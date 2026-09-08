@@ -1,11 +1,65 @@
 import { describe, expect, test } from "bun:test";
-import { isMcpRequest } from "./mcp-request";
+import {
+	isMcpRequest,
+	isModernMcpRequest,
+	MODERN_MCP_PROTOCOL_VERSION,
+} from "./mcp-request";
 
 function headers(init: Record<string, string>): Headers {
 	return new Headers(init);
 }
 
 describe("isMcpRequest", () => {
+	test("recognises a stateless modern request without a session header", () => {
+		const requestHeaders = headers({
+			"content-type": "application/json; charset=utf-8",
+			"mcp-protocol-version": MODERN_MCP_PROTOCOL_VERSION,
+			"mcp-method": "tools/list",
+		});
+
+		expect(isModernMcpRequest("POST", requestHeaders)).toBe(true);
+		expect(isMcpRequest("POST", requestHeaders)).toBe(true);
+	});
+
+	test("recognises modern named calls with the Mcp-Name header", () => {
+		expect(
+			isMcpRequest(
+				"POST",
+				headers({
+					"content-type": "application/json",
+					"mcp-protocol-version": MODERN_MCP_PROTOCOL_VERSION,
+					"mcp-method": "tools/call",
+					"mcp-name": "proof_echo",
+				}),
+			),
+		).toBe(true);
+	});
+
+	test("requires modern POSTs to use the JSON media type", () => {
+		const requestHeaders = headers({
+			"content-type": "text/plain",
+			"mcp-protocol-version": MODERN_MCP_PROTOCOL_VERSION,
+			"mcp-method": "tools/list",
+		});
+
+		expect(isModernMcpRequest("POST", requestHeaders)).toBe(false);
+		// MCP-specific headers still keep malformed traffic at the MCP route so
+		// the handler can return its protocol error instead of a page.
+		expect(isMcpRequest("POST", requestHeaders)).toBe(true);
+	});
+
+	test("does not classify a modern request without its method header", () => {
+		expect(
+			isModernMcpRequest(
+				"POST",
+				headers({
+					"content-type": "application/json",
+					"mcp-protocol-version": MODERN_MCP_PROTOCOL_VERSION,
+				}),
+			),
+		).toBe(false);
+	});
+
 	test("recognises a JSON-RPC POST", () => {
 		expect(
 			isMcpRequest("POST", headers({ "content-type": "application/json" })),
@@ -53,6 +107,21 @@ describe("isMcpRequest", () => {
 			isMcpRequest(
 				"POST",
 				headers({ "content-type": "application/x-www-form-urlencoded" }),
+			),
+		).toBe(false);
+	});
+
+	test("accepts JSON parameters while rejecting lookalike media types", () => {
+		expect(
+			isMcpRequest(
+				"POST",
+				headers({ "content-type": "application/json; charset=utf-8" }),
+			),
+		).toBe(true);
+		expect(
+			isMcpRequest(
+				"POST",
+				headers({ "content-type": "application/json-patch+json" }),
 			),
 		).toBe(false);
 	});

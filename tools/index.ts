@@ -1,14 +1,19 @@
 import type { OneSatContext } from "@1sat/actions";
 import type { OneSatServices } from "@1sat/client";
 import type { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
-import { registerA2bDiscoverTool } from "./a2b/discover";
 import { registerBapTools } from "./bap";
+import { registerBapGetIdTool } from "./bap/getId";
 import { registerBsocialTools } from "./bsocial";
 import { registerBsvTools } from "./bsv";
 import { registerStatusTool } from "./bsv/status";
 import { registerX402Tools } from "./bsv/x402";
+import {
+	registerCompactCatalog,
+	resolveToolCatalogProfile,
+	type ToolCatalogProfile,
+} from "./compactCatalog";
 import { registerMneeTools } from "./mnee";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
@@ -28,23 +33,26 @@ import type { Wallet } from "./wallet/wallet";
  * - enableBsvTools: controlled by DISABLE_BSV_TOOLS
  * - enableOrdinalsTools: controlled by DISABLE_ORDINALS_TOOLS
  * - enableUtilsTools: controlled by DISABLE_UTILS_TOOLS
- * - enableA2bTools: controlled by ENABLE_A2B_TOOLS (disabled by default)
  * - enableBapTools: controlled by DISABLE_BAP_TOOLS
  * - enableBsocialTools: controlled by DISABLE_BSOCIAL_TOOLS
  * - enableWalletTools: controlled by DISABLE_WALLET_TOOLS
  * - enableMneeTools: controlled by DISABLE_MNEE_TOOLS
  */
 export interface ToolsConfig {
+	localAccountAvailable?: boolean;
+	/** Explicit server-side catalog selection; full remains the default. */
+	toolCatalog?: ToolCatalogProfile;
 	vaultMigration?: VaultMigrationStatus;
 	enableBsvTools?: boolean;
 	enableOrdinalsTools?: boolean;
 	enableUtilsTools?: boolean;
-	enableA2bTools?: boolean;
 	enableBapTools?: boolean;
 	enableBsocialTools?: boolean;
 	enableWalletTools?: boolean;
 	enableAccountTools?: boolean;
 	enableMneeTools?: boolean;
+	/** Register only the public BAP lookup for modes without local BAP writes. */
+	bapPublicOnly?: boolean;
 	identityPk?: PrivateKey;
 	payPk?: PrivateKey;
 	xprv?: string;
@@ -74,6 +82,7 @@ export function registerAllTools(
 	server: McpServer,
 	config: ToolsConfig = {},
 ): void {
+	const profile = resolveToolCatalogProfile(config);
 	// Ensure defaults are true unless explicitly set to false via env vars or config
 	const enableBsvTools =
 		process.env.DISABLE_BSV_TOOLS !== "true" && config.enableBsvTools !== false;
@@ -83,8 +92,6 @@ export function registerAllTools(
 	const enableUtilsTools =
 		process.env.DISABLE_UTILS_TOOLS !== "true" &&
 		config.enableUtilsTools !== false; // Ensure Utils are enabled by default
-	const enableA2bTools =
-		process.env.ENABLE_A2B_TOOLS === "true" && config.enableA2bTools !== false;
 	const enableBapTools =
 		process.env.DISABLE_BAP_TOOLS !== "true" && config.enableBapTools !== false;
 	const enableWalletTools =
@@ -96,6 +103,12 @@ export function registerAllTools(
 	const enableBsocialTools =
 		process.env.DISABLE_BSOCIAL_TOOLS !== "true" &&
 		config.enableBsocialTools !== false;
+
+	if (profile === "compact") {
+		registerCompactCatalog(server, config);
+		return;
+	}
+
 	// Register BSV-related tools
 	if (enableBsvTools) {
 		registerBsvTools(server);
@@ -118,24 +131,27 @@ export function registerAllTools(
 		if (apiUrl) registerDroplitDiscoveryTool(server, apiUrl);
 	}
 
-	// Register agent-to-blockchain tools
-	if (enableA2bTools) {
-		registerA2bDiscoverTool(server);
-	}
-
-	// Register BAP tools
-	if (enableBapTools && (!config.ctx || config.wallet)) {
+	// Public BAP lookup remains available without local wallet capabilities.
+	if (enableBapTools) {
 		const bapConfig: import("./bap").BapToolsConfig = {
 			disableBroadcasting: config.disableBroadcasting,
 			identityPk: config.identityPk,
 			masterXprv: config.xprv,
+			localAccountAvailable:
+				config.localAccountAvailable === true &&
+				config.integratedWallet?.isDroplitMode !== true,
 			wallet: config.wallet,
 		};
-		registerBapTools(server, bapConfig);
+		if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
+			registerBapTools(server, bapConfig);
+		} else {
+			registerBapGetIdTool(server, config.identityPk);
+		}
 	}
 
-	// Register BSocial tools
-	if (enableBsocialTools && config.wallet) {
+	// Register BSocial tools. Public reads do not require a wallet; the
+	// registration family keeps the post-writing tool wallet-gated.
+	if (enableBsocialTools) {
 		registerBsocialTools(server, { wallet: config.wallet });
 	}
 
@@ -163,9 +179,6 @@ export function registerAllTools(
 		} else if (config.wallet || config.ctx) {
 			// Register normal wallet tools
 			const walletToolOptions = {
-				disableBroadcasting: config.disableBroadcasting === true,
-				enableA2bTools: enableA2bTools,
-				identityPk: config.identityPk,
 				ctx: config.ctx,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);

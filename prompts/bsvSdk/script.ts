@@ -1,9 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 /**
  * BSV SDK Script Prompt
@@ -50,10 +45,13 @@ For complete API documentation and additional script features, refer to the offi
  * @param server The MCP server instance
  */
 export function registerScriptPrompt(server: McpServer): void {
-	server.prompt(
+	server.registerPrompt(
 		"bitcoin_sv_sdk_script",
-		"Detailed information about the script functionality in the BSV SDK, including Bitcoin Script operations, locking and unlocking scripts, and OP_CODES.",
-		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		{
+			description:
+				"Detailed information about the script functionality in the BSV SDK, including Bitcoin Script operations, locking and unlocking scripts, and OP_CODES.",
+		},
+		async (_ctx) => {
 			return {
 				messages: [
 					{

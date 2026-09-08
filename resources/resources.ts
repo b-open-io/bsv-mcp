@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { registerBitcomResource } from "./bitcom.js";
 import { registerBRCsResources } from "./brcs.js";
 import { registerChangelogResource } from "./changelog.js";

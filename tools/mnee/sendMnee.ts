@@ -1,14 +1,12 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-import type Mnee from "mnee";
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
 import type { SendMNEE, TransferResponse } from "mnee";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
+import { type MneeClientSource, resolveMneeClient } from "./provider";
 
 /**
  * Schema for the sendMnee tool arguments.
@@ -43,30 +41,25 @@ function formatUSD(amount: number): string {
 /**
  * Registers the mnee_sendMnee tool for sending MNEE tokens
  */
-export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
-	server.tool(
+export function registerSendMneeTool(
+	server: McpServer,
+	getMnee: MneeClientSource,
+): void {
+	server.registerTool(
 		"mnee_sendMnee",
-		"Send MNEE tokens to a specified address",
-		{ ...sendMneeArgsSchema.shape },
+		{
+			description: "Send MNEE tokens to a specified address",
+			inputSchema: sendMneeArgsSchema,
+		},
 		async (
 			{ address, amount, currency },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+			_extra: ServerContext,
 		): Promise<CallToolResult> => {
 			try {
 				assertBroadcastAllowed("mnee_sendMnee");
-				// MNEE is dollar-pegged, so a USD amount transfers one-for-one. The
-				// currency the caller named is echoed in the response rather than
-				// dropped, so the interpretation is visible to whoever called.
-				const mneeAmount = amount;
 
-				const transferRequest: SendMNEE[] = [
-					{
-						address,
-						amount: mneeAmount,
-					},
-				];
-
-				// Get WIF from environment
+				// Check the key before importing or constructing the MNEE client. This
+				// keeps a predictable configuration error cheap and side-effect free.
 				const wif = process.env.PRIVATE_KEY_WIF;
 				if (!wif) {
 					return {
@@ -88,6 +81,19 @@ export function registerSendMneeTool(server: McpServer, mnee: Mnee): void {
 						isError: true,
 					};
 				}
+
+				const mnee = await resolveMneeClient(getMnee);
+				// MNEE is dollar-pegged, so a USD amount transfers one-for-one. The
+				// currency the caller named is echoed in the response rather than
+				// dropped, so the interpretation is visible to whoever called.
+				const mneeAmount = amount;
+
+				const transferRequest: SendMNEE[] = [
+					{
+						address,
+						amount: mneeAmount,
+					},
+				];
 
 				// transfer() throws on failure. On success it returns the cosigner's
 				// broadcast ticket id — the txid is only known once the ticket

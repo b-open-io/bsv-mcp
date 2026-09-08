@@ -189,18 +189,13 @@ oauthLogger.info({
 
 ## Tools Requiring OAuth Integration
 
-### Category A: Identity/Signing Tools (8 tools)
+### Category A: Identity/Signing Tools (4 tools)
 These tools need user's identity key for BAP operations:
 
 1. **`tools/bap/generate.ts`** - Generate BAP identity (creates new identityPk)
 2. **`tools/bap/friend.ts`** - Add/manage BAP friends
 3. **`tools/bap/getCurrentAddress.ts`** - Get current BAP address
 4. **`tools/bsocial/createPost.ts`** - Create social media posts (requires BAP signature)
-5. **`tools/a2b/call.ts`** - Agent-to-blockchain calls (A2B protocol)
-6. **`tools/a2b/discover.ts`** - Discover A2B services
-7. **`tools/wallet/a2bPublishMcp.ts`** - Publish MCP server to blockchain
-8. **`tools/wallet/a2bPublishAgent.ts`** - Publish agent to blockchain
-
 **Current Pattern (bap_getId, line 84-89):**
 ```typescript
 const authInfo = (extra as any).authInfo;

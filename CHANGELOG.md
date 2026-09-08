@@ -1,5 +1,54 @@
 # BSV MCP Server Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Migrate the server/client/core boundaries and the surrounding server
+  lifecycle, stdio transport, hosted adapter, request routing, and
+  prompt/resource registrations to the split MCP TypeScript SDK v2 packages.
+- Preserve the ordinary 2025 handshake as the default while adding an explicit
+  opt-in path for protocol revision `2026-07-28`. The server negotiates a
+  supported 2025 protocol date with each client; a package/API upgrade alone
+  does not select the modern wire protocol.
+- Keep the 2025 hosted and stdio connection paths available through the SDK v2
+  compatibility transport. Local HTTP keeps its sessionful 2025 behavior; the
+  modern HTTP path is stateless and uses the protocol's method metadata
+  headers.
+- Keep `@modelcontextprotocol/sdk` v1 in the staged dependency graph because
+  `@modelcontextprotocol/ext-apps` 1.7.5 still declares it as a peer. A local
+  MCP Apps adapter calls native SDK v2 `registerTool` and `registerResource`,
+  preserving v2 schema conversion and request validation. ext-apps remains for
+  shared constants and its browser `App` implementation; this does not make
+  ext-apps itself v2-native.
+- Keep the full tool catalog as the default and capability-derived. Add an
+  explicit `MCP_TOOL_CATALOG=compact` opt-in profile for bounded read families;
+  compact mode is staged and remains subject to release validation.
+
+### Compatibility
+
+- The catalog is capability-derived. The checked-in manifest is a synthetic
+  baseline for one configured server, while wallet mode, enabled modules,
+  account context, and the selected profile determine actual tool exposure.
+  Compact mode is an explicit opt-in.
+- Modern discovery and tool transport are available. Approval-dependent modern
+  mutations remain unsupported pending approved request-scoped adapters. The
+  central guard now rejects those requests before callbacks run, and policy/wire
+  tests cover that denial. Current Codex acceptance covers the legacy 2025 wire
+  path; modern Codex acceptance remains unverified because
+  the installed client selects a 2025 protocol. Codex v0.153.4 acceptance
+  selected `2025-06-18` and verified initialize, `tools/list`, and a dashboard
+  `tools/call` returning `ready: true`. The intended modern read scope is
+  limited to reviewed, allowlisted read-only calls. Use a supported 2025
+  connection with form elicitation for that approval flow.
+- Successful modern approval exchange and write settlement remain future
+  support work. Browser-host MCP Apps behavior, full schema/catalog parity,
+  compact profile validation, and deployed hosted traffic remain validation
+  gates.
+
+See [MCP client protocol support](docs/mcp-client-protocol-support.md) for
+endpoint details and the unreleased migration's evidence and acceptance gaps.
+
 ## [0.4.0] - 2026-09-07
 
 ### Breaking changes
@@ -377,4 +426,4 @@
 - Ordinals tools for NFT functionality
 - BSV tools for blockchain interaction
 - MNEE token tools
-- Utility tools for data conversion 
+- Utility tools for data conversion

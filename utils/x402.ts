@@ -43,6 +43,7 @@ function authTerms(args: CreateActionArgs): AuthTerms {
 	if (args.outputs?.length !== 1 || args.inputs?.length)
 		throw new Error("Unexpected BRC-105 payment shape");
 	const output = args.outputs[0];
+	if (output === undefined) throw new Error("Unexpected BRC-105 payment shape");
 	const details = JSON.parse(output.customInstructions ?? "{}");
 	if (
 		!Number.isSafeInteger(output.satoshis) ||
@@ -385,10 +386,10 @@ export class X402Client {
 					throw new Error("Missing authenticated quote context");
 				const { action } = await build(
 					terms.action,
-					terms.action.outputs?.[0].lockingScript ?? "",
+					terms.action.outputs?.[0]?.lockingScript ?? "",
 				);
 				const details = JSON.parse(
-					terms.action.outputs?.[0].customInstructions ?? "{}",
+					terms.action.outputs?.[0]?.customInstructions ?? "{}",
 				);
 				const payment = JSON.stringify({
 					derivationPrefix: details.derivationPrefix,

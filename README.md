@@ -38,6 +38,41 @@ For other clients, use `bunx bsv-mcp@latest --stdio` as the MCP server command (
 
 Ask your agent: **“Run bsv_status, then show my wallet balance.”**
 
+## MCP protocol compatibility
+
+The MCP SDK v2 and protocol migration is currently unreleased. The default
+connection remains an ordinary 2025 handshake, so existing stdio clients and
+2025 hosted clients remain the compatibility target. The server negotiates a
+supported 2025 protocol date with each client. Protocol revision
+`2026-07-28` is a separate opt-in: modern HTTP clients must send the protocol,
+method, and operation headers required by that revision, and do not use an MCP
+session ID.
+The package/API upgrade alone does not change the wire protocol selected by a
+client.
+
+Modern discovery and tool transport are available. Approval-dependent modern
+mutations remain unsupported pending approved request-scoped adapters. The
+central guard now rejects those requests before their callbacks run, and
+policy/wire tests cover that denial. Codex v0.153.4 acceptance verified a wire
+initialize selecting `2025-06-18`, `tools/list`, and a dashboard `tools/call`
+returning `ready: true`; modern Codex acceptance remains unverified because the
+installed client selects a 2025 protocol. The intended modern read scope is
+limited to reviewed, allowlisted read-only calls. Use a supported 2025
+connection with form elicitation for the approval flow.
+
+The full tool catalog remains the default and is capability-derived: wallet
+mode, enabled modules, account context, and the selected profile determine what
+`tools/list` returns. The checked-in manifest is a synthetic baseline for one
+configured server, not a promise of a fixed default count. Set
+`MCP_TOOL_CATALOG=compact` only to opt into bounded read families; compact mode
+is a staged capability pending release validation. Tool availability still
+depends on wallet mode and enabled modules. Compact mode exposes only the
+`bsv_read`, `ordinals_read`, `wallet_read`, and `utility` families, each with a
+bounded operation enum; unknown operations are rejected. See the [MCP client
+protocol support guide](docs/mcp-client-protocol-support.md) for the per-family
+operation bounds, endpoint contracts, MCP Apps compatibility, and validation
+status.
+
 ## Bring your wallet and infrastructure
 
 Connect a compatible existing wallet with `BRC100_WALLET_URL`, or select an encrypted account with `BSV_MCP_ACCOUNT` and unlock it with `BSV_MCP_PASSWORD` in the process environment. Startup never creates keys. An existing wallet keeps its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are legacy compatibility inputs; they trigger a persistent Vault migration warning and should be removed after migration. See the wallet setup guide for the required wallet API and configuration.

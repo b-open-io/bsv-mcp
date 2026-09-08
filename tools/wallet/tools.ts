@@ -1,7 +1,5 @@
 import type { OneSatContext } from "@1sat/actions";
-import type { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerA2bPublishMcpTool } from "./a2bPublishMcp";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { registerBrc100Tools } from "./brc100";
 import { registerCancelListingTool } from "./cancelListing";
 import { registerCreateOrdinalsTool } from "./createOrdinals";
@@ -34,9 +32,6 @@ export function registerWalletTools(
 	server: McpServer,
 	wallet: Wallet | undefined,
 	config: {
-		disableBroadcasting: boolean;
-		enableA2bTools: boolean;
-		identityPk?: PrivateKey;
 		ctx?: OneSatContext;
 	},
 ): void {
@@ -60,14 +55,6 @@ export function registerWalletTools(
 	// Register full BRC-100 wallet interface
 	registerBrc100Tools(server, config.ctx);
 	registerRevealDelegationTool(server, config.ctx);
-
-	// A2B tools have to be explicitly enabled
-	if (config.enableA2bTools && wallet && config.identityPk) {
-		// Register the wallet_a2bPublishMcp tool
-		registerA2bPublishMcpTool(server, wallet, config.identityPk, {
-			disableBroadcasting: config.disableBroadcasting,
-		});
-	}
 
 	// Register createOrdinals tool
 	registerCreateOrdinalsTool(server, config.ctx);

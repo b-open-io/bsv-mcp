@@ -17,10 +17,15 @@ export function broadcastingDisabled(): boolean {
 /**
  * Throws when broadcasting is disabled. Call at the top of any handler that
  * submits a transaction, before any key material is touched or any fee is
- * quoted, so a refusal costs nothing and leaks nothing.
+ * quoted, so a refusal costs nothing and leaks nothing. The optional startup
+ * policy lets handlers honor a captured configuration value while retaining
+ * the live environment check used by direct tools.
  */
-export function assertBroadcastAllowed(toolName: string): void {
-	if (!broadcastingDisabled()) return;
+export function assertBroadcastAllowed(
+	toolName: string,
+	configuredDisabled = false,
+): void {
+	if (!configuredDisabled && !broadcastingDisabled()) return;
 
 	throw new Error(
 		`${toolName} submits a transaction to the network and DISABLE_BROADCASTING is set. ` +

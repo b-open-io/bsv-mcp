@@ -1,5 +1,6 @@
 import { type OneSatContext, syncAddresses } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 
 const MCP_ADDRESS_PREFIX = "mcp";
 
@@ -11,10 +12,13 @@ export function registerRefreshUtxosTool(
 	server: McpServer,
 	ctx?: OneSatContext,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_refreshUtxos",
-		"Syncs external payments sent to BRC-29 deposit addresses into the wallet. Triggers lazy indexing on the server, classifies outputs (funding, ordinals, tokens), and internalizes them.",
-		{},
+		{
+			description:
+				"Syncs external payments sent to BRC-29 deposit addresses into the wallet. Triggers lazy indexing on the server, classifies outputs (funding, ordinals, tokens), and internalizes them.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				if (!ctx) {

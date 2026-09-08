@@ -1,5 +1,5 @@
 import type { OneSatServices } from "@1sat/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { errorToToolResult, successResult } from "../../utils/errors";
 
@@ -12,7 +12,7 @@ export function registerSearchInscriptionsTool(
 		{
 			description:
 				"Search indexed outputs by 1Sat event/topic/owner key (e.g. own:ADDRESS). Returns inscription and MAP metadata when indexed. This is an index-key search, not free-text search; use marketListings.q for listing names.",
-			inputSchema: {
+			inputSchema: z.object({
 				key: z
 					.string()
 					.trim()
@@ -26,7 +26,7 @@ export function registerSearchInscriptionsTool(
 					.nonnegative()
 					.optional()
 					.describe("Last result's score for the next page"),
-			},
+			}),
 			annotations: {
 				readOnlyHint: true,
 				idempotentHint: true,

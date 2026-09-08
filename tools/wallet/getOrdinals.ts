@@ -1,29 +1,36 @@
 import { listOrdinals, type OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 export function registerGetOrdinalsTool(
 	server: McpServer,
 	ctx?: OneSatContext,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_getOrdinals",
-		"List ordinals/inscriptions in the wallet with metadata. Each result carries an 'id:' tag; that tracking id is the handle the transfer, listing and cancel tools take.",
 		{
-			limit: z
-				.number()
-				.int()
-				.optional()
-				.describe("Max number of results to return"),
-			offset: z.number().int().optional().describe("Number of results to skip"),
-			tags: z
-				.array(z.string())
-				.optional()
-				.describe("Filter by output tags (e.g. 'type:image/png')"),
-			tagQueryMode: z
-				.enum(["all", "any"])
-				.optional()
-				.describe("Whether results must match all tags or any tag"),
+			description:
+				"List ordinals/inscriptions in the wallet with metadata. Each result carries an 'id:' tag; that tracking id is the handle the transfer, listing and cancel tools take.",
+			inputSchema: z.object({
+				limit: z
+					.number()
+					.int()
+					.optional()
+					.describe("Max number of results to return"),
+				offset: z
+					.number()
+					.int()
+					.optional()
+					.describe("Number of results to skip"),
+				tags: z
+					.array(z.string())
+					.optional()
+					.describe("Filter by output tags (e.g. 'type:image/png')"),
+				tagQueryMode: z
+					.enum(["all", "any"])
+					.optional()
+					.describe("Whether results must match all tags or any tag"),
+			}),
 		},
 		async (params) => {
 			try {

@@ -1,5 +1,5 @@
 import type { OneSatServices } from "@1sat/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 /**
@@ -9,11 +9,16 @@ export function registerGetTokenByIdOrTickerTool(
 	server: McpServer,
 	services: OneSatServices,
 ): void {
-	server.tool(
+	server.registerTool(
 		"ordinals_getTokenByIdOrTicker",
-		"Retrieves detailed information about a BSV21 token by its ID (txid_vout format). Returns token data including symbol, supply, decimals, funding status, and current state.",
 		{
-			id: z.string().describe("BSV21 token ID in outpoint format (txid_vout)"),
+			description:
+				"Retrieves detailed information about a BSV21 token by its ID (txid_vout format). Returns token data including symbol, supply, decimals, funding status, and current state.",
+			inputSchema: z.object({
+				id: z
+					.string()
+					.describe("BSV21 token ID in outpoint format (txid_vout)"),
+			}),
 		},
 		async ({ id }) => {
 			try {

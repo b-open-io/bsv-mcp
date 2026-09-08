@@ -1,6 +1,5 @@
 import type { OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 const noCtx: CallToolResult = {
@@ -64,36 +63,42 @@ export function registerBrc100Tools(
 ) {
 	// ── Transaction lifecycle ──────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_createAction",
-		"Creates a new Bitcoin transaction. Handles funding, signing, and broadcasting based on options.",
 		{
-			description: z.string().describe("5-50 char description of the action"),
-			inputBEEFJSON: z
-				.string()
-				.optional()
-				.describe(
-					"JSON array of BEEF bytes proving the inputs. Required whenever inputs are supplied — createAction rejects inputs without their proof chain.",
-				),
-			inputsJSON: z
-				.string()
-				.optional()
-				.describe("JSON array of transaction inputs"),
-			outputsJSON: z
-				.string()
-				.optional()
-				.describe(
-					"JSON array of transaction outputs [{lockingScript, satoshis, outputDescription, basket, tags, customInstructions}]",
-				),
-			labelsJSON: z.string().optional().describe("JSON array of label strings"),
-			lockTime: z.number().optional(),
-			version: z.number().optional(),
-			optionsJSON: z
-				.string()
-				.optional()
-				.describe(
-					"JSON CreateActionOptions: {noSend, sendWith, acceptDelayedBroadcast, signAndProcess, randomizeOutputs, noSendChange, knownTxids, trustSelf}",
-				),
+			description:
+				"Creates a new Bitcoin transaction. Handles funding, signing, and broadcasting based on options.",
+			inputSchema: z.object({
+				description: z.string().describe("5-50 char description of the action"),
+				inputBEEFJSON: z
+					.string()
+					.optional()
+					.describe(
+						"JSON array of BEEF bytes proving the inputs. Required whenever inputs are supplied — createAction rejects inputs without their proof chain.",
+					),
+				inputsJSON: z
+					.string()
+					.optional()
+					.describe("JSON array of transaction inputs"),
+				outputsJSON: z
+					.string()
+					.optional()
+					.describe(
+						"JSON array of transaction outputs [{lockingScript, satoshis, outputDescription, basket, tags, customInstructions}]",
+					),
+				labelsJSON: z
+					.string()
+					.optional()
+					.describe("JSON array of label strings"),
+				lockTime: z.number().optional(),
+				version: z.number().optional(),
+				optionsJSON: z
+					.string()
+					.optional()
+					.describe(
+						"JSON CreateActionOptions: {noSend, sendWith, acceptDelayedBroadcast, signAndProcess, randomizeOutputs, noSendChange, knownTxids, trustSelf}",
+					),
+			}),
 		},
 		async ({
 			description,
@@ -125,22 +130,27 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_signAction",
-		"Signs a transaction previously created with createAction (when signAndProcess was false).",
 		{
-			spendsJSON: z
-				.string()
-				.describe(
-					"JSON map of input index to {unlockingScript, sequenceNumber}",
-				),
-			reference: z
-				.string()
-				.describe("Base64 reference from createAction result"),
-			optionsJSON: z
-				.string()
-				.optional()
-				.describe("JSON SignActionOptions: {acceptDelayedBroadcast, sendWith}"),
+			description:
+				"Signs a transaction previously created with createAction (when signAndProcess was false).",
+			inputSchema: z.object({
+				spendsJSON: z
+					.string()
+					.describe(
+						"JSON map of input index to {unlockingScript, sequenceNumber}",
+					),
+				reference: z
+					.string()
+					.describe("Base64 reference from createAction result"),
+				optionsJSON: z
+					.string()
+					.optional()
+					.describe(
+						"JSON SignActionOptions: {acceptDelayedBroadcast, sendWith}",
+					),
+			}),
 		},
 		async ({ spendsJSON, reference, optionsJSON }) => {
 			if (!ctx) return noCtx;
@@ -158,13 +168,16 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_abortAction",
-		"Aborts a pending (nosend or unsigned) transaction, releasing consumed inputs back to spendable state.",
 		{
-			reference: z
-				.string()
-				.describe("Base64 reference of the transaction to abort"),
+			description:
+				"Aborts a pending (nosend or unsigned) transaction, releasing consumed inputs back to spendable state.",
+			inputSchema: z.object({
+				reference: z
+					.string()
+					.describe("Base64 reference of the transaction to abort"),
+			}),
 		},
 		async ({ reference }) => {
 			if (!ctx) return noCtx;
@@ -176,15 +189,23 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_internalizeAction",
-		"Internalizes an external transaction, adding its outputs to wallet baskets.",
 		{
-			txJSON: z.string().describe("JSON array of AtomicBEEF bytes"),
-			outputsJSON: z.string().describe("JSON array of outputs to internalize"),
-			description: z.string().describe("5-50 char description"),
-			labelsJSON: z.string().optional().describe("JSON array of label strings"),
-			seekPermission: z.boolean().optional(),
+			description:
+				"Internalizes an external transaction, adding its outputs to wallet baskets.",
+			inputSchema: z.object({
+				txJSON: z.string().describe("JSON array of AtomicBEEF bytes"),
+				outputsJSON: z
+					.string()
+					.describe("JSON array of outputs to internalize"),
+				description: z.string().describe("5-50 char description"),
+				labelsJSON: z
+					.string()
+					.optional()
+					.describe("JSON array of label strings"),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({
 			txJSON,
@@ -212,24 +233,27 @@ export function registerBrc100Tools(
 
 	// ── Queries ────────────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_listActions",
-		"Lists wallet transactions filtered by labels, with optional input/output details.",
 		{
-			labelsJSON: z
-				.string()
-				.default("[]")
-				.describe("JSON array of label strings"),
-			labelQueryMode: z.enum(["any", "all"]).default("any"),
-			includeLabels: z.boolean().default(true),
-			includeInputs: z.boolean().default(false),
-			includeInputSourceLockingScripts: z.boolean().default(false),
-			includeInputUnlockingScripts: z.boolean().default(false),
-			includeOutputs: z.boolean().default(false),
-			includeOutputLockingScripts: z.boolean().default(false),
-			limit: z.number().default(25),
-			offset: z.number().default(0),
-			seekPermission: z.boolean().optional(),
+			description:
+				"Lists wallet transactions filtered by labels, with optional input/output details.",
+			inputSchema: z.object({
+				labelsJSON: z
+					.string()
+					.default("[]")
+					.describe("JSON array of label strings"),
+				labelQueryMode: z.enum(["any", "all"]).default("any"),
+				includeLabels: z.boolean().default(true),
+				includeInputs: z.boolean().default(false),
+				includeInputSourceLockingScripts: z.boolean().default(false),
+				includeInputUnlockingScripts: z.boolean().default(false),
+				includeOutputs: z.boolean().default(false),
+				includeOutputLockingScripts: z.boolean().default(false),
+				limit: z.number().default(25),
+				offset: z.number().default(0),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ labelsJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -246,20 +270,23 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_listOutputs",
-		"Lists spendable outputs in a basket, optionally filtered by tags.",
 		{
-			basket: z.string().describe('Basket name (e.g. "default")'),
-			tagsJSON: z.string().optional().describe("JSON array of tag strings"),
-			tagQueryMode: z.enum(["all", "any"]).optional(),
-			include: z.enum(["locking scripts", "entire transactions"]).optional(),
-			includeCustomInstructions: z.boolean().default(false),
-			includeTags: z.boolean().default(false),
-			includeLabels: z.boolean().default(false),
-			limit: z.number().default(25),
-			offset: z.number().default(0),
-			seekPermission: z.boolean().optional(),
+			description:
+				"Lists spendable outputs in a basket, optionally filtered by tags.",
+			inputSchema: z.object({
+				basket: z.string().describe('Basket name (e.g. "default")'),
+				tagsJSON: z.string().optional().describe("JSON array of tag strings"),
+				tagQueryMode: z.enum(["all", "any"]).optional(),
+				include: z.enum(["locking scripts", "entire transactions"]).optional(),
+				includeCustomInstructions: z.boolean().default(false),
+				includeTags: z.boolean().default(false),
+				includeLabels: z.boolean().default(false),
+				limit: z.number().default(25),
+				offset: z.number().default(0),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ tagsJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -276,12 +303,14 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_relinquishOutput",
-		"Removes an output from a basket without spending it.",
 		{
-			basket: z.string().describe("Basket name"),
-			output: z.string().describe("Outpoint string (txid.vout)"),
+			description: "Removes an output from a basket without spending it.",
+			inputSchema: z.object({
+				basket: z.string().describe("Basket name"),
+				output: z.string().describe("Outpoint string (txid.vout)"),
+			}),
 		},
 		async (args) => {
 			if (!ctx) return noCtx;
@@ -295,24 +324,29 @@ export function registerBrc100Tools(
 
 	// ── Keys & Crypto ──────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_getPublicKey",
-		'Retrieves a public key by protocol/key derivation. Use identityKey:true for the root identity key. protocolID is a JSON array like [2,"1sat"].',
 		{
-			identityKey: z
-				.boolean()
-				.optional()
-				.describe("If true, return the identity key (ignores other args)"),
-			protocolIDJSON: z
-				.string()
-				.optional()
-				.describe('JSON array [securityLevel, protocolString] e.g. [2,"1sat"]'),
-			keyID: z.string().optional(),
-			counterparty: z.string().optional(),
-			forSelf: z.boolean().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description:
+				'Retrieves a public key by protocol/key derivation. Use identityKey:true for the root identity key. protocolID is a JSON array like [2,"1sat"].',
+			inputSchema: z.object({
+				identityKey: z
+					.boolean()
+					.optional()
+					.describe("If true, return the identity key (ignores other args)"),
+				protocolIDJSON: z
+					.string()
+					.optional()
+					.describe(
+						'JSON array [securityLevel, protocolString] e.g. [2,"1sat"]',
+					),
+				keyID: z.string().optional(),
+				counterparty: z.string().optional(),
+				forSelf: z.boolean().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, identityKey, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -330,19 +364,22 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_encrypt",
-		'Encrypts data using wallet keys. protocolID is a JSON array like [2,"protocolName"].',
 		{
-			plaintext: z.array(z.number()).describe("Data bytes to encrypt"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description:
+				'Encrypts data using wallet keys. protocolID is a JSON array like [2,"protocolName"].',
+			inputSchema: z.object({
+				plaintext: z.array(z.number()).describe("Data bytes to encrypt"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -359,19 +396,21 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_decrypt",
-		"Decrypts data using wallet keys.",
 		{
-			ciphertext: z.array(z.number()).describe("Encrypted data bytes"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description: "Decrypts data using wallet keys.",
+			inputSchema: z.object({
+				ciphertext: z.array(z.number()).describe("Encrypted data bytes"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -388,19 +427,21 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_createHmac",
-		"Creates an HMAC using wallet keys.",
 		{
-			data: z.array(z.number()).describe("Data bytes"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description: "Creates an HMAC using wallet keys.",
+			inputSchema: z.object({
+				data: z.array(z.number()).describe("Data bytes"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -417,20 +458,22 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_verifyHmac",
-		"Verifies an HMAC using wallet keys.",
 		{
-			data: z.array(z.number()).describe("Data bytes"),
-			hmac: z.array(z.number()).describe("HMAC bytes to verify"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description: "Verifies an HMAC using wallet keys.",
+			inputSchema: z.object({
+				data: z.array(z.number()).describe("Data bytes"),
+				hmac: z.array(z.number()).describe("HMAC bytes to verify"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -447,23 +490,26 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_createSignature",
-		"Creates a digital signature using wallet keys. Supply exactly one of data or hashToDirectlySign.",
 		{
-			data: z.array(z.number()).optional().describe("Data bytes to sign"),
-			hashToDirectlySign: z
-				.array(z.number())
-				.optional()
-				.describe("Pre-computed 32-byte hash to sign directly"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description:
+				"Creates a digital signature using wallet keys. Supply exactly one of data or hashToDirectlySign.",
+			inputSchema: z.object({
+				data: z.array(z.number()).optional().describe("Data bytes to sign"),
+				hashToDirectlySign: z
+					.array(z.number())
+					.optional()
+					.describe("Pre-computed 32-byte hash to sign directly"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -480,28 +526,31 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_verifySignature",
-		"Verifies a digital signature using wallet keys. Supply exactly one of data or hashToDirectlyVerify.",
 		{
-			data: z
-				.array(z.number())
-				.optional()
-				.describe("Data bytes that were signed"),
-			hashToDirectlyVerify: z
-				.array(z.number())
-				.optional()
-				.describe("Pre-computed 32-byte hash that was signed"),
-			signature: z.array(z.number()).describe("Signature bytes"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			counterparty: z.string().optional(),
-			forSelf: z.boolean().optional(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
-			seekPermission: z.boolean().optional(),
+			description:
+				"Verifies a digital signature using wallet keys. Supply exactly one of data or hashToDirectlyVerify.",
+			inputSchema: z.object({
+				data: z
+					.array(z.number())
+					.optional()
+					.describe("Data bytes that were signed"),
+				hashToDirectlyVerify: z
+					.array(z.number())
+					.optional()
+					.describe("Pre-computed 32-byte hash that was signed"),
+				signature: z.array(z.number()).describe("Signature bytes"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				counterparty: z.string().optional(),
+				forSelf: z.boolean().optional(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -520,14 +569,17 @@ export function registerBrc100Tools(
 
 	// ── Key Linkage ────────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_revealCounterpartyKeyLinkage",
-		"Reveals the linkage between the wallet identity and a counterparty to a verifier.",
 		{
-			counterparty: z.string().describe("Counterparty public key hex"),
-			verifier: z.string().describe("Verifier public key hex"),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
+			description:
+				"Reveals the linkage between the wallet identity and a counterparty to a verifier.",
+			inputSchema: z.object({
+				counterparty: z.string().describe("Counterparty public key hex"),
+				verifier: z.string().describe("Verifier public key hex"),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+			}),
 		},
 		async (args) => {
 			if (!ctx) return noCtx;
@@ -539,18 +591,21 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_revealSpecificKeyLinkage",
-		"Reveals linkage for a specific protocol/key combination to a verifier.",
 		{
-			counterparty: z.string().describe("Counterparty public key hex"),
-			verifier: z.string().describe("Verifier public key hex"),
-			protocolIDJSON: z
-				.string()
-				.describe("JSON array [securityLevel, protocolString]"),
-			keyID: z.string(),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
+			description:
+				"Reveals linkage for a specific protocol/key combination to a verifier.",
+			inputSchema: z.object({
+				counterparty: z.string().describe("Counterparty public key hex"),
+				verifier: z.string().describe("Verifier public key hex"),
+				protocolIDJSON: z
+					.string()
+					.describe("JSON array [securityLevel, protocolString]"),
+				keyID: z.string(),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+			}),
 		},
 		async ({ protocolIDJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -569,25 +624,27 @@ export function registerBrc100Tools(
 
 	// ── Certificates ───────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_acquireCertificate",
-		"Acquires an identity certificate from a certifier.",
 		{
-			type: z.string().describe("Certificate type (base64)"),
-			certifier: z.string().describe("Certifier public key hex"),
-			acquisitionProtocol: z.enum(["direct", "issuance"]),
-			fieldsJSON: z.string().describe("JSON object of certificate fields"),
-			serialNumber: z.string().optional(),
-			revocationOutpoint: z.string().optional(),
-			signature: z.string().optional(),
-			certifierUrl: z.string().optional(),
-			keyringRevealer: z.string().optional(),
-			keyringForSubjectJSON: z
-				.string()
-				.optional()
-				.describe("JSON object of keyring for subject"),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
+			description: "Acquires an identity certificate from a certifier.",
+			inputSchema: z.object({
+				type: z.string().describe("Certificate type (base64)"),
+				certifier: z.string().describe("Certifier public key hex"),
+				acquisitionProtocol: z.enum(["direct", "issuance"]),
+				fieldsJSON: z.string().describe("JSON object of certificate fields"),
+				serialNumber: z.string().optional(),
+				revocationOutpoint: z.string().optional(),
+				signature: z.string().optional(),
+				certifierUrl: z.string().optional(),
+				keyringRevealer: z.string().optional(),
+				keyringForSubjectJSON: z
+					.string()
+					.optional()
+					.describe("JSON object of keyring for subject"),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+			}),
 		},
 		async ({ fieldsJSON, keyringForSubjectJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -608,20 +665,23 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_listCertificates",
-		"Lists identity certificates filtered by certifiers and types.",
 		{
-			certifiersJSON: z
-				.string()
-				.describe("JSON array of certifier public key hexes"),
-			typesJSON: z
-				.string()
-				.describe("JSON array of certificate types (base64)"),
-			limit: z.number().default(25),
-			offset: z.number().default(0),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
+			description:
+				"Lists identity certificates filtered by certifiers and types.",
+			inputSchema: z.object({
+				certifiersJSON: z
+					.string()
+					.describe("JSON array of certifier public key hexes"),
+				typesJSON: z
+					.string()
+					.describe("JSON array of certificate types (base64)"),
+				limit: z.number().default(25),
+				offset: z.number().default(0),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+			}),
 		},
 		async ({ certifiersJSON, typesJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -639,19 +699,21 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_proveCertificate",
-		"Proves select fields of a certificate to a verifier.",
 		{
-			certificateJSON: z
-				.string()
-				.describe("JSON object of the certificate to prove"),
-			fieldsToRevealJSON: z
-				.string()
-				.describe("JSON array of field names to reveal"),
-			verifier: z.string().describe("Verifier public key hex"),
-			privileged: z.boolean().optional(),
-			privilegedReason: z.string().optional(),
+			description: "Proves select fields of a certificate to a verifier.",
+			inputSchema: z.object({
+				certificateJSON: z
+					.string()
+					.describe("JSON object of the certificate to prove"),
+				fieldsToRevealJSON: z
+					.string()
+					.describe("JSON array of field names to reveal"),
+				verifier: z.string().describe("Verifier public key hex"),
+				privileged: z.boolean().optional(),
+				privilegedReason: z.string().optional(),
+			}),
 		},
 		async ({ certificateJSON, fieldsToRevealJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -672,13 +734,15 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_relinquishCertificate",
-		"Removes a certificate from the wallet.",
 		{
-			type: z.string().describe("Certificate type"),
-			serialNumber: z.string().describe("Certificate serial number"),
-			certifier: z.string().describe("Certifier public key hex"),
+			description: "Removes a certificate from the wallet.",
+			inputSchema: z.object({
+				type: z.string().describe("Certificate type"),
+				serialNumber: z.string().describe("Certificate serial number"),
+				certifier: z.string().describe("Certifier public key hex"),
+			}),
 		},
 		async (args) => {
 			if (!ctx) return noCtx;
@@ -692,14 +756,16 @@ export function registerBrc100Tools(
 
 	// ── Discovery ──────────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_discoverByIdentityKey",
-		"Discovers certificates issued to a given identity key.",
 		{
-			identityKey: z.string().describe("Identity public key hex"),
-			limit: z.number().default(25),
-			offset: z.number().default(0),
-			seekPermission: z.boolean().optional(),
+			description: "Discovers certificates issued to a given identity key.",
+			inputSchema: z.object({
+				identityKey: z.string().describe("Identity public key hex"),
+				limit: z.number().default(25),
+				offset: z.number().default(0),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async (args) => {
 			if (!ctx) return noCtx;
@@ -711,16 +777,18 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_discoverByAttributes",
-		"Discovers certificates matching specific attributes.",
 		{
-			attributesJSON: z
-				.string()
-				.describe("JSON object of attribute key/value pairs to match"),
-			limit: z.number().default(25),
-			offset: z.number().default(0),
-			seekPermission: z.boolean().optional(),
+			description: "Discovers certificates matching specific attributes.",
+			inputSchema: z.object({
+				attributesJSON: z
+					.string()
+					.describe("JSON object of attribute key/value pairs to match"),
+				limit: z.number().default(25),
+				offset: z.number().default(0),
+				seekPermission: z.boolean().optional(),
+			}),
 		},
 		async ({ attributesJSON, ...rest }) => {
 			if (!ctx) return noCtx;
@@ -739,10 +807,12 @@ export function registerBrc100Tools(
 
 	// ── Info ────────────────────────────────────────────────────────────
 
-	server.tool(
+	server.registerTool(
 		"wallet_isAuthenticated",
-		"Checks if the wallet user is authenticated.",
-		{},
+		{
+			description: "Checks if the wallet user is authenticated.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			if (!ctx) return noCtx;
 			try {
@@ -753,10 +823,12 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_waitForAuthentication",
-		"Blocks until the wallet user is authenticated.",
-		{},
+		{
+			description: "Blocks until the wallet user is authenticated.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			if (!ctx) return noCtx;
 			try {
@@ -767,10 +839,12 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_getHeight",
-		"Gets the current blockchain height.",
-		{},
+		{
+			description: "Gets the current blockchain height.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			if (!ctx) return noCtx;
 			try {
@@ -781,11 +855,13 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_getHeaderForHeight",
-		"Gets the 80-byte block header at a given height.",
 		{
-			height: z.number().describe("Block height"),
+			description: "Gets the 80-byte block header at a given height.",
+			inputSchema: z.object({
+				height: z.number().describe("Block height"),
+			}),
 		},
 		async ({ height }) => {
 			if (!ctx) return noCtx;
@@ -797,10 +873,13 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_getNetwork",
-		"Gets the network the wallet is connected to (mainnet or testnet).",
-		{},
+		{
+			description:
+				"Gets the network the wallet is connected to (mainnet or testnet).",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			if (!ctx) return noCtx;
 			try {
@@ -811,10 +890,12 @@ export function registerBrc100Tools(
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		"wallet_getVersion",
-		"Gets the wallet implementation version.",
-		{},
+		{
+			description: "Gets the wallet implementation version.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			if (!ctx) return noCtx;
 			try {

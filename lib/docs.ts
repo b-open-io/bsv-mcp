@@ -152,7 +152,7 @@ export const docs: DocSection[] = [
 				paragraphs: [
 					"EXPLORER_API_URL selects the explorer API used for blockchain lookups and prices. BananaBlocks is the mainnet default. JUNGLEBUS_API_URL supplies transaction decoding and legacy raw/BEEF reads. ORDINALS_API_URL remains for legacy sweep and token-listing data; marketplace browsing now uses 1Sat. Each tool uses its configured service; it does not automatically switch to another provider if that service fails.",
 					"Set EXPLORER_API_URL to a compatible API base without the final /main or /test; BSV MCP appends the selected network. BananaBlocks uses /api/v1/bsv. WhatsOnChain uses /v1/bsv. Testnet still defaults to WhatsOnChain because the public BananaBlocks API documents a mainnet mirror. The older WOC_API_URL setting still works when EXPLORER_API_URL is unset.",
-					"PUBLIC_ORDFS_URL overrides the content base used in generated links and dashboard previews. PUBLIC_BMAP_URL, BSOCIAL_API_URL, V5_API_URL and A2B_API_URL configure optional legacy social and discovery integrations. MNEE uses its SDK's own service configuration. DROPLIT_API_URL and OAUTH_ISSUER configure sponsorship and authentication separately.",
+					"PUBLIC_ORDFS_URL overrides the content base used in generated links and dashboard previews. PUBLIC_BMAP_URL, BSOCIAL_API_URL and V5_API_URL configure optional legacy social integrations. MNEE uses its SDK's own service configuration. DROPLIT_API_URL and OAUTH_ISSUER configure sponsorship and authentication separately.",
 				],
 				code: "# Defaults for mainnet\nONESAT_API_URL=https://api.1sat.app\nEXPLORER_API_URL=https://bananablocks.com/api/v1/bsv\nJUNGLEBUS_API_URL=https://junglebus.gorillapool.io/v1\nORDINALS_API_URL=https://ordinals.gorillapool.io/api\nPUBLIC_ORDFS_URL=https://api.1sat.app/content",
 			},
@@ -230,8 +230,8 @@ export const docs: DocSection[] = [
 			{
 				title: "Enable or disable tool groups",
 				paragraphs: [
-					"Tool groups can be disabled with DISABLE_BSV_TOOLS, DISABLE_ORDINALS_TOOLS, DISABLE_WALLET_TOOLS, DISABLE_BAP_TOOLS, DISABLE_BSOCIAL_TOOLS, DISABLE_MNEE_TOOLS and DISABLE_UTILS_TOOLS=true. A2B requires ENABLE_A2B_TOOLS=true. DISABLE_BROADCASTING=true blocks guarded transaction operations. This does not replace the signer's permissions.",
-					"External signer mode supports context wallet and BRC-100 tools. Legacy collection minting/gathering, A2B publication, BAP/raw-key, BSocial and MNEE tools are unavailable in that mode. An advertised backend module does not automatically enable a tool group.",
+					"Tool groups can be disabled with DISABLE_BSV_TOOLS, DISABLE_ORDINALS_TOOLS, DISABLE_WALLET_TOOLS, DISABLE_BAP_TOOLS, DISABLE_BSOCIAL_TOOLS, DISABLE_MNEE_TOOLS and DISABLE_UTILS_TOOLS=true. DISABLE_BROADCASTING=true blocks guarded transaction operations. This does not replace the signer's permissions.",
+					"External signer mode supports context wallet and BRC-100 tools. Legacy collection minting/gathering, BAP/raw-key, BSocial and MNEE tools are unavailable in that mode. An advertised backend module does not automatically enable a tool group.",
 				],
 			},
 			{

@@ -1,9 +1,9 @@
 import type { OneSatServices } from "@1sat/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { errorToToolResult, successResult } from "../../utils/errors";
 
-export const marketSearchSchema = {
+export const marketSearchSchema = z.object({
 	q: z
 		.string()
 		.trim()
@@ -19,7 +19,7 @@ export const marketSearchSchema = {
 		.nonnegative()
 		.optional()
 		.describe("Last result's score for the next page"),
-};
+});
 
 export function registerMarketListingsTool(
 	server: McpServer,

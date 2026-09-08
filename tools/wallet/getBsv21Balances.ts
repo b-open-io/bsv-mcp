@@ -1,14 +1,17 @@
 import { getBsv21Balances, type OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 
 export function registerGetBsv21BalancesTool(
 	server: McpServer,
 	ctx?: OneSatContext,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_getBsv21Balances",
-		"Get aggregated BSV21 token balances grouped by token ID",
-		{},
+		{
+			description: "Get aggregated BSV21 token balances grouped by token ID",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				if (!ctx) throw new Error("BRC-100 wallet context not available");

@@ -1,10 +1,5 @@
 import { Transaction, Utils } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { junglebusUrl } from "../../utils/backends";
 
@@ -119,14 +114,14 @@ function isTxid(str: string): boolean {
  * Register the BSV transaction decode tool
  */
 export function registerDecodeTransactionTool(server: McpServer): void {
-	server.tool(
+	server.registerTool(
 		"bsv_decodeTransaction",
-		"Decodes and analyzes Bitcoin SV transactions to provide detailed insights. This powerful tool accepts either a transaction ID or raw transaction data and returns comprehensive information including inputs, outputs, fee calculations, script details, and blockchain context. Supports both hex and base64 encoded transactions and automatically fetches additional on-chain data when available.",
-		decodeTransactionArgsSchema.shape,
-		async (
-			{ tx, encoding },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		) => {
+		{
+			description:
+				"Decodes and analyzes Bitcoin SV transactions to provide detailed insights. This powerful tool accepts either a transaction ID or raw transaction data and returns comprehensive information including inputs, outputs, fee calculations, script details, and blockchain context. Supports both hex and base64 encoded transactions and automatically fetches additional on-chain data when available.",
+			inputSchema: decodeTransactionArgsSchema,
+		},
+		async ({ tx, encoding }, _extra: ServerContext) => {
 			try {
 				let transaction: Transaction;
 				let rawTx: string;

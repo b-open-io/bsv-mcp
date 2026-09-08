@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { deregisterOpns } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -14,10 +14,12 @@ export function registerOpnsDeregisterTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_opnsDeregister",
-		"Deregister an OpNS name",
-		{ ...opnsDeregisterArgsSchema.shape },
+		{
+			description: "Deregister an OpNS name",
+			inputSchema: opnsDeregisterArgsSchema,
+		},
 		async ({ id }) => {
 			if (!ctx) {
 				return {

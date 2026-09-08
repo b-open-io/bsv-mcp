@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import packageJson from "../../package.json";
 import {
@@ -20,12 +20,12 @@ export function registerStatusTool(
 		{
 			description:
 				"Show server version, configured network, wallet availability, backend URLs, live 1Sat modules and any persistent Vault migration warning. Does not request keys, sign, sync or spend. Backend modules do not imply MCP tools or sponsor approval.",
-			inputSchema: {
+			inputSchema: z.object({
 				checkServices: z
 					.boolean()
 					.default(true)
 					.describe("Read the 1Sat capabilities endpoint (10 second timeout)"),
-			},
+			}),
 			annotations: {
 				readOnlyHint: true,
 				idempotentHint: true,

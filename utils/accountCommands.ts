@@ -176,6 +176,7 @@ export async function runAccountCommand(args: string[]): Promise<boolean> {
 		return true;
 	}
 	if (
+		command === undefined ||
 		![
 			"init",
 			"wallet_generate",
@@ -212,8 +213,10 @@ export async function runAccountCommand(args: string[]): Promise<boolean> {
 		);
 	if (command === "wallet_migrate") {
 		const sourceIndex = args.indexOf("--source");
+		if (sourceIndex < 0)
+			throw new Error("Use --source legacy or --source sigma-lab");
 		const source = args[sourceIndex + 1];
-		if (sourceIndex < 0 || !["legacy", "sigma-lab"].includes(source))
+		if (source !== "legacy" && source !== "sigma-lab")
 			throw new Error("Use --source legacy or --source sigma-lab");
 		await confirm(
 			"Stop all processes using the source wallet before migrating. Source wallet stopped?",
@@ -221,11 +224,7 @@ export async function runAccountCommand(args: string[]): Promise<boolean> {
 		const password = existsSync(join(accountDir(name), "keys.bep"))
 			? await terminalInput("Account password", true)
 			: await newPassword();
-		const result = await migrateAccount(
-			name,
-			source as "legacy" | "sigma-lab",
-			password,
-		);
+		const result = await migrateAccount(name, source, password);
 		console.log(JSON.stringify(result));
 		if (args.includes("--erase-source")) {
 			await confirm(

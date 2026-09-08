@@ -1,5 +1,5 @@
 import type { OneSatServices } from "@1sat/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { readServices } from "../../utils/backends";
 import { registerGetInscriptionTool } from "./getInscription";
 import { registerGetTokenByIdOrTickerTool } from "./getTokenByIdOrTicker";

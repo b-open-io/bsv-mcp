@@ -1,5 +1,5 @@
 import type { OneSatServices } from "@1sat/client";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 /**
@@ -9,13 +9,16 @@ export function registerGetInscriptionTool(
 	server: McpServer,
 	services: OneSatServices,
 ): void {
-	server.tool(
+	server.registerTool(
 		"ordinals_getInscription",
-		"Retrieves metadata for an inscription by its outpoint. Returns content type, file info, origin, MAP data, and sequence info.",
 		{
-			outpoint: z
-				.string()
-				.describe("Outpoint in format 'txid.vout' or 'txid_vout'"),
+			description:
+				"Retrieves metadata for an inscription by its outpoint. Returns content type, file info, origin, MAP data, and sequence info.",
+			inputSchema: z.object({
+				outpoint: z
+					.string()
+					.describe("Outpoint in format 'txid.vout' or 'txid_vout'"),
+			}),
 		},
 		async ({ outpoint }) => {
 			try {

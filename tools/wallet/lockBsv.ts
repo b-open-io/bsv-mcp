@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { lockBsv } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -27,10 +27,12 @@ export function registerLockBsvTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_lockBsv",
-		"Lock BSV until a specific block height",
-		{ ...lockBsvArgsSchema.shape },
+		{
+			description: "Lock BSV until a specific block height",
+			inputSchema: lockBsvArgsSchema,
+		},
 		async ({ requests }) => {
 			if (!ctx) {
 				return {

@@ -1,5 +1,6 @@
 {
 	"compilerOptions": {
+		"types": ["bun", "node"],
 		"lib": ["dom", "dom.iterable", "esnext"],
 		"allowJs": true,
 		"skipLibCheck": true,

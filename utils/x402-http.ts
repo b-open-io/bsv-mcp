@@ -15,6 +15,7 @@ export function requestURL(value: string): URL {
 function publicIP(ip: string): boolean {
 	if (isIP(ip) === 4) {
 		const [a, b] = ip.split(".").map(Number);
+		if (a === undefined || b === undefined) return false;
 		return !(
 			a === 0 ||
 			a === 10 ||
@@ -41,6 +42,7 @@ export async function serviceFetch(
 	if (!addresses.length || addresses.some((a) => !publicIP(a.address)))
 		throw new Error("Paid services must resolve to public IP addresses");
 	const address = addresses[0];
+	if (address === undefined) throw new Error("Paid service address not found");
 	const headers = Object.fromEntries(new Headers(init.headers));
 	const body =
 		init.body == null

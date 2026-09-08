@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { registerOpns } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -14,10 +14,12 @@ export function registerOpnsRegisterTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_opnsRegister",
-		"Register an OpNS name",
-		{ ...opnsRegisterArgsSchema.shape },
+		{
+			description: "Register an OpNS name",
+			inputSchema: opnsRegisterArgsSchema,
+		},
 		async ({ id }) => {
 			if (!ctx) {
 				return {

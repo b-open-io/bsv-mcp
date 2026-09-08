@@ -1,12 +1,11 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-import type { MneeInterface, ParseTxResponse } from "mnee";
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
+import type { ParseTxResponse } from "mnee";
 import { z } from "zod";
+import { type MneeClientSource, resolveMneeClient } from "./provider";
 
 /**
  * Schema for the parseTx tool arguments.
@@ -19,17 +18,18 @@ export type ParseTxArgs = z.infer<typeof parseTxArgsSchema>;
 
 export function registerParseTxTool(
 	server: McpServer,
-	mnee: MneeInterface,
+	getMnee: MneeClientSource,
 ): void {
-	server.tool(
+	server.registerTool(
 		"mnee_parseTx",
-		"Parse an MNEE transaction to get detailed information about its operations and amounts. All amounts are in atomic units with 5 decimal precision (e.g. 1000 atomic units = 0.01 MNEE).",
-		{ ...parseTxArgsSchema.shape },
-		async (
-			{ txid },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{
+			description:
+				"Parse an MNEE transaction to get detailed information about its operations and amounts. All amounts are in atomic units with 5 decimal precision (e.g. 1000 atomic units = 0.01 MNEE).",
+			inputSchema: parseTxArgsSchema,
+		},
+		async ({ txid }, _extra: ServerContext): Promise<CallToolResult> => {
 			try {
+				const mnee = await resolveMneeClient(getMnee);
 				const result: ParseTxResponse = await mnee.parseTx(txid);
 
 				return {

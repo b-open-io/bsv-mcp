@@ -3,7 +3,7 @@
  * Provides consistent error types and formatting across all tools
  */
 
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 /**
  * Error codes for different types of failures

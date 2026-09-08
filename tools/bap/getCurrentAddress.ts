@@ -1,5 +1,6 @@
 import { PrivateKey } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 
 /**
  * Register the tool to get the BAP identity address
@@ -10,10 +11,13 @@ export function registerBapGetCurrentAddressTool(
 	server: McpServer,
 	identityPk?: PrivateKey,
 ): void {
-	server.tool(
+	server.registerTool(
 		"bap_getCurrentAddress",
-		"Retrieves the current BAP identity's Bitcoin SV address. This address is derived from the server's configured identity key.",
-		{},
+		{
+			description:
+				"Retrieves the current BAP identity's Bitcoin SV address. This address is derived from the server's configured identity key.",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				let pkToUse = identityPk;

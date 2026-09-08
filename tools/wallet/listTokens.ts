@@ -1,17 +1,19 @@
 import { listBsv21, type OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 export function registerListTokensTool(server: McpServer, ctx?: OneSatContext) {
-	server.tool(
+	server.registerTool(
 		"wallet_listTokens",
-		"List BSV21 token outputs in the wallet",
 		{
-			limit: z
-				.number()
-				.int()
-				.optional()
-				.describe("Max number of results to return"),
+			description: "List BSV21 token outputs in the wallet",
+			inputSchema: z.object({
+				limit: z
+					.number()
+					.int()
+					.optional()
+					.describe("Max number of results to return"),
+			}),
 		},
 		async (params) => {
 			try {

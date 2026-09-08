@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { sendBsv21, sendOrdinals } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -42,10 +42,13 @@ export function registerTransferOrdTokenTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_transferOrdToken",
-		"Transfer an ordinal inscription or send BSV21 fungible tokens. Use type='ordinal' to transfer an NFT/inscription by its ordinals-basket tracking id (from wallet_getOrdinals). Use type='bsv21' to send fungible tokens by token ID and amount.",
-		{ ...transferOrdTokenArgsSchema.shape },
+		{
+			description:
+				"Transfer an ordinal inscription or send BSV21 fungible tokens. Use type='ordinal' to transfer an NFT/inscription by its ordinals-basket tracking id (from wallet_getOrdinals). Use type='bsv21' to send fungible tokens by token ID and amount.",
+			inputSchema: transferOrdTokenArgsSchema,
+		},
 		async ({ type, id, tokenId, amount, address, counterparty }) => {
 			if (!ctx) {
 				return {

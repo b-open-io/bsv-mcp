@@ -1,7 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { Wallet } from "./wallet";
 
@@ -128,10 +127,13 @@ export function registerGatherCollectionInfoTool(
 	server: McpServer,
 	wallet: Wallet,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_gatherCollectionInfo",
-		"Analyzes a folder of images and gathers all necessary information for minting an ordinals collection. This includes validating images, checking wallet balance, estimating costs, and suggesting metadata. Use this before minting to ensure everything is ready.",
-		{ ...gatherCollectionInfoArgsSchema.shape },
+		{
+			description:
+				"Analyzes a folder of images and gathers all necessary information for minting an ordinals collection. This includes validating images, checking wallet balance, estimating costs, and suggesting metadata. Use this before minting to ensure everything is ready.",
+			inputSchema: gatherCollectionInfoArgsSchema,
+		},
 		async ({ folderPath }): Promise<CallToolResult> => {
 			try {
 				const analysis: CollectionAnalysis = {

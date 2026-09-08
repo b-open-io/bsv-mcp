@@ -1,9 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 /**
  * BSV SDK Cryptography Prompt
@@ -42,10 +37,13 @@ For complete API documentation and additional cryptographic features, refer to t
  * @param server The MCP server instance
  */
 export function registerCryptographyPrompt(server: McpServer): void {
-	server.prompt(
+	server.registerPrompt(
 		"bitcoin_sv_sdk_cryptography",
-		"Detailed information about the cryptographic functionality in the BSV SDK, including key generation, signing, encryption, and hashing.",
-		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		{
+			description:
+				"Detailed information about the cryptographic functionality in the BSV SDK, including key generation, signing, encryption, and hashing.",
+		},
+		async (_ctx) => {
 			return {
 				messages: [
 					{

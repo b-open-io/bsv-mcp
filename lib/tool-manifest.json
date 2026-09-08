@@ -2,11 +2,8 @@
 	"tools": [
 		"app_explorer_data",
 		"app_ordinals_data",
-		"app_sweep_complete",
-		"app_sweep_prepare",
 		"app_sweep_scan",
 		"app_wallet_data",
-		"bap_generate",
 		"bap_getId",
 		"bmap_readFollows",
 		"bmap_readLikes",
@@ -86,7 +83,6 @@
 		"wallet_verifyHmac",
 		"wallet_verifySignature",
 		"wallet_waitForAuthentication",
-		"x402_payQuote",
 		"x402_request"
 	]
 }

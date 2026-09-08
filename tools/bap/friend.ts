@@ -10,13 +10,11 @@ import {
 	Transaction,
 	Utils,
 } from "@bsv/sdk";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
 	CallToolResult,
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
 import { BAP } from "bsv-bap";
 import { z } from "zod";
 import { BsocialBroadcaster } from "../../utils/broadcaster";
@@ -47,14 +45,14 @@ export function registerBapFriendTool(
 	xprv: string,
 	config?: BapFriendConfig,
 ) {
-	server.tool(
+	server.registerTool(
 		"bap_friend",
-		"Initiates a friend request to another BAP ID by broadcasting an on-chain MAP transaction.",
-		{ ...bapFriendArgsSchema.shape },
-		async (
-			{ targetBapId },
-			_extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-		): Promise<CallToolResult> => {
+		{
+			description:
+				"Initiates a friend request to another BAP ID by broadcasting an on-chain MAP transaction.",
+			inputSchema: bapFriendArgsSchema,
+		},
+		async ({ targetBapId }, _extra: ServerContext): Promise<CallToolResult> => {
 			const _logFunc = console.error;
 
 			try {

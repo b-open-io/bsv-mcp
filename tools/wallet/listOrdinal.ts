@@ -1,6 +1,6 @@
 import type { OneSatContext } from "@1sat/actions";
 import { sellOrdinal } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
 
@@ -27,10 +27,12 @@ export function registerListOrdinalTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_listOrdinal",
-		"List an ordinal for sale on the marketplace",
-		{ ...listOrdinalArgsSchema.shape },
+		{
+			description: "List an ordinal for sale on the marketplace",
+			inputSchema: listOrdinalArgsSchema,
+		},
 		async ({ id, price, payAddress }) => {
 			if (!ctx) {
 				return {

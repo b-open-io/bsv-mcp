@@ -411,17 +411,12 @@ export class SigmaSignerClient {
 
 ## Phase 3: Tool Integration
 
-### Category A: BAP/Identity Tools (8 tools)
+### Category A: BAP/Identity Tools (3 tools)
 
 **Tools to update:**
 1. `tools/bap/getCurrentAddress.ts`
 2. `tools/bap/friend.ts`
 3. `tools/bsocial/createPost.ts`
-4. `tools/a2b/call.ts`
-5. `tools/a2b/discover.ts`
-6. `tools/wallet/a2bPublishMcp.ts`
-7. `tools/wallet/a2bPublishAgent.ts`
-
 **Pattern:** Use authenticated BAP ID from OAuth session
 
 **Example:** `tools/bap/getCurrentAddress.ts`

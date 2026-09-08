@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { PermissionRequest } from "@bsv/wallet-toolbox/out/src/WalletPermissionsManager.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import {
 	handleSpendingAuthorization,
 	setSpendingApprovalServerInstance,
@@ -47,7 +47,7 @@ function makeServer(
 	return {
 		server: {
 			getClientCapabilities: () =>
-				supportsElicitation ? { elicitation: {} } : {},
+				supportsElicitation ? { elicitation: { form: {} } } : {},
 			elicitInput,
 		},
 	} as unknown as McpServer;
@@ -85,6 +85,22 @@ describe("spending approval", () => {
 			ephemeral: true,
 		});
 		expect(denySpy).not.toHaveBeenCalled();
+	});
+
+	it("uses the form elicitation mode required by the current SDK", async () => {
+		const permissionsManager = makePermissionsManager();
+		const elicitInput = async () => ({
+			action: "accept" as const,
+			content: { approved: true },
+		});
+		const server = makeServer(elicitInput);
+		const requestSpy = spyOn(server.server, "elicitInput");
+
+		await handleSpendingAuthorization(request, permissionsManager, server);
+
+		expect(requestSpy).toHaveBeenCalledWith(
+			expect.objectContaining({ mode: "form" }),
+		);
 	});
 
 	it("denies when the answer is negative", async () => {
@@ -135,6 +151,32 @@ describe("spending approval", () => {
 
 		await handleSpendingAuthorization(request, permissionsManager);
 
+		expect(grantSpy).not.toHaveBeenCalled();
+		expect(denySpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("denies invalid amounts before asking the client", async () => {
+		const permissionsManager = makePermissionsManager();
+		const grantSpy = spyOn(permissionsManager, "grantPermission");
+		const denySpy = spyOn(permissionsManager, "denyPermission");
+		const elicitInput = async () => ({
+			action: "accept" as const,
+			content: { approved: true },
+		});
+		const server = makeServer(elicitInput);
+		const requestSpy = spyOn(server.server, "elicitInput");
+		const invalidRequest = {
+			...request,
+			spending: { ...request.spending, satoshis: Number.POSITIVE_INFINITY },
+		};
+
+		await handleSpendingAuthorization(
+			invalidRequest,
+			permissionsManager,
+			server,
+		);
+
+		expect(requestSpy).not.toHaveBeenCalled();
 		expect(grantSpy).not.toHaveBeenCalled();
 		expect(denySpy).toHaveBeenCalledTimes(1);
 	});

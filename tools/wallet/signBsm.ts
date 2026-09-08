@@ -1,17 +1,19 @@
 import { type OneSatContext, signBsm } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 export function registerSignBsmTool(server: McpServer, ctx?: OneSatContext) {
-	server.tool(
+	server.registerTool(
 		"wallet_signBsm",
-		"Sign a message using BSM (Bitcoin Signed Message) format",
 		{
-			message: z.string().describe("The message to sign"),
-			encoding: z
-				.enum(["utf8", "hex", "base64"])
-				.optional()
-				.describe("Message encoding format"),
+			description: "Sign a message using BSM (Bitcoin Signed Message) format",
+			inputSchema: z.object({
+				message: z.string().describe("The message to sign"),
+				encoding: z
+					.enum(["utf8", "hex", "base64"])
+					.optional()
+					.describe("Message encoding format"),
+			}),
 		},
 		async (params) => {
 			try {

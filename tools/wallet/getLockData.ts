@@ -1,14 +1,18 @@
 import { getLockData, type OneSatContext } from "@1sat/actions";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
 
 export function registerGetLockDataTool(
 	server: McpServer,
 	ctx?: OneSatContext,
 ) {
-	server.tool(
+	server.registerTool(
 		"wallet_getLockData",
-		"Get summary of time-locked BSV (total, unlockable, next unlock height)",
-		{},
+		{
+			description:
+				"Get summary of time-locked BSV (total, unlockable, next unlock height)",
+			inputSchema: z.object({}),
+		},
 		async () => {
 			try {
 				if (!ctx) throw new Error("BRC-100 wallet context not available");

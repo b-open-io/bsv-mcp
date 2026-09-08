@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
 	DroplitError,
@@ -17,10 +17,10 @@ export function registerDroplitDiscoveryTool(
 		{
 			description:
 				"List publicly opted-in sponsors. No wallet or sponsor selection is required. Listing grants no access or funding; choose a slug, then request the sponsor owner's approval separately.",
-			inputSchema: {
+			inputSchema: z.object({
 				limit: z.number().int().min(1).max(50).optional(),
 				after: z.string().optional(),
-			},
+			}),
 			annotations: {
 				readOnlyHint: true,
 				destructiveHint: false,

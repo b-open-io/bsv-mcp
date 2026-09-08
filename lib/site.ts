@@ -3,7 +3,7 @@ import { join } from "node:path";
 import {
 	LATEST_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/client";
 
 /**
  * Canonical facts about this site, in one place.

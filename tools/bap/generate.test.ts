@@ -1,8 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { HD } from "@bsv/sdk";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import { registerBapGenerateTool } from "./generate";
 
 test("BAP generation refuses a locked account before generating an identity", async () => {
