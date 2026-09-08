@@ -92,17 +92,29 @@ let activeResult: Pick<NodeWalletResult, "destroy"> | null = null;
 /**
  * Initialize the BRC-100 remote wallet.
  *
- * @param privateKeyWif - Payment private key in WIF format
+ * @param privateKeyInput - Payment key in memory or WIF format
  * @param chain - Network chain ('main' or 'test')
  */
 export async function initWallet(
-	privateKeyWif: string,
+	privateKeyInput: string | PrivateKey,
 	chain: "main" | "test" = "main",
+	options: {
+		/** Explicit existing account for project-bound Vault sessions. */
+		accountName?: string;
+		/** Session-owned wallets must not replace the legacy global wallet. */
+		trackActive?: boolean;
+		sessionSignal?: AbortSignal;
+	} = {},
 ): Promise<WalletInitResult> {
-	const config = readAccount();
+	options.sessionSignal?.throwIfAborted();
+	const config = readAccount(options.accountName);
+	if (options.accountName !== undefined && !config)
+		throw new Error("The selected wallet account is not initialized");
+	if (config && config.chain !== chain)
+		throw new Error("The selected account uses a different network");
 	if (config && process.env.BSV_CHAIN && process.env.BSV_CHAIN !== config.chain)
 		throw new Error("BSV_CHAIN conflicts with the selected account network");
-	const dataDir = accountDir();
+	const dataDir = accountDir(options.accountName);
 	secureDirectory(dataDir);
 	const filename = join(dataDir, `wallet-${chain}.db`);
 	regularPath(filename);
@@ -114,7 +126,10 @@ export async function initWallet(
 			: undefined,
 	);
 	const nodeWalletConfig = {
-		privateKey: PrivateKey.fromWif(privateKeyWif),
+		privateKey:
+			typeof privateKeyInput === "string"
+				? PrivateKey.fromWif(privateKeyInput)
+				: privateKeyInput,
 		chain,
 		activeRemote: storageConfig.activeRemote,
 		storageIdentityKey: config?.storageIdentityKey ?? "bsv-mcp",
@@ -122,8 +137,6 @@ export async function initWallet(
 		backups: storageConfig.backups,
 		skipInitialMonitor: true,
 		servicesBaseUrl: onesatUrl(chain),
-		// @1sat/wallet-node forwards this field to @1sat/wallet's core factory,
-		// although its published NodeWalletConfig type currently omits it.
 		onStoragePaymentRequired: denyStoragePayment,
 	} as Parameters<typeof createNodeWallet>[0] & {
 		onStoragePaymentRequired: typeof denyStoragePayment;
@@ -131,71 +144,77 @@ export async function initWallet(
 	const result = await createNodeWallet(nodeWalletConfig).finally(() =>
 		process.umask(oldMask),
 	);
-	chmodSync(filename, 0o600);
+	try {
+		chmodSync(filename, 0o600);
 
-	const wpm = new WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
-		seekProtocolPermissionsForSigning: false,
-		seekProtocolPermissionsForEncrypting: false,
-		seekProtocolPermissionsForHMAC: false,
-		seekPermissionsForKeyLinkageRevelation: false,
-		seekPermissionsForPublicKeyRevelation: false,
-		seekPermissionsForIdentityKeyRevelation: false,
-		seekPermissionsForIdentityResolution: false,
-		seekBasketInsertionPermissions: false,
-		seekBasketRemovalPermissions: false,
-		seekBasketListingPermissions: false,
-		seekPermissionWhenApplyingActionLabels: false,
-		seekPermissionWhenListingActionsByLabel: false,
-		seekCertificateAcquisitionPermissions: false,
-		seekCertificateRelinquishmentPermissions: false,
-		seekCertificateListingPermissions: false,
-		seekCertificateDisclosurePermissions: false,
-		seekSpendingPermissions: true,
-		seekGroupedPermission: false,
-		differentiatePrivilegedOperations: false,
-		encryptWalletMetadata: true,
-	});
-	wpm.bindCallback(
-		"onSpendingAuthorizationRequested",
-		(request: SpendingPermissionRequest) =>
-			handleSpendingAuthorization(request, wpm),
-	);
+		const wpm = new WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
+			seekProtocolPermissionsForSigning: false,
+			seekProtocolPermissionsForEncrypting: false,
+			seekProtocolPermissionsForHMAC: false,
+			seekPermissionsForKeyLinkageRevelation: false,
+			seekPermissionsForPublicKeyRevelation: false,
+			seekPermissionsForIdentityKeyRevelation: false,
+			seekPermissionsForIdentityResolution: false,
+			seekBasketInsertionPermissions: false,
+			seekBasketRemovalPermissions: false,
+			seekBasketListingPermissions: false,
+			seekPermissionWhenApplyingActionLabels: false,
+			seekPermissionWhenListingActionsByLabel: false,
+			seekCertificateAcquisitionPermissions: false,
+			seekCertificateRelinquishmentPermissions: false,
+			seekCertificateListingPermissions: false,
+			seekCertificateDisclosurePermissions: false,
+			seekSpendingPermissions: true,
+			seekGroupedPermission: false,
+			differentiatePrivilegedOperations: false,
+			encryptWalletMetadata: true,
+		});
+		wpm.bindCallback(
+			"onSpendingAuthorizationRequested",
+			(request: SpendingPermissionRequest) =>
+				handleSpendingAuthorization(
+					request,
+					wpm,
+					undefined,
+					options.sessionSignal,
+				),
+		);
 
-	const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
-
-	const ctx = Object.assign(
-		createContext(wallet, {
+		const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
+		const ctx = Object.assign(
+			createContext(wallet, {
+				services: result.services,
+				chain,
+				dataDir,
+				isBaseWallet: true,
+				log: (entry) => writeAuditLog(dataDir, entry),
+			}),
+			{ [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR },
+		);
+		const internalCtx = {
+			...ctx,
+			wallet: withEmbeddedOwnerDerivation(wallet, ADMIN_ORIGINATOR),
+		};
+		const { derivations } = await deriveDepositAddresses.execute(internalCtx, {
+			prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
+		});
+		const depositAddress = derivations[0]?.address;
+		if (!depositAddress) {
+			throw new Error("Could not derive a deposit address for the wallet");
+		}
+		options.sessionSignal?.throwIfAborted();
+		if (options.trackActive !== false) activeResult = result;
+		return {
+			wallet,
 			services: result.services,
-			chain,
-			dataDir,
-			isBaseWallet: true,
-			log: (entry) => writeAuditLog(dataDir, entry),
-		}),
-		{ [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR },
-	);
-
-	const internalCtx = {
-		...ctx,
-		wallet: withEmbeddedOwnerDerivation(ctx.wallet, ADMIN_ORIGINATOR),
-	};
-	const { derivations } = await deriveDepositAddresses.execute(internalCtx, {
-		prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
-	});
-	const depositAddress = derivations[0]?.address;
-	if (!depositAddress) {
-		await result.destroy();
-		throw new Error("Could not derive a deposit address for the wallet");
+			ctx,
+			depositAddress,
+			destroy: result.destroy,
+		};
+	} catch (error) {
+		await result.destroy().catch(() => {});
+		throw error;
 	}
-
-	activeResult = result;
-
-	return {
-		wallet,
-		services: result.services,
-		ctx,
-		depositAddress,
-		destroy: result.destroy,
-	};
 }
 
 /**
