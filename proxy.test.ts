@@ -3,10 +3,16 @@ import { NextRequest } from "next/server";
 import { VARY_HEADER } from "./lib/content-negotiation";
 import { proxy } from "./proxy";
 
-function rewriteFor(path: string, accept: string) {
+function rewriteFor(
+	path: string,
+	accept: string,
+	method = "GET",
+	extraHeaders: Record<string, string> = {},
+) {
 	const response = proxy(
 		new NextRequest(`https://bsvmcp.test${path}`, {
-			headers: { accept },
+			method,
+			headers: { accept, ...extraHeaders },
 		}),
 	);
 	return {
@@ -37,5 +43,24 @@ describe("stable markdown aliases", () => {
 			"https://bsvmcp.test/connect",
 		);
 		expect(rewriteFor("/docs.md", "").path).toBe("https://bsvmcp.test/docs");
+	});
+});
+
+describe("root MCP routing", () => {
+	test("rewrites a modern stateless request without a session", () => {
+		expect(
+			rewriteFor("/", "application/json", "POST", {
+				"content-type": "application/json",
+				"mcp-protocol-version": "2026-07-28",
+				"mcp-method": "tools/list",
+			}).path,
+		).toBe("https://bsvmcp.test/api/mcp");
+	});
+
+	test("keeps ordinary markdown and browser requests on page routing", () => {
+		expect(rewriteFor("/", "text/markdown").path).toBe(
+			"https://bsvmcp.test/md",
+		);
+		expect(rewriteFor("/", "text/html").path).toBe(null);
 	});
 });
