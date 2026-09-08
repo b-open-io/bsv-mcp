@@ -3,8 +3,10 @@ import {
 	lstat,
 	mkdir,
 	mkdtemp,
+	open,
 	readdir,
 	readFile,
+	rename,
 	rm,
 	symlink,
 	utimes,
@@ -384,6 +386,72 @@ describe("project-scoped role persistence", () => {
 					{ expectedProjectId: "project-a", expectedRevision: 1 },
 				),
 			).rejects.toThrow("PROJECT_ROLE_HISTORY_CHANGED");
+		});
+	});
+
+	test("a replaced lock aborts the commit and leaves the replacement for reconciliation", async () => {
+		await fixture(async (directory) => {
+			await saveProjectRoleBindings(directory, initial(), {
+				expectedProjectId: "project-a",
+				expectedRevision: null,
+			});
+			const lockPath = join(directory, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`);
+			const probePath = join(directory, "prototype-probe");
+			const probe = await open(probePath, "w");
+			const fileHandlePrototype = Object.getPrototypeOf(probe) as {
+				writeFile: (...args: unknown[]) => Promise<unknown>;
+			};
+			await probe.close();
+			await rm(probePath);
+
+			const originalWriteFile = fileHandlePrototype.writeFile;
+			let releaseWrite!: () => void;
+			const writeRelease = new Promise<void>((resolve) => {
+				releaseWrite = resolve;
+			});
+			let lockWriteStarted!: () => void;
+			const lockWriteReady = new Promise<void>((resolve) => {
+				lockWriteStarted = resolve;
+			});
+			let blocked = false;
+			fileHandlePrototype.writeFile = async function (
+				this: unknown,
+				...args: unknown[]
+			) {
+				if (
+					!blocked &&
+					typeof args[0] === "string" &&
+					args[0].includes('"pid"')
+				) {
+					blocked = true;
+					lockWriteStarted();
+					await writeRelease;
+				}
+				return originalWriteFile.apply(this, args);
+			};
+
+			try {
+				const saving = saveProjectRoleBindings(
+					directory,
+					changed(initial(), "payments"),
+					{ expectedProjectId: "project-a", expectedRevision: 0 },
+				);
+				await lockWriteReady;
+				const replacementPath = join(directory, "operator-lock");
+				await writeFile(replacementPath, "operator reconciliation");
+				await rename(replacementPath, lockPath);
+				releaseWrite();
+				await expect(saving).rejects.toThrow("PROJECT_ROLE_LOCK_LOST");
+				expect(await readFile(lockPath, "utf8")).toBe(
+					"operator reconciliation",
+				);
+				expect(await loadProjectRoleBindings(directory, "project-a")).toEqual(
+					initial(),
+				);
+			} finally {
+				releaseWrite();
+				fileHandlePrototype.writeFile = originalWriteFile;
+			}
 		});
 	});
 
