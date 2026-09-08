@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import { PrivateKey, ProtoWallet, type WalletInterface } from "@bsv/sdk";
 import {
+	changeProjectRoleBinding,
 	type ProjectRoleBindings,
 	resolveProjectRoleBinding,
 } from "./projectRoleBindings";
@@ -196,6 +197,174 @@ describe("local Vault controller", () => {
 		expect(f.destroy).not.toHaveBeenCalled();
 		expect(f.openVault).not.toHaveBeenCalled();
 	});
+	it("supersedes overlapping unlocks and leaves only the latest role active", async () => {
+		const f = setup();
+		f.config.current.encryption = "encryption";
+		f.config.bindings.push({
+			bindingId: "encryption",
+			role: "encryption",
+			accountId: "selected",
+			key: {
+				vaultId: "vault",
+				entryId: "entry",
+				expectedPublicKey: key.toPublicKey().toString(),
+			},
+			keyUseContract: "direct-v1",
+			createdAt: "2026-09-08T00:01:00Z",
+		});
+		let releaseFirstModule!: () => void;
+		const firstModuleRelease = new Promise<void>((resolve) => {
+			releaseFirstModule = resolve;
+		});
+		let firstModuleStarted!: () => void;
+		const firstModuleReady = new Promise<void>((resolve) => {
+			firstModuleStarted = resolve;
+		});
+		let moduleCalls = 0;
+		const originalLoadModule = f.options.loadVaultModule;
+		f.options.loadVaultModule = async () => {
+			moduleCalls += 1;
+			if (moduleCalls === 1) {
+				firstModuleStarted();
+				await firstModuleRelease;
+			}
+			return originalLoadModule();
+		};
+
+		const controller = createVaultWalletController(f.options);
+		const first = controller.unlock("payments", "first", "switch");
+		await firstModuleReady;
+		const second = await controller.unlock("encryption", "second", "switch");
+		expect(second.role).toBe("encryption");
+		releaseFirstModule();
+		await expect(first).rejects.toMatchObject({ code: "UNLOCK_SUPERSEDED" });
+		expect(f.openVault).toHaveBeenCalledTimes(1);
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({
+			code: "SESSION_LOCKED",
+		});
+		expect(await controller.run("encryption", async () => "latest")).toBe(
+			"latest",
+		);
+		await controller.lock();
+		expect(f.destroy).toHaveBeenCalledTimes(1);
+	});
+
+	it("locks and disposes a session that finishes after a concurrent controller lock", async () => {
+		const f = setup();
+		let releaseInitialization!: () => void;
+		let initializationStarted!: () => void;
+		const initializationRelease = new Promise<void>((resolve) => {
+			releaseInitialization = resolve;
+		});
+		const initializationReady = new Promise<void>((resolve) => {
+			initializationStarted = resolve;
+		});
+		const originalInitialize = f.options.walletDependencies.initializeWallet;
+		f.options.walletDependencies.initializeWallet = mock(
+			async (...args: Parameters<typeof originalInitialize>) => {
+				initializationStarted();
+				await initializationRelease;
+				return originalInitialize(...args);
+			},
+		);
+
+		const controller = createVaultWalletController(f.options);
+		const attempt = controller.unlock("payments", "pass", "switch");
+		await initializationReady;
+		const locking = controller.lock();
+		releaseInitialization();
+		await locking;
+		await expect(attempt).rejects.toMatchObject({ code: "UNLOCK_SUPERSEDED" });
+		expect(f.openVault).toHaveBeenCalledTimes(1);
+		expect(f.destroy).toHaveBeenCalledTimes(1);
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({
+			code: "SESSION_LOCKED",
+		});
+	});
+
+	it("rejects a changed role snapshot before exposing an initialized session", async () => {
+		const f = setup();
+		const next = changeProjectRoleBinding(f.config, {
+			expectedProjectId: "project",
+			expectedRevision: 0,
+			role: "payments",
+			binding: {
+				bindingId: "payment-2",
+				accountId: "selected",
+				key: {
+					vaultId: "vault",
+					entryId: "entry-2",
+					expectedPublicKey: key.toPublicKey().toString(),
+				},
+				keyUseContract: "direct-v1",
+				createdAt: "2026-09-08T00:01:00Z",
+			},
+		});
+		const originalInitialize = f.options.walletDependencies.initializeWallet;
+		f.options.walletDependencies.initializeWallet = mock(
+			async (...args: Parameters<typeof originalInitialize>) => {
+				f.options.loadBindings = mock(
+					async () => next as unknown as ProjectRoleBindings,
+				);
+				return originalInitialize(...args);
+			},
+		);
+
+		const controller = createVaultWalletController(f.options);
+		await expect(
+			controller.unlock("payments", "pass", "switch"),
+		).rejects.toThrow("PROJECT_ROLE_SNAPSHOT_STALE");
+		expect(f.destroy).toHaveBeenCalledTimes(1);
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({
+			code: "SESSION_LOCKED",
+		});
+	});
+
+	it("rejects an invalid selected chain before Vault access or database initialization", async () => {
+		const f = setup();
+		const controller = createVaultWalletController({
+			...f.options,
+			readSelectedAccount: () =>
+				({
+					chain: "regtest",
+					storageIdentityKey: "test",
+					depositPrefix: "mcp",
+				}) as never,
+		});
+		await expect(
+			controller.unlock("payments", "pass", "switch"),
+		).rejects.toMatchObject({
+			code: "INVALID_SELECTION",
+		});
+		expect(f.openVault).not.toHaveBeenCalled();
+		expect(
+			f.options.walletDependencies.initializeWallet,
+		).not.toHaveBeenCalled();
+	});
+
+	it("coalesces overlapping controller locks without duplicating cleanup", async () => {
+		const f = setup();
+		const controller = createVaultWalletController(f.options);
+		await controller.unlock("payments", "pass", "switch");
+		await Promise.all([
+			controller.lock(),
+			controller.lock(),
+			controller.lock(),
+		]);
+		expect(f.destroy).toHaveBeenCalledTimes(1);
+		await expect(
+			controller.run("payments", async () => true),
+		).rejects.toMatchObject({
+			code: "SESSION_LOCKED",
+		});
+	});
+
 	it("requires an absolute project root", () => {
 		const f = setup();
 		expect(() =>
