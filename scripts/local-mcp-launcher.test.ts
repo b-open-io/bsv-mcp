@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -208,6 +209,21 @@ describe("two-mode launch plans", () => {
 				externalWalletUrl: "http://127.0.0.1:3321",
 				serverBinary,
 				workingDirectory: repoRoot,
+			}),
+		).toThrow("outside the BSV MCP checkout");
+	});
+
+	test("rejects symlinked working directories that resolve into the checkout", () => {
+		const home = fixtureHome();
+		const alias = join(home, "repo-alias");
+		symlinkSync(repoRoot, alias);
+
+		expect(() =>
+			buildLaunchPlan({
+				mode: "external",
+				externalWalletUrl: "http://127.0.0.1:3321",
+				serverBinary,
+				workingDirectory: join(alias, "runtime"),
 			}),
 		).toThrow("outside the BSV MCP checkout");
 	});

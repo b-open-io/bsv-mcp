@@ -14,9 +14,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	accountDir,
@@ -84,9 +91,23 @@ export const CONFLICTING_WALLET_ENV = [
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SERVER_BINARY = resolve(REPO_ROOT, "dist/index.js");
+const FORWARDED_SIGNALS: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+
+/** Resolve symlinked existing parents as well as a not-yet-created tail. */
+function canonicalPath(path: string): string {
+	let candidate = resolve(path);
+	const tail: string[] = [];
+	while (!existsSync(candidate)) {
+		const parent = dirname(candidate);
+		if (parent === candidate) return candidate;
+		tail.unshift(basename(candidate));
+		candidate = parent;
+	}
+	return resolve(realpathSync(candidate), ...tail);
+}
 
 function isInside(parent: string, child: string): boolean {
-	const path = relative(resolve(parent), resolve(child));
+	const path = relative(canonicalPath(parent), canonicalPath(child));
 	return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }
 
@@ -269,17 +290,35 @@ export function launch(
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(plan.command, plan.args, {
 			cwd: plan.cwd,
-			env: plan.env,
+			env: plan.env as NodeJS.ProcessEnv,
 			stdio: "inherit",
-		});
-		child.once("error", reject);
+		} as import("node:child_process").SpawnOptions);
+		let settled = false;
+		const forwardSignal = (signal: NodeJS.Signals) => {
+			if (!child.killed) child.kill(signal);
+		};
+		const cleanup = () => {
+			for (const signal of FORWARDED_SIGNALS)
+				process.off(signal, forwardSignal);
+		};
+		const settle = (finish: () => void) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			finish();
+		};
+
+		for (const signal of FORWARDED_SIGNALS) process.on(signal, forwardSignal);
+		child.once("error", (error) => settle(() => reject(error)));
 		child.once("exit", (code, signal) => {
-			if (code !== null) {
-				resolvePromise(code);
-				return;
-			}
-			// Preserve signal termination as a conventional non-zero exit.
-			resolvePromise(signal ? 128 : 1);
+			settle(() => {
+				if (code !== null) {
+					resolvePromise(code);
+					return;
+				}
+				// Preserve signal termination as a conventional non-zero exit.
+				resolvePromise(signal ? 128 : 1);
+			});
 		});
 	});
 }
