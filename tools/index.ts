@@ -54,6 +54,8 @@ export interface ToolsConfig {
 	enableWalletTools?: boolean;
 	enableAccountTools?: boolean;
 	enableMneeTools?: boolean;
+	/** Limit a project-bound payments context to payment-safe wallet calls. */
+	walletScope?: "full" | "payments";
 	/** Register only the public BAP lookup for modes without local BAP writes. */
 	bapPublicOnly?: boolean;
 	identityPk?: PrivateKey;
@@ -188,6 +190,7 @@ export function registerAllTools(
 			const walletToolOptions = {
 				ctx: config.ctx,
 				allowWholeWalletBalance: !externalWallet,
+				scope: config.walletScope,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);
 		}

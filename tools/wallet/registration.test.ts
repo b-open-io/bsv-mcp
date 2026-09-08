@@ -10,7 +10,10 @@ const fakeContext = {
 	chain: "main",
 } as unknown as OneSatContext;
 
-async function listWalletTools(externalWallet: boolean) {
+async function listWalletTools(
+	externalWallet: boolean,
+	walletScope?: "full" | "payments",
+) {
 	const server = new McpServer({
 		name: "wallet-registration-test",
 		version: "1.0.0",
@@ -25,6 +28,7 @@ async function listWalletTools(externalWallet: boolean) {
 		enableBsocialTools: false,
 		enableMneeTools: false,
 		enableWalletTools: true,
+		walletScope,
 	});
 	const client = new Client({
 		name: "wallet-registration-client",
@@ -66,4 +70,25 @@ test("external wallet mode hides whole-wallet balance but keeps transaction tool
 		"wallet_sendBsv",
 	])
 		expect(names).toContain(name);
+});
+
+test("project payments scope excludes identity and OneSat wallet operations", async () => {
+	const names = await listWalletTools(false, "payments");
+	for (const name of [
+		"wallet_sendBsv",
+		"wallet_getAddress",
+		"wallet_getBalance",
+	])
+		expect(names).toContain(name);
+	for (const name of [
+		"wallet_createAction",
+		"wallet_signAction",
+		"wallet_encrypt",
+		"wallet_decrypt",
+		"wallet_createSignature",
+		"wallet_getOrdinals",
+		"wallet_listTokens",
+		"wallet_sweepBsv",
+	])
+		expect(names).not.toContain(name);
 });

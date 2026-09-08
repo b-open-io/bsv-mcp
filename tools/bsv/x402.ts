@@ -18,6 +18,7 @@ function serviceHeaders() {
 }
 
 export function registerX402Tools(server: McpServer, config: ToolsConfig) {
+	const paymentsOnly = config.walletScope === "payments";
 	const paymentWallet =
 		config.enableWalletTools === false ||
 		process.env.DISABLE_WALLET_TOOLS === "true"
@@ -81,7 +82,15 @@ export function registerX402Tools(server: McpServer, config: ToolsConfig) {
 				openWorldHint: true,
 			},
 		},
-		(args) => run(() => getClient().request(args)),
+		(args) => {
+			if (paymentsOnly && args.auth === "brc31")
+				return run(async () => {
+					throw new Error(
+						"BRC-31 authentication requires the explicitly assigned identity role; the project payments role cannot authenticate this request",
+					);
+				});
+			return run(() => getClient().request(args));
+		},
 	);
 	if (paymentWallet && !broadcastingDisabled) {
 		server.registerTool(

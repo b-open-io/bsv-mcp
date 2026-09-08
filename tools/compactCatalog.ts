@@ -104,6 +104,11 @@ const CORE_WALLET_READS = [
 	"wallet_getLockData",
 ] as const;
 
+const PAYMENTS_WALLET_READS = [
+	"wallet_getAddress",
+	"wallet_getBalance",
+] as const;
+
 const BRC100_WALLET_READS = [
 	"wallet_getHeight",
 	"wallet_getHeaderForHeight",
@@ -252,6 +257,7 @@ function captureConfig(config: ToolsConfig) {
 					registerWalletTools(server, config.wallet, {
 						ctx: config.ctx,
 						allowWholeWalletBalance: !externalWallet,
+						scope: config.walletScope,
 					}),
 				)
 			: new Map<string, CapturedTool>();
@@ -303,13 +309,15 @@ export function buildCompactFamilies(config: ToolsConfig): CompactFamily[] {
 	) {
 		const operations = operationsFromCaptures(
 			captured.wallet,
-			CORE_WALLET_READS,
+			config.walletScope === "payments"
+				? PAYMENTS_WALLET_READS
+				: CORE_WALLET_READS,
 			walletAvailability,
 		);
 		// BRC-100 registrations are present only when the same context is
 		// available to the concrete registrar. The six action-backed reads stay
 		// visible with a configured wallet and report call-time unavailability.
-		if (config.ctx) {
+		if (config.ctx && config.walletScope !== "payments") {
 			for (const operation of operationsFromCaptures(
 				captured.wallet,
 				BRC100_WALLET_READS,

@@ -83,7 +83,36 @@ describe("embedded account preflight", () => {
 	});
 });
 
-describe("two-mode launch plans", () => {
+describe("local launch plans", () => {
+	test("project mode forwards only the explicit project and runtime Vault inputs", () => {
+		const projectRoot = fixtureHome();
+		const plan = buildLaunchPlan(
+			{
+				mode: "project",
+				projectRoot,
+				projectId: "project.example",
+				runtimePassword,
+				vaultPath: "/tmp/project-vault",
+				serverBinary,
+				workingDirectory: join(tmpdir(), "bsv-mcp-launcher-project-mode-cwd"),
+			},
+			{
+				PATH: "/usr/bin",
+				BRC100_WALLET_URL: "https://signer.example/rpc",
+				BSV_MCP_ACCOUNT: "wrong-account",
+				PRIVATE_KEY_WIF: "wrong-key",
+			},
+		);
+		expect(plan.mode).toBe("project");
+		expect(plan.env.BSV_MCP_PROJECT_ROOT).toBe(realpathSync(projectRoot));
+		expect(plan.env.BSV_MCP_PROJECT_ID).toBe("project.example");
+		expect(plan.env.BSV_MCP_PASSWORD).toBe(runtimePassword);
+		expect(plan.env.VAULT_PATH).toBe("/tmp/project-vault");
+		expect(plan.env.BRC100_WALLET_URL).toBeUndefined();
+		expect(plan.env.BSV_MCP_ACCOUNT).toBeUndefined();
+		expect(plan.env.PRIVATE_KEY_WIF).toBeUndefined();
+	});
+
 	test("external mode uses the signer and removes every inherited local selector", () => {
 		const desiredUrl = "http://127.0.0.1:3321";
 		const inherited: Record<string, string> = {
@@ -133,23 +162,26 @@ describe("two-mode launch plans", () => {
 		expect(plan.env.HOME).not.toBe(homedir());
 	});
 
-	test("passes an explicit project root and ID as a paired child configuration", () => {
+	test("requires project mode for explicit project selectors", () => {
 		const projectRoot = fixtureHome();
-		const plan = buildLaunchPlan(
-			{
+		expect(() =>
+			buildLaunchPlan({
 				mode: "external",
 				externalWalletUrl: "http://127.0.0.1:3321",
 				projectRoot,
 				projectId: "project.example:local",
 				serverBinary,
 				workingDirectory: join(tmpdir(), "bsv-mcp-launcher-project-cwd"),
-			},
-			{
-				PATH: "/usr/bin",
-				BSV_MCP_PROJECT_ROOT: "/wrong/inherited/root",
-				BSV_MCP_PROJECT_ID: "wrong-inherited-project",
-			},
-		);
+			}),
+		).toThrow("require the project launcher mode");
+		const plan = buildLaunchPlan({
+			mode: "project",
+			projectRoot,
+			projectId: "project.example:local",
+			runtimePassword,
+			serverBinary,
+			workingDirectory: join(tmpdir(), "bsv-mcp-launcher-project-cwd"),
+		});
 		expect(plan.projectRoot).toBe(realpathSync(projectRoot));
 		expect(plan.projectId).toBe("project.example:local");
 		expect(plan.env.BSV_MCP_PROJECT_ROOT).toBe(realpathSync(projectRoot));

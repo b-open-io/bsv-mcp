@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Launch the canonical BSV MCP binary in one of the two local wallet modes.
+ * Launch the canonical BSV MCP binary in one of the explicit local wallet modes.
  *
  * The launcher is intended for local MCP registrations. It keeps the server
  * process independent of the repository working directory and repository
@@ -8,6 +8,7 @@
  *
  *   bun --no-env-file scripts/local-mcp-launcher.ts external
  *   BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts embedded
+ *   BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts project --project-root /absolute/project --project-id id
  *
  * The password is accepted only from the launcher's runtime environment. It
  * never appears in argv, configuration text, or launcher diagnostics.
@@ -33,7 +34,7 @@ import {
 } from "../utils/accounts.ts";
 import { readExternalWalletConfig } from "../utils/externalWalletConfig.ts";
 
-export type LocalMcpMode = "external" | "embedded";
+export type LocalMcpMode = "external" | "embedded" | "project";
 
 export interface LocalMcpLaunchOptions {
 	mode: LocalMcpMode;
@@ -41,6 +42,8 @@ export interface LocalMcpLaunchOptions {
 	projectRoot?: string;
 	/** Explicit project identifier paired with projectRoot. */
 	projectId?: string;
+	/** Optional machine-local Vault file for project mode. */
+	vaultPath?: string;
 	/** The account name is metadata only; its encrypted backup is never read here. */
 	accountName?: string;
 	/** Runtime-only password; callers should source it from process.env. */
@@ -253,8 +256,12 @@ export function buildLaunchPlan(
 	projectRoot?: string;
 	projectId?: string;
 } {
-	if (options.mode !== "external" && options.mode !== "embedded")
-		throw new Error("Launcher mode must be external or embedded");
+	if (
+		options.mode !== "external" &&
+		options.mode !== "embedded" &&
+		options.mode !== "project"
+	)
+		throw new Error("Launcher mode must be external, embedded, or project");
 
 	const serverBinary = resolve(options.serverBinary ?? DEFAULT_SERVER_BINARY);
 	if (!existsSync(serverBinary))
@@ -267,7 +274,7 @@ export function buildLaunchPlan(
 	);
 	const bunExecutable = resolve(options.bunExecutable ?? process.execPath);
 	const homeDirectory =
-		options.mode === "embedded"
+		options.mode === "embedded" || options.mode === "project"
 			? resolve(options.homeDirectory ?? homedir())
 			: resolve(
 					options.homeDirectory ??
@@ -277,12 +284,28 @@ export function buildLaunchPlan(
 	env.DISABLE_BROADCASTING =
 		options.disableBroadcasting === false ? "false" : "true";
 	const project = resolveProjectConfig(options);
+	if (project && options.mode !== "project")
+		throw new Error(
+			"Project selectors require the project launcher mode; choose external, embedded, or project explicitly",
+		);
 	if (project) {
 		env.BSV_MCP_PROJECT_ROOT = project.projectRoot;
 		env.BSV_MCP_PROJECT_ID = project.projectId;
 	}
 
-	if (options.mode === "external") {
+	if (options.mode === "project") {
+		if (!project)
+			throw new Error(
+				"Project mode requires paired --project-root and --project-id flags",
+			);
+		const password = requireNonEmpty(
+			options.runtimePassword ?? baseEnv.BSV_MCP_PASSWORD,
+			"Project mode requires BSV_MCP_PASSWORD at launcher runtime; do not pass it as an argument or store it in MCP config",
+		);
+		env.BSV_MCP_PASSWORD = password;
+		const vaultPath = options.vaultPath ?? baseEnv.VAULT_PATH;
+		if (vaultPath !== undefined) env.VAULT_PATH = vaultPath;
+	} else if (options.mode === "external") {
 		const url = requireNonEmpty(
 			options.externalWalletUrl ?? baseEnv.BRC100_WALLET_URL,
 			"External mode requires BRC100_WALLET_URL in the launcher's runtime environment",
@@ -384,12 +407,13 @@ export function launch(
 function usage(): string {
 	return (
 		"Usage:\n" +
-		"  bun --no-env-file scripts/local-mcp-launcher.ts external [--project-root /absolute/project --project-id id]\n" +
-		"  BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts embedded [--project-root /absolute/project --project-id id]\n\n" +
+		"  bun --no-env-file scripts/local-mcp-launcher.ts external\n" +
+		"  BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts embedded\n" +
+		"  BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts project --project-root /absolute/project --project-id id\n\n" +
 		"External mode reads BRC100_WALLET_URL and optional BRC100_WALLET_ORIGINATOR\n" +
 		"from the launcher's runtime environment. Embedded mode reads BSV_MCP_ACCOUNT\n" +
 		"and BSV_MCP_PASSWORD at runtime and requires an existing encrypted account.\n" +
-		"Project-role mode requires the paired --project-root and --project-id flags;\n" +
+		"Project mode requires the paired --project-root and --project-id flags;\n" +
 		"the root is passed as BSV_MCP_PROJECT_ROOT and the ID as BSV_MCP_PROJECT_ID.\n" +
 		"Neither mode loads repository dotenv files. The password is never an argv value\n" +
 		"or printed by this launcher."
@@ -418,23 +442,34 @@ export function parseLauncherArguments(
 	argv: readonly string[],
 ): LocalMcpLaunchOptions {
 	const mode = argv[0];
-	if (mode !== "external" && mode !== "embedded")
-		throw new Error("Launcher mode must be external or embedded");
+	if (mode !== "external" && mode !== "embedded" && mode !== "project")
+		throw new Error("Launcher mode must be external, embedded, or project");
 	let projectRoot: string | undefined;
 	let projectId: string | undefined;
+	let vaultPath: string | undefined;
 	for (let index = 1; index < argv.length; index += 1) {
 		const flag = argv[index];
-		if (flag === "--project-root" || flag === "--project-id") {
+		if (
+			flag === "--project-root" ||
+			flag === "--project-id" ||
+			flag === "--vault-path"
+		) {
 			const value = argv[++index];
 			if (!value || value.startsWith("--"))
 				throw new Error(`${flag} requires a value`);
 			if (flag === "--project-root") projectRoot = value;
-			else projectId = value;
+			else if (flag === "--project-id") projectId = value;
+			else vaultPath = value;
 			continue;
 		}
 		throw new Error(`Unknown launcher option: ${flag}`);
 	}
-	return { mode, projectRoot, projectId };
+	return {
+		mode,
+		projectRoot,
+		projectId,
+		...(vaultPath === undefined ? {} : { vaultPath }),
+	};
 }
 
 async function main(): Promise<void> {

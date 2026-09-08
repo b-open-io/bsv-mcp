@@ -35,12 +35,20 @@ export function registerWalletTools(
 		ctx?: OneSatContext;
 		/** External signers do not expose the server's broad default-basket read. */
 		allowWholeWalletBalance?: boolean;
+		/** Project payments sessions do not authorize identity/OneSat operations. */
+		scope?: "full" | "payments";
 	},
 ): void {
 	registerSendBsvTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
 	registerGetAddressTool(server, config.ctx);
+
+	if (config.scope === "payments") {
+		if (config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false)
+			registerWalletGetBalanceTool(server, config.ctx);
+		return;
+	}
 
 	// Register the wallet_purchaseListing tool
 	registerPurchaseListingTool(server, config.ctx);

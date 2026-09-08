@@ -76,6 +76,11 @@ import {
 	withModernToolPolicy,
 } from "./utils/modernToolPolicy.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
+import {
+	createProjectWalletRuntime,
+	type ProjectWalletRuntime,
+	readProjectWalletConfig,
+} from "./utils/projectWalletRuntime";
 import { inspectMigration } from "./utils/vaultMigration";
 import {
 	destroyWallet,
@@ -105,6 +110,7 @@ type McpAppToolsConfig = {
 	enableBsvTools?: boolean;
 	enableOrdinalsTools?: boolean;
 	enableWalletTools?: boolean;
+	walletScope?: "full" | "payments";
 	disableBroadcasting?: boolean;
 	droplitMode?: boolean;
 };
@@ -143,6 +149,7 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 			...opts.toolsConfig,
 			wallet: opts.wallet ?? opts.toolsConfig.wallet,
 			ctx: opts.ctx ?? opts.toolsConfig.ctx,
+			walletScope: opts.toolsConfig.walletScope,
 			droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true,
 		});
 	}
@@ -244,14 +251,17 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 	const externalWallet =
 		config.externalWallet ??
 		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
-	const wholeWalletBalanceAvailable = walletAvailable && !externalWallet;
+	const wholeWalletBalanceAvailable =
+		walletAvailable && !externalWallet && config.walletScope !== "payments";
 	const sweepPrepareAvailable = Boolean(
-		config.ctx &&
+		config.walletScope !== "payments" &&
+			config.ctx &&
 			appServices &&
 			typeof config.ctx.wallet.createAction === "function",
 	);
 	const sweepCompleteAvailable = Boolean(
-		config.ctx &&
+		config.walletScope !== "payments" &&
+			config.ctx &&
 			appServices &&
 			typeof config.ctx.wallet.signAction === "function",
 	);
@@ -1087,6 +1097,9 @@ Environment Variables:
   PORT               HTTP server port (default: 3000)
   BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
+  BSV_MCP_PROJECT_ROOT  Explicit absolute project root for project stdio mode
+  BSV_MCP_PROJECT_ID    Paired project identifier for project stdio mode
+  VAULT_PATH            Optional project Vault file path (absolute)
   PRIVATE_KEY_WIF    Legacy payment key input; prefer Vault
   DISABLE_TOOLS      Disable all tools (default: false)
   MCP_TOOL_CATALOG   Tool catalog: 'full' or 'compact' (default: full; invalid values fail startup)
@@ -1122,20 +1135,33 @@ Authentication:
 	}
 
 	// --- Initialize Keys ---
-	const externalWallet = readExternalWalletConfig();
-	const sponsorConfig = CONFIG.useDroplitApi
+	// Project selectors are consumed before any legacy account, WIF, external
+	// signer, or Droplit branch. The project runtime owns one explicitly bound
+	// Vault role and is available only to the local stdio child.
+	const projectConfig = readProjectWalletConfig();
+	const projectRuntime: ProjectWalletRuntime | undefined = projectConfig
+		? await createProjectWalletRuntime()
+		: undefined;
+	const externalWallet = projectRuntime
 		? undefined
-		: readDroplitSponsorConfig();
+		: readExternalWalletConfig();
+	const sponsorConfig = projectRuntime
+		? undefined
+		: CONFIG.useDroplitApi
+			? undefined
+			: readDroplitSponsorConfig();
 	let vaultMigration: VaultMigrationStatus = {
-		available: !externalWallet,
+		available: !externalWallet && !projectRuntime,
 		required: false,
 		sources: 0,
 		environmentKeys: { payment: false, identity: false },
-		nextStep: externalWallet
-			? "An external signer is selected; local key migration is not applicable."
-			: "No legacy key source was detected. Vault migration is still pending.",
+		nextStep: projectRuntime
+			? "An explicit project Vault role is selected; local account migration is not applicable."
+			: externalWallet
+				? "An external signer is selected; local key migration is not applicable."
+				: "No legacy key source was detected. Vault migration is still pending.",
 	};
-	if (!externalWallet) {
+	if (!externalWallet && !projectRuntime) {
 		try {
 			const migration = inspectMigration();
 			vaultMigration = {
@@ -1169,16 +1195,23 @@ Authentication:
 			);
 		}
 	}
-	const keys = await initializeKeysForWalletMode(externalWallet, async () =>
-		CONFIG.loadTools && CONFIG.loadWalletTools && !CONFIG.useDroplitApi
-			? initializeKeys()
-			: {
-					payPk: undefined,
-					identityPk: undefined,
-					xprv: undefined,
-					source: "none" as const,
-				},
-	);
+	const keys = projectRuntime
+		? {
+				payPk: undefined,
+				identityPk: undefined,
+				xprv: undefined,
+				source: "none" as const,
+			}
+		: await initializeKeysForWalletMode(externalWallet, async () =>
+				CONFIG.loadTools && CONFIG.loadWalletTools && !CONFIG.useDroplitApi
+					? initializeKeys()
+					: {
+							payPk: undefined,
+							identityPk: undefined,
+							xprv: undefined,
+							source: "none" as const,
+						},
+			);
 	const {
 		payPk,
 		identityPk,
@@ -1205,7 +1238,15 @@ Authentication:
 	const hasXprv = !!xprv && keySource === "encrypted";
 
 	const effectiveConfig = { ...CONFIG, bapPublicOnly: CONFIG.useDroplitApi };
-	if (externalWallet) {
+	if (projectRuntime) {
+		// A payment role is deliberately narrower than a general embedded
+		// account. Identity signing, encryption, and OneSat asset operations need
+		// their own explicitly assigned role and are not authorized by this ctx.
+		effectiveConfig.bapPublicOnly = true;
+		effectiveConfig.loadOrdinalsTools = false;
+		effectiveConfig.loadMneeTools = false;
+		effectiveConfig.loadBapTools = false;
+	} else if (externalWallet) {
 		effectiveConfig.bapPublicOnly = true;
 		effectiveConfig.loadBsocialTools = false;
 		effectiveConfig.loadMneeTools = false;
@@ -1228,10 +1269,10 @@ Authentication:
 		);
 	}
 	logFunc(
-		`  PRIVATE_KEY_WIF:      ${externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`,
+		`  PRIVATE_KEY_WIF:      ${projectRuntime ? "Unused (project Vault role)" : externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`,
 	);
 	logFunc(
-		`  IDENTITY_KEY_WIF:     ${externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`,
+		`  IDENTITY_KEY_WIF:     ${projectRuntime ? "Unused (project Vault role)" : externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`,
 	);
 	if (!externalWallet && keySource === "env") {
 		logFunc(
@@ -1325,11 +1366,11 @@ Authentication:
 			: "\x1b[31mDisabled\x1b[0m";
 
 		let payKeyNote = "";
-		if (!externalWallet && !hasPersistentPayKey) {
+		if (!projectRuntime && !externalWallet && !hasPersistentPayKey) {
 			payKeyNote = " \x1b[33m(Using generated payPk)\x1b[0m";
 		}
 		let identityKeyNote = "";
-		if (!externalWallet && !hasPersistentIdentityKey) {
+		if (!projectRuntime && !externalWallet && !hasPersistentIdentityKey) {
 			identityKeyNote = " \x1b[33m(Using generated identityPk)\x1b[0m";
 		}
 
@@ -1365,7 +1406,13 @@ Authentication:
 
 	if (CONFIG.loadTools) {
 		// Check if we should use Droplit API mode
-		if (externalWallet) {
+		if (projectRuntime) {
+			remoteCtx = projectRuntime.ctx;
+			remoteServices = projectRuntime.services;
+			logFunc(
+				`Project payments wallet ready for ${projectRuntime.projectId}. Deposit address: ${projectRuntime.depositAddress}`,
+			);
+		} else if (externalWallet) {
 			const chain = process.env.BSV_CHAIN ?? "main";
 			if (chain !== "main" && chain !== "test")
 				throw new Error("BSV_CHAIN must be main or test");
@@ -1492,14 +1539,17 @@ Authentication:
 					CONFIG.useDroplitApi,
 				),
 				externalWallet: !!externalWallet,
-				enableAccountTools: !externalWallet && !CONFIG.useDroplitApi,
+				enableAccountTools:
+					!externalWallet && !projectRuntime && !CONFIG.useDroplitApi,
 				enableBsvTools: effectiveConfig.loadBsvTools,
-				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
+				enableOrdinalsTools:
+					!projectRuntime && effectiveConfig.loadOrdinalsTools,
 				enableUtilsTools: effectiveConfig.loadUtilsTools,
-				enableBapTools: effectiveConfig.loadBapTools,
+				enableBapTools: !projectRuntime && effectiveConfig.loadBapTools,
 				enableBsocialTools: effectiveConfig.loadBsocialTools,
 				enableWalletTools: effectiveConfig.loadWalletTools,
-				enableMneeTools: effectiveConfig.loadMneeTools,
+				enableMneeTools: !projectRuntime && effectiveConfig.loadMneeTools,
+				walletScope: projectRuntime ? "payments" : "full",
 				identityPk,
 				payPk,
 				xprv,
@@ -1534,7 +1584,9 @@ Authentication:
 	// Clean up remote wallet on shutdown
 	for (const sig of ["SIGINT", "SIGTERM"] as const) {
 		process.once(sig, () => {
-			destroyWallet().catch(() => {});
+			Promise.allSettled([projectRuntime?.cleanup(), destroyWallet()]).catch(
+				() => {},
+			);
 		});
 	}
 

@@ -19,7 +19,7 @@ import {
 } from "./vaultWallet";
 
 const VAULT_PACKAGE = "@opl.dev/vault";
-type VaultModule = Parameters<typeof createOplVaultLoader>[0] &
+export type VaultModule = Parameters<typeof createOplVaultLoader>[0] &
 	Partial<VaultProfileDerivationApi>;
 
 /** Runtime optional dependency: reports local availability, not registry status. */

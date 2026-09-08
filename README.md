@@ -48,6 +48,11 @@ codex mcp add bsv-mcp-external \
 codex mcp add bsv-mcp-embedded \
   --env BSV_MCP_ACCOUNT=default \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts embedded
+
+# Codex: project-bound Vault payments role
+codex mcp add bsv-mcp-project \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts project \
+  --project-root /absolute/path/to/project --project-id project.example
 ```
 
 Claude Code uses the same launcher and can register either mode with
@@ -60,7 +65,8 @@ claude mcp add --transport stdio bsv-mcp-external \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts external
 ```
 
-Set `BSV_MCP_PASSWORD` in the MCP host's runtime environment for embedded mode.
+Set `BSV_MCP_PASSWORD` in the MCP host's runtime environment for embedded and
+project modes.
 Do not put that password in the registration command or saved MCP configuration.
 The launcher passes it to the child only at runtime, never through argv or its
 diagnostics. `BRC100_WALLET_URL` and `BRC100_WALLET_ORIGINATOR` are read at
@@ -123,6 +129,11 @@ private keys, wallet storage, and permission decisions; BSV MCP receives only
 the SDK signer interface. Embedded mode opens an existing encrypted account in
 the local process after the launcher supplies `BSV_MCP_PASSWORD` at runtime.
 The selected account's database and storage configuration remain in use.
+Project mode opens only the explicitly assigned `payments` role from the
+project's local Vault bindings. It requires paired project selectors and
+`BSV_MCP_PASSWORD` at runtime; set `VAULT_PATH` when the installed Vault module
+does not provide a default path. Identity, encryption, and OneSat asset roles
+are not exposed by this initial payments-only surface.
 
 Each mode has its own process environment and should be registered as a separate
 server when you need to switch between them. The hosted plugin is a third path:

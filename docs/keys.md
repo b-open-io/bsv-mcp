@@ -83,13 +83,16 @@ public session status. The session facade supports operations through
 project bindings and expired or locked sessions revoke access and clean up the
 wallet.
 
-This API is not wired into the MCP server, launcher, or normal startup yet. The
-shipped server still opens an existing account's `keys.bep` with
-`BSV_MCP_PASSWORD`, and legacy WIF environment variables remain a compatibility
-path with a migration warning. The optional Vault package is not a required
-runtime dependency. The source launcher can validate and forward paired
-`--project-root` and `--project-id` selectors, but those selectors do not unlock
-a Vault role or select a project in the server yet.
+Project mode is wired into local stdio startup through
+`scripts/local-mcp-launcher.ts project`. It consumes paired
+`--project-root` and `--project-id` selectors, unlocks the explicitly assigned
+`payments` role with the runtime-only `BSV_MCP_PASSWORD`, and uses `VAULT_PATH`
+or the installed module's `defaultVaultPath`. The optional Vault package is not
+a required runtime dependency. The initial project surface gates identity,
+encryption, and OneSat asset operations until their own role contexts are
+available. External and ordinary embedded startup continue to use their
+existing modes; legacy WIF environment variables remain a compatibility path
+with a migration warning.
 
 From a source checkout, run `bun run index.ts vault-setup` to open a local,
 read-only setup preview. It inventories named accounts, older
