@@ -171,10 +171,11 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 			(
 				await migrateAccount(
 					"sigma-lab",
-					"sigma-lab",
+					"one-sat",
 					password,
 					accounts,
 					source,
+					"sigma-brc169-lab",
 				)
 			).alreadyMigrated,
 		).toBe(false);
@@ -182,10 +183,11 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 			(
 				await migrateAccount(
 					"sigma-lab",
-					"sigma-lab",
+					"one-sat",
 					password,
 					accounts,
 					source,
+					"sigma-brc169-lab",
 				)
 			).alreadyMigrated,
 		).toBe(true);
@@ -200,7 +202,14 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 		copied.close();
 		rmSync(join(accounts, "sigma-lab", "wallet-main.db"));
 		await expect(
-			migrateAccount("sigma-lab", "sigma-lab", password, accounts, source),
+			migrateAccount(
+				"sigma-lab",
+				"one-sat",
+				password,
+				accounts,
+				source,
+				"sigma-brc169-lab",
+			),
 		).rejects.toThrow("Incomplete migration destination");
 		expect(existsSync(join(source, "root.wif"))).toBe(true);
 	} finally {

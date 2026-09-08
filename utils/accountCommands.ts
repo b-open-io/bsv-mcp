@@ -10,7 +10,7 @@ import {
 	writeSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { P1SAT_PROTOCOL } from "@1sat/actions";
 import { PrivateKey, ProtoWallet, PublicKey } from "@bsv/sdk";
 import { createAccount } from "./accountStore";
@@ -48,26 +48,30 @@ export function erasePlaintext(file: string) {
 }
 export async function migrateAccount(
 	name: string,
-	source: "legacy" | "sigma-lab",
+	source: "legacy" | "one-sat",
 	password: string,
 	root = accountsRoot(),
-	sourceDir = source === "legacy"
-		? join(homedir(), ".bsv-mcp")
-		: join(homedir(), ".local/share/sigma-brc169-lab"),
+	sourceDir = source === "legacy" ? join(homedir(), ".bsv-mcp") : "",
+	storageIdentityKey?: string,
 ) {
+	if (!isAbsolute(sourceDir) || (source === "one-sat" && !storageIdentityKey))
+		throw new Error(
+			"OneSat migration requires an absolute source directory and storage identity",
+		);
 	const sourceFile = join(
 		sourceDir,
 		source === "legacy" ? "keys.json" : "root.wif",
 	);
 	const target = accountDir(name, root);
-	const expectedStorage = source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab";
+	const expectedStorage =
+		source === "legacy" ? "bsv-mcp" : (storageIdentityKey ?? "");
 	const verifyDestination = () => {
 		const config = readAccount(name, root);
 		if (
 			!config ||
 			config.storageIdentityKey !== expectedStorage ||
 			config.chain !== "main" ||
-			(source === "sigma-lab" && !existsSync(join(target, "wallet-main.db")))
+			(source === "one-sat" && !existsSync(join(target, "wallet-main.db")))
 		)
 			throw new Error(
 				"Incomplete migration destination; source will not be erased. Preserve it and repair the account first.",
@@ -124,7 +128,7 @@ export async function migrateAccount(
 				}
 			: {}),
 		address:
-			source === "sigma-lab"
+			source === "one-sat"
 				? PublicKey.fromString(
 						(
 							await new ProtoWallet(keys.payPk).getPublicKey({
@@ -139,9 +143,9 @@ export async function migrateAccount(
 	};
 	// Legacy automatic storage used the working directory; require an explicit follow-up for it.
 	const dbSource = join(sourceDir, "wallet.db");
-	if (source === "sigma-lab" && !existsSync(dbSource))
+	if (source === "one-sat" && !existsSync(dbSource))
 		throw new Error(
-			"Lab wallet database is missing; refusing an incomplete migration",
+			"Source wallet database is missing; refusing an incomplete migration",
 		);
 	await createAccount(name, keys, password, config, root);
 	try {
@@ -214,26 +218,42 @@ export async function runAccountCommand(args: string[]): Promise<boolean> {
 	if (command === "wallet_migrate") {
 		const sourceIndex = args.indexOf("--source");
 		if (sourceIndex < 0)
-			throw new Error("Use --source legacy or --source sigma-lab");
+			throw new Error(
+				"Use --source legacy or --source one-sat --source-directory <path> --storage-identity <id>",
+			);
 		const source = args[sourceIndex + 1];
-		if (source !== "legacy" && source !== "sigma-lab")
-			throw new Error("Use --source legacy or --source sigma-lab");
+		if (source !== "legacy" && source !== "one-sat")
+			throw new Error(
+				"Use --source legacy or --source one-sat --source-directory <path> --storage-identity <id>",
+			);
 		await confirm(
 			"Stop all processes using the source wallet before migrating. Source wallet stopped?",
 		);
 		const password = existsSync(join(accountDir(name), "keys.bep"))
 			? await terminalInput("Account password", true)
 			: await newPassword();
-		const result = await migrateAccount(name, source, password);
+		const sourceDir =
+			source === "legacy"
+				? join(homedir(), ".bsv-mcp")
+				: args[args.indexOf("--source-directory") + 1];
+		const storageIdentity = args.includes("--storage-identity")
+			? args[args.indexOf("--storage-identity") + 1]
+			: undefined;
+		if (source === "one-sat" && !args.includes("--source-directory"))
+			throw new Error("An explicit source directory is required");
+		const result = await migrateAccount(
+			name,
+			source,
+			password,
+			accountsRoot(),
+			sourceDir,
+			storageIdentity,
+		);
 		console.log(JSON.stringify(result));
 		if (args.includes("--erase-source")) {
 			await confirm(
 				"Encrypted keys and the account database are backed up and verified? Source overwrite cannot erase SSD snapshots",
 			);
-			const sourceDir =
-				source === "legacy"
-					? join(homedir(), ".bsv-mcp")
-					: join(homedir(), ".local/share/sigma-brc169-lab");
 			const sourceFile = join(
 				sourceDir,
 				source === "legacy" ? "keys.json" : "root.wif",

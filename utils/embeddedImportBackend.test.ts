@@ -66,8 +66,23 @@ function writeLegacyRoot(home: string) {
 }
 
 function writeSigmaLab(home: string) {
-	const dir = join(home, ".local", "share", "sigma-brc169-lab");
+	const dir = join(home, "custom-wallet");
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	mkdirSync(join(home, ".bsv-mcp"), { recursive: true });
+	writeFileSync(
+		join(home, ".bsv-mcp", "settings.json"),
+		JSON.stringify({
+			sources: [
+				{
+					name: "sigma-lab",
+					directory: dir,
+					keyFile: "root.wif",
+					storageIdentityKey: "original-storage",
+					depositPrefix: "1sat",
+				},
+			],
+		}),
+	);
 	writeFileSync(join(dir, "root.wif"), `${PAY.toWif()}\n`, { mode: 0o600 });
 	return dir;
 }
@@ -302,7 +317,7 @@ describe.skipIf(!actual)("embedded import with real Vault files", () => {
 		const result = await backend.import({
 			source: {
 				account: "sigma-lab",
-				location: "sigma-lab",
+				location: "custom",
 				encryptedBackup: false,
 				plaintextKeys: true,
 				walletDatabases: [],
@@ -312,6 +327,12 @@ describe.skipIf(!actual)("embedded import with real Vault files", () => {
 			confirmation: "IMPORT_WALLET_CONFIRMED",
 		});
 		expect(result.accountName).toBe("sigma-lab");
+		expect(
+			readAccount("sigma-lab", join(home, ".bsv-mcp", "accounts")),
+		).toMatchObject({
+			storageIdentityKey: "original-storage",
+			depositPrefix: "1sat",
+		});
 		expect(result.address).toBe(PAY.toAddress());
 		expect(result.binding.identity).toBeUndefined();
 		expect(readFileSync(join(labDir, "root.wif")).equals(wifBytes)).toBe(true);

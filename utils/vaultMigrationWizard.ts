@@ -1263,9 +1263,7 @@ function stringArray(value: unknown): value is string[] {
 }
 
 function isLocation(value: unknown): value is MigrationSource["location"] {
-	return (
-		value === "account" || value === "legacy-root" || value === "sigma-lab"
-	);
+	return value === "account" || value === "legacy-root" || value === "custom";
 }
 
 function isConflictKind(value: unknown): value is MigrationConflictKind {

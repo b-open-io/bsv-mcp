@@ -21,7 +21,7 @@ const importInput = z.object({
 	source: z
 		.object({
 			account: accountNameSchema,
-			location: z.enum(["account", "legacy-root", "sigma-lab"]),
+			location: z.enum(["account", "legacy-root", "custom"]),
 			encryptedBackup: z.boolean().default(false),
 			plaintextKeys: z.boolean().default(false),
 			walletDatabases: z.array(z.string()).default([]),

@@ -120,10 +120,10 @@ test("local preview restricts inventory to the capability and origin and never a
 	}
 });
 
-test("inventory includes Sigma lab keys and legacy wallet databases without reading them", () => {
+test("inventory includes explicitly configured sources without reading keys", () => {
 	const home = fixture();
 	const legacy = join(home, ".bsv-mcp");
-	const lab = join(home, ".local/share/sigma-brc169-lab");
+	const lab = join(home, "custom-wallet");
 	mkdirSync(legacy, { recursive: true });
 	mkdirSync(lab, { recursive: true });
 	for (const file of [
@@ -133,6 +133,12 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 		join(lab, "wallet.db"),
 	])
 		writeFileSync(file, "secret sentinel");
+	writeFileSync(
+		join(legacy, "settings.json"),
+		JSON.stringify({
+			sources: [{ name: "sigma-lab", directory: lab, keyFile: "root.wif" }],
+		}),
+	);
 	const result = inspectMigration({ home, env: {} });
 	expect(result.sources).toEqual([
 		{
@@ -146,11 +152,20 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 		{
 			account: "sigma-lab",
 			directory: lab,
-			location: "sigma-lab",
+			location: "custom",
+			keyFile: "root.wif",
 			encryptedBackup: false,
 			plaintextKeys: true,
 			walletDatabases: ["wallet.db"],
 		},
 	]);
 	expect(JSON.stringify(result)).not.toContain("sentinel");
+});
+
+test("unconfigured custom directories are not searched", () => {
+	const home = fixture();
+	const dir = join(home, ".local", "share", "sigma-brc169-lab");
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "root.wif"), "not-a-real-key");
+	expect(inspectMigration({ home, env: {} }).sources).toEqual([]);
 });

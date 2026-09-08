@@ -2,11 +2,15 @@ import { lstatSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { accountNameSchema, listAccounts, readAccount } from "./accounts";
+import { readWalletSources } from "./walletSettings";
 
 export interface MigrationSource {
 	directory?: string;
+	keyFile?: "keys.json" | "root.wif";
+	storageIdentityKey?: string;
+	depositPrefix?: "mcp" | "1sat";
 	account: string;
-	location: "account" | "legacy-root" | "sigma-lab";
+	location: "account" | "legacy-root" | "custom";
 	encryptedBackup: boolean;
 	plaintextKeys: boolean;
 	walletDatabases: string[];
@@ -46,12 +50,14 @@ export function inspectMigration(
 		dir: string,
 		account: string,
 		location: MigrationSource["location"],
+		metadata: Pick<
+			MigrationSource,
+			"keyFile" | "storageIdentityKey" | "depositPrefix"
+		> = {},
 	) => {
 		if (!exists(dir, true)) return;
 		const encryptedBackup = exists(join(dir, "keys.bep"));
-		const plaintextKeys = exists(
-			join(dir, location === "sigma-lab" ? "root.wif" : "keys.json"),
-		);
+		const plaintextKeys = exists(join(dir, metadata.keyFile ?? "keys.json"));
 		const walletDatabases = [
 			"wallet-main.db",
 			"wallet-test.db",
@@ -60,6 +66,7 @@ export function inspectMigration(
 		if (encryptedBackup || plaintextKeys || walletDatabases.length)
 			sources.push({
 				directory: dir,
+				...metadata,
 				account,
 				location,
 				encryptedBackup,
@@ -77,10 +84,9 @@ export function inspectMigration(
 			}
 		}
 	}
-	const local = join(home, ".local");
-	const share = join(local, "share");
-	if (exists(local, true) && exists(share, true))
-		inspect(join(share, "sigma-brc169-lab"), "sigma-lab", "sigma-lab");
+	for (const { name, directory, ...metadata } of readWalletSources(home)) {
+		inspect(directory, name, "custom", metadata);
+	}
 	if (env.VAULT_PATH === "") throw new Error("VAULT_PATH is set but empty");
 	const vaultPath = env.VAULT_PATH ?? join(home, ".bsv", "vault.bep");
 	if (env.VAULT_PATH === undefined) exists(join(home, ".bsv"), true);

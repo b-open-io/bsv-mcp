@@ -95,14 +95,14 @@ export const docs: DocSection[] = [
 					"wallet_list reports public addresses without unlocking accounts. wallet_generate and wallet_import create encrypted named accounts after human approval. WIF import is terminal-only; the MCP import tool accepts an encrypted backup. wallet_use returns the account environment setting: restart the MCP server to apply it. wallet_remove requires force, a verified backup and human confirmation because funds may exist on other derived addresses.",
 					"Existing plaintext keys are migration inputs only. Stop the old wallet process, then run wallet_migrate in a terminal. Migration verifies the encrypted copy and preserves the lab storage identity and database. It leaves the source in place unless you explicitly request --erase-source after verification and backup. Overwriting a file cannot guarantee erasure from SSD snapshots or backups.",
 				],
-				code: "bunx bsv-mcp@latest wallet_migrate --source legacy --account default\nbunx bsv-mcp@latest wallet_migrate --source sigma-lab --account sigma-lab",
+				code: "bunx bsv-mcp@latest wallet_migrate --source legacy --account default\nbunx bsv-mcp@latest wallet_migrate --source one-sat --source-directory /path/to/wallet --storage-identity existing-id --account imported",
 			},
 			{
 				title: "Run the bundled external signer",
 				paragraphs: [
 					"signer-serve unlocks one named account and starts an MCP child with a private loopback signer connection. The child receives no private-key or password variables. The signer checks the secret request path, Origin and SDK method before handling a request. It requires terminal approval for createAction and signAction; those calls fail closed when a headless client has no terminal. An existing signer with its own approval UI is the better fit for payments from a headless MCP host.",
 				],
-				code: "bunx bsv-mcp@latest signer-serve --account sigma-lab",
+				code: "bunx bsv-mcp@latest signer-serve --account imported",
 			},
 			{
 				title: "Existing-wallet connection rules",

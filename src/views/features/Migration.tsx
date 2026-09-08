@@ -514,7 +514,7 @@ function InventoryStep({
 	const origins = {
 		"legacy-root": "Earlier BSV MCP wallet",
 		account: "BSV MCP account",
-		"sigma-lab": "Sigma development wallet",
+		custom: "Configured wallet",
 	};
 	return (
 		<Surface>
@@ -539,9 +539,7 @@ function InventoryStep({
 								? ["keys.bep — encrypted key backup"]
 								: []),
 							...(item.plaintextKeys
-								? [
-										`${item.location === "sigma-lab" ? "root.wif" : "keys.json"} — unencrypted key file`,
-									]
+								? [`${item.keyFile ?? "keys.json"} — unencrypted key file`]
 								: []),
 							...item.walletDatabases.map(
 								(name) => `${name} — wallet database`,

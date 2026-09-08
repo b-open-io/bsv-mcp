@@ -170,18 +170,6 @@ function resolveDestRoot(
 	return candidate;
 }
 
-/** Derive every trusted path from inventory only. Submitted directories are ignored. */
-function trustedSourceDir(
-	home: string,
-	location: MigrationSource["location"],
-	account: string,
-): string {
-	if (location === "account")
-		return join(home, ".bsv-mcp", "accounts", account);
-	if (location === "legacy-root") return join(home, ".bsv-mcp");
-	return join(home, ".local", "share", "sigma-brc169-lab");
-}
-
 function rejectUnsafePath(candidate: string): void {
 	if (
 		typeof candidate !== "string" ||
@@ -224,7 +212,7 @@ function selectTrustedSource(
 		accountNameSchema.safeParse(account).success !== true ||
 		(location !== "account" &&
 			location !== "legacy-root" &&
-			location !== "sigma-lab")
+			location !== "custom")
 	)
 		throw failure("INVALID_INPUT", MESSAGES.INVALID_INPUT);
 	let inventory: ReturnType<typeof inspectMigration>;
@@ -246,7 +234,8 @@ function selectTrustedSource(
 	const destName = entry.account;
 	if (accountNameSchema.safeParse(destName).success !== true)
 		throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
-	const sourceDir = trustedSourceDir(home, entry.location, entry.account);
+	const sourceDir = entry.directory;
+	if (!sourceDir) throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
 	const destDir = join(destRoot, destName);
 	return {
 		entry,
@@ -313,7 +302,7 @@ async function loadSourceKeys(
 	rejectUnsafeDir(sourceDir);
 	if (!entry.encryptedBackup && !entry.plaintextKeys)
 		throw failure("MATCHING_KEYS_REQUIRED", MESSAGES.MATCHING_KEYS_REQUIRED);
-	if (entry.location === "sigma-lab" && entry.plaintextKeys) {
+	if (entry.keyFile === "root.wif" && entry.plaintextKeys) {
 		const file = join(sourceDir, "root.wif");
 		rejectUnsafePath(file);
 		let wif: string;
@@ -903,6 +892,12 @@ export function createEmbeddedImportBackend(
 		await copyInventoryDatabases(selection);
 		const base: AccountConfig = liveConfig ?? {
 			...newAccountConfig(chain, rootAddress),
+			...(selection.entry.storageIdentityKey
+				? { storageIdentityKey: selection.entry.storageIdentityKey }
+				: {}),
+			...(selection.entry.depositPrefix
+				? { depositPrefix: selection.entry.depositPrefix }
+				: {}),
 		};
 		const next: AccountConfig =
 			liveConfig !== undefined
