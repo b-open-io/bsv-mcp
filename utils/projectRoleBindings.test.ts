@@ -359,7 +359,7 @@ describe("role transitions and pinned history", () => {
 					},
 				],
 			}),
-		).toThrow("explicit BRC-42 derivation");
+		).toThrow("explicitly selected key-use contract");
 		expect(initial).toEqual(config());
 		expect(() =>
 			changeProjectRoleBindings(initial, {

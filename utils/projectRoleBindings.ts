@@ -1,6 +1,7 @@
 import { PublicKey } from "@bsv/sdk";
 import { z } from "zod";
 import { accountNameSchema } from "./accounts";
+import { vaultProfileDerivationSchema } from "./vaultProfileDerivation";
 
 export const PROJECT_KEY_ROLES = [
 	"identity-signing",
@@ -47,7 +48,9 @@ export const projectVaultKeyReferenceSchema = z
 		vaultId: identifier,
 		entryId: identifier,
 		expectedPublicKey: publicKey,
-		derivation: projectBrc42DerivationSchema.optional(),
+		derivation: z
+			.union([projectBrc42DerivationSchema, vaultProfileDerivationSchema])
+			.optional(),
 	})
 	.strict();
 
@@ -59,7 +62,12 @@ const bindingFields = z
 		key: projectVaultKeyReferenceSchema,
 		// Selection is not proof of wallet/asset capability. The runtime checks
 		// the actual Vault entry, public key, account and supported contract.
-		keyUseContract: z.enum(["direct-v1", "brc42-leaf-v1"]),
+		keyUseContract: z.enum([
+			"direct-v1",
+			"brc42-leaf-v1",
+			"brc157-leaf-v1",
+			"yours-legacy-leaf-v1",
+		]),
 		createdAt: z.iso.datetime({ offset: true }),
 		previousBindingId: identifier.optional(),
 	})
@@ -67,14 +75,18 @@ const bindingFields = z
 
 export const projectRoleBindingSchema = bindingFields.superRefine(
 	(binding, ctx) => {
-		if (
-			(binding.keyUseContract === "brc42-leaf-v1") !==
-			(binding.key.derivation !== undefined)
-		) {
+		const expectedScheme = {
+			"direct-v1": undefined,
+			"brc42-leaf-v1": "brc42",
+			"brc157-leaf-v1": "brc157",
+			"yours-legacy-leaf-v1": "yours-legacy-bip32",
+		}[binding.keyUseContract];
+		if (binding.key.derivation?.scheme !== expectedScheme) {
 			ctx.addIssue({
 				code: "custom",
 				path: ["key", "derivation"],
-				message: "Only brc42-leaf-v1 requires an explicit BRC-42 derivation",
+				message:
+					"The derivation must match the explicitly selected key-use contract",
 			});
 		}
 	},
