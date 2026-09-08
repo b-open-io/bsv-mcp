@@ -7,7 +7,6 @@ import {
 	createVaultWalletController,
 	loadInstalledVaultModule,
 	type VaultControllerOptions,
-	type VaultModule,
 } from "./vaultWalletController";
 
 export const PROJECT_WALLET_ROLE = "payments" as const;
@@ -23,7 +22,11 @@ export interface ProjectWalletConfig {
  * optional and inspect it only as a local configuration hint; the selected
  * project binding still pins the Vault ID before opening the file.
  */
-export type ProjectWalletVaultModule = VaultModule & {
+type InstalledVaultModule = Awaited<
+	ReturnType<typeof loadInstalledVaultModule>
+>;
+
+export type ProjectWalletVaultModule = InstalledVaultModule & {
 	defaultVaultPath?: string | ((vaultId?: string) => string | Promise<string>);
 };
 type LoadedVaultModule = ProjectWalletVaultModule;
