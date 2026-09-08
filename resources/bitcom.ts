@@ -1,4 +1,4 @@
-import { ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
+import { type McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 
 // Store protocol documentation
 // Source AIP: https://raw.githubusercontent.com/b-open-io/AIP/refs/heads/main/README.md

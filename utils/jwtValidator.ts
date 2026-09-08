@@ -75,6 +75,10 @@ export class JWTValidator {
 				requiredClaims: ["sub", "iss", "aud", "exp"],
 			});
 
+			if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+				throw new Error("Token subject must be a non-empty string");
+			}
+
 			// Return typed payload
 			return payload as BSVJWTPayload;
 		} catch (error) {

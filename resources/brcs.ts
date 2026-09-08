@@ -1,4 +1,4 @@
-import { ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
+import { type McpServer, ResourceTemplate } from "@modelcontextprotocol/server";
 
 /**
  * BRC Categories for organizing the Bitcoin Request for Comments specifications

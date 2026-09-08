@@ -306,7 +306,7 @@ export class DroplitClient {
 				);
 			}
 		}
-		let body: Record<string, unknown> = {};
+		let body: unknown = {};
 		try {
 			body = await response.json();
 		} catch {

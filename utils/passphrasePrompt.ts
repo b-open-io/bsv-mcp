@@ -14,7 +14,7 @@ import {
 import { createServer } from "node:http";
 import { platform } from "node:os";
 import { join } from "node:path";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 // Global lock to prevent multiple simultaneous prompts
 const LOCK_DIR = join(process.env.HOME || "", ".bsv-mcp");
@@ -46,8 +46,10 @@ function _isStdioMode(): boolean {
 
 	// Kept for callers using the v1 connect(transport) lifecycle. Avoid an
 	// instanceof import so this remains compatible with the v2 package split.
-	return serverInstance?.server?.transport?.constructor?.name ===
-		"StdioServerTransport";
+	return (
+		serverInstance?.server?.transport?.constructor?.name ===
+		"StdioServerTransport"
+	);
 }
 
 /**

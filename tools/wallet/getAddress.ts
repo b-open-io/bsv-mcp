@@ -28,12 +28,15 @@ export function registerGetAddressTool(
 					prefix: MCP_ADDRESS_PREFIX,
 				});
 
+				const firstDerivation = derivations[0];
+				if (!firstDerivation) throw new Error("No deposit address was derived");
+
 				return {
 					content: [
 						{
 							type: "text",
 							text: JSON.stringify({
-								address: derivations[0]!.address,
+								address: firstDerivation.address,
 								status: "ok",
 							}),
 						},

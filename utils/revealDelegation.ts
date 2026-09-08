@@ -79,7 +79,14 @@ function parseHandoff(origin: string, handoffJSON: string) {
 		/^\/api\/agents\/([A-Za-z0-9_-]{1,128})\/delegations\/(.+)\/revelation$/.exec(
 			h.revelationPath,
 		);
-	if (!match || decodeURIComponent(match[2]) !== h.certificate.serialNumber)
+	if (!match) invalid();
+	const agentId = match[1];
+	const encodedSerialNumber = match[2];
+	if (
+		agentId === undefined ||
+		encodedSerialNumber === undefined ||
+		decodeURIComponent(encodedSerialNumber) !== h.certificate.serialNumber
+	)
 		invalid();
 	if (
 		Object.keys(h.subjectKeyring).sort().join("\n") !==
@@ -88,7 +95,7 @@ function parseHandoff(origin: string, handoffJSON: string) {
 		invalid();
 	return {
 		h,
-		endpoint: `${url.origin}/api/agents/${encodeURIComponent(match[1])}/delegations/${encodeURIComponent(h.certificate.serialNumber)}/revelation`,
+		endpoint: `${url.origin}/api/agents/${encodeURIComponent(agentId)}/delegations/${encodeURIComponent(h.certificate.serialNumber)}/revelation`,
 		origin: url.origin,
 	};
 }

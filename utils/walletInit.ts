@@ -150,7 +150,11 @@ export async function initWallet(
 	const { derivations } = await deriveDepositAddresses.execute(ctx, {
 		prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX,
 	});
-	const depositAddress = derivations[0].address;
+	const depositAddress = derivations[0]?.address;
+	if (!depositAddress) {
+		await result.destroy();
+		throw new Error("Could not derive a deposit address for the wallet");
+	}
 
 	activeResult = result;
 

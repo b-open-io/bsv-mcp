@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { fetchProfile } from "./getId";
+import type { PrivateKey } from "@bsv/sdk";
+import type {
+	CallToolResult,
+	McpServer,
+	ServerContext,
+} from "@modelcontextprotocol/server";
+import { fetchProfile, registerBapGetIdTool } from "./getId";
 import type { IdentityData, SigmaIdentityProfile } from "./types";
 import { SchemaType } from "./types";
 
@@ -124,6 +130,72 @@ describe("BAP getId - fetchProfile", () => {
 
 		expect(fetchProfile(mockIdKey)).rejects.toThrow(
 			"Failed to parse Sigma API response: Invalid JSON",
+		);
+	});
+});
+
+describe("BAP getId handler", () => {
+	beforeEach(() => {
+		fetchMock = spyOn(globalThis, "fetch");
+	});
+
+	afterEach(() => {
+		fetchMock.mockRestore();
+	});
+
+	it("uses an explicit idKey without touching server identity or request context", async () => {
+		let identityKeyAccesses = 0;
+		const identityPk = new Proxy({} as PrivateKey, {
+			get() {
+				identityKeyAccesses++;
+				throw new Error("server identity key was touched");
+			},
+		});
+		const requestContext = new Proxy({} as ServerContext, {
+			get() {
+				throw new Error("request context was touched");
+			},
+		});
+		let handler:
+			| ((
+					args: { idKey?: string },
+					context: ServerContext,
+			  ) => Promise<CallToolResult>)
+			| undefined;
+		const server = {
+			registerTool: (
+				_name: string,
+				_options: unknown,
+				callback: typeof handler,
+			) => {
+				handler = callback;
+			},
+		} as unknown as McpServer;
+		registerBapGetIdTool(server, identityPk);
+
+		fetchMock.mockImplementationOnce(async () => ({
+			ok: true,
+			status: 200,
+			json: async () => ({ result: { idKey: "explicit-id" } }),
+			text: async () => "",
+		}));
+		const registeredHandler = handler;
+		if (!registeredHandler)
+			throw new Error("BAP getId handler was not registered");
+		const result = await registeredHandler(
+			{ idKey: "explicit-id" },
+			requestContext,
+		);
+
+		expect(result.isError).not.toBe(true);
+		expect(JSON.stringify(result.content)).toContain("explicit-id");
+		expect(identityKeyAccesses).toBe(0);
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining("/identity/get"),
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ idKey: "explicit-id" }),
+			}),
 		);
 	});
 });

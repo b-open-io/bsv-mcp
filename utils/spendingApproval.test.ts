@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { PermissionRequest } from "@bsv/wallet-toolbox/out/src/WalletPermissionsManager.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import {
 	handleSpendingAuthorization,
 	setSpendingApprovalServerInstance,
@@ -170,7 +170,11 @@ describe("spending approval", () => {
 			spending: { ...request.spending, satoshis: Number.POSITIVE_INFINITY },
 		};
 
-		await handleSpendingAuthorization(invalidRequest, permissionsManager, server);
+		await handleSpendingAuthorization(
+			invalidRequest,
+			permissionsManager,
+			server,
+		);
 
 		expect(requestSpy).not.toHaveBeenCalled();
 		expect(grantSpy).not.toHaveBeenCalled();

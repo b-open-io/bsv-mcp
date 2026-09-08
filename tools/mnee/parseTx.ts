@@ -3,8 +3,9 @@ import type {
 	McpServer,
 	ServerContext,
 } from "@modelcontextprotocol/server";
-import type { MneeInterface, ParseTxResponse } from "mnee";
+import type { ParseTxResponse } from "mnee";
 import { z } from "zod";
+import { type MneeClientSource, resolveMneeClient } from "./provider";
 
 /**
  * Schema for the parseTx tool arguments.
@@ -17,7 +18,7 @@ export type ParseTxArgs = z.infer<typeof parseTxArgsSchema>;
 
 export function registerParseTxTool(
 	server: McpServer,
-	mnee: MneeInterface,
+	getMnee: MneeClientSource,
 ): void {
 	server.registerTool(
 		"mnee_parseTx",
@@ -28,6 +29,7 @@ export function registerParseTxTool(
 		},
 		async ({ txid }, _extra: ServerContext): Promise<CallToolResult> => {
 			try {
+				const mnee = await resolveMneeClient(getMnee);
 				const result: ParseTxResponse = await mnee.parseTx(txid);
 
 				return {

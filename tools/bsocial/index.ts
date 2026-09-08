@@ -11,13 +11,15 @@ interface BsocialToolsConfig {
 }
 
 /**
- * Register all BSocial tools with the MCP server
+ * Register all BSocial tools with the MCP server.
+ * Public read tools are available without a wallet; post writing remains
+ * available only when a custom wallet is supplied.
  * @param server The MCP server instance
- * @param config Configuration including wallet instance
+ * @param config Configuration including an optional custom wallet
  */
 export function registerBsocialTools(
 	server: McpServer,
-	config: BsocialToolsConfig,
+	config: BsocialToolsConfig = {},
 ): void {
 	// Register tools that don't require wallet
 	registerReadPostsTool(server);

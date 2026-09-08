@@ -102,9 +102,11 @@ function generateItemTraits(
 		)) {
 			if (possibleValues.length > 0) {
 				const valueIndex = itemIndex % possibleValues.length;
+				const value = possibleValues[valueIndex];
+				if (value === undefined) continue;
 				traits.push({
 					name: traitName as string, // Object.entries always produces string keys
-					value: possibleValues[valueIndex]!,
+					value,
 				});
 			}
 		}

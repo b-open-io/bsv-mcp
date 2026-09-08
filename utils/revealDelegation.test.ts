@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { createRequire } from "node:module";
 import {
 	AuthFetch,
-	KeyDeriver,
 	MasterCertificate,
 	Peer,
 	PrivateKey,
@@ -20,6 +20,25 @@ import {
 
 afterEach(() => mock.restore());
 const type = "30kchAJIGfLxzCNloCJNLI3AtkgA8UbkxlXU2Cj4PpA=";
+// Wallet Toolbox is CommonJS, so use the matching SDK instance at this boundary.
+const require = createRequire(import.meta.url);
+type WalletArgs = Extract<
+	ConstructorParameters<typeof Wallet>[0],
+	{ keyDeriver: unknown }
+>;
+type CommonJsKeyDeriverApi = WalletArgs["keyDeriver"];
+type CommonJsPrivateKeyType = CommonJsKeyDeriverApi["rootKey"];
+const {
+	KeyDeriver: CommonJsKeyDeriver,
+	PrivateKey: CommonJsPrivateKey,
+}: {
+	KeyDeriver: new (
+		rootKey: CommonJsPrivateKeyType | "anyone",
+	) => CommonJsKeyDeriverApi;
+	PrivateKey: {
+		fromHex: (hex: string) => CommonJsPrivateKeyType;
+	};
+} = require("@bsv/sdk");
 async function fixture() {
 	const principal = new ProtoWallet(PrivateKey.fromRandom());
 	const subjectKey = PrivateKey.fromRandom();
@@ -60,7 +79,9 @@ async function fixture() {
 	// Actual toolbox Wallet acquire/prove and crypto; only persistence is in memory.
 	const wallet = new Wallet({
 		chain: "test",
-		keyDeriver: new KeyDeriver(subjectKey),
+		keyDeriver: new CommonJsKeyDeriver(
+			CommonJsPrivateKey.fromHex(subjectKey.toHex()),
+		),
 		storage: {
 			_authId: { identityKey },
 			insertCertificate: insert,

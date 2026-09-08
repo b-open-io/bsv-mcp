@@ -1,7 +1,7 @@
 import { PrivateKey } from "@bsv/sdk";
 import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
-import type { MneeInterface } from "mnee";
 import { z } from "zod";
+import { type MneeClientSource, resolveMneeClient } from "./provider";
 
 export const getBalanceArgsSchema = z.object({});
 
@@ -9,7 +9,7 @@ export type GetBalanceArgs = z.infer<typeof getBalanceArgsSchema>;
 
 export function registerGetBalanceTool(
 	server: McpServer,
-	mnee: MneeInterface,
+	getMnee: MneeClientSource,
 ): void {
 	server.registerTool(
 		"mnee_getBalance",
@@ -33,6 +33,7 @@ export function registerGetBalanceTool(
 				}
 
 				const address = privateKey.toAddress().toString();
+				const mnee = await resolveMneeClient(getMnee);
 				const balance = await mnee.balance(address);
 
 				return {

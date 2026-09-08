@@ -12,6 +12,7 @@ const logFunc = console.error;
  * Configuration for BAP tools registration.
  */
 export interface BapToolsConfig {
+	localAccountAvailable?: boolean;
 	disableBroadcasting?: boolean;
 	identityPk?: PrivateKey;
 	masterXprv?: string;
@@ -32,6 +33,7 @@ export function registerBapTools(
 	const {
 		identityPk, // Server's main configured identity (from keys.json or IDENTITY_KEY_WIF)
 		masterXprv, // Server's master BAP key (from keys.json)
+		localAccountAvailable,
 		wallet,
 		disableBroadcasting = false,
 	} = config || {};
@@ -39,7 +41,11 @@ export function registerBapTools(
 	const envIdentityKeyWif = process.env.IDENTITY_KEY_WIF;
 
 	// --- Register bap_generate ONLY if no identity exists ---
-	const canGenerateBapIdentity = !envIdentityKeyWif && !masterXprv;
+	const canGenerateBapIdentity =
+		localAccountAvailable === true &&
+		!identityPk &&
+		!envIdentityKeyWif &&
+		!masterXprv;
 	if (canGenerateBapIdentity) {
 		logFunc(
 			"INFO: Registering bap_generate tool. No master identity (xprv) or direct identity WIF found.",
@@ -47,7 +53,7 @@ export function registerBapTools(
 		registerBapGenerateTool(server, { disableBroadcasting });
 	} else {
 		logFunc(
-			"INFO: bap_generate tool not registered. Master identity (xprv) or direct identity WIF already exists.",
+			"INFO: bap_generate tool not registered. No eligible local account or identity already exists.",
 		);
 	}
 
@@ -57,9 +63,8 @@ export function registerBapTools(
 
 	if (hasEstablishedIdentity) {
 		logFunc(
-			"INFO: Registering BAP tools that require an established identity (bap_getId, bap_getCurrentAddress).",
+			"INFO: Registering BAP tools that require an established identity (bap_getCurrentAddress).",
 		);
-		// registerBapGetIdTool can use server's identityPk if available
 
 		// registerBapGetCurrentAddressTool strictly requires the server's identityPk (not just env var)
 		if (identityPk) {
@@ -73,9 +78,6 @@ export function registerBapTools(
 		logFunc(
 			"INFO: BAP tools requiring established identity not registered (no identityPk or IDENTITY_KEY_WIF).",
 		);
-		// We might still want bap_getId available even without server identity,
-		// as it can take an idKey argument. Let's register it outside the check.
-		// Moved registerBapGetIdTool outside this block - see below.
 	}
 
 	// Always register bap_getId as it can operate on user-provided idKey too.

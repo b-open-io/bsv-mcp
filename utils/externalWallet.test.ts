@@ -240,14 +240,13 @@ describe("context-only wallet tools", () => {
 				"wallet_sendBsv",
 				"wallet_getBalance",
 				"wallet_createAction",
+				"bap_getId",
 			])
 				expect(catalog).toContain(name);
 			for (const name of [
 				"wallet_mintCollection",
 				"wallet_gatherCollectionInfo",
-				"wallet_a2bPublishMcp",
 				"bap_generate",
-				"bap_getId",
 				"mnee_sendMnee",
 			])
 				expect(catalog).not.toContain(name);

@@ -13,12 +13,11 @@ import { fileURLToPath } from "node:url";
 import {
 	EXTENSION_ID,
 	RESOURCE_MIME_TYPE,
-	registerAppResource,
-	registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
 import {
 	createMcpHandler,
 	isLegacyRequest,
+	type McpRequestContext,
 	McpServer,
 	SUPPORTED_PROTOCOL_VERSIONS,
 	WebStandardStreamableHTTPServerTransport,
@@ -29,6 +28,10 @@ import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
 import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
+import {
+	resolveToolCatalogFromEnvironment,
+	resolveToolCatalogProfile,
+} from "./tools/compactCatalog.ts";
 import {
 	registerAllTools,
 	type ToolsConfig,
@@ -46,6 +49,7 @@ import {
 	legacyOrdinalsUrl,
 	readServices,
 } from "./utils/backends";
+import { assertBroadcastAllowed } from "./utils/broadcastGuard";
 import { DroplitClient, readDroplitSponsorConfig } from "./utils/droplit";
 import {
 	initializeKeysForWalletMode,
@@ -57,6 +61,19 @@ import {
 	generateWWWAuthenticate,
 } from "./utils/jwtValidator.ts";
 import { initializeSecureKeys } from "./utils/keyManager.ts";
+import {
+	registerAppResource,
+	registerAppTool,
+} from "./utils/mcpAppRegistration.ts";
+import {
+	getMcpSessionPrincipal,
+	isMcpSessionPrincipalMatch,
+	type McpSessionPrincipal,
+} from "./utils/mcpSessionPrincipal.ts";
+import {
+	type ToolPolicyEra,
+	withModernToolPolicy,
+} from "./utils/modernToolPolicy.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
 import { inspectMigration } from "./utils/vaultMigration";
 import {
@@ -76,14 +93,26 @@ interface ServerFactoryOptions {
 	ctx?: import("@1sat/actions").OneSatContext;
 	loadPrompts: boolean;
 	loadResources: boolean;
+	era?: ToolPolicyEra;
 }
+
+type McpAppToolsConfig = {
+	wallet?: Wallet;
+	ctx?: import("@1sat/actions").OneSatContext;
+	services?: import("@1sat/client").OneSatServices;
+	enableBsvTools?: boolean;
+	enableOrdinalsTools?: boolean;
+	enableWalletTools?: boolean;
+	disableBroadcasting?: boolean;
+	droplitMode?: boolean;
+};
 
 /**
  * Creates a fully configured McpServer with all tools, prompts, and resources registered.
  * Used to create per-session server instances for HTTP mode and the single instance for stdio.
  */
 export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
-	const srv = new McpServer(
+	const nativeServer = new McpServer(
 		{ name: packageJson.name, version: packageJson.version },
 		{
 			supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
@@ -104,9 +133,17 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 			`,
 		},
 	);
+	const srv = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
 
 	registerAllTools(srv, opts.toolsConfig);
-	registerMcpAppTools(srv, opts.wallet, opts.ctx);
+	if (resolveToolCatalogProfile(opts.toolsConfig) === "full") {
+		registerMcpAppTools(srv, {
+			...opts.toolsConfig,
+			wallet: opts.wallet ?? opts.toolsConfig.wallet,
+			ctx: opts.ctx ?? opts.toolsConfig.ctx,
+			droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true,
+		});
+	}
 	if (opts.loadPrompts) registerAllPrompts(srv);
 	if (opts.loadResources) registerResources(srv);
 
@@ -116,11 +153,12 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 /**
  * Configuration options from environment variables
  */
-const CONFIG = {
+export const CONFIG = {
 	// Whether to load various components
 	loadPrompts: process.env.DISABLE_PROMPTS !== "true",
 	loadResources: process.env.DISABLE_RESOURCES !== "true",
 	loadTools: process.env.DISABLE_TOOLS !== "true",
+	toolCatalog: resolveToolCatalogFromEnvironment(),
 
 	// Fine-grained tool category control (dependent on key availability)
 	loadWalletTools: process.env.DISABLE_WALLET_TOOLS !== "true",
@@ -128,7 +166,6 @@ const CONFIG = {
 	loadBsvTools: process.env.DISABLE_BSV_TOOLS !== "true",
 	loadOrdinalsTools: process.env.DISABLE_ORDINALS_TOOLS !== "true",
 	loadUtilsTools: process.env.DISABLE_UTILS_TOOLS !== "true",
-	loadA2bTools: process.env.ENABLE_A2B_TOOLS === "true",
 	loadBapTools: process.env.DISABLE_BAP_TOOLS !== "true",
 	loadBsocialTools: process.env.DISABLE_BSOCIAL_TOOLS !== "true",
 	// Transaction broadcasting control
@@ -156,23 +193,68 @@ const CONFIG = {
 // client explicitly negotiates the modern revision, so retaining the legacy
 // entry keeps existing clients working while enabling 2026 discovery.
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
-	"2025-11-25",
-	...SUPPORTED_PROTOCOL_VERSIONS.filter((version) => version >= "2026-07-28"),
+	...SUPPORTED_PROTOCOL_VERSIONS,
+	"2026-07-28",
 ];
 
 const logFunc = console.error;
 const KEY_FILE_PATH = path.join(accountDir(), "keys.bep");
 const initializeKeys = initializeSecureKeys;
 
+type KeySource = "encrypted" | "env" | "none" | "external";
+
+/**
+ * BAP generation is advertised only when startup loaded the selected local
+ * encrypted account. This is an advisory startup snapshot, not an unlock
+ * guarantee for a later tool invocation.
+ */
+export function shouldAdvertiseLocalAccount(
+	keySource: KeySource,
+	externalWallet: boolean,
+	useDroplitApi: boolean,
+): boolean {
+	return keySource === "encrypted" && !externalWallet && !useDroplitApi;
+}
+
 // --- MCP App Tools & Resource ---
 const APP_RESOURCE_URI = "ui://bsv-mcp/app.html";
 const __appDirname = dirname(fileURLToPath(import.meta.url));
 
-function registerMcpAppTools(
-	server: McpServer,
-	wallet?: Wallet,
-	ctx?: import("@1sat/actions").OneSatContext,
-) {
+function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
+	// App tools consume the same category switches as their direct-tool
+	// counterparts. The app dashboard and resource remain available as the
+	// entry point even when all data categories are disabled.
+	const bsvToolsEnabled =
+		process.env.DISABLE_TOOLS !== "true" &&
+		process.env.DISABLE_BSV_TOOLS !== "true" &&
+		config.enableBsvTools !== false;
+	const ordinalsToolsEnabled =
+		process.env.DISABLE_TOOLS !== "true" &&
+		process.env.DISABLE_ORDINALS_TOOLS !== "true" &&
+		config.enableOrdinalsTools !== false;
+	const walletToolsEnabled =
+		process.env.DISABLE_TOOLS !== "true" &&
+		process.env.DISABLE_WALLET_TOOLS !== "true" &&
+		config.enableWalletTools !== false;
+	const appServices = config.ctx?.services ?? config.services;
+	const walletAvailable =
+		!config.droplitMode && Boolean(config.ctx || config.wallet);
+	const sweepPrepareAvailable = Boolean(
+		config.ctx &&
+			appServices &&
+			typeof config.ctx.wallet.createAction === "function",
+	);
+	const sweepCompleteAvailable = Boolean(
+		config.ctx &&
+			appServices &&
+			typeof config.ctx.wallet.signAction === "function",
+	);
+	const broadcastingEnabled =
+		process.env.DISABLE_BROADCASTING !== "true" &&
+		config.disableBroadcasting !== true;
+	const ctx = config.ctx;
+	const wallet = config.wallet;
+	const disableBroadcasting = config.disableBroadcasting ?? false;
 	// Primary dashboard tool — model calls this to open the UI
 	registerAppTool(
 		server,
@@ -181,7 +263,13 @@ function registerMcpAppTools(
 			title: "BSV Dashboard",
 			description:
 				"Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs. Use this for any BSV-related query that benefits from visual display.",
-			inputSchema: {},
+			inputSchema: z.object({}),
+			annotations: {
+				readOnlyHint: true,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: false,
+			},
 			_meta: {
 				ui: { resourceUri: APP_RESOURCE_URI },
 			},
@@ -195,112 +283,148 @@ function registerMcpAppTools(
 	);
 
 	// App-only: fetch explorer data (price, chain info, tx decode, address lookup)
-	registerAppTool(
-		server,
-		"app_explorer_data",
-		{
-			title: "Explorer Data",
-			description:
-				"App-only: fetches BSV price, chain info, decodes transactions, and looks up addresses.",
-			inputSchema: {
-				txid: z.string().optional().describe("Transaction ID to decode"),
-				address: z
-					.string()
-					.optional()
-					.describe("Address to look up balance/history"),
+	if (bsvToolsEnabled) {
+		registerAppTool(
+			server,
+			"app_explorer_data",
+			{
+				title: "Explorer Data",
+				description:
+					"App-only: fetches BSV price, chain info, decodes transactions, and looks up addresses.",
+				inputSchema: z.object({
+					txid: z.string().optional().describe("Transaction ID to decode"),
+					address: z
+						.string()
+						.optional()
+						.describe("Address to look up balance/history"),
+				}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
 			},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-			},
-		},
-		async (args) => {
-			const { txid, address } = args as {
-				txid?: string;
-				address?: string;
-			};
+			async (args) => {
+				const { txid, address } = args as {
+					txid?: string;
+					address?: string;
+				};
 
-			// If txid provided, decode transaction
-			if (txid) {
-				try {
-					const res = await fetch(`${junglebusUrl()}/transaction/get/${txid}`);
-					if (!res.ok) throw new Error(`Transaction not found: ${res.status}`);
-					const jbData = (await res.json()) as Record<string, unknown>;
+				// If txid provided, decode transaction
+				if (txid) {
+					try {
+						const res = await fetch(
+							`${junglebusUrl()}/transaction/get/${txid}`,
+						);
+						if (!res.ok)
+							throw new Error(`Transaction not found: ${res.status}`);
+						const jbData = (await res.json()) as Record<string, unknown>;
 
-					const { Transaction, Utils } = await import("@bsv/sdk");
-					const rawTx = jbData.transaction as string;
-					const isBase64 = /^[A-Za-z0-9+/=]+$/.test(rawTx);
-					const txBytes = isBase64
-						? Utils.toArray(rawTx, "base64")
-						: Utils.toArray(rawTx, "hex");
-					const tx = Transaction.fromBinary(txBytes);
+						const { Transaction, Utils } = await import("@bsv/sdk");
+						const rawTx = jbData.transaction as string;
+						const isBase64 = /^[A-Za-z0-9+/=]+$/.test(rawTx);
+						const txBytes = isBase64
+							? Utils.toArray(rawTx, "base64")
+							: Utils.toArray(rawTx, "hex");
+						const tx = Transaction.fromBinary(txBytes);
 
-					return {
-						content: [
-							{ type: "text" as const, text: `Decoded transaction ${txid}` },
-						],
-						structuredContent: {
-							transaction: {
-								txid,
-								version: tx.version,
-								lockTime: tx.lockTime,
-								size: tx.toBinary().length,
-								inputs: tx.inputs.map((inp) => ({
-									txid: inp.sourceTXID,
-									vout: inp.sourceOutputIndex,
-									script: inp.unlockingScript?.toHex() || "",
-								})),
-								outputs: tx.outputs.map((out, i) => ({
-									n: i,
-									value: out.satoshis,
-									scriptPubKey: {
-										hex: out.lockingScript.toHex(),
-										asm: out.lockingScript.toASM(),
-									},
-								})),
-								confirmations: jbData.block_height ? 1 : 0,
-								block: jbData.block_hash
-									? {
-											hash: jbData.block_hash,
-											height: jbData.block_height,
-										}
-									: null,
+						return {
+							content: [
+								{ type: "text" as const, text: `Decoded transaction ${txid}` },
+							],
+							structuredContent: {
+								transaction: {
+									txid,
+									version: tx.version,
+									lockTime: tx.lockTime,
+									size: tx.toBinary().length,
+									inputs: tx.inputs.map((inp) => ({
+										txid: inp.sourceTXID,
+										vout: inp.sourceOutputIndex,
+										script: inp.unlockingScript?.toHex() || "",
+									})),
+									outputs: tx.outputs.map((out, i) => ({
+										n: i,
+										value: out.satoshis,
+										scriptPubKey: {
+											hex: out.lockingScript.toHex(),
+											asm: out.lockingScript.toASM(),
+										},
+									})),
+									confirmations: jbData.block_height ? 1 : 0,
+									block: jbData.block_hash
+										? {
+												hash: jbData.block_hash,
+												height: jbData.block_height,
+											}
+										: null,
+								},
 							},
-						},
-					};
-				} catch (err) {
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-							},
-						],
-						structuredContent: { error: String(err) },
-					};
+						};
+					} catch (err) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+								},
+							],
+							structuredContent: { error: String(err) },
+						};
+					}
 				}
-			}
 
-			// If address provided, look up balance and history
-			if (address) {
+				// If address provided, look up balance and history
+				if (address) {
+					try {
+						const [balRes, histRes] = await Promise.all([
+							explorerFetch(`${explorerUrl()}/address/${address}/balance`),
+							explorerFetch(`${explorerUrl()}/address/${address}/history`),
+						]);
+						const balance = balRes.ok
+							? ((await balRes.json()) as Record<string, unknown>)
+							: null;
+						const history = histRes.ok
+							? ((await histRes.json()) as Array<Record<string, unknown>>)
+							: [];
+
+						return {
+							content: [
+								{ type: "text" as const, text: `Address info for ${address}` },
+							],
+							structuredContent: {
+								addressInfo: { balance, history },
+							},
+						};
+					} catch (err) {
+						return {
+							content: [
+								{
+									type: "text" as const,
+									text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+								},
+							],
+							structuredContent: { error: String(err) },
+						};
+					}
+				}
+
+				// Default: return price + chain info
 				try {
-					const [balRes, histRes] = await Promise.all([
-						explorerFetch(`${explorerUrl()}/address/${address}/balance`),
-						explorerFetch(`${explorerUrl()}/address/${address}/history`),
+					const [price, chainRes] = await Promise.all([
+						getBsvPriceWithCache(),
+						explorerFetch(`${explorerUrl()}/chain/info`),
 					]);
-					const balance = balRes.ok
-						? ((await balRes.json()) as Record<string, unknown>)
+					const chainInfo = chainRes.ok
+						? ((await chainRes.json()) as Record<string, unknown>)
 						: null;
-					const history = histRes.ok
-						? ((await histRes.json()) as Array<Record<string, unknown>>)
-						: [];
 
 					return {
 						content: [
-							{ type: "text" as const, text: `Address info for ${address}` },
+							{
+								type: "text" as const,
+								text: `BSV price: $${price.toFixed(2)}`,
+							},
 						],
-						structuredContent: {
-							addressInfo: { balance, history },
-						},
+						structuredContent: { price, chainInfo },
 					};
 				} catch (err) {
 					return {
@@ -313,586 +437,576 @@ function registerMcpAppTools(
 						structuredContent: { error: String(err) },
 					};
 				}
-			}
-
-			// Default: return price + chain info
-			try {
-				const [price, chainRes] = await Promise.all([
-					getBsvPriceWithCache(),
-					explorerFetch(`${explorerUrl()}/chain/info`),
-				]);
-				const chainInfo = chainRes.ok
-					? ((await chainRes.json()) as Record<string, unknown>)
-					: null;
-
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `BSV price: $${price.toFixed(2)}`,
-						},
-					],
-					structuredContent: { price, chainInfo },
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
+			},
+		);
+	}
 
 	// App-only: fetch wallet data (uses BRC-100 context to match direct tools)
-	registerAppTool(
-		server,
-		"app_wallet_data",
-		{
-			title: "Wallet Data",
-			description: "App-only: fetches wallet balance, UTXOs, and address.",
-			inputSchema: {},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+	if (walletToolsEnabled && walletAvailable) {
+		registerAppTool(
+			server,
+			"app_wallet_data",
+			{
+				title: "Wallet Data",
+				description: "App-only: fetches wallet balance, UTXOs, and address.",
+				inputSchema: z.object({}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
 			},
-		},
-		async () => {
-			if (!ctx && !wallet) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: "No wallet configured",
+			async () => {
+				if (!ctx && !wallet) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: "No wallet configured",
+							},
+						],
+						structuredContent: {
+							error:
+								"No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
 						},
-					],
-					structuredContent: {
-						error:
-							"No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
-					},
-				};
-			}
-
-			try {
-				let address: string | undefined;
-				let totalSatoshis = 0;
-				let utxoCount = 0;
-				let utxos: Array<{ txid: string; vout: number; satoshis: number }> = [];
-
-				// Use BRC-100 context (same source as wallet_getAddress / wallet_getBalance)
-				if (ctx) {
-					const { deriveDepositAddresses } = await import("@1sat/actions");
-					const { derivations } = await deriveDepositAddresses.execute(ctx, {
-						prefix: "mcp",
-					});
-					address = derivations[0]?.address;
-
-					const result = await ctx.wallet.listOutputs({ basket: "default" });
-					totalSatoshis = result.outputs.reduce(
-						(sum, output) => sum + output.satoshis,
-						0,
-					);
-					utxoCount = result.totalOutputs;
-					utxos = result.outputs.slice(0, 50).map((o) => {
-						const [txid = "", voutStr = "0"] = (o.outpoint ?? "").split(".");
-						return { txid, vout: Number(voutStr), satoshis: o.satoshis };
-					});
-				} else if (wallet) {
-					// Fallback to local wallet if no BRC-100 context
-					address = wallet.getAddress();
-					const { paymentUtxos } = await wallet.getUtxos();
-					for (const utxo of paymentUtxos) {
-						totalSatoshis += utxo.satoshis || 0;
-					}
-					utxoCount = paymentUtxos.length;
-					utxos = paymentUtxos.slice(0, 50).map((u) => ({
-						txid: u.txid,
-						vout: u.vout,
-						satoshis: u.satoshis,
-					}));
+					};
 				}
 
-				let price: number | undefined;
 				try {
-					price = await getBsvPriceWithCache();
-				} catch {
-					/* price fetch optional */
+					let address: string | undefined;
+					let totalSatoshis = 0;
+					let utxoCount = 0;
+					let utxos: Array<{ txid: string; vout: number; satoshis: number }> =
+						[];
+
+					// Use BRC-100 context (same source as wallet_getAddress / wallet_getBalance)
+					if (ctx) {
+						const { deriveDepositAddresses } = await import("@1sat/actions");
+						const { derivations } = await deriveDepositAddresses.execute(ctx, {
+							prefix: "mcp",
+						});
+						address = derivations[0]?.address;
+
+						const result = await ctx.wallet.listOutputs({ basket: "default" });
+						totalSatoshis = result.outputs.reduce(
+							(sum, output) => sum + output.satoshis,
+							0,
+						);
+						utxoCount = result.totalOutputs;
+						utxos = result.outputs.slice(0, 50).map((o) => {
+							const [txid = "", voutStr = "0"] = (o.outpoint ?? "").split(".");
+							return { txid, vout: Number(voutStr), satoshis: o.satoshis };
+						});
+					} else if (wallet) {
+						// Fallback to local wallet if no BRC-100 context
+						address = wallet.getAddress();
+						const { paymentUtxos } = await wallet.getUtxos();
+						for (const utxo of paymentUtxos) {
+							totalSatoshis += utxo.satoshis || 0;
+						}
+						utxoCount = paymentUtxos.length;
+						utxos = paymentUtxos.slice(0, 50).map((u) => ({
+							txid: u.txid,
+							vout: u.vout,
+							satoshis: u.satoshis,
+						}));
+					}
+
+					let price: number | undefined;
+					try {
+						price = await getBsvPriceWithCache();
+					} catch {
+						/* price fetch optional */
+					}
+
+					const { toBitcoin } = await import("satoshi-token");
+					const bsvAmount = toBitcoin(totalSatoshis);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Wallet balance: ${bsvAmount} BSV`,
+							},
+						],
+						structuredContent: {
+							balance: {
+								satoshis: totalSatoshis,
+								bsv: bsvAmount,
+								utxoCount,
+							},
+							address,
+							utxos,
+							price,
+						},
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
 				}
-
-				const { toBitcoin } = await import("satoshi-token");
-				const bsvAmount = toBitcoin(totalSatoshis);
-
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Wallet balance: ${bsvAmount} BSV`,
-						},
-					],
-					structuredContent: {
-						balance: {
-							satoshis: totalSatoshis,
-							bsv: bsvAmount,
-							utxoCount,
-						},
-						address,
-						utxos,
-						price,
-					},
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
+			},
+		);
+	}
 
 	// App-only: fetch ordinals data
-	registerAppTool(
-		server,
-		"app_ordinals_data",
-		{
-			title: "Ordinals Data",
-			description:
-				"App-only: fetches ordinals/NFT marketplace listings and search results.",
-			inputSchema: {
-				query: z.string().optional().describe("Search query"),
+	if (ordinalsToolsEnabled) {
+		registerAppTool(
+			server,
+			"app_ordinals_data",
+			{
+				title: "Ordinals Data",
+				description:
+					"App-only: fetches ordinals/NFT marketplace listings and search results.",
+				inputSchema: z.object({
+					query: z.string().optional().describe("Search query"),
+				}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
 			},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-			},
-		},
-		async (args) => {
-			const { query } = args as { query?: string };
+			async (args) => {
+				const { query } = args as { query?: string };
 
-			try {
-				const services = readServices(ctx?.services);
-				const listings = await services.market.searchListings({
-					q: query || undefined,
-					limit: 20,
-					status: "active",
-					rev: true,
-				});
-				return {
-					content: [
-						{ type: "text" as const, text: "Marketplace listings loaded" },
-					],
-					structuredContent: {
-						listings,
-						total: listings.length,
-						contentBaseUrl: contentUrl(services.baseUrl),
-					},
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+				try {
+					const services = readServices(appServices);
+					const listings = await services.market.searchListings({
+						q: query || undefined,
+						limit: 20,
+						status: "active",
+						rev: true,
+					});
+					return {
+						content: [
+							{ type: "text" as const, text: "Marketplace listings loaded" },
+						],
+						structuredContent: {
+							listings,
+							total: listings.length,
+							contentBaseUrl: contentUrl(services.baseUrl),
 						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			},
+		);
+	}
 
 	// App-only: scan an address for categorized UTXOs (funding, ordinals, BSV-21 tokens)
-	registerAppTool(
-		server,
-		"app_sweep_scan",
-		{
-			title: "Sweep Scan",
-			description:
-				"App-only: scans a Bitcoin address for categorized UTXOs — funding, ordinals, and BSV-21 tokens.",
-			inputSchema: {
-				address: z.string().describe("Bitcoin address to scan"),
+	if (ordinalsToolsEnabled) {
+		registerAppTool(
+			server,
+			"app_sweep_scan",
+			{
+				title: "Sweep Scan",
+				description:
+					"App-only: scans a Bitcoin address for categorized UTXOs — funding, ordinals, and BSV-21 tokens.",
+				inputSchema: z.object({
+					address: z.string().describe("Bitcoin address to scan"),
+				}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
 			},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-			},
-		},
-		async (args) => {
-			const { address } = args as { address: string };
-			try {
-				const res = await fetch(
-					`${legacyOrdinalsUrl()}/txos/address/${address}/unspent?limit=1000`,
-				);
-				if (!res.ok) throw new Error(`GorillaPool API error: ${res.status}`);
-				const utxos = (await res.json()) as Array<Record<string, unknown>>;
+			async (args) => {
+				const { address } = args as { address: string };
+				try {
+					const res = await fetch(
+						`${legacyOrdinalsUrl()}/txos/address/${address}/unspent?limit=1000`,
+					);
+					if (!res.ok) throw new Error(`GorillaPool API error: ${res.status}`);
+					const utxos = (await res.json()) as Array<Record<string, unknown>>;
 
-				const funding: Array<{
-					outpoint: string;
-					satoshis: number;
-					lockingScript: string;
-				}> = [];
-				const ordinals: Array<{
-					outpoint: string;
-					satoshis: number;
-					lockingScript: string;
-				}> = [];
-				const bsv21Raw: Array<{
-					outpoint: string;
-					satoshis: number;
-					lockingScript: string;
-					tokenId: string;
-					amount: string;
-					sym?: string;
-					dec: number;
-				}> = [];
-
-				for (const utxo of utxos) {
-					const txid = utxo.txid as string;
-					const vout = utxo.vout as number;
-					const outpoint = `${txid}_${vout}`;
-					const satoshis = (utxo.satoshis as number) || 0;
-					const script = (utxo.script as string) || "";
-					const origin = utxo.origin as Record<string, unknown> | undefined;
-					const originData = origin?.data as
-						| Record<string, unknown>
-						| undefined;
-
-					const base = { outpoint, satoshis, lockingScript: script };
-
-					if (originData?.bsv21) {
-						const bsv21 = originData.bsv21 as Record<string, unknown>;
-						bsv21Raw.push({
-							...base,
-							tokenId: (bsv21.id as string) || "",
-							amount: (bsv21.amt as string) || "0",
-							sym: bsv21.sym as string | undefined,
-							dec: (bsv21.dec as number) ?? 0,
-						});
-					} else if (originData?.insc || origin?.outpoint) {
-						ordinals.push(base);
-					} else {
-						funding.push(base);
-					}
-				}
-
-				// Group BSV-21 tokens by tokenId
-				const tokenGroups = new Map<
-					string,
-					{
-						inputs: typeof bsv21Raw;
+					const funding: Array<{
+						outpoint: string;
+						satoshis: number;
+						lockingScript: string;
+					}> = [];
+					const ordinals: Array<{
+						outpoint: string;
+						satoshis: number;
+						lockingScript: string;
+					}> = [];
+					const bsv21Raw: Array<{
+						outpoint: string;
+						satoshis: number;
+						lockingScript: string;
+						tokenId: string;
+						amount: string;
 						sym?: string;
 						dec: number;
-					}
-				>();
-				for (const item of bsv21Raw) {
-					let group = tokenGroups.get(item.tokenId);
-					if (!group) {
-						group = { inputs: [], sym: item.sym, dec: item.dec };
-						tokenGroups.set(item.tokenId, group);
-					}
-					group.inputs.push(item);
-				}
+					}> = [];
 
-				const bsv21Tokens: Array<{
-					tokenId: string;
-					symbol?: string;
-					decimals: number;
-					totalAmount: string;
-					inputs: typeof bsv21Raw;
-				}> = [];
-				for (const [tokenId, group] of tokenGroups) {
-					let total = BigInt(0);
-					for (const inp of group.inputs) {
-						total += BigInt(inp.amount);
-					}
-					bsv21Tokens.push({
-						tokenId,
-						symbol: group.sym,
-						decimals: group.dec,
-						totalAmount: total.toString(),
-						inputs: group.inputs,
-					});
-				}
+					for (const utxo of utxos) {
+						const txid = utxo.txid as string;
+						const vout = utxo.vout as number;
+						const outpoint = `${txid}_${vout}`;
+						const satoshis = (utxo.satoshis as number) || 0;
+						const script = (utxo.script as string) || "";
+						const origin = utxo.origin as Record<string, unknown> | undefined;
+						const originData = origin?.data as
+							| Record<string, unknown>
+							| undefined;
 
-				const totalFundingSats = funding.reduce(
-					(sum, f) => sum + f.satoshis,
-					0,
-				);
+						const base = { outpoint, satoshis, lockingScript: script };
 
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Scanned ${address}: ${funding.length} funding, ${ordinals.length} ordinals, ${bsv21Tokens.length} token types`,
-						},
-					],
-					structuredContent: {
-						address,
-						funding,
-						ordinals,
-						bsv21Tokens,
-						totalFundingSats,
-					},
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
-
-	// App-only: prepare unsigned sweep transaction for client-side signing
-	registerAppTool(
-		server,
-		"app_sweep_prepare",
-		{
-			title: "Sweep Prepare",
-			description:
-				"App-only: builds an unsigned sweep transaction. Returns BEEF hex and reference for client-side signing.",
-			inputSchema: {
-				sweepType: z
-					.enum(["bsv", "ordinals", "bsv21"])
-					.describe("Type of assets to sweep"),
-				inputs: z
-					.array(
-						z.object({
-							outpoint: z.string().describe("Outpoint (txid_vout)"),
-							satoshis: z.number().int().describe("Satoshis in output"),
-							lockingScript: z.string().describe("Locking script hex"),
-						}),
-					)
-					.describe("UTXOs to sweep"),
-			},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-			},
-		},
-		async (args) => {
-			const { sweepType, inputs } = args as {
-				sweepType: "bsv" | "ordinals" | "bsv21";
-				inputs: Array<{
-					outpoint: string;
-					satoshis: number;
-					lockingScript: string;
-				}>;
-			};
-
-			if (!ctx) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: "BRC-100 wallet context not available",
-						},
-					],
-					structuredContent: { error: "No wallet context" },
-				};
-			}
-
-			try {
-				if (!ctx.services) throw new Error("Services not available");
-				if (!inputs.length) throw new Error("No inputs provided");
-
-				// Fetch and merge BEEF for all input transactions
-				const txids = [...new Set(inputs.map((i) => i.outpoint.split("_")[0]))];
-				const firstBeef = await ctx.services.getBeefForTxid(txids[0]);
-				for (let i = 1; i < txids.length; i++) {
-					const additionalBeef = await ctx.services.getBeefForTxid(txids[i]);
-					firstBeef.mergeBeef(additionalBeef);
-				}
-
-				// Build input descriptors using SDK format (txid.vout)
-				const inputDescriptors = inputs.map((input) => {
-					const [txid, voutStr] = input.outpoint.split("_");
-					return {
-						outpoint: `${txid}.${Number(voutStr)}`,
-						inputDescription: `Sweep ${sweepType} input`,
-						unlockingScriptLength: 108,
-						sequenceNumber: 0xffffffff,
-					};
-				});
-
-				const inputTotal = inputs.reduce((sum, i) => sum + i.satoshis, 0);
-
-				const createResult = await ctx.wallet.createAction({
-					description: `Sweep ${inputTotal} sats (${sweepType})`,
-					inputBEEF: firstBeef.toBinary(),
-					inputs: inputDescriptors,
-					outputs: [],
-					options: {
-						signAndProcess: false,
-						...(sweepType !== "bsv" && {
-							randomizeOutputs: false,
-						}),
-					},
-				});
-
-				if ("error" in createResult && createResult.error) {
-					throw new Error(String(createResult.error));
-				}
-				if (!createResult.signableTransaction) {
-					throw new Error("No signable transaction returned");
-				}
-
-				// Map our inputs to their indices in the transaction
-				const { Transaction: TxClass, Utils: SdkUtils } = await import(
-					"@bsv/sdk"
-				);
-				const tx = TxClass.fromBEEF(createResult.signableTransaction.tx);
-				const ourOutpoints = new Set(
-					inputs.map((i) => {
-						const [txid, voutStr] = i.outpoint.split("_");
-						return `${txid}.${Number(voutStr)}`;
-					}),
-				);
-
-				const inputsToSign: Array<{
-					index: number;
-					outpoint: string;
-					satoshis: number;
-					lockingScript: string;
-				}> = [];
-				for (let idx = 0; idx < tx.inputs.length; idx++) {
-					const txInput = tx.inputs[idx];
-					const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
-					if (ourOutpoints.has(op)) {
-						const match = inputs.find((i) => {
-							const [t, v] = i.outpoint.split("_");
-							return `${t}.${Number(v)}` === op;
-						});
-						if (match) {
-							inputsToSign.push({
-								index: idx,
-								outpoint: match.outpoint,
-								satoshis: match.satoshis,
-								lockingScript: match.lockingScript,
+						if (originData?.bsv21) {
+							const bsv21 = originData.bsv21 as Record<string, unknown>;
+							bsv21Raw.push({
+								...base,
+								tokenId: (bsv21.id as string) || "",
+								amount: (bsv21.amt as string) || "0",
+								sym: bsv21.sym as string | undefined,
+								dec: (bsv21.dec as number) ?? 0,
 							});
+						} else if (originData?.insc || origin?.outpoint) {
+							ordinals.push(base);
+						} else {
+							funding.push(base);
 						}
 					}
+
+					// Group BSV-21 tokens by tokenId
+					const tokenGroups = new Map<
+						string,
+						{
+							inputs: typeof bsv21Raw;
+							sym?: string;
+							dec: number;
+						}
+					>();
+					for (const item of bsv21Raw) {
+						let group = tokenGroups.get(item.tokenId);
+						if (!group) {
+							group = { inputs: [], sym: item.sym, dec: item.dec };
+							tokenGroups.set(item.tokenId, group);
+						}
+						group.inputs.push(item);
+					}
+
+					const bsv21Tokens: Array<{
+						tokenId: string;
+						symbol?: string;
+						decimals: number;
+						totalAmount: string;
+						inputs: typeof bsv21Raw;
+					}> = [];
+					for (const [tokenId, group] of tokenGroups) {
+						let total = BigInt(0);
+						for (const inp of group.inputs) {
+							total += BigInt(inp.amount);
+						}
+						bsv21Tokens.push({
+							tokenId,
+							symbol: group.sym,
+							decimals: group.dec,
+							totalAmount: total.toString(),
+							inputs: group.inputs,
+						});
+					}
+
+					const totalFundingSats = funding.reduce(
+						(sum, f) => sum + f.satoshis,
+						0,
+					);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Scanned ${address}: ${funding.length} funding, ${ordinals.length} ordinals, ${bsv21Tokens.length} token types`,
+							},
+						],
+						structuredContent: {
+							address,
+							funding,
+							ordinals,
+							bsv21Tokens,
+							totalFundingSats,
+						},
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			},
+		);
+	}
+
+	// App-only: prepare unsigned sweep transaction for client-side signing
+	if (walletToolsEnabled && sweepPrepareAvailable) {
+		registerAppTool(
+			server,
+			"app_sweep_prepare",
+			{
+				title: "Sweep Prepare",
+				description:
+					"App-only: builds an unsigned sweep transaction. Returns BEEF hex and reference for client-side signing.",
+				inputSchema: z.object({
+					sweepType: z
+						.enum(["bsv", "ordinals", "bsv21"])
+						.describe("Type of assets to sweep"),
+					inputs: z
+						.array(
+							z.object({
+								outpoint: z.string().describe("Outpoint (txid_vout)"),
+								satoshis: z.number().int().describe("Satoshis in output"),
+								lockingScript: z.string().describe("Locking script hex"),
+							}),
+						)
+						.describe("UTXOs to sweep"),
+				}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
+			},
+			async (args) => {
+				const { sweepType, inputs } = args as {
+					sweepType: "bsv" | "ordinals" | "bsv21";
+					inputs: Array<{
+						outpoint: string;
+						satoshis: number;
+						lockingScript: string;
+					}>;
+				};
+
+				if (!ctx || !appServices) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: "BRC-100 wallet context not available",
+							},
+						],
+						structuredContent: { error: "No wallet context" },
+					};
 				}
 
-				const txHex = SdkUtils.toHex(createResult.signableTransaction.tx);
+				try {
+					if (!appServices) throw new Error("Services not available");
+					if (!inputs.length) throw new Error("No inputs provided");
 
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Prepared ${sweepType} sweep: ${inputsToSign.length} inputs to sign`,
+					// Fetch and merge BEEF for all input transactions
+					const txids = [
+						...new Set(
+							inputs.map((i) => {
+								const txid = i.outpoint.split("_")[0];
+								if (!txid) throw new Error("Invalid input outpoint");
+								return txid;
+							}),
+						),
+					];
+					const [firstTxid, ...remainingTxids] = txids;
+					if (!firstTxid) throw new Error("No input transactions provided");
+					const firstBeef = await appServices.getBeefForTxid(firstTxid);
+					for (const txid of remainingTxids) {
+						const additionalBeef = await appServices.getBeefForTxid(txid);
+						firstBeef.mergeBeef(additionalBeef);
+					}
+
+					// Build input descriptors using SDK format (txid.vout)
+					const inputDescriptors = inputs.map((input) => {
+						const [txid, voutStr] = input.outpoint.split("_");
+						return {
+							outpoint: `${txid}.${Number(voutStr)}`,
+							inputDescription: `Sweep ${sweepType} input`,
+							unlockingScriptLength: 108,
+							sequenceNumber: 0xffffffff,
+						};
+					});
+
+					const inputTotal = inputs.reduce((sum, i) => sum + i.satoshis, 0);
+
+					const createResult = await ctx.wallet.createAction({
+						description: `Sweep ${inputTotal} sats (${sweepType})`,
+						inputBEEF: firstBeef.toBinary(),
+						inputs: inputDescriptors,
+						outputs: [],
+						options: {
+							signAndProcess: false,
+							...(sweepType !== "bsv" && {
+								randomizeOutputs: false,
+							}),
 						},
-					],
-					structuredContent: {
-						txHex,
-						reference: createResult.signableTransaction.reference,
-						inputsToSign,
-					},
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+					});
+
+					if ("error" in createResult && createResult.error) {
+						throw new Error(String(createResult.error));
+					}
+					if (!createResult.signableTransaction) {
+						throw new Error("No signable transaction returned");
+					}
+
+					// Map our inputs to their indices in the transaction
+					const { Transaction: TxClass, Utils: SdkUtils } = await import(
+						"@bsv/sdk"
+					);
+					const tx = TxClass.fromBEEF(createResult.signableTransaction.tx);
+					const ourOutpoints = new Set(
+						inputs.map((i) => {
+							const [txid, voutStr] = i.outpoint.split("_");
+							return `${txid}.${Number(voutStr)}`;
+						}),
+					);
+
+					const inputsToSign: Array<{
+						index: number;
+						outpoint: string;
+						satoshis: number;
+						lockingScript: string;
+					}> = [];
+					for (const [idx, txInput] of tx.inputs.entries()) {
+						const op = `${txInput.sourceTXID}.${txInput.sourceOutputIndex}`;
+						if (ourOutpoints.has(op)) {
+							const match = inputs.find((i) => {
+								const [t, v] = i.outpoint.split("_");
+								return `${t}.${Number(v)}` === op;
+							});
+							if (match) {
+								inputsToSign.push({
+									index: idx,
+									outpoint: match.outpoint,
+									satoshis: match.satoshis,
+									lockingScript: match.lockingScript,
+								});
+							}
+						}
+					}
+
+					const txHex = SdkUtils.toHex(createResult.signableTransaction.tx);
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Prepared ${sweepType} sweep: ${inputsToSign.length} inputs to sign`,
+							},
+						],
+						structuredContent: {
+							txHex,
+							reference: createResult.signableTransaction.reference,
+							inputsToSign,
 						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			},
+		);
+	}
 
 	// App-only: complete a sweep by broadcasting with client-signed spends
-	registerAppTool(
-		server,
-		"app_sweep_complete",
-		{
-			title: "Sweep Complete",
-			description:
-				"App-only: completes a sweep by broadcasting the transaction with client-signed unlocking scripts.",
-			inputSchema: {
-				reference: z
-					.string()
-					.describe("Opaque reference from app_sweep_prepare"),
-				spends: z
-					.record(
-						z.string(),
-						z.object({
-							unlockingScript: z
-								.string()
-								.describe("Signed unlocking script hex"),
-						}),
-					)
-					.describe("Map of input index to signed unlocking script"),
+	if (walletToolsEnabled && sweepCompleteAvailable && broadcastingEnabled) {
+		registerAppTool(
+			server,
+			"app_sweep_complete",
+			{
+				title: "Sweep Complete",
+				description:
+					"App-only: completes a sweep by broadcasting the transaction with client-signed unlocking scripts.",
+				inputSchema: z.object({
+					reference: z
+						.string()
+						.describe("Opaque reference from app_sweep_prepare"),
+					spends: z
+						.record(
+							z.string(),
+							z.object({
+								unlockingScript: z
+									.string()
+									.describe("Signed unlocking script hex"),
+							}),
+						)
+						.describe("Map of input index to signed unlocking script"),
+				}),
+				_meta: {
+					ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
+				},
 			},
-			_meta: {
-				ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] },
-			},
-		},
-		async (args) => {
-			const { reference, spends } = args as {
-				reference: string;
-				spends: Record<number, { unlockingScript: string }>;
-			};
-
-			if (!ctx) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: "BRC-100 wallet context not available",
-						},
-					],
-					structuredContent: { error: "No wallet context" },
+			async (args) => {
+				const { reference, spends } = args as {
+					reference: string;
+					spends: Record<number, { unlockingScript: string }>;
 				};
-			}
 
-			try {
-				const signResult = await ctx.wallet.signAction({
-					reference,
-					spends,
-					options: { acceptDelayedBroadcast: false },
-				});
-
-				if ("error" in signResult) {
-					throw new Error(String(signResult.error));
+				if (!ctx || !appServices) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: "BRC-100 wallet context not available",
+							},
+						],
+						structuredContent: { error: "No wallet context" },
+					};
 				}
 
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Sweep broadcast: ${signResult.txid}`,
+				try {
+					assertBroadcastAllowed("app_sweep_complete", disableBroadcasting);
+					const signResult = await ctx.wallet.signAction({
+						reference,
+						spends,
+						options: { acceptDelayedBroadcast: false },
+					});
+
+					if ("error" in signResult) {
+						throw new Error(String(signResult.error));
+					}
+
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Sweep broadcast: ${signResult.txid}`,
+							},
+						],
+						structuredContent: {
+							txid: signResult.txid,
+							success: true,
 						},
-					],
-					structuredContent: {
-						txid: signResult.txid,
-						success: true,
-					},
-				};
-			} catch (err) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Error: ${err instanceof Error ? err.message : String(err)}`,
-						},
-					],
-					structuredContent: { error: String(err) },
-				};
-			}
-		},
-	);
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						structuredContent: { error: String(err) },
+					};
+				}
+			},
+		);
+	}
 
 	// Register the HTML resource
 	registerAppResource(
@@ -926,7 +1040,7 @@ function registerMcpAppTools(
 							ui: {
 								csp: {
 									resourceDomains: [
-										new URL(contentUrl(ctx?.services?.baseUrl)).origin,
+										new URL(contentUrl(appServices?.baseUrl)).origin,
 										"https://fonts.googleapis.com",
 										"https://fonts.gstatic.com",
 									],
@@ -963,13 +1077,13 @@ Environment Variables:
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
   PRIVATE_KEY_WIF    Legacy payment key input; prefer Vault
   DISABLE_TOOLS      Disable all tools (default: false)
+  MCP_TOOL_CATALOG   Tool catalog: 'full' or 'compact' (default: full; invalid values fail startup)
   DISABLE_WALLET_TOOLS   Disable wallet tools (default: false)
   DISABLE_BSV_TOOLS      Disable BSV tools (default: false)
   DISABLE_ORDINALS_TOOLS Disable ordinals tools (default: false)
   DISABLE_UTILS_TOOLS    Disable utility tools (default: false)
   DISABLE_BAP_TOOLS      Disable BAP tools (default: false)  
   DISABLE_BSOCIAL_TOOLS  Disable BSocial tools (default: false)
-  ENABLE_A2B_TOOLS       Enable A2B tools (default: false)
   DISABLE_BROADCASTING   Disable transaction broadcasting (default: false)
   USE_DROPLIT_API        Use Droplit API for transactions (default: false)
 
@@ -980,13 +1094,12 @@ Tool Categories:
   Utils Tools:    General utilities, conversions
   BAP Tools:      Identity management (requires identity key)
   BSocial Tools:  Social posts, likes, follows
-  A2B Tools:      Advanced BSV operations (requires identity key)
 
 Authentication:
   - Most tools work without authentication
   - Wallet operations use BRC100_WALLET_URL, an initialized encrypted account or legacy environment keys
   - Environment WIFs are legacy compatibility inputs and trigger a migration warning
-  - BAP/A2B tools require identity keys (generated via bap_generate tool)
+  - BAP tools require identity keys (generated via bap_generate tool)
 		`);
 		process.exit(0);
 	}
@@ -1079,12 +1192,11 @@ Authentication:
 	const hasPersistentIdentityKey = !!identityPk && keySource === "encrypted";
 	const hasXprv = !!xprv && keySource === "encrypted";
 
-	const effectiveConfig = { ...CONFIG };
+	const effectiveConfig = { ...CONFIG, bapPublicOnly: CONFIG.useDroplitApi };
 	if (externalWallet) {
-		effectiveConfig.loadBapTools = false;
+		effectiveConfig.bapPublicOnly = true;
 		effectiveConfig.loadBsocialTools = false;
 		effectiveConfig.loadMneeTools = false;
-		effectiveConfig.loadA2bTools = false;
 		logFunc(
 			"External BRC-100 signer selected; local key loading and generation bypassed.",
 		);
@@ -1126,6 +1238,7 @@ Authentication:
 	logFunc(
 		`  DISABLE_TOOLS:        ${process.env.DISABLE_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
 	);
+	logFunc(`  MCP_TOOL_CATALOG:    ${CONFIG.toolCatalog}`);
 	logFunc(
 		`  DISABLE_WALLET_TOOLS: ${process.env.DISABLE_WALLET_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
 	);
@@ -1140,9 +1253,6 @@ Authentication:
 	);
 	logFunc(
 		`  DISABLE_UTILS_TOOLS:  ${process.env.DISABLE_UTILS_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
-	);
-	logFunc(
-		`  ENABLE_A2B_TOOLS:     ${process.env.ENABLE_A2B_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
 	);
 	logFunc(
 		`  DISABLE_BAP_TOOLS:    ${process.env.DISABLE_BAP_TOOLS === "true" ? "Set (true)" : "Not Set/false"}`,
@@ -1198,9 +1308,6 @@ Authentication:
 		const mneeStatus = effectiveConfig.loadMneeTools
 			? "\x1b[32mEnabled\x1b[0m"
 			: "\x1b[31mDisabled\x1b[0m";
-		const a2bStatus = effectiveConfig.loadA2bTools
-			? "\x1b[32mEnabled\x1b[0m"
-			: "\x1b[31mDisabled\x1b[0m";
 		const bapStatus = effectiveConfig.loadBapTools
 			? "\x1b[32mEnabled\x1b[0m"
 			: "\x1b[31mDisabled\x1b[0m";
@@ -1225,7 +1332,6 @@ Authentication:
 		logFunc(
 			`    Utils:        ${effectiveConfig.loadUtilsTools ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
 		);
-		logFunc(`    A2B:          ${a2bStatus}${identityKeyNote}`);
 		logFunc(`    BAP:          ${bapStatus}${identityKeyNote}`);
 		logFunc(
 			`    BSocial:      ${effectiveConfig.loadBsocialTools ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
@@ -1280,8 +1386,7 @@ Authentication:
 					wallet = integratedWallet.getLocalWallet();
 
 					effectiveConfig.loadMneeTools = false;
-					effectiveConfig.loadBapTools = false;
-					effectiveConfig.loadA2bTools = false;
+					effectiveConfig.bapPublicOnly = true;
 					effectiveConfig.loadBsocialTools = false;
 				} catch (e) {
 					logFunc(
@@ -1290,7 +1395,7 @@ Authentication:
 					integratedWallet = undefined;
 					effectiveConfig.loadWalletTools = false;
 					effectiveConfig.loadMneeTools = false;
-					effectiveConfig.loadBapTools = false;
+					effectiveConfig.bapPublicOnly = true;
 				}
 			}
 		} else if (payPk) {
@@ -1367,12 +1472,17 @@ Authentication:
 	// Build the shared tools config (used by server factory for each session)
 	const toolsConfig: ToolsConfig = CONFIG.loadTools
 		? {
+				toolCatalog: CONFIG.toolCatalog,
 				vaultMigration,
+				localAccountAvailable: shouldAdvertiseLocalAccount(
+					keySource,
+					!!externalWallet,
+					CONFIG.useDroplitApi,
+				),
 				enableAccountTools: !externalWallet && !CONFIG.useDroplitApi,
 				enableBsvTools: effectiveConfig.loadBsvTools,
 				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
 				enableUtilsTools: effectiveConfig.loadUtilsTools,
-				enableA2bTools: effectiveConfig.loadA2bTools,
 				enableBapTools: effectiveConfig.loadBapTools,
 				enableBsocialTools: effectiveConfig.loadBsocialTools,
 				enableWalletTools: effectiveConfig.loadWalletTools,
@@ -1382,16 +1492,17 @@ Authentication:
 				xprv,
 				wallet,
 				integratedWallet,
+				bapPublicOnly: effectiveConfig.bapPublicOnly,
 				disableBroadcasting: effectiveConfig.disableBroadcasting,
 				ctx: remoteCtx,
 				services: remoteServices,
 				droplitClient,
 			}
 		: {
+				toolCatalog: CONFIG.toolCatalog,
 				enableBsvTools: false,
 				enableOrdinalsTools: false,
 				enableUtilsTools: false,
-				enableA2bTools: false,
 				enableBapTools: false,
 				enableBsocialTools: false,
 				enableWalletTools: false,
@@ -1420,8 +1531,11 @@ Authentication:
 		// negotiated era. Set the helper globals inside the factory: serveStdio
 		// may create a probe instance before selecting the connection instance.
 		serveStdio(
-			() => {
-				const configured = createConfiguredServer(serverFactoryOpts);
+			(requestContext: McpRequestContext) => {
+				const configured = createConfiguredServer({
+					...serverFactoryOpts,
+					era: requestContext.era,
+				});
 				server = configured;
 				setServerInstance(configured);
 				setSpendingApprovalServerInstance(configured);
@@ -1443,12 +1557,13 @@ Authentication:
 			? createMCPJWTValidator(resourceUrl)
 			: null;
 
-		// Session tracking: sessionId -> { server, transport }
+		// Session tracking: sessionId -> { server, transport, principal }
 		const sessions = new Map<
 			string,
 			{
 				server: McpServer;
 				transport: WebStandardStreamableHTTPServerTransport;
+				principal: McpSessionPrincipal;
 			}
 		>();
 
@@ -1468,8 +1583,11 @@ Authentication:
 		// envelope are routed to the sessionful legacy leg below, preserving the
 		// existing 2025 Streamable HTTP behavior and session map.
 		const modernHandler = createMcpHandler(
-			() => {
-				const configured = createConfiguredServer(serverFactoryOpts);
+			(requestContext: McpRequestContext) => {
+				const configured = createConfiguredServer({
+					...serverFactoryOpts,
+					era: requestContext.era,
+				});
 				// Keep the exported reference useful for diagnostics. Request auth is
 				// supplied to modernHandler.fetch per request, never stored globally.
 				server = configured;
@@ -1513,6 +1631,7 @@ Authentication:
 		}
 
 		Bun.serve({
+			hostname: process.env.HOST || "0.0.0.0",
 			port,
 			async fetch(req: Request): Promise<Response> {
 				const url = new URL(req.url);
@@ -1658,6 +1777,27 @@ Authentication:
 								},
 							);
 						}
+
+						if (!isMcpSessionPrincipalMatch(session.principal, authInfo)) {
+							return new Response(
+								JSON.stringify({
+									jsonrpc: "2.0",
+									error: {
+										code: -32003,
+										message: "MCP session is bound to a different principal",
+									},
+									id: null,
+								}),
+								{
+									status: 403,
+									headers: {
+										"Content-Type": "application/json",
+										...corsHeaders,
+									},
+								},
+							);
+						}
+
 						const response = await session.transport.handleRequest(req, {
 							authInfo,
 						});
@@ -1669,10 +1809,15 @@ Authentication:
 					}
 
 					// No session ID — new session (initialization request)
+					const principal = getMcpSessionPrincipal(authInfo);
 					const transport = new WebStandardStreamableHTTPServerTransport({
 						sessionIdGenerator: () => crypto.randomUUID(),
 						onsessioninitialized: (id: string) => {
-							sessions.set(id, { server: mcpServer, transport });
+							sessions.set(id, {
+								server: mcpServer,
+								transport,
+								principal,
+							});
 							logFunc(`New MCP session: ${id}`);
 						},
 						onsessionclosed: (id: string) => {
@@ -1681,7 +1826,10 @@ Authentication:
 						},
 					});
 
-					const mcpServer = createConfiguredServer(serverFactoryOpts);
+					const mcpServer = createConfiguredServer({
+						...serverFactoryOpts,
+						era: "legacy",
+					});
 					await mcpServer.connect(transport);
 
 					const response = await transport.handleRequest(req, { authInfo });

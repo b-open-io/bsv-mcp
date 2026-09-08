@@ -36,7 +36,7 @@ function sendsJson(headers: Headers): boolean {
 	// MCP's Streamable HTTP transport requires application/json. Parameters
 	// such as a charset are valid, but other media types are not.
 	return (
-		contentType.split(";", 1)[0].trim().toLowerCase() === "application/json"
+		contentType.split(";", 1)[0]?.trim().toLowerCase() === "application/json"
 	);
 }
 

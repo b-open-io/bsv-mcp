@@ -18,12 +18,14 @@ export function signerRequestAllowed(
 	allowed: Set<string>,
 ) {
 	const parts = new URL(request.url).pathname.split("/");
+	const method = parts.length === 3 ? parts[2] : undefined;
 	return request.method === "POST" &&
 		parts.length === 3 &&
 		parts[1] === token &&
 		request.headers.get("origin") === "http://bsv-mcp.local" &&
-		allowed.has(parts[2])
-		? parts[2]
+		method !== undefined &&
+		allowed.has(method)
+		? method
 		: undefined;
 }
 export function signerChildEnvironment(
@@ -138,8 +140,14 @@ export async function serveSigner(name: string) {
 			}
 		},
 	});
+	const entrypoint = process.argv[1];
+	if (!entrypoint) {
+		server.stop(true);
+		await result.destroy();
+		throw new Error("Could not determine the MCP server entrypoint");
+	}
 	const child = Bun.spawn(
-		[process.execPath, "--no-env-file", process.argv[1], "--stdio"],
+		[process.execPath, "--no-env-file", entrypoint, "--stdio"],
 		{
 			cwd: dir,
 			env: signerChildEnvironment(`http://127.0.0.1:${server.port}/${token}`),

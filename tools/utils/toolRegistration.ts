@@ -5,6 +5,7 @@ import type {
 	CallToolResult,
 	McpServer,
 	ServerContext,
+	ToolAnnotations,
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 
@@ -12,6 +13,7 @@ export interface ToolConfig<TArgs = Record<string, unknown>> {
 	name: string;
 	description: string;
 	schema: z.ZodSchema<TArgs>;
+	annotations?: ToolAnnotations;
 	handler: (args: TArgs, ctx: ServerContext) => Promise<ToolResponse>;
 }
 
@@ -26,7 +28,11 @@ export function registerTool<TArgs = Record<string, unknown>>(
 ): void {
 	server.registerTool(
 		config.name,
-		{ description: config.description, inputSchema: config.schema },
+		{
+			description: config.description,
+			inputSchema: config.schema,
+			annotations: config.annotations,
+		},
 		async (args, ctx: ServerContext) => {
 			try {
 				return await config.handler(args as TArgs, ctx);
