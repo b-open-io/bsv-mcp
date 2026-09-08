@@ -27,3 +27,7 @@ Official references: https://docs.x.ai/build/features/skills-plugins-marketplace
 The final 0.5.0 tarball was installed in a new consumer directory on 2026-09-08: 257 packages installed successfully. Its bundled server negotiated both 2025-11-25 and 2026-07-28, listed 25 tools and three resources with wallet tools disabled, and returned the dashboard successfully. The source suite passed 718 tests with 3,945 assertions; TypeScript and `git diff --check` passed.
 
 Production OAuth acceptance found a blocking provider issue: native dynamic client registration returns HTTP 500 because Sigma auth's `oauthClient.ownerBapId` column is NOT NULL. The provider advertises anonymous dynamic registration, whose inserts have no owner identity. Production logs confirmed SQLSTATE 23502 on 2026-09-08. Fresh OAuth login, refresh, and authenticated hosted tool acceptance remain incomplete until the provider is repaired.
+
+## Public release 0.5.0
+
+Published to npm on 2026-09-08 after browser confirmation. The registry verifier succeeded, and a new `bun add bsv-mcp@0.5.0` consumer install passed dashboard, tool-list and resource-list smoke tests over both 2025-11-25 and 2026-07-28. Source and plugin changes are on `master` at `d828b47`. The earlier no-publication statements above describe the initial 0.4.0 acceptance pass.
