@@ -10,6 +10,23 @@ export const PROJECT_TOOL_ROLES = [
 	"one-sat",
 ] as const;
 
+/**
+ * Baskets owned by the 1Sat asset module. Keep this set exact. Treating an
+ * arbitrary basket name as a payment basket would let a project selected for
+ * ordinary BSV spend an asset held by a different permission module.
+ */
+export const PROJECT_TOOL_ASSET_BASKETS = Object.freeze([
+	"1sat",
+	"bsv21",
+	"opns",
+	"lock",
+	"sigma",
+	"bsocial",
+	"bap",
+] as const);
+
+const projectToolAssetBaskets = new Set<string>(PROJECT_TOOL_ASSET_BASKETS);
+
 export type ProjectToolRole = (typeof PROJECT_TOOL_ROLES)[number];
 export type ProjectToolContextGroup =
 	| ProjectToolRole
@@ -150,6 +167,35 @@ for (const name of [
 	add(publicPolicy(name));
 }
 
+// The dashboard and its explorer, marketplace and source-address scan tools
+// only read public services. They do not select a wallet key.
+for (const name of [
+	"bsv_dashboard",
+	"app_explorer_data",
+	"app_ordinals_data",
+	"app_sweep_scan",
+] as const) {
+	add(publicPolicy(name));
+}
+
+// Sweep preparation selects roles from the requested asset type. Completion
+// receives only an opaque reference, so keep its wallet context explicit while
+// refusing Vault dispatch until that reference is trusted and role-bound.
+add(
+	policy("app_sweep_prepare", [], {
+		requiredContextGroups: ["wallet"],
+		vaultSupport: "conditional",
+	}),
+);
+add(
+	policy("app_sweep_complete", [], {
+		requiredContextGroups: ["wallet"],
+		vaultSupport: "unsupported",
+		unsupportedReason:
+			"Sweep completion is unavailable in Vault mode until its opaque reference is bound to a trusted sweep role.",
+	}),
+);
+
 // BRC-100 chain and version information is wallet RPC context, but it does
 // not select a project key role.
 for (const name of [
@@ -193,32 +239,55 @@ for (const name of [
 
 // Ordinary payment wallet operations.
 for (const name of [
-	"wallet_getAddress",
 	"wallet_getBalance",
-	"wallet_getLockData",
-	"wallet_lockBsv",
-	"wallet_unlockBsv",
 	"wallet_sendBsv",
 	"wallet_sendAllBsv",
-	"wallet_sweepBsv",
 	"wallet_createAction",
 	"wallet_signAction",
 	"wallet_abortAction",
 	"wallet_internalizeAction",
 	"wallet_listActions",
-	"mnee_getBalance",
-	"mnee_sendMnee",
 	"x402_payQuote",
 ] as const)
 	add(policy(name, ["payments"], { feeRole: "payments" }));
 
-// Syncing deposits can internalize BSV, Ordinals and BSV21 outputs, so it
-// requires the asset context as well as the account that owns fee inputs.
+// Address derivation uses the identity key as the sender identity and the
+// P1SAT/One Sat derivation for the deposit key. Refresh additionally rotates
+// plain-BSV deposits into the funding basket, which needs fee inputs.
+add(policy("wallet_getAddress", ["identity-signing", "one-sat"]));
 add(
-	policy("wallet_refreshUtxos", ["one-sat", "payments"], {
+	policy("wallet_refreshUtxos", ["identity-signing", "one-sat", "payments"], {
 		feeRole: "payments",
 	}),
 );
+
+add(policy("wallet_getLockData", ["one-sat"]));
+
+// Locking and unlocking are asset operations. Both read/write the lock basket
+// and create an action whose fee must come from the payment context.
+for (const name of ["wallet_lockBsv", "wallet_unlockBsv"] as const)
+	add(policy(name, ["one-sat", "payments"], { feeRole: "payments" }));
+
+// The app wallet panel combines the P1SAT deposit address with the default
+// payment-basket balance, so it needs all contexts used by those reads.
+add(
+	policy("app_wallet_data", ["identity-signing", "one-sat", "payments"], {
+		feeRole: "payments",
+	}),
+);
+
+// MNEE currently reads PRIVATE_KEY_WIF directly and cannot be bound to a
+// project Vault entry. Keep the payment requirement visible while rejecting
+// it from Vault mode rather than silently using a process-global key.
+for (const name of ["mnee_getBalance", "mnee_sendMnee"] as const)
+	add(
+		policy(name, ["payments"], {
+			feeRole: "payments",
+			vaultSupport: "unsupported",
+			unsupportedReason:
+				"MNEE tools use the legacy process key and are unavailable in Vault mode.",
+		}),
+	);
 
 // One Sat reads and asset ownership operations are separate from ordinary
 // BSV payments. Asset transactions also need a payment context for mining
@@ -242,6 +311,28 @@ for (const name of [
 	"wallet_createOrdinals",
 ] as const)
 	add(policy(name, ["one-sat", "payments"], { feeRole: "payments" }));
+
+// These sweep tools accept a raw external WIF. They cannot be bound to the
+// selected project's Vault account until an explicit external-key adapter is
+// implemented, but retain their spend and fee roles for callers that inspect
+// the route before the support check.
+add(
+	policy("wallet_sweepBsv", ["payments"], {
+		feeRole: "payments",
+		vaultSupport: "unsupported",
+		unsupportedReason:
+			"Raw-WIF BSV sweeps are unavailable in Vault mode until an external-key adapter is supported.",
+	}),
+);
+for (const name of ["wallet_sweepOrdinals", "wallet_sweepBsv21"] as const)
+	add(
+		policy(name, ["one-sat", "payments"], {
+			feeRole: "payments",
+			vaultSupport: "unsupported",
+			unsupportedReason:
+				"Raw-WIF asset sweeps are unavailable in Vault mode until an external-key adapter is supported.",
+		}),
+	);
 
 // These older collection handlers use the local Wallet class and cannot be
 // safely attached to a Vault WalletInterface without an explicit adapter.
@@ -304,11 +395,11 @@ add(
 	}),
 );
 add(
-	policy("bsocial_createPost", ["identity-signing", "payments"], {
+	policy("bsocial_createPost", ["payments"], {
 		feeRole: "payments",
 		vaultSupport: "unsupported",
 		unsupportedReason:
-			"The legacy social writer does not accept an explicitly selected identity signer.",
+			"The legacy social writer signs and funds with its process-local payment key.",
 	}),
 );
 
@@ -350,6 +441,27 @@ function parseJsonArgument(value: unknown, name: string): unknown {
 	}
 }
 
+function parseJsonArray(value: unknown, name: string): readonly unknown[] {
+	const parsed = parseJsonArgument(value, name);
+	if (!Array.isArray(parsed))
+		fail("PROJECT_TOOL_ARGUMENTS_INVALID", `${name} must contain an array`);
+	return parsed;
+}
+
+function parseLabelsJSON(
+	value: unknown,
+	name = "labelsJSON",
+): readonly string[] {
+	if (value === undefined) return [];
+	const labels = parseJsonArray(value, name);
+	if (!labels.every((label) => typeof label === "string"))
+		fail(
+			"PROJECT_TOOL_ARGUMENTS_INVALID",
+			`${name} must contain only label strings`,
+		);
+	return labels as readonly string[];
+}
+
 function rolePolicy(
 	toolName: string,
 	roles: readonly ProjectToolRole[],
@@ -364,9 +476,152 @@ function rolePolicy(
 }
 
 function assetBasket(value: unknown): boolean {
-	if (typeof value !== "string") return false;
-	return /(?:^|[-_.])(ordinals?|tokens?|bsv21|opns|inscriptions?)(?:$|[-_.])/i.test(
-		value,
+	return typeof value === "string" && projectToolAssetBaskets.has(value);
+}
+
+function assetLabel(value: string): boolean {
+	// Permission dispatch labels are `p <scheme> ...`. The seven schemes below
+	// are the complete asset set; a plain BSV label is not a dispatch label.
+	const match = /^p\s+([^\s]+)(?:\s|$)/.exec(value);
+	return match !== null && projectToolAssetBaskets.has(match[1] ?? "");
+}
+
+function unknownPermissionLabel(value: string): boolean {
+	return /^p\s+[^\s]+(?:\s|$)/.test(value) && !assetLabel(value);
+}
+
+function classifyLabels(labels: readonly string[]): {
+	hasAsset: boolean;
+	hasUnknown: boolean;
+} {
+	let hasAsset = false;
+	let hasUnknown = false;
+	for (const label of labels) {
+		if (assetLabel(label)) hasAsset = true;
+		else if (unknownPermissionLabel(label)) hasUnknown = true;
+	}
+	return { hasAsset, hasUnknown };
+}
+
+function classifyBasket(
+	value: unknown,
+): "payments" | "asset" | "unknown" | "none" {
+	if (value === undefined) return "none";
+	if (typeof value !== "string") return "unknown";
+	if (value === "default") return "payments";
+	if (assetBasket(value)) return "asset";
+	return "unknown";
+}
+
+function rolesForBasket(toolName: string, value: unknown): ProjectToolPolicy {
+	const kind = classifyBasket(value);
+	if (kind === "unknown")
+		fail(
+			"PROJECT_TOOL_ROLE_AMBIGUOUS",
+			`${toolName} cannot route unknown basket ownership; use the default basket or a known 1Sat asset basket`,
+		);
+	if (kind === "asset") return rolePolicy(toolName, ["one-sat"]);
+	return rolePolicy(toolName, ["payments"]);
+}
+
+function outputBaskets(
+	outputs: readonly unknown[],
+	name: string,
+): readonly unknown[] {
+	const baskets: unknown[] = [];
+	const pushBasket = (value: unknown) => {
+		// `undefined` is reserved for an output with no basket metadata. Once an
+		// output declares a basket field, a missing value is malformed and must
+		// not fall through to the payment route.
+		baskets.push(value === undefined ? null : value);
+	};
+	for (const output of outputs) {
+		if (output === null || typeof output !== "object" || Array.isArray(output))
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				`${name} must contain output objects`,
+			);
+		const record = output as Record<string, unknown>;
+		if ("basket" in record) {
+			pushBasket(record.basket);
+			continue;
+		}
+		const insertion = record.insertionRemittance;
+		if (
+			insertion !== null &&
+			typeof insertion === "object" &&
+			!Array.isArray(insertion) &&
+			"basket" in insertion
+		) {
+			pushBasket((insertion as Record<string, unknown>).basket);
+			continue;
+		}
+		// A BRC-100 payment output is identified by its protocol and has no
+		// basket field. An insertion without a basket cannot be safely routed.
+		if (record.protocol === "wallet payment") pushBasket("default");
+		else if (record.protocol === "basket insertion") pushBasket(null);
+	}
+	return baskets;
+}
+
+function actionPolicy(
+	toolName: string,
+	outputsJSON: unknown,
+	labelsJSON: unknown,
+	options: { requireOutputs?: boolean } = {},
+): ProjectToolPolicy {
+	let outputs: readonly unknown[] = [];
+	if (outputsJSON !== undefined || options.requireOutputs) {
+		if (outputsJSON === undefined)
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				`${toolName} requires outputsJSON`,
+			);
+		outputs = parseJsonArray(outputsJSON, "outputsJSON");
+	}
+	const labels = parseLabelsJSON(labelsJSON);
+	const labelKinds = classifyLabels(labels);
+	if (labelKinds.hasUnknown)
+		fail(
+			"PROJECT_TOOL_ROLE_AMBIGUOUS",
+			`${toolName} contains an unknown permission dispatch label`,
+		);
+	const baskets = outputBaskets(outputs, "outputsJSON");
+	let hasAsset = labelKinds.hasAsset;
+	let hasPayments = false;
+	for (const basket of baskets) {
+		const kind = classifyBasket(basket);
+		if (kind === "unknown")
+			fail(
+				"PROJECT_TOOL_ROLE_AMBIGUOUS",
+				`${toolName} cannot route unknown basket ownership; use the default basket or a known 1Sat asset basket`,
+			);
+		if (kind === "asset") hasAsset = true;
+		if (kind === "payments") hasPayments = true;
+	}
+	// A create/internalize operation with no explicit basket is a regular BSV
+	// action unless a known asset dispatch label selected the asset module.
+	if (hasAsset && (toolName === "wallet_createAction" || hasPayments))
+		return rolePolicy(toolName, ["one-sat", "payments"]);
+	if (hasAsset) return rolePolicy(toolName, ["one-sat"]);
+	return rolePolicy(toolName, ["payments"]);
+}
+
+function rolesForSweepType(
+	toolName: string,
+	sweepType: unknown,
+): ProjectToolPolicy {
+	if (typeof sweepType !== "string")
+		fail(
+			"PROJECT_TOOL_ARGUMENTS_INVALID",
+			`${toolName} requires sweepType to be bsv, ordinals, or bsv21`,
+		);
+	if (sweepType === "bsv") return rolePolicy(toolName, ["payments"]);
+	if (sweepType === "ordinals" || sweepType === "bsv21")
+		return rolePolicy(toolName, ["one-sat", "payments"]);
+	fail(
+		"PROJECT_TOOL_ARGUMENTS_INVALID",
+		`${toolName} received an unsupported sweepType`,
 	);
 }
 
@@ -374,21 +629,58 @@ function dynamicPolicy(toolName: string, rawArgs: unknown): ProjectToolPolicy {
 	const args = objectArgs(rawArgs);
 
 	if (toolName === "wallet_getPublicKey") {
+		if (args.identityKey !== undefined && typeof args.identityKey !== "boolean")
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				"wallet_getPublicKey identityKey must be boolean",
+			);
 		if (args.identityKey === true)
 			return rolePolicy(toolName, ["identity-signing"]);
+		if (args.protocolIDJSON !== undefined) {
+			if (typeof args.protocolIDJSON !== "string")
+				fail(
+					"PROJECT_TOOL_ARGUMENTS_INVALID",
+					"wallet_getPublicKey protocolIDJSON must be JSON text",
+				);
+			const protocol = parseJsonArray(args.protocolIDJSON, "protocolIDJSON");
+			if (
+				protocol.length !== 2 ||
+				!Number.isInteger(protocol[0]) ||
+				typeof protocol[1] !== "string"
+			)
+				fail(
+					"PROJECT_TOOL_ARGUMENTS_INVALID",
+					"wallet_getPublicKey protocolIDJSON must contain [securityLevel, protocol]",
+				);
+			const protocolName = protocol[1];
+			if (protocolName === "onesat" || protocolName === "1sat")
+				return rolePolicy(toolName, ["one-sat"]);
+			if (protocolName === "sigma" || protocolName === "message signing")
+				return rolePolicy(toolName, ["identity-signing"]);
+		}
 		fail(
 			"PROJECT_TOOL_ROLE_AMBIGUOUS",
-			"wallet_getPublicKey requires identityKey:true or a separately selected derivation role; it never uses payments by default",
+			"wallet_getPublicKey requires identityKey:true or a recognized identity/One Sat protocol; it never uses payments by default",
 		);
 	}
 
 	if (toolName === "bap_getId") {
-		return args.idKey === undefined || args.idKey === ""
-			? rolePolicy(toolName, ["identity-signing"])
-			: publicPolicy(toolName);
+		if (args.idKey === undefined || args.idKey === "")
+			return rolePolicy(toolName, ["identity-signing"]);
+		if (typeof args.idKey !== "string")
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				"bap_getId idKey must be a string",
+			);
+		return publicPolicy(toolName);
 	}
 
 	if (toolName === "wallet_createOrdinals") {
+		if (args.signWithBAP !== undefined && typeof args.signWithBAP !== "boolean")
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				"wallet_createOrdinals signWithBAP must be boolean",
+			);
 		return args.signWithBAP === true
 			? rolePolicy(toolName, ["one-sat", "payments", "identity-signing"])
 			: rolePolicy(toolName, ["one-sat", "payments"]);
@@ -398,49 +690,60 @@ function dynamicPolicy(toolName: string, rawArgs: unknown): ProjectToolPolicy {
 		toolName === "wallet_listOutputs" ||
 		toolName === "wallet_relinquishOutput"
 	) {
-		if (typeof args.basket !== "string" || args.basket.length === 0)
+		if (args.basket === undefined)
 			fail(
 				"PROJECT_TOOL_ROLE_AMBIGUOUS",
 				`${toolName} requires an explicit basket so asset ownership cannot be routed to payments`,
 			);
-		return assetBasket(args.basket)
-			? rolePolicy(toolName, ["one-sat", "payments"])
+		if (typeof args.basket !== "string")
+			fail(
+				"PROJECT_TOOL_ARGUMENTS_INVALID",
+				`${toolName} basket must be a string`,
+			);
+		if (args.basket.length === 0)
+			fail(
+				"PROJECT_TOOL_ROLE_AMBIGUOUS",
+				`${toolName} requires a non-empty basket`,
+			);
+		return rolesForBasket(toolName, args.basket);
+	}
+
+	if (toolName === "wallet_createAction")
+		return actionPolicy(toolName, args.outputsJSON, args.labelsJSON);
+
+	if (toolName === "wallet_internalizeAction")
+		return actionPolicy(toolName, args.outputsJSON, args.labelsJSON, {
+			requireOutputs: true,
+		});
+
+	if (toolName === "wallet_listActions") {
+		const labels = parseLabelsJSON(args.labelsJSON);
+		const kind = classifyLabels(labels);
+		if (kind.hasUnknown)
+			fail(
+				"PROJECT_TOOL_ROLE_AMBIGUOUS",
+				"wallet_listActions contains an unknown permission dispatch label",
+			);
+		return kind.hasAsset
+			? rolePolicy(toolName, ["one-sat"])
 			: rolePolicy(toolName, ["payments"]);
 	}
 
-	if (
-		toolName === "wallet_createAction" ||
-		toolName === "wallet_internalizeAction"
-	) {
-		const encoded =
-			toolName === "wallet_createAction" ? args.outputsJSON : args.outputsJSON;
-		if (encoded === undefined) return rolePolicy(toolName, ["payments"]);
-		const outputs = parseJsonArgument(encoded, "outputsJSON");
-		if (!Array.isArray(outputs))
-			fail(
-				"PROJECT_TOOL_ARGUMENTS_INVALID",
-				"outputsJSON must contain an array",
-			);
-		const baskets = outputs
-			.filter(
-				(output): output is Record<string, unknown> =>
-					output !== null &&
-					typeof output === "object" &&
-					!Array.isArray(output),
-			)
-			.map((output) => output.basket);
-		if (baskets.some(assetBasket))
-			return rolePolicy(toolName, ["one-sat", "payments"]);
-		if (
-			baskets.some(
-				(basket) => basket !== undefined && typeof basket !== "string",
-			)
-		)
-			fail(
-				"PROJECT_TOOL_ROLE_AMBIGUOUS",
-				"Every asset basket must be explicit",
-			);
-		return rolePolicy(toolName, ["payments"]);
+	if (toolName === "app_sweep_prepare")
+		return rolesForSweepType(toolName, args.sweepType);
+
+	if (toolName === "app_sweep_complete") {
+		// The opaque reference carries the prepared sweep's role internally. This
+		// resolver cannot safely infer that role from `spends`, and the registered
+		// schema intentionally has no sweepType argument. Keep the wallet context
+		// visible while rejecting Vault dispatch until trusted reference metadata
+		// is available.
+		return policy(toolName, [], {
+			requiredContextGroups: ["wallet"],
+			vaultSupport: "unsupported",
+			unsupportedReason:
+				"Sweep completion is unavailable in Vault mode until its opaque reference is bound to a trusted sweep role.",
+		});
 	}
 
 	if (
@@ -505,10 +808,16 @@ export function assertProjectToolAccounts(
 	policyValue: ProjectToolPolicy,
 	accounts: ProjectToolAccounts,
 ): Readonly<Partial<Record<ProjectToolRole, string>>> {
+	if (
+		accounts === null ||
+		typeof accounts !== "object" ||
+		Array.isArray(accounts)
+	)
+		fail("PROJECT_TOOL_ACCOUNTS_INVALID", "Role accounts must be an object");
 	const resolved = {} as Record<ProjectToolRole, string>;
 	for (const role of policyValue.requiredRoles) {
 		const accountId = accounts[role];
-		if (typeof accountId !== "string" || accountId.length === 0)
+		if (typeof accountId !== "string" || accountId.trim().length === 0)
 			fail(
 				"PROJECT_TOOL_ROLE_UNASSIGNED",
 				`${policyValue.toolName} requires an assigned ${role} role`,
@@ -550,10 +859,24 @@ export function assertProjectToolSession(
 	currentRevision: number,
 	expectedProjectId?: string,
 ): Readonly<Partial<Record<ProjectToolRole, string>>> {
+	if (session === null || typeof session !== "object" || Array.isArray(session))
+		fail("PROJECT_TOOL_SESSION_INVALID", "Role session must be an object");
 	if (!Number.isSafeInteger(currentRevision) || currentRevision < 0)
 		fail("PROJECT_TOOL_SESSION_INVALID", "Current role revision is invalid");
-	if (typeof session.projectId !== "string" || session.projectId.length === 0)
+	if (
+		typeof session.projectId !== "string" ||
+		session.projectId.trim().length === 0
+	)
 		fail("PROJECT_TOOL_SESSION_INVALID", "Role session project ID is required");
+	if (
+		session.roles === null ||
+		typeof session.roles !== "object" ||
+		Array.isArray(session.roles)
+	)
+		fail(
+			"PROJECT_TOOL_SESSION_INVALID",
+			"Role session roles must be an object",
+		);
 	if (
 		expectedProjectId !== undefined &&
 		session.projectId !== expectedProjectId
@@ -573,7 +896,27 @@ export function assertProjectToolSession(
 	const accounts = {} as Record<ProjectToolRole, string | undefined>;
 	for (const role of policyValue.requiredRoles) {
 		const entry = session.roles[role];
-		if (!entry || entry.revision !== currentRevision)
+		if (entry === undefined || entry === null)
+			fail(
+				"PROJECT_TOOL_SESSION_REFRESH_REQUIRED",
+				`${policyValue.toolName} requires a current ${role} role snapshot`,
+			);
+		if (typeof entry !== "object" || Array.isArray(entry))
+			fail(
+				"PROJECT_TOOL_SESSION_INVALID",
+				`${policyValue.toolName} has an invalid ${role} role snapshot`,
+			);
+		if (
+			typeof entry.accountId !== "string" ||
+			entry.accountId.trim().length === 0 ||
+			!Number.isSafeInteger(entry.revision) ||
+			entry.revision < 0
+		)
+			fail(
+				"PROJECT_TOOL_SESSION_INVALID",
+				`${policyValue.toolName} has an invalid ${role} role snapshot`,
+			);
+		if (entry.revision !== currentRevision)
 			fail(
 				"PROJECT_TOOL_SESSION_REFRESH_REQUIRED",
 				`${policyValue.toolName} requires a current ${role} role snapshot`,
