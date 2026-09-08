@@ -15,7 +15,7 @@ function setup() {
 			projectId: "project",
 			revision: 1,
 			bindingId: "payment",
-			accountId: "account",
+			accountId: "test",
 			vaultId: "vault",
 			entryId: "entry",
 			expectedPublicKey: key.toPublicKey().toString(),
@@ -57,6 +57,17 @@ function setup() {
 }
 
 describe("Vault wallet session", () => {
+	it("rejects a different account before unlocking or opening its database", async () => {
+		const f = setup();
+		f.selection.accountName = "another-account";
+		await expect(
+			openVaultWalletSession(f.selection, "pass", f),
+		).rejects.toMatchObject({
+			code: "INVALID_SELECTION",
+		});
+		expect(f.openVault).not.toHaveBeenCalled();
+		expect(f.initializeWallet).not.toHaveBeenCalled();
+	});
 	it("aborts an initializer at expiry and disposes its late result", async () => {
 		const f = setup();
 		f.selection.ttlSeconds = 1;

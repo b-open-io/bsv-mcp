@@ -160,6 +160,7 @@ export async function openVaultWalletSession(
 	const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
 	if (
 		!parsed.success ||
+		parsed.data.accountId !== selection.accountName ||
 		!isAbsolute(selection.vaultPath) ||
 		!accountNameSchema.safeParse(selection.accountName).success ||
 		!["main", "test"].includes(selection.chain) ||
