@@ -115,3 +115,23 @@ assertions across 99 files). TypeScript, scoped lint, and production bundles
 passed. The package contains 12 files (12,669,087 unpacked bytes). The verified
 server bundle SHA-256 is
 `4794a76236b5122ba6930eafcdd3f3bc73adcc48e7f58e1405c1c2bc8e6e7ef4`.
+
+### Clean dependency installation
+
+A fresh consumer install exposed Bun 1.4.0 trying to resolve the source
+manifest's patch declarations in the consumer directory. Including patch files
+in the tarball did not resolve it. `bun run pack:release <existing-directory>`
+now builds and stages a separate release manifest without source-only patches,
+scripts, development dependencies, or the TypeScript peer dependency. The
+compiled server retains the patched wallet behavior. Use this tarball for release.
+
+The staged tarball installed into a fresh directory with Bun (257 packages).
+Its installed server passed the real stdio MCP check: 69 external-wallet tools,
+root identity read, the funded SIGMA inscription returned by wallet_getOrdinals,
+and the dashboard response. Its installed local launcher also passed --help.
+An earlier tarball installed with npm (294 packages) and passed the same stdio
+reads. These tests used no checkout dependency symlink for the installed server;
+the read-only signer fixture and MCP test client still used checkout dependencies.
+No additional transactions were created. TypeScript and the production build
+passed after the packaging change. Desktop-host reconnect acceptance remains
+outstanding; nothing has been published to npm.

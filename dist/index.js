@@ -25848,6 +25848,7 @@ var init_package = __esm(() => {
       lint: "biome check .",
       "lint:fix": "biome check . --write",
       prepack: "bun run build:all",
+      "pack:release": "bun run scripts/pack-release.ts",
       "tools:manifest": "bun run ./scripts/generate-tool-manifest.ts"
     },
     patchedDependencies: {

@@ -4,6 +4,9 @@
 
 ### Added
 
+- Build release tarballs with a separate consumer manifest so Bun installs
+  do not try to resolve checkout-only wallet patches.
+
 - Use separate identity and ordinals wallets for SIGMA-signed inscriptions
   through the existing 1Sat SDK local pipeline.
 
