@@ -1,5 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { MigrationSource } from "../../../utils/vaultMigration";
+import type { AvailableSetupTool } from "../../../utils/vaultSetup";
+import { AvailableTools } from "../components/AvailableTools";
 import {
 	Button,
 	LocalShell,
@@ -33,6 +35,7 @@ export function ExistingWallet({
 	const [pending, setPending] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
+	const [tools, setTools] = useState<AvailableSetupTool[]>();
 	useEffect(() => {
 		if (!token) return;
 		fetch("/api/inventory", { headers: { Authorization: `Bearer ${token}` } })
@@ -113,6 +116,7 @@ export function ExistingWallet({
 			setSourcePassphrase("");
 			setDestinationPassphrase("");
 			setPasswordConfirmation("");
+			setTools(value.tools);
 			setReady(true);
 		} catch (reason) {
 			setError(
@@ -145,11 +149,14 @@ export function ExistingWallet({
 			/>
 			{error && <Notice tone="error">{error}</Notice>}
 			{ready ? (
-				<Notice tone="success">
-					{standalone
-						? "Open wallet setup in your MCP client to unlock and use your saved wallet."
-						: "Return to your MCP client to use your wallet."}
-				</Notice>
+				<>
+					<Notice tone="success">
+						{standalone
+							? "Open wallet setup in your MCP client to unlock and use your saved wallet."
+							: "Return to your MCP client to use your wallet."}
+					</Notice>
+					{!standalone && <AvailableTools tools={tools} />}
+				</>
 			) : !source && !file ? (
 				<Surface>
 					<div className="surface-body">

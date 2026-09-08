@@ -295975,8 +295975,14 @@ function createEmbeddedSetupActions(options) {
       await result.destroy();
       throw new Error("Your wallet is saved, but could not be connected. Reopen setup to unlock it.");
     }
+    const tools = options.getAvailableTools?.();
     completed = true;
-    return { accountName, address: result.depositAddress, ready: true };
+    return {
+      accountName,
+      address: result.depositAddress,
+      ready: true,
+      ...tools ? { tools } : {}
+    };
   }
   return {
     create: (body) => exclusive(async () => {
@@ -299124,6 +299130,9 @@ import { readFile as readFile5 } from "node:fs/promises";
 import { homedir as homedir8 } from "node:os";
 import path4, { dirname as dirname7, join as join18 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
+function getConfiguredTools(server) {
+  return configuredTools.get(server)?.() ?? [];
+}
 function createConfiguredServer(opts) {
   const nativeServer = new McpServer({ name: package_default.name, version: package_default.version }, {
     supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
@@ -299144,6 +299153,7 @@ function createConfiguredServer(opts) {
   });
   const policyServer = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
   const registrations = [];
+  const toolRegistrations = [];
   const srv = new Proxy(policyServer, {
     get(target, property, receiver) {
       if (!["registerTool", "registerResource", "registerPrompt"].includes(String(property)))
@@ -299152,6 +299162,11 @@ function createConfiguredServer(opts) {
         const method = Reflect.get(target, property);
         const registration = Reflect.apply(method, target, args);
         registrations.push(registration);
+        if (property === "registerTool")
+          toolRegistrations.push({
+            name: String(args[0]),
+            tool: registration
+          });
         return registration;
       };
     }
@@ -299171,10 +299186,16 @@ function createConfiguredServer(opts) {
     if (opts.loadResources)
       registerResources(srv);
   };
+  configuredTools.set(srv, () => toolRegistrations.filter(({ tool }) => tool.enabled).map(({ name, tool }) => ({
+    name,
+    title: tool.title,
+    description: tool.description
+  })).sort((a, b) => a.name.localeCompare(b.name)));
   registerCatalog(opts);
   refreshConfiguredCatalog.set(srv, (nextOptions) => {
     for (const registration of registrations.splice(0))
       registration.remove();
+    toolRegistrations.length = 0;
     registerCatalog(nextOptions);
     srv.sendToolListChanged();
   });
@@ -299966,6 +299987,7 @@ Authentication:
     effectiveConfig.disableBroadcasting = true;
     openWalletSetup = createWalletSetupLauncher({
       embeddedActions: createEmbeddedSetupActions({
+        getAvailableTools: () => server ? getConfiguredTools(server) : [],
         vaultPath: process.env.VAULT_PATH ?? join18(homedir8(), ".bsv", "vault.bep"),
         onActivated: async (result, selectedAccountName) => {
           const refresh = server ? refreshConfiguredCatalog.get(server) : undefined;
@@ -300453,7 +300475,7 @@ ${error.stack}`);
     logFunc2("  OAuth Discovery: /.well-known/oauth-protected-resource");
   }
 }
-var server, refreshConfiguredCatalog, CONFIG, SUPPORTED_MCP_PROTOCOL_VERSIONS, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
+var server, refreshConfiguredCatalog, configuredTools, CONFIG, SUPPORTED_MCP_PROTOCOL_VERSIONS, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
 var init_server2 = __esm(() => {
   init_stdioGuard();
   init_server();
@@ -300483,6 +300505,7 @@ var init_server2 = __esm(() => {
   init_walletInit();
   init_walletOnboarding();
   refreshConfiguredCatalog = new WeakMap;
+  configuredTools = new WeakMap;
   CONFIG = {
     loadPrompts: process.env.DISABLE_PROMPTS !== "true",
     loadResources: process.env.DISABLE_RESOURCES !== "true",

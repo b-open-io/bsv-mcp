@@ -134,6 +134,14 @@ const refreshConfiguredCatalog = new WeakMap<
 	(options: ServerFactoryOptions) => void
 >();
 
+type SetupTool = { name: string; title?: string; description?: string };
+const configuredTools = new WeakMap<McpServer, () => SetupTool[]>();
+
+/** Public metadata from the same enabled registrations exposed by tools/list. */
+export function getConfiguredTools(server: McpServer): SetupTool[] {
+	return configuredTools.get(server)?.() ?? [];
+}
+
 export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 	const nativeServer = new McpServer(
 		{ name: packageJson.name, version: packageJson.version },
@@ -157,6 +165,10 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 	);
 	const policyServer = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
 	const registrations: Array<{ remove(): void }> = [];
+	const toolRegistrations: Array<{
+		name: string;
+		tool: { enabled: boolean; title?: string; description?: string };
+	}> = [];
 	const srv = new Proxy(policyServer, {
 		get(target, property, receiver) {
 			if (
@@ -171,6 +183,13 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 					remove(): void;
 				};
 				registrations.push(registration);
+				if (property === "registerTool")
+					toolRegistrations.push({
+						name: String(args[0]),
+						tool: registration as (typeof toolRegistrations)[number]["tool"] & {
+							remove(): void;
+						},
+					});
 				return registration;
 			};
 		},
@@ -191,9 +210,20 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 		void opts.loadPrompts;
 		if (opts.loadResources) registerResources(srv);
 	};
+	configuredTools.set(srv, () =>
+		toolRegistrations
+			.filter(({ tool }) => tool.enabled)
+			.map(({ name, tool }) => ({
+				name,
+				title: tool.title,
+				description: tool.description,
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name)),
+	);
 	registerCatalog(opts);
 	refreshConfiguredCatalog.set(srv, (nextOptions) => {
 		for (const registration of registrations.splice(0)) registration.remove();
+		toolRegistrations.length = 0;
 		registerCatalog(nextOptions);
 		srv.sendToolListChanged();
 	});
@@ -1369,6 +1399,7 @@ Authentication:
 		effectiveConfig.disableBroadcasting = true;
 		openWalletSetup = createWalletSetupLauncher({
 			embeddedActions: createEmbeddedSetupActions({
+				getAvailableTools: () => (server ? getConfiguredTools(server) : []),
 				vaultPath:
 					process.env.VAULT_PATH ?? join(homedir(), ".bsv", "vault.bep"),
 				onActivated: async (result, selectedAccountName) => {

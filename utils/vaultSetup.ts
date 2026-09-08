@@ -25,16 +25,30 @@ function unavailableMigrationBackend(): VaultMigrationBackend {
 	};
 }
 
+export type AvailableSetupTool = {
+	name: string;
+	title?: string;
+	description?: string;
+};
 export interface EmbeddedSetupActions {
-	unlock?(
-		body: Record<string, unknown>,
-	): Promise<{ accountName: string; address: string; ready: boolean }>;
-	create(
-		body: Record<string, unknown>,
-	): Promise<{ accountName: string; address: string; ready: boolean }>;
-	import(
-		body: Record<string, unknown>,
-	): Promise<{ accountName: string; address: string; ready: boolean }>;
+	unlock?(body: Record<string, unknown>): Promise<{
+		accountName: string;
+		address: string;
+		ready: boolean;
+		tools?: AvailableSetupTool[];
+	}>;
+	create(body: Record<string, unknown>): Promise<{
+		accountName: string;
+		address: string;
+		ready: boolean;
+		tools?: AvailableSetupTool[];
+	}>;
+	import(body: Record<string, unknown>): Promise<{
+		accountName: string;
+		address: string;
+		ready: boolean;
+		tools?: AvailableSetupTool[];
+	}>;
 }
 
 /** Local setup flow. Inventory is read-only; cutover requires an explicit backend. */

@@ -1,4 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
+import type { AvailableSetupTool } from "../../../utils/vaultSetup";
+import { AvailableTools } from "../components/AvailableTools";
 import {
 	Button,
 	LocalShell,
@@ -26,6 +28,7 @@ export function FirstRun({
 	const [confirmation, setConfirmation] = useState("");
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState("");
+	const [tools, setTools] = useState<AvailableSetupTool[]>();
 	const [vaultExists, setVaultExists] = useState(false);
 	const [created, setCreated] = useState(false);
 	useEffect(() => {
@@ -120,6 +123,7 @@ export function FirstRun({
 				throw new Error(
 					"Your wallet was saved, but could not be activated. Reopen setup to unlock it.",
 				);
+			setTools(value.tools);
 			setCreated(true);
 		} catch (reason) {
 			setError(
@@ -189,11 +193,14 @@ export function FirstRun({
 				}
 			/>
 			{created ? (
-				<Notice tone="success">
-					{standalone
-						? "Open wallet setup in your MCP client to unlock and use your saved wallet."
-						: "Your wallet is ready to use. Return to your MCP client to continue."}
-				</Notice>
+				<>
+					<Notice tone="success">
+						{standalone
+							? "Open wallet setup in your MCP client to unlock and use your saved wallet."
+							: "Your wallet is ready to use. Return to your MCP client to continue."}
+					</Notice>
+					{!standalone && <AvailableTools tools={tools} />}
+				</>
 			) : choice === "welcome" ? (
 				<div className="setup-choices">
 					{boundAccounts.map((account) => (

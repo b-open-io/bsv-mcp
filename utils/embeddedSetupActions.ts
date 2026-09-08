@@ -3,7 +3,7 @@ import { accountNameSchema, readAccount } from "./accounts";
 import { createEmbeddedFirstRunBackend } from "./embeddedFirstRunBackend";
 import { createEmbeddedImportBackend } from "./embeddedImportBackend";
 import { createEmbeddedWalletActivation } from "./embeddedWalletActivation";
-import type { EmbeddedSetupActions } from "./vaultSetup";
+import type { AvailableSetupTool, EmbeddedSetupActions } from "./vaultSetup";
 import type { WalletInitResult } from "./walletInit";
 
 const createInput = z.object({
@@ -43,6 +43,7 @@ const importInput = z.object({
 export function createEmbeddedSetupActions(options: {
 	vaultPath: string;
 	onActivated: (result: WalletInitResult, accountName: string) => Promise<void>;
+	getAvailableTools?: () => AvailableSetupTool[];
 }): EmbeddedSetupActions {
 	const creator = createEmbeddedFirstRunBackend({
 		vaultPath: options.vaultPath,
@@ -90,8 +91,14 @@ export function createEmbeddedSetupActions(options: {
 				"Your wallet is saved, but could not be connected. Reopen setup to unlock it.",
 			);
 		}
+		const tools = options.getAvailableTools?.();
 		completed = true;
-		return { accountName, address: result.depositAddress, ready: true };
+		return {
+			accountName,
+			address: result.depositAddress,
+			ready: true,
+			...(tools ? { tools } : {}),
+		};
 	}
 	return {
 		create: (body) =>
