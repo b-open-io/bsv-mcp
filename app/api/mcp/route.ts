@@ -1,5 +1,5 @@
 import { PrivateKey } from "@bsv/sdk";
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { verifyHostedToken } from "@/lib/hosted-auth";
 import { RESOURCE_METADATA_PATH } from "@/lib/oauth-metadata";
@@ -72,15 +72,14 @@ const handler = createMcpHandler(
 		console.error(`Identity key: ${identityPk ? "present" : "missing"}`);
 	},
 	{
+		serverInfo: {
+			name: "bsv-mcp",
+			version: "1.0.0",
+		},
 		capabilities: {
 			tools: {},
 		},
-	},
-	{
-		basePath: "/api",
 		verboseLogs: true,
-		maxDuration: 300, // 5 minutes for Pro accounts
-		disableSse: false, // Enable SSE for streaming
 	},
 );
 
