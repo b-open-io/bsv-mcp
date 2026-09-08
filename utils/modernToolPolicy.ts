@@ -46,6 +46,7 @@ export const MODERN_READ_TOOL_ALLOWLIST: readonly string[] = Object.freeze([
 	"ordinals_marketSales",
 	"ordinals_searchInscriptions",
 	"utils_convertData",
+	"utils_find_skills",
 	"wallet_getAddress",
 	"wallet_getBalance",
 	"wallet_getBsv21Balances",

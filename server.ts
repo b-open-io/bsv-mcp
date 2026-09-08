@@ -1204,7 +1204,7 @@ Authentication:
 			? "An explicit project Vault role is selected; local account migration is not applicable."
 			: externalWallet
 				? "An external signer is selected; local key migration is not applicable."
-				: "No legacy key source was detected. Vault migration is still pending.",
+				: "No legacy key source was detected. Use local wallet setup to create or unlock a Vault wallet.",
 	};
 	if (!externalWallet && !projectRuntime) {
 		try {
@@ -1218,12 +1218,12 @@ Authentication:
 					identity: migration.environmentKeys.identity,
 				},
 				nextStep: migration.migrationRequired
-					? "Run bsv-mcp vault-setup locally to inspect the detected source. Import into Vault is not enabled yet."
-					: "No legacy key source was detected. Vault migration is still pending.",
+					? "Run bsv-mcp vault-setup locally to review and import a detected source into Vault. If wallet_onboarding is available, it opens setup for this MCP session."
+					: "No legacy key source was detected. Use local wallet setup to create or unlock a Vault wallet.",
 			};
 			if (migration.migrationRequired) {
 				logFunc(
-					"\x1b[33mWARN: Vault migration is pending. Run bsv-mcp vault-setup locally for a read-only inventory; import remains unavailable until Vault integration is enabled.\x1b[0m",
+					"\x1b[33mWARN: Legacy wallet sources were detected. Run bsv-mcp vault-setup locally to review and import them into Vault.\x1b[0m",
 				);
 			}
 		} catch {

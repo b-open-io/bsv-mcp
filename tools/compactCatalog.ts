@@ -82,7 +82,7 @@ export const COMPACT_OPERATION_LEGACY_NAMES = {
 		"wallet_isAuthenticated",
 		"wallet_waitForAuthentication",
 	],
-	utility: ["utils_convertData"],
+	utility: ["utils_convertData", "utils_find_skills"],
 	wallet_setup: ["wallet_onboarding"],
 } as const;
 
@@ -381,8 +381,11 @@ export function buildCompactFamilies(config: ToolsConfig): CompactFamily[] {
 		families.push(
 			readOnlyFamily(
 				"utility",
-				"Read-only data conversion operation. Select operation and pass that operation's arguments in args.",
-				operationsFromCaptures(captured.utility, ["utils_convertData"]),
+				"Read-only data conversion and skill discovery operations. Select operation and pass that operation's arguments in args.",
+				operationsFromCaptures(captured.utility, [
+					"utils_convertData",
+					"utils_find_skills",
+				]),
 			),
 		);
 	}

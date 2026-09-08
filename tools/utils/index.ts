@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { convertData } from "./conversion";
+import { registerFindSkillsTool } from "./findSkills";
 import { installAgentMasterTool } from "./installAgentMaster";
 
 const encodingSchema = z.enum(["utf8", "hex", "base64", "binary"]);
@@ -104,6 +105,9 @@ export function registerUtilsTools(server: McpServer): void {
 			}
 		},
 	);
+
+	// Register skill discovery tool (bounded metadata-only bridge)
+	registerFindSkillsTool(server);
 }
 
 export * from "./aip";

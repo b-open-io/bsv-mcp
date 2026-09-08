@@ -17,6 +17,6 @@ Verified September 8, 2026 against the bundled executable in the canonical check
 | Start with a selected encrypted account | Opened the migration wizard; imported into a fresh Vault and enabled an MCP address read. |
 | Standalone vault-setup command | Created the account and displayed the correct instruction to unlock through the MCP client setup. |
 
-These checks establish local setup, import, persistence, and MCP activation. They do not establish funded transaction execution or remote storage availability. Four opt-in real-Vault project-profile tests remain skipped; those cover the separate project-profile flow.
+These checks establish local setup, import, persistence, and MCP activation. They do not establish funded transaction execution or remote storage availability. Four real-Vault project-profile tests are opt-in and remain skipped in the default suite. They were also run separately against the installed Vault package: all four passed, with 47 assertions, using synthetic fixtures.
 
 Final automated validation: 584 tests passed, 4 opt-in tests skipped, 0 failures across 84 files (3,176 assertions). TypeScript and production bundle builds passed. The canonical test helpers now isolate subprocess working directories and restore wallet environment variables so local checkout settings do not interfere with synthetic tests.

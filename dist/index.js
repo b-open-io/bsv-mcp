@@ -74751,7 +74751,7 @@ function registerStatusTool(server, config) {
       security: {
         vaultMigration,
         ...vaultMigration.required ? {
-          warning: "Vault migration is pending. Use vault-setup for a read-only inventory; import remains unavailable until Vault integration is enabled."
+          warning: "Legacy wallet sources were detected. Use local wallet setup to review and import them into Vault. Imported source backups may remain on disk."
         } : {}
       },
       wallet: {
@@ -75032,6 +75032,338 @@ var init_conversion = __esm(() => {
     toUTF8: bsvToUTF8
   } = exports_utils);
   encodingSchema = _enum(["utf8", "hex", "base64", "binary"]);
+});
+
+// tools/utils/toolRegistration.ts
+function registerTool(server, config) {
+  server.registerTool(config.name, {
+    description: config.description,
+    inputSchema: config.schema,
+    annotations: config.annotations
+  }, async (args, ctx) => {
+    try {
+      return await config.handler(args, ctx);
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ],
+        isError: true
+      };
+    }
+  });
+}
+
+// tools/utils/findSkills.ts
+function unavailable(reason) {
+  return new Error(`skill-discovery-unavailable: ${reason}`);
+}
+function isAllowedSkillUrl(url) {
+  if (url.length < 1 || url.length > MAX_URL_LENGTH)
+    return false;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:")
+    return false;
+  if (parsed.hostname !== "raw.githubusercontent.com")
+    return false;
+  if (parsed.username !== "" || parsed.password !== "")
+    return false;
+  const authority = url.slice(url.indexOf("://") + 3).split("/", 1)[0];
+  if (authority !== "raw.githubusercontent.com")
+    return false;
+  if (parsed.search !== "" || parsed.hash !== "")
+    return false;
+  return SKILL_URL_PATH.test(parsed.pathname);
+}
+function isBoundedString(value, maxLength) {
+  return typeof value === "string" && value.length >= 1 && value.length <= maxLength;
+}
+function normalizeEntry(entry) {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    return null;
+  }
+  const record = entry;
+  if (record.type !== "skill-md") {
+    return null;
+  }
+  if (!isBoundedString(record.id, MAX_ID_LENGTH) || !isBoundedString(record.name, MAX_NAME_LENGTH) || !isBoundedString(record.description, MAX_DESCRIPTION_LENGTH) || !isBoundedString(record.plugin, MAX_PLUGIN_LENGTH) || !isBoundedString(record.version, MAX_VERSION_LENGTH) || !isBoundedString(record.url, MAX_URL_LENGTH) || !isAllowedSkillUrl(record.url)) {
+    return null;
+  }
+  return {
+    id: record.id,
+    name: record.name,
+    description: record.description,
+    plugin: record.plugin,
+    version: record.version,
+    url: record.url
+  };
+}
+function normalizeCatalog(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw unavailable("malformed index");
+  }
+  const record = value;
+  if (record.$schema !== EXPECTED_INDEX_SCHEMA) {
+    throw unavailable("malformed index");
+  }
+  if (!Array.isArray(record.skills) || record.skills.length > MAX_SKILLS) {
+    throw unavailable("malformed index");
+  }
+  const skills = [];
+  for (const entry of record.skills) {
+    const skill = normalizeEntry(entry);
+    if (skill)
+      skills.push(skill);
+  }
+  return skills;
+}
+function tokenize(text) {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 0);
+}
+function scoreSkill(skill, lowerQuery, queryTokens) {
+  const name = skill.name.toLowerCase();
+  const id = skill.id.toLowerCase();
+  const description = skill.description.toLowerCase();
+  for (const token of queryTokens) {
+    if (!name.includes(token) && !id.includes(token) && !description.includes(token)) {
+      return null;
+    }
+  }
+  let score = 0;
+  if (name === lowerQuery || id === lowerQuery)
+    score += 100;
+  const nameTokens = new Set(tokenize(skill.name));
+  const idTokens = new Set(tokenize(skill.id));
+  for (const token of queryTokens) {
+    if (nameTokens.has(token))
+      score += 10;
+    else if (name.includes(token))
+      score += 5;
+    if (idTokens.has(token))
+      score += 8;
+    else if (id.includes(token))
+      score += 4;
+    if (description.includes(token))
+      score += 1;
+  }
+  return score;
+}
+function matchSkills(skills, query, limit) {
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0)
+    return [];
+  const lowerQuery = query.trim().toLowerCase();
+  const scored = [];
+  for (const skill of skills) {
+    const score = scoreSkill(skill, lowerQuery, queryTokens);
+    if (score !== null)
+      scored.push({ skill, score });
+  }
+  scored.sort((a, b) => {
+    if (b.score !== a.score)
+      return b.score - a.score;
+    if (a.skill.id < b.skill.id)
+      return -1;
+    if (a.skill.id > b.skill.id)
+      return 1;
+    return 0;
+  });
+  return scored.slice(0, limit).map(({ skill }) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description.length > DESCRIPTION_CAP ? skill.description.slice(0, DESCRIPTION_CAP) : skill.description,
+    plugin: skill.plugin,
+    version: skill.version,
+    url: skill.url
+  }));
+}
+function createFindSkillsHandler(deps = {}) {
+  const fetchFn = deps.fetchFn ?? ((url, init) => globalThis.fetch(url, init));
+  const now = deps.now ?? (() => Date.now());
+  let cached = null;
+  async function loadFromNetwork(signal) {
+    let response;
+    try {
+      response = await fetchFn(FIND_SKILLS_INDEX_URL, {
+        redirect: "error",
+        signal
+      });
+    } catch {
+      throw unavailable("index request failed");
+    }
+    if (!response.ok) {
+      try {
+        await response.body?.cancel();
+      } catch {}
+      throw unavailable("index request failed");
+    }
+    const declared = response.headers.get("content-length");
+    if (declared !== null) {
+      const size = Number(declared.trim());
+      if (!Number.isInteger(size) || size < 0 || size > MAX_BODY_BYTES) {
+        try {
+          await response.body?.cancel();
+        } catch {}
+        throw unavailable("index response too large");
+      }
+    }
+    const text = await readBoundedText(response, signal);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw unavailable("malformed index");
+    }
+    return normalizeCatalog(parsed);
+  }
+  async function readBoundedText(response, signal) {
+    const body = response.body;
+    if (!body) {
+      if (signal.aborted)
+        throw unavailable("index request timed out");
+      const text = await response.text();
+      if (text.length > MAX_BODY_BYTES) {
+        throw unavailable("index response too large");
+      }
+      if (signal.aborted)
+        throw unavailable("index request timed out");
+      return text;
+    }
+    const reader = body.getReader();
+    let rejectOnAbort = () => {};
+    const aborted = new Promise((_, reject) => {
+      rejectOnAbort = reject;
+    });
+    aborted.catch(() => {});
+    const onAbort = () => {
+      try {
+        reader.cancel().catch(() => {});
+      } catch {}
+      rejectOnAbort(unavailable("index request timed out"));
+    };
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    const chunks = [];
+    let total = 0;
+    try {
+      for (;; ) {
+        let next;
+        try {
+          next = await Promise.race([reader.read(), aborted]);
+        } catch {
+          if (signal.aborted)
+            throw unavailable("index request timed out");
+          throw unavailable("index request failed");
+        }
+        if (signal.aborted)
+          throw unavailable("index request timed out");
+        if (next.done)
+          break;
+        total += next.value.byteLength;
+        if (total > MAX_BODY_BYTES) {
+          try {
+            await reader.cancel();
+          } catch {}
+          throw unavailable("index response too large");
+        }
+        chunks.push(next.value);
+      }
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+      try {
+        reader.releaseLock();
+      } catch {}
+    }
+    if (signal.aborted)
+      throw unavailable("index request timed out");
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder().decode(merged);
+  }
+  async function loadCatalog() {
+    const started = now();
+    if (cached && started - cached.fetchedAt < CACHE_TTL_MS) {
+      return cached.skills;
+    }
+    const controller = new AbortController;
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        try {
+          controller.abort();
+        } catch {}
+        reject(unavailable("index request timed out"));
+      }, FETCH_TIMEOUT_MS);
+    });
+    const pending = loadFromNetwork(controller.signal);
+    pending.catch(() => {});
+    try {
+      const skills = await Promise.race([pending, timeout]);
+      cached = { fetchedAt: now(), skills };
+      return skills;
+    } finally {
+      if (timer !== undefined)
+        clearTimeout(timer);
+    }
+  }
+  return async function findSkillsHandler(args) {
+    const parsed = findSkillsInputSchema.safeParse(args);
+    if (!parsed.success) {
+      throw new Error(`invalid input: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
+    }
+    const skills = await loadCatalog();
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            skills: matchSkills(skills, parsed.data.query, parsed.data.limit)
+          })
+        }
+      ]
+    };
+  };
+}
+function registerFindSkillsTool(server, deps = {}) {
+  const handler = createFindSkillsHandler(deps);
+  registerTool(server, {
+    name: "utils_find_skills",
+    description: "Search the agent-skills index for skill metadata by keyword. Returns only small on-demand SKILL.md links (id, name, description, plugin, version, url) without fetching skill content.",
+    schema: findSkillsInputSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    },
+    handler: async (args) => handler(args)
+  });
+}
+var FIND_SKILLS_INDEX_URL = "https://bopen.ai/.well-known/agent-skills/index.json", EXPECTED_INDEX_SCHEMA = "https://schemas.agentskills.io/discovery/0.2.0/schema.json", CACHE_TTL_MS, FETCH_TIMEOUT_MS = 5000, MAX_BODY_BYTES, MAX_SKILLS = 5000, DESCRIPTION_CAP = 350, MAX_ID_LENGTH = 200, MAX_NAME_LENGTH = 100, MAX_DESCRIPTION_LENGTH = 2000, MAX_PLUGIN_LENGTH = 100, MAX_VERSION_LENGTH = 50, MAX_URL_LENGTH = 500, SKILL_URL_PATH, findSkillsInputSchema;
+var init_findSkills = __esm(() => {
+  init_zod();
+  CACHE_TTL_MS = 5 * 60 * 1000;
+  MAX_BODY_BYTES = 2 * 1024 * 1024;
+  SKILL_URL_PATH = /^\/[^/]+\/[^/]+\/[0-9a-f]{40}\/.+\/SKILL\.md$/;
+  findSkillsInputSchema = object2({
+    query: string2().trim().min(1).max(200),
+    limit: number2().int().min(1).max(5).default(3)
+  });
 });
 
 // tools/utils/installAgentMaster.ts
@@ -75724,29 +76056,6 @@ function createResponse(result) {
 
 // tools/utils/logger.ts
 var init_logger = () => {};
-// tools/utils/toolRegistration.ts
-function registerTool(server, config) {
-  server.registerTool(config.name, {
-    description: config.description,
-    inputSchema: config.schema,
-    annotations: config.annotations
-  }, async (args, ctx) => {
-    try {
-      return await config.handler(args, ctx);
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  });
-}
-
 // utils/buffer.ts
 function arrayBufferToUint8Array(buffer) {
   const uint8Array = new Uint8Array(buffer);
@@ -76020,11 +76329,13 @@ function registerUtilsTools(server) {
       };
     }
   });
+  registerFindSkillsTool(server);
 }
 var encodingSchema2;
 var init_utils3 = __esm(() => {
   init_zod();
   init_conversion();
+  init_findSkills();
   init_installAgentMaster();
   init_aip();
   init_logger();
@@ -101555,6 +101866,48 @@ var init_cancelListing = __esm(() => {
   });
 });
 
+// utils/sigmaSigningContext.ts
+function isSigmaSigningContextError(error) {
+  return error instanceof SigmaSigningContextError;
+}
+async function resolveSigmaSigningContext(ctx) {
+  if (!ctx?.wallet) {
+    throw new SigmaSigningContextError(SIGMA_CONTEXT_MISSING, "Cannot resolve the Sigma signing context: no OneSat wallet context was provided.");
+  }
+  let keyID;
+  try {
+    keyID = await resolveCurrentKeyId(ctx);
+  } catch (error) {
+    if (error instanceof Error && UNPUBLISHED_IDENTITY_PATTERN.test(error.message)) {
+      throw new SigmaSigningContextError(BAP_IDENTITY_NOT_PUBLISHED, "The BAP identity is not published: publish a BAP identity before Sigma signing so a current signing key can be resolved.", { cause: error });
+    }
+    throw error;
+  }
+  const { publicKey } = await ctx.wallet.getPublicKey({
+    protocolID: BAP_PROTOCOL_ID,
+    keyID,
+    forSelf: true
+  });
+  return {
+    protocolID: BAP_PROTOCOL_ID,
+    keyID,
+    publicKey
+  };
+}
+var BAP_IDENTITY_NOT_PUBLISHED = "BAP_IDENTITY_NOT_PUBLISHED", SIGMA_CONTEXT_MISSING = "SIGMA_CONTEXT_MISSING", SigmaSigningContextError, UNPUBLISHED_IDENTITY_PATTERN;
+var init_sigmaSigningContext = __esm(() => {
+  init_dist7();
+  SigmaSigningContextError = class SigmaSigningContextError extends Error {
+    code;
+    constructor(code, message, options) {
+      super(message, options);
+      this.name = "SigmaSigningContextError";
+      this.code = code;
+    }
+  };
+  UNPUBLISHED_IDENTITY_PATTERN = /no BAP identity published/i;
+});
+
 // tools/wallet/createOrdinals.ts
 function registerCreateOrdinalsTool(server, ctx) {
   server.registerTool("wallet_createOrdinals", {
@@ -101580,6 +101933,24 @@ function registerCreateOrdinalsTool(server, ctx) {
     }
     try {
       assertBroadcastAllowed("wallet_createOrdinals");
+      if (signWithBAP === true) {
+        try {
+          await resolveSigmaSigningContext(ctx);
+        } catch (preflight) {
+          if (isSigmaSigningContextError(preflight)) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `[${preflight.code}] ${preflight.message}`
+                }
+              ],
+              isError: true
+            };
+          }
+          throw preflight;
+        }
+      }
       const result = await inscribe.execute(ctx, {
         base64Content: dataB64,
         contentType,
@@ -101624,6 +101995,7 @@ var createOrdinalsArgsSchema;
 var init_createOrdinals = __esm(() => {
   init_dist7();
   init_zod();
+  init_sigmaSigningContext();
   createOrdinalsArgsSchema = object2({
     dataB64: string2().describe("Base64-encoded content to inscribe"),
     contentType: string2().describe("MIME type of the content"),
@@ -112803,7 +113175,10 @@ function buildCompactFamilies(config) {
     families.push(readOnlyFamily("wallet_read", "Read-only wallet operations. Select operation and pass that operation's arguments in args.", operations));
   }
   if (categoryEnabled(config, "utility")) {
-    families.push(readOnlyFamily("utility", "Read-only data conversion operation. Select operation and pass that operation's arguments in args.", operationsFromCaptures(captured.utility, ["utils_convertData"])));
+    families.push(readOnlyFamily("utility", "Read-only data conversion and skill discovery operations. Select operation and pass that operation's arguments in args.", operationsFromCaptures(captured.utility, [
+      "utils_convertData",
+      "utils_find_skills"
+    ])));
   }
   const walletSetupFamily = buildWalletSetupFamily(config);
   if (walletSetupFamily)
@@ -112901,7 +113276,7 @@ var init_compactCatalog = __esm(() => {
       "wallet_isAuthenticated",
       "wallet_waitForAuthentication"
     ],
-    utility: ["utils_convertData"],
+    utility: ["utils_convertData", "utils_find_skills"],
     wallet_setup: ["wallet_onboarding"]
   };
   READ_ONLY_ANNOTATIONS = {
@@ -297381,6 +297756,7 @@ var init_modernToolPolicy = __esm(() => {
     "ordinals_marketSales",
     "ordinals_searchInscriptions",
     "utils_convertData",
+    "utils_find_skills",
     "wallet_getAddress",
     "wallet_getBalance",
     "wallet_getBsv21Balances",
@@ -298571,7 +298947,7 @@ function candidatesById(candidates) {
   }
   return map;
 }
-function unavailable(candidate, role, supportedContracts = ["direct-v1"]) {
+function unavailable2(candidate, role, supportedContracts = ["direct-v1"]) {
   if (candidate.unavailableReason)
     return candidate.unavailableReason;
   if (!candidate.supportedRoles.includes(role))
@@ -298618,7 +298994,7 @@ function prepareProjectRoleSelection(current, candidates, requestInput, metadata
       continue;
     }
     const candidate = inventory.get(selection.slice(7));
-    if (!candidate || unavailable(candidate, role, metadata.supportedContracts))
+    if (!candidate || unavailable2(candidate, role, metadata.supportedContracts))
       throw new Error("PROJECT_ROLE_CANDIDATE_UNAVAILABLE");
     const binding = projectRoleBindingSchema.parse({
       bindingId: metadata.createBindingId(role),
@@ -299331,7 +299707,7 @@ var init_vaultMigrationBackend = __esm(() => {
 // utils/vaultSetupBootstrap.ts
 import { homedir as homedir7 } from "node:os";
 import { isAbsolute as isAbsolute11, join as join17 } from "node:path";
-function unavailable2(reason) {
+function unavailable3(reason) {
   const fail = async () => {
     throw new Error(reason);
   };
@@ -299348,10 +299724,10 @@ async function createConfiguredVaultSetupBackend(env = process.env, dependencies
   const projectRoot = env.BSV_MCP_PROJECT_ROOT;
   const projectId = env.BSV_MCP_PROJECT_ID;
   if (!projectRoot || !projectId || !isAbsolute11(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
-    return unavailable2("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
+    return unavailable3("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
   const vaultPath = env.VAULT_PATH ?? join17(dependencies.home ?? homedir7(), ".bsv", "vault.bep");
   if (!vaultPath || !isAbsolute11(vaultPath))
-    return unavailable2("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
+    return unavailable3("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
   try {
     return await (dependencies.createBackend ?? createAccountVaultMigrationBackend)({
       projectRoot,
@@ -299361,7 +299737,7 @@ async function createConfiguredVaultSetupBackend(env = process.env, dependencies
       ...dependencies.backendOptions
     });
   } catch {
-    return unavailable2("The configured project or Vault destination is unavailable. Check the local setup configuration.");
+    return unavailable3("The configured project or Vault destination is unavailable. Check the local setup configuration.");
   }
 }
 async function runConfiguredVaultSetup(options = {}) {
@@ -300226,7 +300602,7 @@ Authentication:
     required: false,
     sources: 0,
     environmentKeys: { payment: false, identity: false },
-    nextStep: projectRuntime ? "An explicit project Vault role is selected; local account migration is not applicable." : externalWallet ? "An external signer is selected; local key migration is not applicable." : "No legacy key source was detected. Vault migration is still pending."
+    nextStep: projectRuntime ? "An explicit project Vault role is selected; local account migration is not applicable." : externalWallet ? "An external signer is selected; local key migration is not applicable." : "No legacy key source was detected. Use local wallet setup to create or unlock a Vault wallet."
   };
   if (!externalWallet && !projectRuntime) {
     try {
@@ -300239,10 +300615,10 @@ Authentication:
           payment: migration.environmentKeys.payment,
           identity: migration.environmentKeys.identity
         },
-        nextStep: migration.migrationRequired ? "Run bsv-mcp vault-setup locally to inspect the detected source. Import into Vault is not enabled yet." : "No legacy key source was detected. Vault migration is still pending."
+        nextStep: migration.migrationRequired ? "Run bsv-mcp vault-setup locally to review and import a detected source into Vault. If wallet_onboarding is available, it opens setup for this MCP session." : "No legacy key source was detected. Use local wallet setup to create or unlock a Vault wallet."
       };
       if (migration.migrationRequired) {
-        logFunc2("\x1B[33mWARN: Vault migration is pending. Run bsv-mcp vault-setup locally for a read-only inventory; import remains unavailable until Vault integration is enabled.\x1B[0m");
+        logFunc2("\x1B[33mWARN: Legacy wallet sources were detected. Run bsv-mcp vault-setup locally to review and import them into Vault.\x1B[0m");
       }
     } catch {
       vaultMigration = {

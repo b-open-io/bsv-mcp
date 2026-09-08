@@ -114,7 +114,7 @@ arguments:
 | `bsv_read` | `bsv_getPrice`, `bsv_decodeTransaction`, `bsv_explore`, `bsv_status` |
 | `ordinals_read` | `ordinals_getInscription`, `ordinals_searchInscriptions`, `ordinals_marketListings`, `ordinals_marketSales`, `ordinals_getTokenByIdOrTicker` |
 | `wallet_read` | `wallet_getAddress`, `wallet_getBalance`, `wallet_getOrdinals`, `wallet_listTokens`, `wallet_getBsv21Balances`, `wallet_getLockData`, `wallet_getHeight`, `wallet_getHeaderForHeight`, `wallet_getNetwork`, `wallet_getVersion`, `wallet_getPublicKey`, `wallet_isAuthenticated`, `wallet_waitForAuthentication` |
-| `utility` | `utils_convertData` |
+| `utility` | `utils_convertData`, `utils_find_skills` |
 
 Wallet operations are filtered when the selected wallet context cannot support
 them. The manifest and catalog tests should verify stable schemas,

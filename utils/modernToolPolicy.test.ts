@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { registerFindSkillsTool } from "../tools/utils/findSkills";
 import { registerAppTool } from "./mcpAppRegistration";
 import {
 	isModernReadTool,
@@ -168,5 +169,32 @@ test("modern policy surface is explicit and reports a stable denial", () => {
 			},
 		],
 		isError: true,
+	});
+});
+
+test("modern policy permits bounded skill discovery without wallet authority", async () => {
+	const nativeServer = new McpServer(
+		{ name: "modern-skills", version: "1" },
+		serverOptions,
+	);
+	const server = withModernToolPolicy(nativeServer, "modern");
+	let requests = 0;
+	registerFindSkillsTool(server, {
+		fetchFn: async () => {
+			requests += 1;
+			return Response.json({
+				$schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+				skills: [],
+			});
+		},
+	});
+	await withClient(server, undefined, async (client) => {
+		const result = await client.callTool({
+			name: "utils_find_skills",
+			arguments: { query: "protocol" },
+		});
+		expect(result.isError).not.toBe(true);
+		expect(result.content).toEqual([{ type: "text", text: '{"skills":[]}' }]);
+		expect(requests).toBe(1);
 	});
 });

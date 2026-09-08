@@ -160,6 +160,13 @@ Each mode has its own process environment and should be registered as a separate
 server when you need to switch between them. The hosted plugin is a third path:
 it does not read a wallet on your computer.
 
+## Find a skill
+
+Use `utils_find_skills` with a short keyword query to find skills in the bOpen
+catalog. It returns up to five descriptions and links to versioned `SKILL.md`
+files. It does not download skill contents or install plugins. In compact mode,
+select `utils_find_skills` from the `utility` tool.
+
 ## Bring your wallet and infrastructure
 
 Connect a compatible existing wallet with `BRC100_WALLET_URL`, select a legacy

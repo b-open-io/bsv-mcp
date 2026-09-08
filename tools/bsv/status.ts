@@ -81,7 +81,7 @@ export function registerStatusTool(
 					...(vaultMigration.required
 						? {
 								warning:
-									"Vault migration is pending. Use vault-setup for a read-only inventory; import remains unavailable until Vault integration is enabled.",
+									"Legacy wallet sources were detected. Use local wallet setup to review and import them into Vault. Imported source backups may remain on disk.",
 							}
 						: {}),
 				},

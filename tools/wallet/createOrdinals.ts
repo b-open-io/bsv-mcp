@@ -3,6 +3,10 @@ import { inscribe } from "@1sat/actions";
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
+import {
+	isSigmaSigningContextError,
+	resolveSigmaSigningContext,
+} from "../../utils/sigmaSigningContext";
 
 export const createOrdinalsArgsSchema = z.object({
 	dataB64: z.string().describe("Base64-encoded content to inscribe"),
@@ -57,6 +61,24 @@ export function registerCreateOrdinalsTool(
 
 			try {
 				assertBroadcastAllowed("wallet_createOrdinals");
+				if (signWithBAP === true) {
+					try {
+						await resolveSigmaSigningContext(ctx);
+					} catch (preflight: unknown) {
+						if (isSigmaSigningContextError(preflight)) {
+							return {
+								content: [
+									{
+										type: "text",
+										text: `[${preflight.code}] ${preflight.message}`,
+									},
+								],
+								isError: true,
+							};
+						}
+						throw preflight;
+					}
+				}
 				const result = await inscribe.execute(ctx, {
 					base64Content: dataB64,
 					contentType,

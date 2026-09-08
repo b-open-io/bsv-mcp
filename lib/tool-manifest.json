@@ -24,6 +24,7 @@
 		"ordinals_marketSales",
 		"ordinals_searchInscriptions",
 		"utils_convertData",
+		"utils_find_skills",
 		"utils_installAgentMaster",
 		"wallet_abortAction",
 		"wallet_acquireCertificate",
