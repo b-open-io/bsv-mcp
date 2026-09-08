@@ -80,11 +80,15 @@ function candidatesById(candidates: readonly ProjectRoleCandidate[]) {
 function unavailable(
 	candidate: ProjectRoleCandidate,
 	role: ProjectKeyRole,
+	supportedContracts: readonly string[] = ["direct-v1"],
 ): string | undefined {
 	if (candidate.unavailableReason) return candidate.unavailableReason;
 	if (!candidate.supportedRoles.includes(role))
 		return "This key does not support this role";
-	if (candidate.keyUseContract !== "direct-v1" || candidate.key?.derivation)
+	if (
+		!candidate.keyUseContract ||
+		!supportedContracts.includes(candidate.keyUseContract)
+	)
 		return "Derived key profiles are not supported by this controller";
 	if (!candidate.accountId || !candidate.key)
 		return "Verified account and public key references are required";
@@ -100,6 +104,8 @@ export function prepareProjectRoleSelection(
 		createBindingId: (role: ProjectKeyRole) => string;
 		now: string;
 		expectedProjectId?: string;
+		/** Controller capability list; never read from the submitted request. */
+		supportedContracts?: readonly string[];
 	},
 ) {
 	const request = projectRoleSelectionRequestSchema.parse(requestInput);
@@ -145,7 +151,7 @@ export function prepareProjectRoleSelection(
 			continue;
 		}
 		const candidate = inventory.get(selection.slice(7));
-		if (!candidate || unavailable(candidate, role))
+		if (!candidate || unavailable(candidate, role, metadata.supportedContracts))
 			throw new Error("PROJECT_ROLE_CANDIDATE_UNAVAILABLE");
 		const binding = projectRoleBindingSchema.parse({
 			bindingId: metadata.createBindingId(role),
@@ -184,7 +190,10 @@ export function prepareProjectRoleSelection(
 export function renderProjectRoleSelection(
 	current: unknown,
 	candidates: readonly ProjectRoleCandidate[],
-	options?: { expectedProjectId: string },
+	options?: {
+		expectedProjectId?: string;
+		supportedContracts?: readonly string[];
+	},
 ): string {
 	const initial = current === null;
 	const config = parseProjectRoleBindings(
@@ -216,9 +225,13 @@ export function renderProjectRoleSelection(
 		const keep = selected
 			? `<option value="keep:${escapeHtml(selected.bindingId)}" selected>Keep current selection</option>`
 			: "";
-		const options = candidates
+		const candidateOptions = candidates
 			.map((candidate) => {
-				const reason = unavailable(candidate, role);
+				const reason = unavailable(
+					candidate,
+					role,
+					options?.supportedContracts,
+				);
 				return `<option value="select:${escapeHtml(candidate.candidateId)}"${reason ? " disabled" : ""}>${escapeHtml(candidate.label)}${candidate.publicDerivationLabel ? ` (${escapeHtml(candidate.publicDerivationLabel)})` : ""}${reason ? ` — ${escapeHtml(reason)}` : ""}</option>`;
 			})
 			.join("");
@@ -232,7 +245,7 @@ export function renderProjectRoleSelection(
 					`<li>${references(binding)}; Retained for: ${escapeHtml(config.retained.find((item) => item.bindingId === binding.bindingId)?.uses.join(", ") ?? "")}</li>`,
 			)
 			.join("");
-		return `<fieldset data-project-role="${role}"><legend>${labels[role]}</legend><p>${references(selected)}</p><label for="project-role-${role}">Use key for ${labels[role]}</label><select id="project-role-${role}" name="roleAssignments[${role}]">${keep}<option value="unassigned"${selected ? "" : " selected"}>Unassigned</option>${options}</select><details><summary>Historical public references</summary>${history ? `<ul>${history}</ul>` : "<p>No historical keys</p>"}</details></fieldset>`;
+		return `<fieldset data-project-role="${role}"><legend>${labels[role]}</legend><p>${references(selected)}</p><label for="project-role-${role}">Use key for ${labels[role]}</label><select id="project-role-${role}" name="roleAssignments[${role}]">${keep}<option value="unassigned"${selected ? "" : " selected"}>Unassigned</option>${candidateOptions}</select><details><summary>Historical public references</summary>${history ? `<ul>${history}</ul>` : "<p>No historical keys</p>"}</details></fieldset>`;
 	}).join("");
 	return `<section aria-label="Project key roles"><input type="hidden" name="expectedProjectId" value="${escapeHtml(config.projectId)}"><input type="hidden" name="expectedRevision" value="${initial ? "null" : config.revision}">${roles}</section>`;
 }

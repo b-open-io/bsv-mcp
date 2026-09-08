@@ -46,6 +46,44 @@ const metadata = {
 };
 
 describe("public project role selector", () => {
+	test("only a trusted controller capability can enable a supported derived contract", () => {
+		const derived: ProjectRoleCandidate = {
+			...candidate,
+			keyUseContract: "brc42-leaf-v1",
+			key: {
+				vaultId: "vault-a",
+				entryId: "entry-a",
+				expectedPublicKey: publicKey,
+				derivation: {
+					scheme: "brc42",
+					protocolID: [2, "test protocol name"],
+					keyID: "1",
+					counterparty: "self",
+				},
+			},
+		};
+		expect(() =>
+			prepareProjectRoleSelection(empty, [derived], request, metadata),
+		).toThrow("PROJECT_ROLE_CANDIDATE_UNAVAILABLE");
+		expect(() =>
+			prepareProjectRoleSelection(
+				empty,
+				[derived],
+				{ ...request, supportedContracts: ["brc42-leaf-v1"] },
+				metadata,
+			),
+		).toThrow();
+		const supportedContracts = ["brc42-leaf-v1"];
+		expect(
+			prepareProjectRoleSelection(empty, [derived], request, {
+				...metadata,
+				supportedContracts,
+			}).bindings[0]?.keyUseContract,
+		).toBe("brc42-leaf-v1");
+		expect(
+			renderProjectRoleSelection(empty, [derived], { supportedContracts }),
+		).not.toContain('value="select:key-a" disabled');
+	});
 	test("initial selection uses revision zero and requires a trusted project", () => {
 		const initialRequest = { ...request, expectedRevision: null };
 		const result = prepareProjectRoleSelection(
