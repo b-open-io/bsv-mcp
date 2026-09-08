@@ -1,9 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type {
-	ServerNotification,
-	ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 /**
  * BSV SDK Transaction Prompt
@@ -229,10 +224,13 @@ For complete API documentation and additional transaction features, refer to the
  * @param server The MCP server instance
  */
 export function registerTransactionPrompt(server: McpServer): void {
-	server.prompt(
+	server.registerPrompt(
 		"bitcoin_sv_sdk_transaction",
-		"Detailed information about transaction building and management in the BSV SDK, including input/output handling, script integration, and transaction signing.",
-		async (_extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => {
+		{
+			description:
+				"Detailed information about transaction building and management in the BSV SDK, including input/output handling, script integration, and transaction signing.",
+		},
+		async (_ctx) => {
 			return {
 				messages: [
 					{

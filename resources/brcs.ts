@@ -1,7 +1,4 @@
-import {
-	type McpServer,
-	ResourceTemplate,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
 
 /**
  * BRC Categories for organizing the Bitcoin Request for Comments specifications
@@ -36,7 +33,7 @@ interface BRCDocument {
  */
 export function registerBRCsResources(server: McpServer): void {
 	// Register BRCs repository main README
-	server.resource(
+	server.registerResource(
 		"brcs_readme",
 		"https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/README.md",
 		{
@@ -59,7 +56,7 @@ export function registerBRCsResources(server: McpServer): void {
 	);
 
 	// Register SUMMARY file which has the ToC
-	server.resource(
+	server.registerResource(
 		"brcs_summary",
 		"https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/SUMMARY.md",
 		{
@@ -81,7 +78,7 @@ export function registerBRCsResources(server: McpServer): void {
 	);
 
 	// Add a dynamic BRC specification resource for any BRC by path
-	server.resource(
+	server.registerResource(
 		"brc_spec",
 		new ResourceTemplate("brc://{category}/{brcNumber}", { list: undefined }),
 		{
@@ -658,7 +655,7 @@ function registerAllBRCs(server: McpServer): void {
 		// Build the URL to the BRC file
 		const url = `https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/${brc.category}/${brc.number.padStart(4, "0")}.md`;
 
-		server.resource(
+		server.registerResource(
 			resourceId,
 			url,
 			{

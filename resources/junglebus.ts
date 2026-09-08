@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 // Main JungleBus API documentation URL
 const JUNGLEBUS_DOCS_URL = "https://junglebus.gorillapool.io/docs/";
@@ -219,7 +219,7 @@ For complete API documentation, visit [JungleBus Docs](${JUNGLEBUS_DOCS_URL})
  * @param server The MCP server instance
  */
 export function registerJungleBusResource(server: McpServer): void {
-	server.resource(
+	server.registerResource(
 		"junglebus-api-docs",
 		JUNGLEBUS_DOCS_URL,
 		{

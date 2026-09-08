@@ -1,5 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ResourceTemplate, type McpServer } from "@modelcontextprotocol/server";
 
 // Store protocol documentation
 // Source AIP: https://raw.githubusercontent.com/b-open-io/AIP/refs/heads/main/README.md
@@ -85,9 +84,13 @@ const bitcomResourceTemplate = new ResourceTemplate(
  * @param server McpServer instance
  */
 export function registerBitcomResource(server: McpServer): void {
-	server.resource(
+	server.registerResource(
 		"bitcom_protocol",
 		bitcomResourceTemplate,
+		{
+			title: "Bitcom Protocol Documentation",
+			description: "Documentation for supported Bitcom protocols",
+		},
 		async (uri, params) => {
 			const protocolName = params.protocolName as ProtocolName;
 
