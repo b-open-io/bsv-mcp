@@ -4,6 +4,9 @@
 
 ### Added
 
+- Use separate identity and ordinals wallets for SIGMA-signed inscriptions
+  through the existing 1Sat SDK local pipeline.
+
 - Select existing private/WIF Vault entries and link them to local accounts
   without modifying the encrypted Vault.
 

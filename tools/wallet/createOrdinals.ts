@@ -3,6 +3,7 @@ import { inscribe } from "@1sat/actions";
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { assertBroadcastAllowed } from "../../utils/broadcastGuard";
+import { withSigmaIdentity } from "../../utils/sigmaRoleContext";
 import {
 	isSigmaSigningContextError,
 	resolveSigmaSigningContext,
@@ -23,7 +24,7 @@ export const createOrdinalsArgsSchema = z.object({
 		.boolean()
 		.optional()
 		.describe(
-			"Sign with BAP identity (Sigma protocol). Uses anchor+inscription two-step flow.",
+			"Add a SIGMA data signature using the current BAP identity key. Uses anchor+inscription two-step flow.",
 		),
 });
 
@@ -62,13 +63,14 @@ export function registerCreateOrdinalsTool(
 
 			try {
 				assertBroadcastAllowed("wallet_createOrdinals");
+				let signingCtx = ctx;
 				if (signWithBAP === true) {
-					if (identityContext !== undefined && identityContext !== ctx)
-						throw new Error(
-							"Sigma inscriptions require the identity and ordinals roles to use the same key with the current wallet adapter.",
-						);
+					if (identityContext === null)
+						throw new Error("No identity key is assigned for SIGMA signing.");
+					if (identityContext)
+						signingCtx = withSigmaIdentity(ctx, identityContext);
 					try {
-						await resolveSigmaSigningContext(ctx);
+						await resolveSigmaSigningContext(signingCtx);
 					} catch (preflight: unknown) {
 						if (isSigmaSigningContextError(preflight)) {
 							return {
@@ -84,7 +86,7 @@ export function registerCreateOrdinalsTool(
 						throw preflight;
 					}
 				}
-				const result = await inscribe.execute(ctx, {
+				const result = await inscribe.execute(signingCtx, {
 					base64Content: dataB64,
 					contentType,
 					map: metadata,

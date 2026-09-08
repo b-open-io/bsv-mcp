@@ -101089,6 +101089,35 @@ var init_cancelListing = __esm(() => {
   });
 });
 
+// utils/sigmaRoleContext.ts
+function withSigmaIdentity(assets, identity) {
+  if (assets.chain !== identity.chain)
+    throw new Error("Identity and ordinals wallets must use the same network.");
+  if (assets === identity)
+    return assets;
+  const wallet = new Proxy(assets.wallet, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== "function")
+        return value;
+      return (...args) => {
+        const request = args[0];
+        const protocol = request?.protocolID;
+        const sigmaProtocol = Array.isArray(protocol) && protocol.length === 2 && protocol[0] === BAP_PROTOCOL_ID[0] && protocol[1] === BAP_PROTOCOL_ID[1];
+        const identityOperation = property === "listOutputs" && request?.basket === BAP_BASKET || (property === "getPublicKey" || property === "createSignature" || property === "verifySignature") && sigmaProtocol;
+        const selected = identityOperation ? identity.wallet : target;
+        return Reflect.apply(Reflect.get(selected, property, selected), selected, args);
+      };
+    }
+  });
+  return Object.assign(Object.create(Object.getPrototypeOf(assets)), assets, {
+    wallet
+  });
+}
+var init_sigmaRoleContext = __esm(() => {
+  init_dist7();
+});
+
 // utils/sigmaSigningContext.ts
 function isSigmaSigningContextError(error) {
   return error instanceof SigmaSigningContextError;
@@ -101156,11 +101185,14 @@ function registerCreateOrdinalsTool(server, ctx, identityContext) {
     }
     try {
       assertBroadcastAllowed("wallet_createOrdinals");
+      let signingCtx = ctx;
       if (signWithBAP === true) {
-        if (identityContext !== undefined && identityContext !== ctx)
-          throw new Error("Sigma inscriptions require the identity and ordinals roles to use the same key with the current wallet adapter.");
+        if (identityContext === null)
+          throw new Error("No identity key is assigned for SIGMA signing.");
+        if (identityContext)
+          signingCtx = withSigmaIdentity(ctx, identityContext);
         try {
-          await resolveSigmaSigningContext(ctx);
+          await resolveSigmaSigningContext(signingCtx);
         } catch (preflight) {
           if (isSigmaSigningContextError(preflight)) {
             return {
@@ -101176,7 +101208,7 @@ function registerCreateOrdinalsTool(server, ctx, identityContext) {
           throw preflight;
         }
       }
-      const result = await inscribe.execute(ctx, {
+      const result = await inscribe.execute(signingCtx, {
         base64Content: dataB64,
         contentType,
         map: metadata,
@@ -101220,13 +101252,14 @@ var createOrdinalsArgsSchema;
 var init_createOrdinals = __esm(() => {
   init_dist7();
   init_zod();
+  init_sigmaRoleContext();
   init_sigmaSigningContext();
   createOrdinalsArgsSchema = object2({
     dataB64: string2().describe("Base64-encoded content to inscribe"),
     contentType: string2().describe("MIME type of the content"),
     destinationAddress: string2().optional().describe("Optional destination address for the ordinal"),
     metadata: record(string2(), string2()).optional().describe("Optional MAP metadata for the inscription"),
-    signWithBAP: boolean2().optional().describe("Sign with BAP identity (Sigma protocol). Uses anchor+inscription two-step flow.")
+    signWithBAP: boolean2().optional().describe("Add a SIGMA data signature using the current BAP identity key. Uses anchor+inscription two-step flow.")
   });
 });
 

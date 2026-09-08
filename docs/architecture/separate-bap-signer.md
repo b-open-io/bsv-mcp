@@ -1,25 +1,28 @@
-# Separate BAP signing for inscriptions
+# Separate identity for SIGMA signatures
 
-Local role selection supports different payment, identity, and ordinals keys.
-BAP-signed inscriptions currently require identity and ordinals to share a
-wallet context. BSV MCP rejects an unsupported combination before invoking the
-inscription action.
+AIP and SIGMA are data-signature protocols. BAP records describe identity
+registration, rotation, and attestations. There is no separate BAP signature
+protocol.
 
-The installed `@1sat/actions` version 0.0.207 passes one wallet into
-`applyP1SatCreateAction` and `applyInscribeSigma`. The latter reconstructs its
-context from that wallet, creates the anchor transaction, and calls `sealSigma`.
-`sealSigma` resolves the BAP record and signs through the same wallet. An outer
-MCP context replacement alone therefore cannot select another identity.
+The installed `@1sat/actions` version 0.0.207 exposes the inscription option
+`signWithBAP`, documented as “Sign with BAP identity (Sigma protocol).” It
+selects the current key from a published BAP identity record and adds a SIGMA
+signature. This option does not require the signing key to be the funding key.
 
-An SDK extension should accept an explicit BAP signer through the apply
-pipeline. BAP record lookup, current-key resolution, public-key derivation, and
-Sigma message signing belong to that signer. Anchor funding, input signing,
-change, output ownership, transaction storage, and broadcast stay with the
-ordinals wallet. The selection must survive permission-module dispatch and
-must never fall back to the funding identity when the requested signer fails.
+BSV MCP uses the SDK's existing local pipeline. `withSigmaIdentity` supplies a
+wallet interface that routes BAP basket reads and SIGMA-protocol public-key and
+signature calls to the identity wallet. Anchor funding, input signing, change,
+output ownership, transaction storage, and broadcast remain on the ordinals
+wallet. The SDK passes this interface through its apply and signing stages;
+no SDK modification is required.
 
-Acceptance should verify the resulting Sigma signature against the selected
-published BAP identity with distinct synthetic keys. It should also cover
-unpublished/rotated identity records, missing or locked signers, permission
-refusal, anchor cleanup, and unchanged ownership/funding behavior. This is an
-SDK follow-up, not a claim that cross-wallet inscription signing is supported.
+The tool checks the selected identity before transaction creation. A disabled,
+unpublished, or unavailable identity fails without consulting the funding
+wallet's identity. Both wallets must use the same network. This integration
+uses the local pipeline; it does not claim separate-role dispatch through an
+external permission module.
+
+A regression test runs the SDK inscription pipeline with distinct synthetic
+root keys, verifies the resulting SIGMA signature against the identity key,
+and verifies that anchor input signing uses the ordinals key. The SDK also
+validates that input script before completing the action.

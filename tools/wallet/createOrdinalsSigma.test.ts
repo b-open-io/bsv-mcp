@@ -22,7 +22,10 @@ type CreateOrdinalsHandler = (
 	extra: ServerContext,
 ) => Promise<CallToolResult>;
 
-function captureHandler(ctx: OneSatContext | undefined) {
+function captureHandler(
+	ctx: OneSatContext | undefined,
+	identity?: OneSatContext | null,
+) {
 	let handler: CreateOrdinalsHandler | undefined;
 	const server = {
 		registerTool(
@@ -33,7 +36,7 @@ function captureHandler(ctx: OneSatContext | undefined) {
 			handler = callback;
 		},
 	} as unknown as McpServer;
-	registerCreateOrdinalsTool(server, ctx);
+	registerCreateOrdinalsTool(server, ctx, identity);
 	return async (args: CreateOrdinalsArgs): Promise<CallToolResult> => {
 		if (!handler)
 			throw new Error("wallet_createOrdinals handler was not registered");
@@ -201,4 +204,19 @@ describe("wallet_createOrdinals Sigma preflight", () => {
 			executeMock.mockRestore();
 		}
 	});
+});
+
+test("separate missing or disabled identity never uses a published funding identity", async () => {
+	delete process.env.DISABLE_BROADCASTING;
+	for (const selected of [syntheticWallet([]).ctx, null]) {
+		const assets = syntheticWallet([1]);
+		const result = await captureHandler(
+			assets.ctx,
+			selected,
+		)({ ...SAMPLE_ARGS, signWithBAP: true });
+		expect(result.isError).toBe(true);
+		expect(assets.listOutputsCalls()).toBe(0);
+		expect(assets.createActionCalls()).toBe(0);
+		expect(assets.createSignatureCalls()).toBe(0);
+	}
 });

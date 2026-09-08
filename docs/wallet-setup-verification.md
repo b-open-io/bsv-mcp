@@ -66,3 +66,31 @@ cancel, and a client without form elicitation aborted the action. No funded
 transaction was signed or broadcast. TypeScript and production bundle builds
 passed. Current desktop-host acceptance still requires reconnecting the client
 so it launches the rebuilt executable.
+
+## Funded SIGMA verification — September 8, 2026
+
+The user-authorized Sigma-lab wallet was tested after a SQLite backup. Its
+expected deposit address was confirmed as
+`1MGJY5npit7vwQ95zA7fm6RT3WSP3ktXLb`. A local MCP test client exercised the
+actual wallet permission manager and inscription tool with a 500-satoshi cap.
+The SDK published the minimal BAP identity record needed by its `signWithBAP`
+option, then created a SIGMA-signed test inscription retained by the wallet.
+
+- Identity record: `83a9ccb06c2abe0a6428f20308c806f0d3d970675a6174dda8f0fca3c7c4acea`
+- Inscription: `bb7941d1a30518988a126af9ffd21be022501082fb7c4db97262ac9b0a0dfe66`
+- Approved requests: 70, 49, and 84 satoshis; 203 total.
+- Spendable default-basket balance: 9,956 before; 9,753 after.
+
+Both transaction hex payloads were retrieved from the mainnet explorer. The
+inscription's SIGMA signature verified and its signer matched the current
+identity key. The first explorer lookup returned 404 before indexing; no
+transaction was resubmitted. This live test used one wallet with separately
+derived funding and identity keys. Distinct root-key role routing is covered
+by the SDK pipeline regression test. It does not establish current Codex
+MCP App host acceptance or separate-role external permission-module support.
+
+After integrating separate-role SIGMA routing, the full suite passed 684 tests
+with 4 opt-in skips and 0 failures (3,684 assertions across 98 files).
+TypeScript and production builds passed. The focused signature and tool
+preflight tests also cover an explicitly disabled identity and refuse fallback
+to an available funding identity before any transaction creation.
