@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -14,6 +15,8 @@ import {
 	CONFLICTING_WALLET_ENV,
 	inspectEmbeddedAccount,
 	launch,
+	PROJECT_CONFIG_ENV,
+	parseLauncherArguments,
 } from "./local-mcp-launcher";
 
 const fixtures: string[] = [];
@@ -98,6 +101,8 @@ describe("two-mode launch plans", () => {
 			REMOTE_STORAGE_URL: "https://storage.example",
 			BSV_CHAIN: "test",
 			VAULT_PATH: "/tmp/vault",
+			BSV_MCP_PROJECT_ROOT: "/inherited/project",
+			BSV_MCP_PROJECT_ID: "inherited-project",
 		};
 		const plan = buildLaunchPlan(
 			{
@@ -123,7 +128,92 @@ describe("two-mode launch plans", () => {
 				continue;
 			expect(plan.env[name]).toBeUndefined();
 		}
+		for (const name of PROJECT_CONFIG_ENV)
+			expect(plan.env[name]).toBeUndefined();
 		expect(plan.env.HOME).not.toBe(homedir());
+	});
+
+	test("passes an explicit project root and ID as a paired child configuration", () => {
+		const projectRoot = fixtureHome();
+		const plan = buildLaunchPlan(
+			{
+				mode: "external",
+				externalWalletUrl: "http://127.0.0.1:3321",
+				projectRoot,
+				projectId: "project.example:local",
+				serverBinary,
+				workingDirectory: join(tmpdir(), "bsv-mcp-launcher-project-cwd"),
+			},
+			{
+				PATH: "/usr/bin",
+				BSV_MCP_PROJECT_ROOT: "/wrong/inherited/root",
+				BSV_MCP_PROJECT_ID: "wrong-inherited-project",
+			},
+		);
+		expect(plan.projectRoot).toBe(realpathSync(projectRoot));
+		expect(plan.projectId).toBe("project.example:local");
+		expect(plan.env.BSV_MCP_PROJECT_ROOT).toBe(realpathSync(projectRoot));
+		expect(plan.env.BSV_MCP_PROJECT_ID).toBe("project.example:local");
+		expect(plan.cwd).not.toBe(resolve(projectRoot));
+	});
+
+	test("requires a complete project configuration and validates its contract", () => {
+		const projectRoot = fixtureHome();
+		const base = {
+			mode: "external" as const,
+			externalWalletUrl: "http://127.0.0.1:3321",
+			serverBinary,
+		};
+		expect(() => buildLaunchPlan({ ...base, projectRoot })).toThrow(
+			"configured together",
+		);
+		expect(() => buildLaunchPlan({ ...base, projectId: "project" })).toThrow(
+			"configured together",
+		);
+		expect(() =>
+			buildLaunchPlan({
+				...base,
+				projectRoot: "relative/project",
+				projectId: "project",
+			}),
+		).toThrow("absolute path");
+		expect(() =>
+			buildLaunchPlan({ ...base, projectRoot, projectId: "bad project" }),
+		).toThrow("identifier format");
+		expect(() =>
+			buildLaunchPlan({
+				...base,
+				projectRoot: join(projectRoot, "missing"),
+				projectId: "project",
+			}),
+		).toThrow("existing directory");
+		const alias = join(projectRoot, "alias");
+		symlinkSync(projectRoot, alias);
+		expect(() =>
+			buildLaunchPlan({ ...base, projectRoot: alias, projectId: "project" }),
+		).toThrow("real directory");
+	});
+
+	test("parses explicit project flags without accepting unknown or partial flags", () => {
+		expect(
+			parseLauncherArguments([
+				"embedded",
+				"--project-root",
+				"/tmp/project",
+				"--project-id",
+				"project",
+			]),
+		).toEqual({
+			mode: "embedded",
+			projectRoot: "/tmp/project",
+			projectId: "project",
+		});
+		expect(() =>
+			parseLauncherArguments(["external", "--project-root"]),
+		).toThrow("requires a value");
+		expect(() => parseLauncherArguments(["external", "--unknown"])).toThrow(
+			"Unknown launcher option",
+		);
 	});
 
 	test("embedded mode selects an existing account and injects only the runtime password", () => {

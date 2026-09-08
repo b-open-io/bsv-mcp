@@ -14,7 +14,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import {
 	basename,
@@ -37,6 +37,10 @@ export type LocalMcpMode = "external" | "embedded";
 
 export interface LocalMcpLaunchOptions {
 	mode: LocalMcpMode;
+	/** Explicit project root for project-role bindings; never inferred from cwd. */
+	projectRoot?: string;
+	/** Explicit project identifier paired with projectRoot. */
+	projectId?: string;
 	/** The account name is metadata only; its encrypted backup is never read here. */
 	accountName?: string;
 	/** Runtime-only password; callers should source it from process.env. */
@@ -88,6 +92,14 @@ export const CONFLICTING_WALLET_ENV = [
 	"BSV_CHAIN",
 	"VAULT_PATH",
 ] as const;
+
+/** Project-role configuration is passed only as an explicit launcher pair. */
+export const PROJECT_CONFIG_ENV = [
+	"BSV_MCP_PROJECT_ROOT",
+	"BSV_MCP_PROJECT_ID",
+] as const;
+
+const PROJECT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SERVER_BINARY = resolve(REPO_ROOT, "dist/index.js");
@@ -173,6 +185,7 @@ function safeInheritedEnvironment(
 
 	// Remove inherited wallet selectors explicitly; do not leave empty values.
 	for (const name of CONFLICTING_WALLET_ENV) delete env[name];
+	for (const name of PROJECT_CONFIG_ENV) delete env[name];
 
 	const pathValue = env.PATH ?? "/usr/bin:/bin";
 	env.PATH = pathValue;
@@ -190,6 +203,43 @@ function requireNonEmpty(value: string | undefined, message: string): string {
 	return value;
 }
 
+/**
+ * Validate the nonsecret project selector before the child is spawned. The
+ * role store applies the same root requirement; keeping the check here makes a
+ * bad MCP registration fail at launch instead of silently selecting temp cwd.
+ */
+function resolveProjectConfig(
+	options: LocalMcpLaunchOptions,
+): { projectRoot: string; projectId: string } | undefined {
+	const hasRoot = options.projectRoot !== undefined;
+	const hasId = options.projectId !== undefined;
+	if (hasRoot !== hasId)
+		throw new Error(
+			"BSV_MCP_PROJECT_ROOT and BSV_MCP_PROJECT_ID must be configured together",
+		);
+	if (!hasRoot || !hasId) return undefined;
+
+	const projectRoot = options.projectRoot as string;
+	const projectId = options.projectId as string;
+	if (!isAbsolute(projectRoot))
+		throw new Error("BSV_MCP_PROJECT_ROOT must be an absolute path");
+	if (!projectId || !PROJECT_ID_PATTERN.test(projectId))
+		throw new Error(
+			"BSV_MCP_PROJECT_ID must match the project role identifier format",
+		);
+	let info: ReturnType<typeof lstatSync>;
+	try {
+		info = lstatSync(projectRoot);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT")
+			throw new Error("BSV_MCP_PROJECT_ROOT must be an existing directory");
+		throw error;
+	}
+	if (!info.isDirectory() || info.isSymbolicLink())
+		throw new Error("BSV_MCP_PROJECT_ROOT must be an existing real directory");
+	return { projectRoot: realpathSync(projectRoot), projectId };
+}
+
 export function buildLaunchPlan(
 	options: LocalMcpLaunchOptions,
 	baseEnv: Record<string, string | undefined> = process.env,
@@ -200,6 +250,8 @@ export function buildLaunchPlan(
 	cwd: string;
 	env: Record<string, string>;
 	serverBinary: string;
+	projectRoot?: string;
+	projectId?: string;
 } {
 	if (options.mode !== "external" && options.mode !== "embedded")
 		throw new Error("Launcher mode must be external or embedded");
@@ -224,6 +276,11 @@ export function buildLaunchPlan(
 	const env = safeInheritedEnvironment(baseEnv, homeDirectory);
 	env.DISABLE_BROADCASTING =
 		options.disableBroadcasting === false ? "false" : "true";
+	const project = resolveProjectConfig(options);
+	if (project) {
+		env.BSV_MCP_PROJECT_ROOT = project.projectRoot;
+		env.BSV_MCP_PROJECT_ID = project.projectId;
+	}
 
 	if (options.mode === "external") {
 		const url = requireNonEmpty(
@@ -272,6 +329,7 @@ export function buildLaunchPlan(
 		cwd,
 		env,
 		serverBinary,
+		...(project ?? {}),
 	};
 }
 
@@ -326,26 +384,48 @@ export function launch(
 function usage(): string {
 	return (
 		"Usage:\n" +
-		"  bun --no-env-file scripts/local-mcp-launcher.ts external\n" +
-		"  BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts embedded\n\n" +
+		"  bun --no-env-file scripts/local-mcp-launcher.ts external [--project-root /absolute/project --project-id id]\n" +
+		"  BSV_MCP_PASSWORD=... bun --no-env-file scripts/local-mcp-launcher.ts embedded [--project-root /absolute/project --project-id id]\n\n" +
 		"External mode reads BRC100_WALLET_URL and optional BRC100_WALLET_ORIGINATOR\n" +
 		"from the launcher's runtime environment. Embedded mode reads BSV_MCP_ACCOUNT\n" +
 		"and BSV_MCP_PASSWORD at runtime and requires an existing encrypted account.\n" +
+		"Project-role mode requires the paired --project-root and --project-id flags;\n" +
+		"the root is passed as BSV_MCP_PROJECT_ROOT and the ID as BSV_MCP_PROJECT_ID.\n" +
 		"Neither mode loads repository dotenv files. The password is never an argv value\n" +
 		"or printed by this launcher."
 	);
 }
 
+export function parseLauncherArguments(
+	argv: readonly string[],
+): LocalMcpLaunchOptions {
+	const mode = argv[0];
+	if (mode !== "external" && mode !== "embedded")
+		throw new Error("Launcher mode must be external or embedded");
+	let projectRoot: string | undefined;
+	let projectId: string | undefined;
+	for (let index = 1; index < argv.length; index += 1) {
+		const flag = argv[index];
+		if (flag === "--project-root" || flag === "--project-id") {
+			const value = argv[++index];
+			if (!value || value.startsWith("--"))
+				throw new Error(`${flag} requires a value`);
+			if (flag === "--project-root") projectRoot = value;
+			else projectId = value;
+			continue;
+		}
+		throw new Error(`Unknown launcher option: ${flag}`);
+	}
+	return { mode, projectRoot, projectId };
+}
+
 async function main(): Promise<void> {
-	const mode = process.argv[2];
-	if (!mode || mode === "--help" || mode === "-h") {
+	const args = process.argv.slice(2);
+	if (!args[0] || args[0] === "--help" || args[0] === "-h") {
 		console.error(usage());
 		return;
 	}
-	if (mode !== "external" && mode !== "embedded")
-		throw new Error(`Unknown launcher mode: ${mode}`);
-
-	const plan = buildLaunchPlan({ mode });
+	const plan = buildLaunchPlan(parseLauncherArguments(args));
 	const exitCode = await launch(plan);
 	process.exitCode = exitCode;
 }
