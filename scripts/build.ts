@@ -4,6 +4,7 @@
  */
 
 const OUTFILE = "./dist/index.js";
+const LAUNCHER_OUTFILE = "./dist/local-mcp-launcher.js";
 
 // The stdio guard MUST run before any bundled module initializes,
 // so we prepend it as a banner. Bun's bundler hoists module shims
@@ -56,3 +57,28 @@ if (result.exitCode !== 0) {
 
 const { size } = Bun.file(OUTFILE);
 console.log(`Bundle: ${OUTFILE} (${(size / 1024 / 1024).toFixed(1)} MB)`);
+
+// The local launcher is a separate npm entry point. Bundle its imported
+// repository utilities so an installed package never needs source files or a
+// checkout-relative TypeScript loader at runtime.
+console.log("Building local launcher bundle...");
+const launcher = Bun.spawnSync(
+	[
+		"bun",
+		"build",
+		"./scripts/local-mcp-launcher.ts",
+		"--target=node",
+		`--outfile=${LAUNCHER_OUTFILE}`,
+	],
+	{ stdout: "inherit", stderr: "inherit" },
+);
+if (launcher.exitCode !== 0) {
+	process.stderr.write(
+		`Local launcher build failed with exit code ${launcher.exitCode}\n`,
+	);
+	process.exit(launcher.exitCode ?? 1);
+}
+const launcherSize = Bun.file(LAUNCHER_OUTFILE).size;
+console.log(
+	`Bundle: ${LAUNCHER_OUTFILE} (${(launcherSize / 1024 / 1024).toFixed(1)} MB)`,
+);

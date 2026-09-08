@@ -7,7 +7,8 @@
       "dependencies": {
         "@1sat/actions": "^0.0.207",
         "@1sat/client": "0.0.51",
-        "@1sat/wallet-node": "^0.0.73",
+        "@1sat/wallet-node": "0.0.73",
+        "@bsv/message-box-client": "2.4.2",
         "@bsv/sdk": "^2.4.2",
         "@bsv/wallet-toolbox": "npm:@bopen-io/wallet-toolbox@2.6.2-brc153.5",
         "@modelcontextprotocol/client": "2.0.0",
@@ -15,6 +16,7 @@
         "@modelcontextprotocol/ext-apps": "^1.7.5",
         "@modelcontextprotocol/sdk": "^1.30.0",
         "@modelcontextprotocol/server": "2.0.0",
+        "@opl.dev/vault": "0.0.1",
         "better-auth": "1.7.3",
         "bitcoin-backup": "^0.1.0",
         "bmap-api-types": "0.0.9",
@@ -55,6 +57,10 @@
         "typescript": "^7.0.2",
       },
     },
+  },
+  "patchedDependencies": {
+    "@1sat/wallet-node@0.0.73": "patches/@1sat%2Fwallet-node@0.0.73.patch",
+    "@1sat/wallet@0.0.106": "patches/@1sat%2Fwallet@0.0.106.patch",
   },
   "overrides": {
     "zod": "4.5.4",
@@ -289,6 +295,8 @@
     "@noble/hashes": ["@noble/hashes@2.4.0", "", {}, "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.43.0", "", {}, "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg=="],
+
+    "@opl.dev/vault": ["@opl.dev/vault@0.0.1", "", { "dependencies": { "@bsv/sdk": "^2.4.2", "bitcoin-backup": "^0.1.0" }, "bin": { "vault": "dist/cli/vault.js" } }, "sha512-xb1BmyxM8b2eszeAgvnrR5XxFIS0fNQHZlo8Y5/QnbOwBHbpsIXd48GKznjiRzDXuJem0PJuv8i0r2o1OWTb2Q=="],
 
     "@oven/bun-darwin-aarch64": ["@oven/bun-darwin-aarch64@1.4.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-MXdZkP1featqxZ+/VTXWG1BVjM4OGBehVY2Q88EeUj/7L0UMeCGItmyPYTN+wxvlGJ6F66JEtzsw+GvQWewnag=="],
 

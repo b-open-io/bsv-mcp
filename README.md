@@ -18,23 +18,72 @@ connection, choose which connection to use to avoid duplicate tools.
 
 ## Quick start
 
-Install [Bun](https://bun.sh). Set up an encrypted account with `bunx bsv-mcp@latest init`, or connect an existing signer as described in [wallet setup](https://bsvmcp.com/docs#wallets). Then register the server:
+Install [Bun](https://bun.sh), clone this repository, and build the local
+server. The local wallet registrations below use the source checkout's launcher;
+`scripts/local-mcp-launcher.ts` is not included in the npm package.
 
 ```sh
-# Codex
-codex mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio
-
-# Claude Code
-claude mcp add --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio
+git clone https://github.com/b-open-io/bsv-mcp.git
+cd bsv-mcp
+bun install
+bun run build
 ```
 
-Or install the Claude Code plugin from the b-open-io marketplace:
+Create an encrypted account in a local terminal when you want embedded mode:
+
+```sh
+bun run index.ts init --account default
+```
+
+Choose one explicit local wallet mode when registering the server:
+
+```sh
+# Codex: existing BRC-100 signer
+codex mcp add bsv-mcp-external \
+  --env BRC100_WALLET_URL=https://signer.example/rpc \
+  --env BRC100_WALLET_ORIGINATOR=bsv-mcp.local \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts external
+
+# Codex: existing encrypted local account
+codex mcp add bsv-mcp-embedded \
+  --env BSV_MCP_ACCOUNT=default \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts embedded
+
+# Codex: project-bound Vault payments role
+codex mcp add bsv-mcp-project \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts project \
+  --project-root /absolute/path/to/project --project-id project.example
+```
+
+Claude Code uses the same launcher and can register either mode with
+`claude mcp add --transport stdio`, for example:
+
+```sh
+claude mcp add --transport stdio bsv-mcp-external \
+  --env BRC100_WALLET_URL=https://signer.example/rpc \
+  --env BRC100_WALLET_ORIGINATOR=bsv-mcp.local \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts external
+```
+
+Set `BSV_MCP_PASSWORD` in the MCP host's runtime environment for embedded and
+project modes.
+Do not put that password in the registration command or saved MCP configuration.
+The launcher passes it to the child only at runtime, never through argv or its
+diagnostics. `BRC100_WALLET_URL` and `BRC100_WALLET_ORIGINATOR` are read at
+runtime for external mode. Claude Code uses the same launcher command with
+`claude mcp add --transport stdio` and its `--env` options for non-secret values.
+
+The launcher starts the checked-out `dist/index.js` with `--no-env-file`, an
+explicit mode, and a working directory outside the checkout. Its embedded mode
+requires an existing encrypted account; it does not create or migrate one.
+
+Or install the Claude Code plugin from the b-open-io marketplace for hosted MCP:
 
 ```sh
 claude plugin install bsv-mcp@b-open-io
 ```
 
-For other clients, use `bunx bsv-mcp@latest --stdio` as the MCP server command (stdio transport). For hosted access, connect to **https://bsvmcp.com**. See [client setup](https://bsvmcp.com/#install).
+For another local client, register the same `bun --no-env-file .../scripts/local-mcp-launcher.ts external|embedded` command. For hosted access, connect to **https://bsvmcp.com**. See [client setup](https://bsvmcp.com/#install).
 
 Ask your agent: **“Run bsv_status, then show my wallet balance.”**
 
@@ -73,11 +122,33 @@ protocol support guide](docs/mcp-client-protocol-support.md) for the per-family
 operation bounds, endpoint contracts, MCP Apps compatibility, and validation
 status.
 
+## Local wallet modes
+
+External mode connects to an existing BRC-100 signer. The signer keeps the
+private keys, wallet storage, and permission decisions; BSV MCP receives only
+the SDK signer interface. Embedded mode opens an existing encrypted account in
+the local process after the launcher supplies `BSV_MCP_PASSWORD` at runtime.
+The selected account's database and storage configuration remain in use.
+Project mode opens only the explicitly assigned `payments` role from the
+project's local Vault bindings. It requires paired project selectors and
+`BSV_MCP_PASSWORD` at runtime; set `VAULT_PATH` when the installed Vault module
+does not provide a default path. Identity, encryption, and OneSat asset roles
+are not exposed by this initial payments-only surface.
+
+Each mode has its own process environment and should be registered as a separate
+server when you need to switch between them. The hosted plugin is a third path:
+it does not read a wallet on your computer.
+
 ## Bring your wallet and infrastructure
 
 Connect a compatible existing wallet with `BRC100_WALLET_URL`, or select an encrypted account with `BSV_MCP_ACCOUNT` and unlock it with `BSV_MCP_PASSWORD` in the process environment. Startup never creates keys. An existing wallet keeps its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are legacy compatibility inputs; they trigger a persistent Vault migration warning and should be removed after migration. See the wallet setup guide for the required wallet API and configuration.
 
-The default 1Sat backend is `https://api.1sat.app`. Override `ONESAT_API_URL` to use a compatible deployment; configure wallet storage, explorer, content, and legacy services separately. Available tools depend on wallet mode and enabled modules.
+The default 1Sat API backend is `https://api.1sat.app`. New mainnet embedded
+accounts use `https://wallet.1sat.app` for wallet storage by default; testnet
+accounts do not select a remote storage provider unless configured. Override
+`ONESAT_API_URL` for API services and `REMOTE_STORAGE_URL` for wallet storage;
+these are separate settings. Available tools depend on wallet mode and enabled
+modules.
 
 - [Wallet setup](https://bsvmcp.com/docs#wallets)
 - [Backend configuration](https://bsvmcp.com/docs#backends)
@@ -92,7 +163,8 @@ The default 1Sat backend is `https://api.1sat.app`. Override `ONESAT_API_URL` to
 bun install
 bun run dev          # Website
 bun run build:all    # MCP server and dashboard
-bun dist/index.js --stdio # Local stdio launch; npm publication is not required
+# Supply BRC100_WALLET_URL in the host environment before this launch.
+bun --no-env-file scripts/local-mcp-launcher.ts external # Source-checkout local launch
 bun test
 ```
 

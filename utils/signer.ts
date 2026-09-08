@@ -6,10 +6,12 @@ import {
 	accountDir,
 	readAccount,
 	regularPath,
+	resolveStorageConfig,
 	secureDirectory,
 } from "./accounts";
-import { onesatUrl } from "./backends";
+import { backendUrl, onesatUrl } from "./backends";
 import { SecureKeyManager } from "./keyManager";
+import { denyStoragePayment } from "./storagePayment";
 import { confirm, terminalInput } from "./terminal";
 
 export function signerRequestAllowed(
@@ -77,16 +79,34 @@ export async function serveSigner(name: string) {
 	const filename = join(dir, `wallet-${config.chain}.db`);
 	regularPath(filename);
 	const previousMask = process.umask(0o077);
-	const result = await createNodeWallet({
+	const storageConfig = resolveStorageConfig(
+		config,
+		process.env.REMOTE_STORAGE_URL
+			? backendUrl("REMOTE_STORAGE_URL", "")
+			: undefined,
+	);
+	const nodeWalletConfig = {
 		privateKey: keys.payPk,
 		chain: config.chain,
 		storageIdentityKey: config.storageIdentityKey,
 		storage: { provider: "bun-sqlite", filename },
-		activeRemote: config.activeRemote,
-		backups: config.backups,
+		activeRemote: storageConfig.activeRemote,
+		backups: storageConfig.backups,
 		servicesBaseUrl: onesatUrl(config.chain),
 		skipInitialMonitor: true,
-	}).finally(() => process.umask(previousMask));
+		// The SDK default is auto-pay; MCP requires an explicit opt-out until
+		// storage billing has a reviewed user-consent flow.
+		autoStoragePayments: false,
+		// @1sat/wallet-node forwards this field to @1sat/wallet's core factory,
+		// although its published NodeWalletConfig type currently omits it.
+		onStoragePaymentRequired: denyStoragePayment,
+	} as Parameters<typeof createNodeWallet>[0] & {
+		autoStoragePayments: false;
+		onStoragePaymentRequired: typeof denyStoragePayment;
+	};
+	const result = await createNodeWallet(nodeWalletConfig).finally(() =>
+		process.umask(previousMask),
+	);
 	if (existsSync(filename)) chmodSync(filename, 0o600);
 	if (existsSync(join(dir, ".env"))) {
 		await result.destroy();

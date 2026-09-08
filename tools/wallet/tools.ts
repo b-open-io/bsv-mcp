@@ -33,12 +33,22 @@ export function registerWalletTools(
 	wallet: Wallet | undefined,
 	config: {
 		ctx?: OneSatContext;
+		/** External signers do not expose the server's broad default-basket read. */
+		allowWholeWalletBalance?: boolean;
+		/** Project payments sessions do not authorize identity/OneSat operations. */
+		scope?: "full" | "payments";
 	},
 ): void {
 	registerSendBsvTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
 	registerGetAddressTool(server, config.ctx);
+
+	if (config.scope === "payments") {
+		if (config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false)
+			registerWalletGetBalanceTool(server, config.ctx);
+		return;
+	}
 
 	// Register the wallet_purchaseListing tool
 	registerPurchaseListingTool(server, config.ctx);
@@ -49,8 +59,14 @@ export function registerWalletTools(
 	// Register the wallet_refreshUtxos tool
 	registerRefreshUtxosTool(server, config.ctx);
 
-	// Register the wallet_getBalance tool
-	registerWalletGetBalanceTool(server, config.ctx);
+	// wallet_getBalance performs an unconditional default-basket read. That is
+	// an owner/admin capability for an embedded wallet and is not part of the
+	// application-scoped surface of an external signer.
+	const allowWholeWalletBalance =
+		config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false;
+	if (allowWholeWalletBalance) {
+		registerWalletGetBalanceTool(server, config.ctx);
+	}
 
 	// Register full BRC-100 wallet interface
 	registerBrc100Tools(server, config.ctx);

@@ -65,6 +65,56 @@ afterEach(() => {
 });
 
 describe("spending approval", () => {
+	it("denies an already locked session without prompting", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		const manager = makePermissionsManager();
+		const grant = spyOn(manager, "grantPermission");
+		const deny = spyOn(manager, "denyPermission");
+		const server = makeServer(async () => ({
+			action: "accept",
+			content: { approved: true },
+		}));
+		const prompt = spyOn(server.server, "elicitInput");
+		await handleSpendingAuthorization(
+			request,
+			manager,
+			server,
+			controller.signal,
+		);
+		expect(prompt).not.toHaveBeenCalled();
+		expect(grant).not.toHaveBeenCalled();
+		expect(deny).toHaveBeenCalledTimes(1);
+	});
+	it("passes cancellation to the prompt and rejects a late affirmative response", async () => {
+		const controller = new AbortController();
+		const manager = makePermissionsManager();
+		const grant = spyOn(manager, "grantPermission");
+		const deny = spyOn(manager, "denyPermission");
+		let respond!: () => void;
+		const server = makeServer(
+			() =>
+				new Promise((resolve) => {
+					respond = () =>
+						resolve({ action: "accept", content: { approved: true } });
+				}),
+		);
+		const prompt = spyOn(server.server, "elicitInput");
+		const pending = handleSpendingAuthorization(
+			request,
+			manager,
+			server,
+			controller.signal,
+		);
+		expect(prompt).toHaveBeenCalledWith(expect.anything(), {
+			signal: controller.signal,
+		});
+		controller.abort();
+		respond();
+		await pending;
+		expect(grant).not.toHaveBeenCalled();
+		expect(deny).toHaveBeenCalledTimes(1);
+	});
 	it("grants the exact requested amount when approval is affirmative", async () => {
 		const permissionsManager = makePermissionsManager();
 		const grantSpy = spyOn(permissionsManager, "grantPermission");
@@ -100,6 +150,7 @@ describe("spending approval", () => {
 
 		expect(requestSpy).toHaveBeenCalledWith(
 			expect.objectContaining({ mode: "form" }),
+			undefined,
 		);
 	});
 

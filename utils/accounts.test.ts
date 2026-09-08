@@ -18,14 +18,49 @@ import { createAccount, migrateAccount } from "./accountCommands";
 import {
 	accountDir,
 	accountName,
+	DEFAULT_STORAGE_REMOTE_URL,
 	listAccounts,
 	newAccountConfig,
 	readAccount,
+	resolveStorageConfig,
 } from "./accounts";
 import { initializeSecureKeys, SecureKeyManager } from "./keyManager";
 import { signerChildEnvironment, signerRequestAllowed } from "./signer";
 
 const password = "test-only-password";
+test("new embedded accounts select the intended remote and resolve backups deterministically", () => {
+	const key = PrivateKey.fromString("4", 16);
+	const config = newAccountConfig("main", key.toAddress());
+
+	expect(config.activeRemote).toBe(DEFAULT_STORAGE_REMOTE_URL);
+	expect(newAccountConfig("test", key.toAddress([0x6f])).activeRemote).toBe(
+		undefined,
+	);
+	expect(
+		resolveStorageConfig({
+			activeRemote: "https://wallet.1sat.app",
+			backups: ["https://wallet.1sat.app", "https://backup.example"],
+		}),
+	).toEqual({
+		activeRemote: "https://wallet.1sat.app",
+		backups: ["https://backup.example"],
+	});
+	expect(
+		resolveStorageConfig(
+			{
+				activeRemote: "https://wallet.1sat.app",
+				backups: ["https://backup.example"],
+			},
+			"https://override.example",
+		),
+	).toEqual({
+		activeRemote: "https://override.example",
+		backups: ["https://backup.example"],
+	});
+	expect(() =>
+		resolveStorageConfig(undefined, "http://storage.example"),
+	).toThrow("HTTPS or loopback HTTP");
+});
 test("encrypted accounts preserve all keys, isolate accounts and never fall back to plaintext", async () => {
 	const root = mkdtempSync(join(tmpdir(), "bsv-accounts-"));
 	try {
@@ -172,6 +207,35 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+test("legacy migration keeps the historical storage endpoint by default", async () => {
+	const root = mkdtempSync(join(tmpdir(), "bsv-legacy-migrate-"));
+	const previousApi = process.env.ONESAT_API_URL;
+	const previousRemote = process.env.REMOTE_STORAGE_URL;
+	try {
+		delete process.env.ONESAT_API_URL;
+		delete process.env.REMOTE_STORAGE_URL;
+		const source = join(root, "source");
+		const accounts = join(root, "accounts");
+		mkdirSync(source);
+		const key = PrivateKey.fromString("5", 16);
+		writeFileSync(
+			join(source, "keys.json"),
+			JSON.stringify({ wif: key.toWif() }),
+			{ mode: 0o600 },
+		);
+
+		await migrateAccount("legacy", "legacy", password, accounts, source);
+		expect(readAccount("legacy", accounts)?.activeRemote).toBe(
+			"https://api.1sat.app/1sat/wallet",
+		);
+	} finally {
+		if (previousApi === undefined) delete process.env.ONESAT_API_URL;
+		else process.env.ONESAT_API_URL = previousApi;
+		if (previousRemote === undefined) delete process.env.REMOTE_STORAGE_URL;
+		else process.env.REMOTE_STORAGE_URL = previousRemote;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 test("signer boundary rejects wrong origin/token/method and strips key credentials", () => {
 	const allowed = new Set(["getPublicKey"]);
 	const url = "http://127.0.0.1/token/getPublicKey";
@@ -212,7 +276,7 @@ test("signer boundary rejects wrong origin/token/method and strips key credentia
 	expect(JSON.stringify(child)).not.toContain("secret");
 });
 
-test("actual cold stdio startup fails without writing a wallet directory", async () => {
+test("actual cold stdio startup exposes setup without writing a wallet directory", async () => {
 	const home = mkdtempSync(join(tmpdir(), "bsv-cold-"));
 	try {
 		const child = Bun.spawn(
@@ -233,10 +297,55 @@ test("actual cold stdio startup fails without writing a wallet directory", async
 			new Response(child.stdout).text(),
 			new Response(child.stderr).text(),
 		]);
-		expect(code).toBe(1);
+		expect(code).toBe(0);
 		expect(out).toBe("");
-		expect(err).toContain(join(home, ".bsv-mcp/accounts/default/keys.bep"));
+		expect(err).toContain("Embedded wallet setup required");
 		expect(readdirSync(home)).toEqual([]);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+test("selected encrypted account opens migration setup without reading its secret backup", async () => {
+	const home = mkdtempSync(join(tmpdir(), "bsv-cold-encrypted-"));
+	try {
+		const directory = join(home, ".bsv-mcp", "accounts", "existing");
+		mkdirSync(directory, { recursive: true });
+		const sentinel =
+			"opaque encrypted backup must not be decoded during startup";
+		writeFileSync(join(directory, "keys.bep"), sentinel);
+		const child = Bun.spawn(
+			[
+				process.execPath,
+				"--no-env-file",
+				join(import.meta.dir, "../index.ts"),
+				"--stdio",
+			],
+			{
+				cwd: home,
+				env: {
+					PATH: process.env.PATH ?? "",
+					HOME: home,
+					BSV_MCP_ACCOUNT: "existing",
+					BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
+				},
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
+		const [code, out, err] = await Promise.all([
+			child.exited,
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+		]);
+		expect(code).toBe(0);
+		expect(out).toBe("");
+		expect(err).toContain(
+			"Embedded wallet setup required (migration-required)",
+		);
+		expect(err).not.toContain(sentinel);
+		expect(readFileSync(join(directory, "keys.bep"), "utf8")).toBe(sentinel);
+		expect(readdirSync(directory)).toEqual(["keys.bep"]);
 	} finally {
 		rmSync(home, { recursive: true, force: true });
 	}

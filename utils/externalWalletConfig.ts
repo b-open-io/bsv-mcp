@@ -1,7 +1,46 @@
+import type { OneSatContext } from "@1sat/actions";
+
 /** Explicit signer selection must happen before any local key access. */
 export interface ExternalWalletConfig {
 	url: string;
 	originator: string;
+}
+
+/**
+ * An out-of-band marker for contexts returned by initExternalWallet.
+ *
+ * OneSat's context defaults `isBaseWallet` to true, and that field has action
+ * routing semantics of its own. Keep the MCP custody distinction separate so
+ * a caller can pass the returned context directly to a server factory without
+ * re-advertising owner-only reads.
+ */
+export const EXTERNAL_WALLET_CONTEXT = Symbol.for(
+	"bsv-mcp.external-wallet-context",
+);
+
+export type ExternalWalletContext = OneSatContext & {
+	readonly [EXTERNAL_WALLET_CONTEXT]: true;
+};
+
+export function markExternalWalletContext(
+	ctx: OneSatContext,
+): ExternalWalletContext {
+	Object.defineProperty(ctx, EXTERNAL_WALLET_CONTEXT, {
+		value: true,
+		enumerable: false,
+		configurable: false,
+		writable: false,
+	});
+	return ctx as ExternalWalletContext;
+}
+
+export function isExternalWalletContext(
+	ctx: OneSatContext | undefined,
+): ctx is ExternalWalletContext {
+	return (
+		ctx !== undefined &&
+		(ctx as ExternalWalletContext)[EXTERNAL_WALLET_CONTEXT] === true
+	);
 }
 
 export function readExternalWalletConfig(

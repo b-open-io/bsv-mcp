@@ -27,10 +27,12 @@
 		"LICENSE",
 		"README.md",
 		"CHANGELOG.md",
-		"smithery.yaml"
+		"smithery.yaml",
+		"dist/local-ui/**/*"
 	],
 	"bin": {
-		"bsv-mcp": "./dist/index.js"
+		"bsv-mcp": "./dist/index.js",
+		"bsv-mcp-local": "./dist/local-mcp-launcher.js"
 	},
 	"private": false,
 	"devDependencies": {
@@ -65,7 +67,7 @@
 	"dependencies": {
 		"@1sat/actions": "^0.0.207",
 		"@1sat/client": "0.0.51",
-		"@1sat/wallet-node": "^0.0.73",
+		"@1sat/wallet-node": "0.0.73",
 		"@bsv/sdk": "^2.4.2",
 		"@bsv/wallet-toolbox": "npm:@bopen-io/wallet-toolbox@2.6.2-brc153.5",
 		"@modelcontextprotocol/client": "2.0.0",
@@ -84,11 +86,13 @@
 		"satoshi-token": "^0.0.7",
 		"schema-dts": "^2.0.0",
 		"shiki": "^4.4.3",
-		"zod": "4.5.4"
+		"zod": "4.5.4",
+		"@opl.dev/vault": "0.0.1",
+		"@bsv/message-box-client": "2.4.2"
 	},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
-		"build:view": "vite build",
+		"build:view": "vite build && vite build --mode mcp",
 		"build:all": "bun run build:view && bun run build",
 		"dev": "next dev",
 		"build:next": "next build",
@@ -97,5 +101,9 @@
 		"lint:fix": "biome check . --write",
 		"prepack": "bun run build:all",
 		"tools:manifest": "bun run ./scripts/generate-tool-manifest.ts"
+	},
+	"patchedDependencies": {
+		"@1sat/wallet@0.0.106": "patches/@1sat%2Fwallet@0.0.106.patch",
+		"@1sat/wallet-node@0.0.73": "patches/@1sat%2Fwallet-node@0.0.73.patch"
 	}
 }

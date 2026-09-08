@@ -35,6 +35,7 @@ test("inventory detects old and named accounts without reading or changing secre
 	expect(inventory.sources).toEqual([
 		{
 			account: "default",
+			directory: root,
 			location: "legacy-root",
 			encryptedBackup: false,
 			plaintextKeys: true,
@@ -42,6 +43,7 @@ test("inventory detects old and named accounts without reading or changing secre
 		},
 		{
 			account: "alice",
+			directory: account,
 			location: "account",
 			encryptedBackup: true,
 			plaintextKeys: false,
@@ -109,7 +111,7 @@ test("local preview restricts inventory to the capability and origin and never a
 		expect(result.headers.get("cache-control")).toBe("no-store");
 		expect((await result.json()).migrationRequired).toBe(false);
 		const page = await fetch(url.origin);
-		expect(await page.text()).toContain("Migration is not yet enabled");
+		expect(await page.text()).not.toContain(url.hash.slice(1));
 		expect(page.headers.get("content-security-policy")).toContain(
 			"frame-ancestors 'none'",
 		);
@@ -135,6 +137,7 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 	expect(result.sources).toEqual([
 		{
 			account: "default",
+			directory: legacy,
 			location: "legacy-root",
 			encryptedBackup: true,
 			plaintextKeys: false,
@@ -142,6 +145,7 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 		},
 		{
 			account: "sigma-lab",
+			directory: lab,
 			location: "sigma-lab",
 			encryptedBackup: false,
 			plaintextKeys: true,

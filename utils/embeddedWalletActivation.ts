@@ -38,7 +38,7 @@ const failure = (
 		BUSY: "Another embedded wallet activation is already in progress.",
 		BINDING_MISMATCH:
 			"The embedded wallet binding does not match the selected account.",
-		FAILED: "Embedded wallet activation failed.",
+		FAILED: "Could not unlock your wallet. Check your Vault password and try again.",
 	} as const;
 	return new EmbeddedWalletActivationError(code, message[code]);
 };

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { startVaultSetup } from "./vaultSetup";
 
-function openLocalBrowser(url: string): Promise<void> {
+export function openLocalBrowser(url: string): Promise<void> {
 	const command =
 		process.platform === "darwin"
 			? "open"
@@ -43,9 +43,8 @@ export async function runVaultSetupCommand(
 			await (options.open ?? openLocalBrowser)(setup.url);
 		} catch {
 			log(
-				"The browser could not open automatically. Open this local setup link yourself:",
+				"The browser could not be opened automatically. Retry with bsv-mcp vault-setup (stop this command with Ctrl+C if needed).",
 			);
-			log(setup.url);
 		}
 		await setup.closed;
 	} finally {

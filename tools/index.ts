@@ -3,6 +3,7 @@ import type { OneSatServices } from "@1sat/client";
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
+import { isExternalWalletContext } from "../utils/externalWalletConfig";
 import { registerBapTools } from "./bap";
 import { registerBapGetIdTool } from "./bap/getId";
 import { registerBsocialTools } from "./bsocial";
@@ -22,6 +23,10 @@ import { registerDroplitTools } from "./wallet/droplit";
 import { registerDroplitDiscoveryTool } from "./wallet/droplitDiscovery";
 import { registerWalletGetBalanceDroplitTool } from "./wallet/getBalanceDroplit";
 import type { IntegratedWallet } from "./wallet/integratedWallet";
+import {
+	isWalletOnboardingAvailable,
+	registerWalletOnboardingTool,
+} from "./wallet/onboarding";
 import { registerSetupDroplitTools } from "./wallet/setupDroplit";
 import { registerWalletTools } from "./wallet/tools";
 import type { Wallet } from "./wallet/wallet";
@@ -40,6 +45,16 @@ import type { Wallet } from "./wallet/wallet";
  */
 export interface ToolsConfig {
 	localAccountAvailable?: boolean;
+	/** True when the connected wallet is owned by an external signer. */
+	externalWallet?: boolean;
+	/** True when local wallet setup still needs to be completed. */
+	walletSetupNeeded?: boolean;
+	/**
+	 * Dependency-injected opener for the existing authenticated local React
+	 * setup server/browser. Resolves once launch is requested; it must not
+	 * wait for server shutdown.
+	 */
+	openWalletSetup?: () => Promise<void>;
 	/** Explicit server-side catalog selection; full remains the default. */
 	toolCatalog?: ToolCatalogProfile;
 	vaultMigration?: VaultMigrationStatus;
@@ -51,6 +66,8 @@ export interface ToolsConfig {
 	enableWalletTools?: boolean;
 	enableAccountTools?: boolean;
 	enableMneeTools?: boolean;
+	/** Limit a project-bound payments context to payment-safe wallet calls. */
+	walletScope?: "full" | "payments";
 	/** Register only the public BAP lookup for modes without local BAP writes. */
 	bapPublicOnly?: boolean;
 	identityPk?: PrivateKey;
@@ -157,6 +174,10 @@ export function registerAllTools(
 
 	// Register Wallet tools themselves
 	if (enableWalletTools) {
+		const externalWallet =
+			config.externalWallet ??
+			(isExternalWalletContext(config.ctx) ||
+				config.ctx?.isBaseWallet === false);
 		if (config.enableAccountTools === true && !process.env.BRC100_WALLET_URL)
 			registerAccountTools(server);
 		if (config.droplitClient)
@@ -180,6 +201,8 @@ export function registerAllTools(
 			// Register normal wallet tools
 			const walletToolOptions = {
 				ctx: config.ctx,
+				allowWholeWalletBalance: !externalWallet,
+				scope: config.walletScope,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);
 		}
@@ -188,6 +211,13 @@ export function registerAllTools(
 	// Register MNEE tools
 	if (enableMneeTools && (!config.ctx || config.wallet)) {
 		registerMneeTools(server);
+	}
+
+	// Register the conditional wallet onboarding tool. Availability is
+	// controlled only by the caller-provided configuration; there is no
+	// startup auto-opening here.
+	if (isWalletOnboardingAvailable(config) && config.openWalletSetup) {
+		registerWalletOnboardingTool(server, config.openWalletSetup);
 	}
 
 	// Add more tool categories as needed

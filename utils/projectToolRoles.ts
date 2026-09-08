@@ -136,7 +136,7 @@ const droplitContextPolicy = (
 		vaultSupport,
 	});
 
-const TOOL_POLICIES: Record<string, ProjectToolPolicy> = {};
+const TOOL_POLICIES: Record<string, ProjectToolPolicy> = Object.create(null);
 const add = (value: ProjectToolPolicy) => {
 	TOOL_POLICIES[value.toolName] = value;
 };
@@ -420,6 +420,65 @@ for (const name of [
 
 add(accountContextPolicy("utils_installAgentMaster"));
 
+// Generic cryptographic and reference-based operations need an explicit trusted
+// protocol/action adapter. A method name alone cannot select the correct key.
+for (const name of [
+	"wallet_createSignature",
+	"wallet_verifySignature",
+	"wallet_revealCounterpartyKeyLinkage",
+	"wallet_revealSpecificKeyLinkage",
+	"wallet_encrypt",
+	"wallet_decrypt",
+	"wallet_createHmac",
+	"wallet_verifyHmac",
+	"wallet_signAction",
+	"wallet_abortAction",
+	"bap_getCurrentAddress",
+] as const) {
+	add(
+		policy(name, TOOL_POLICIES[name]?.requiredRoles ?? [], {
+			requiredContextGroups: TOOL_POLICIES[name]?.requiredContextGroups ?? [
+				"wallet",
+			],
+			vaultSupport: "unsupported",
+			unsupportedReason:
+				"This operation requires an explicit Vault protocol or action adapter before a project key can be selected.",
+		}),
+	);
+}
+
+const COMPACT_ROLE_OPERATIONS: Readonly<Record<string, readonly string[]>> = {
+	bsv_read: [
+		"bsv_getPrice",
+		"bsv_decodeTransaction",
+		"bsv_explore",
+		"bsv_status",
+	],
+	ordinals_read: [
+		"ordinals_getInscription",
+		"ordinals_searchInscriptions",
+		"ordinals_marketListings",
+		"ordinals_marketSales",
+		"ordinals_getTokenByIdOrTicker",
+	],
+	wallet_read: [
+		"wallet_getAddress",
+		"wallet_getBalance",
+		"wallet_getOrdinals",
+		"wallet_listTokens",
+		"wallet_getBsv21Balances",
+		"wallet_getLockData",
+		"wallet_getHeight",
+		"wallet_getHeaderForHeight",
+		"wallet_getNetwork",
+		"wallet_getVersion",
+		"wallet_getPublicKey",
+		"wallet_isAuthenticated",
+		"wallet_waitForAuthentication",
+	],
+	utility: ["utils_convertData"],
+};
+
 export const PROJECT_TOOL_POLICIES: Readonly<
 	Record<string, ProjectToolPolicy>
 > = freeze(TOOL_POLICIES);
@@ -628,6 +687,21 @@ function rolesForSweepType(
 function dynamicPolicy(toolName: string, rawArgs: unknown): ProjectToolPolicy {
 	const args = objectArgs(rawArgs);
 
+	if (toolName === "x402_request") {
+		if (args.auth === undefined || args.auth === "none")
+			return publicPolicy(toolName);
+		if (args.auth === "brc31")
+			return policy(toolName, ["identity-signing"], {
+				vaultSupport: "unsupported",
+				unsupportedReason:
+					"BRC-31 authentication requires an explicit Vault identity adapter.",
+			});
+		fail(
+			"PROJECT_TOOL_ARGUMENTS_INVALID",
+			"Unknown request authentication mode",
+		);
+	}
+
 	if (toolName === "wallet_getPublicKey") {
 		if (args.identityKey !== undefined && typeof args.identityKey !== "boolean")
 			fail(
@@ -666,7 +740,12 @@ function dynamicPolicy(toolName: string, rawArgs: unknown): ProjectToolPolicy {
 
 	if (toolName === "bap_getId") {
 		if (args.idKey === undefined || args.idKey === "")
-			return rolePolicy(toolName, ["identity-signing"]);
+			return policy(toolName, ["identity-signing"], {
+				requiredContextGroups: ["wallet"],
+				vaultSupport: "unsupported",
+				unsupportedReason:
+					"Current BAP identity lookup requires a Vault-backed identity adapter.",
+			});
 		if (typeof args.idKey !== "string")
 			fail(
 				"PROJECT_TOOL_ARGUMENTS_INVALID",
@@ -756,6 +835,11 @@ function dynamicPolicy(toolName: string, rawArgs: unknown): ProjectToolPolicy {
 			fail(
 				"PROJECT_TOOL_ARGUMENTS_INVALID",
 				`${toolName} requires an operation name`,
+			);
+		if (!COMPACT_ROLE_OPERATIONS[toolName]?.includes(args.operation))
+			fail(
+				"PROJECT_TOOL_UNKNOWN",
+				"The operation is not part of this compact family",
 			);
 		const operationArgs = args.args === undefined ? {} : args.args;
 		return resolveProjectToolPolicy(args.operation, operationArgs);

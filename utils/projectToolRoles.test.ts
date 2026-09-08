@@ -304,3 +304,56 @@ describe("project tool role routing", () => {
 		expect(() => new ProjectToolRoleError("TEST", "test")).toThrow("TEST");
 	});
 });
+
+test("rejects inherited policy names and cross-family compact operations", () => {
+	for (const name of ["__proto__", "constructor", "toString"]) {
+		expect(() => resolveProjectToolPolicy(name)).toThrow(
+			"PROJECT_TOOL_UNKNOWN",
+		);
+	}
+	for (const [family, operation] of [
+		["wallet_read", "wallet_sendBsv"],
+		["utility", "utils_installAgentMaster"],
+		["bsv_read", "wallet_getBalance"],
+		["wallet_read", "wallet_read"],
+	] as const) {
+		expect(() => resolveProjectToolPolicy(family, { operation })).toThrow(
+			"PROJECT_TOOL_UNKNOWN",
+		);
+	}
+});
+
+test("rejects operations lacking a trusted Vault protocol or action adapter", () => {
+	for (const name of [
+		"wallet_createSignature",
+		"wallet_encrypt",
+		"wallet_decrypt",
+		"wallet_createHmac",
+		"wallet_signAction",
+		"wallet_abortAction",
+		"bap_getCurrentAddress",
+	]) {
+		expect(() =>
+			assertProjectToolSupported(
+				resolveProjectToolPolicy(name, {
+					protocolIDJSON: '[0,"onesat"]',
+					reference: "opaque",
+				}),
+			),
+		).toThrow("PROJECT_TOOL_VAULT_UNSUPPORTED");
+	}
+	expect(() =>
+		assertProjectToolSupported(resolveProjectToolPolicy("bap_getId", {})),
+	).toThrow("PROJECT_TOOL_VAULT_UNSUPPORTED");
+	expect(
+		resolveProjectToolPolicy("bap_getId", { idKey: "public-id" }).vaultSupport,
+	).toBe("public");
+	expect(
+		resolveProjectToolPolicy("x402_request", { auth: "none" }).vaultSupport,
+	).toBe("public");
+	expect(() =>
+		assertProjectToolSupported(
+			resolveProjectToolPolicy("x402_request", { auth: "brc31" }),
+		),
+	).toThrow("PROJECT_TOOL_VAULT_UNSUPPORTED");
+});

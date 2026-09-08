@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import type { OneSatContext } from "@1sat/actions";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
@@ -16,8 +17,15 @@ function syntheticWallet() {
 	return Object.create(Wallet.prototype) as Wallet;
 }
 
-async function listCompactTools() {
+async function listCompactTools(externalWallet = false) {
 	const wallet = syntheticWallet();
+	const ctx = externalWallet
+		? ({
+				wallet: {},
+				services: {},
+				chain: "main",
+			} as unknown as OneSatContext)
+		: undefined;
 	const server = createConfiguredServer({
 		toolsConfig: {
 			toolCatalog: "compact",
@@ -27,8 +35,10 @@ async function listCompactTools() {
 			enableUtilsTools: true,
 			enableWalletTools: true,
 			disableBroadcasting: true,
+			...(ctx ? { ctx, externalWallet: true } : {}),
 		},
 		wallet,
+		...(ctx ? { ctx } : {}),
 		loadPrompts: false,
 		loadResources: false,
 	});
@@ -192,6 +202,25 @@ test("compact advertises bounded read families without app tools", async () => {
 				text: "Error: COMPACT_UNKNOWN_OPERATION: utility_missing",
 			},
 		]);
+	} finally {
+		await client.close();
+		await server.close();
+	}
+});
+
+test("compact external mode omits whole-wallet balance and keeps scoped reads", async () => {
+	const { client, server } = await listCompactTools(true);
+	try {
+		const { tools } = await client.listTools();
+		const walletRead = tools.find((tool) => tool.name === "wallet_read");
+		if (!walletRead) throw new Error("Expected wallet_read in tools/list");
+		const operationEnum = (
+			walletRead.inputSchema as {
+				properties?: { operation?: { enum?: string[] } };
+			}
+		).properties?.operation?.enum;
+		expect(operationEnum).toContain("wallet_getAddress");
+		expect(operationEnum).not.toContain("wallet_getBalance");
 	} finally {
 		await client.close();
 		await server.close();

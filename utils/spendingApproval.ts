@@ -58,11 +58,13 @@ export async function handleSpendingAuthorization(
 	request: SpendingPermissionRequest,
 	permissionsManager: SpendingPermissionManager,
 	serverOverride?: SpendingApprovalServer,
+	signal?: AbortSignal,
 ): Promise<void> {
 	let approved = false;
 	let denialReason = "approval was not granted";
 
 	try {
+		signal?.throwIfAborted();
 		if (!request.spending) {
 			denialReason = "the request did not include spending details";
 		} else if (!serverOverride && !serverInstance) {
@@ -81,25 +83,29 @@ export async function handleSpendingAuthorization(
 				denialReason = "the requested amount is invalid";
 				throw new Error(denialReason);
 			}
-			const response = await approvalServer.server.elicitInput({
-				mode: "form",
-				message: [
-					`Approve spending exactly ${amount} satoshis?`,
-					formatSpendingSummary(request),
-					`If approval is not affirmative, this ${amount}-satoshi request will be refused.`,
-				].join("\n"),
-				requestedSchema: {
-					type: "object",
-					properties: {
-						approved: {
-							type: "boolean",
-							title: "Approve this spending request",
-							description: `Allow exactly ${amount} satoshis to be spent`,
+			const response = await approvalServer.server.elicitInput(
+				{
+					mode: "form",
+					message: [
+						`Approve spending exactly ${amount} satoshis?`,
+						formatSpendingSummary(request),
+						`If approval is not affirmative, this ${amount}-satoshi request will be refused.`,
+					].join("\n"),
+					requestedSchema: {
+						type: "object",
+						properties: {
+							approved: {
+								type: "boolean",
+								title: "Approve this spending request",
+								description: `Allow exactly ${amount} satoshis to be spent`,
+							},
 						},
+						required: ["approved"],
 					},
-					required: ["approved"],
 				},
-			});
+				signal ? { signal } : undefined,
+			);
+			signal?.throwIfAborted();
 
 			approved =
 				response.action === "accept" && response.content?.approved === true;
@@ -117,7 +123,7 @@ export async function handleSpendingAuthorization(
 		denialReason = `the approval prompt failed (${detail})`;
 	}
 
-	if (approved && request.spending) {
+	if (approved && request.spending && !signal?.aborted) {
 		await permissionsManager.grantPermission({
 			requestID: request.requestID,
 			amount: request.spending.satoshis,

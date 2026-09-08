@@ -1,0 +1,17 @@
+diff --git a/dist/createNodeWallet.d.ts b/dist/createNodeWallet.d.ts
+index ef54181c841c089a484c5bcfc570c69850ed3ff8..872e8255393fd80df1a8c36341fc8309d27894bb 100644
+--- a/dist/createNodeWallet.d.ts
++++ b/dist/createNodeWallet.d.ts
+@@ -26,6 +26,12 @@ export interface NodeWalletConfig {
+     };
+     activeRemote?: string;
+     backups?: string[];
++    /**
++     * Defaults to true. Set false to keep remote storage and backup sync while
++     * disabling automatic storage payments and retries after HTTP 507, including
++     * for remotes added later. Explicitly requested payments are unaffected.
++     */
++    autoStoragePayments?: boolean;
+     storageIdentityKey: string;
+     connectionTimeout?: number;
+     /**

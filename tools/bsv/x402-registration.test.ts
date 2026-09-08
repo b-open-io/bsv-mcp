@@ -101,4 +101,39 @@ describe("x402 tool registration", () => {
 		expect(names).toContain("x402_request");
 		expect(names).not.toContain("x402_payQuote");
 	});
+
+	it("rejects BRC-31 authentication from a payments-only role", async () => {
+		const server = new McpServer({
+			name: "x402-payments-role-test",
+			version: "1",
+		});
+		const client = new Client({
+			name: "x402-payments-role-client",
+			version: "1",
+		});
+		const [clientTransport, serverTransport] =
+			InMemoryTransport.createLinkedPair();
+		try {
+			registerX402Tools(server, {
+				ctx: walletContext,
+				walletScope: "payments",
+			});
+			await Promise.all([
+				server.connect(serverTransport),
+				client.connect(clientTransport),
+			]);
+			const result = await client.callTool({
+				name: "x402_request",
+				arguments: {
+					url: "https://service.example/resource",
+					auth: "brc31",
+				},
+			});
+			expect(result.isError).toBe(true);
+			expect(JSON.stringify(result)).toContain("identity role");
+		} finally {
+			await client.close();
+			await server.close();
+		}
+	});
 });
