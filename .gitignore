@@ -34,7 +34,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cursor/
 .vscode/
 
-# Internal notes and development files
+# Internal plans, research, and running checklist (internal/planning/)
 internal/
 docs/plan.md
 docs/ONBOARDING_REDESIGN.md
