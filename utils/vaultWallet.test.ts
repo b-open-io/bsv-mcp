@@ -262,3 +262,166 @@ describe("Vault wallet session", () => {
 		expect(() => access.reveal("entry", "test")).toThrow("locked");
 	});
 });
+
+const profileLeaf = {
+	scheme: "brc42" as const,
+	protocolID: [2, "project signing"] as [2, string],
+	keyID: "selected",
+	counterparty: "self",
+};
+function profileSetup() {
+	const f = setup();
+	f.selection.binding.keyUseContract = "brc157-leaf-v1";
+	f.selection.binding.derivation = {
+		scheme: "brc157",
+		index: 7,
+		leaf: { ...profileLeaf },
+	};
+	f.access.get = () => ({
+		kind: "entropy",
+		publicKey: PrivateKey.fromHex("2").toPublicKey().toString(),
+	});
+	const profileDerivationApi = {
+		mnemonicToEntropy: () => "synthetic",
+		brc157Profile: mock(() => PrivateKey.fromHex("2")),
+		brc42Derive: mock(() => key),
+		bip32Derive: () => "unused",
+	};
+	return { ...f, profileDerivationApi };
+}
+it("resolves only the explicit profile leaf and deeply pins its descriptor", async () => {
+	const f = profileSetup();
+	const session = await openVaultWalletSession(f.selection, "synthetic", f);
+	expect(f.initializeWallet.mock.calls[0]?.[0].toHex()).toBe(key.toHex());
+	expect(f.profileDerivationApi.brc157Profile).toHaveBeenCalledWith(
+		key.toHex(),
+		7,
+	);
+	expect(session.binding.entryId).toBe("entry");
+	expect(Object.isFrozen(session.binding.derivation)).toBe(true);
+	const derived = session.binding.derivation;
+	if (derived?.scheme !== "brc157") throw new Error("wrong descriptor");
+	expect(Object.isFrozen(derived.leaf)).toBe(true);
+	expect(Object.isFrozen(derived.leaf.protocolID)).toBe(true);
+	f.selection.binding.derivation = {
+		scheme: "brc157",
+		index: 99,
+		leaf: { ...profileLeaf },
+	};
+	expect(derived.index).toBe(7);
+	await session.lock();
+});
+it("rejects unsupported profile APIs, source types, mismatched pins and expiry before initializing", async () => {
+	for (const variant of ["api", "source", "pin", "expiry", "contract"]) {
+		const f = profileSetup();
+		let now = 100;
+		if (variant === "source") f.access.get = () => ({ kind: "private" });
+		if (variant === "pin")
+			f.selection.binding.expectedPublicKey = PrivateKey.fromHex("3")
+				.toPublicKey()
+				.toString();
+		if (variant === "contract")
+			f.selection.binding.keyUseContract = "yours-legacy-leaf-v1";
+		if (variant === "expiry")
+			f.profileDerivationApi.brc42Derive.mockImplementation(() => {
+				now += 20000;
+				return key;
+			});
+		await expect(
+			openVaultWalletSession(f.selection, "synthetic", {
+				...f,
+				now: () => now,
+				profileDerivationApi:
+					variant === "api" ? undefined : f.profileDerivationApi,
+			}),
+		).rejects.toBeInstanceOf(Error);
+		expect(f.initializeWallet).not.toHaveBeenCalled();
+		if (variant === "api" || variant === "contract")
+			expect(f.openVault).not.toHaveBeenCalled();
+	}
+});
+const realProfilePath = process.env.BSV_MCP_TEST_VAULT_MODULE;
+const realProfileModule = realProfilePath
+	? await import(realProfilePath)
+	: undefined;
+it.skipIf(!realProfileModule)(
+	"real Vault profile sources hand only selected BRC157 and Yours leaves to SDK initialization",
+	async () => {
+		const real = realProfileModule;
+		if (!real) throw new Error("missing fixture");
+		const { HD, Mnemonic, KeyDeriver } = await import("@bsv/sdk");
+		const master = HD.fromSeed(
+			Mnemonic.fromString(real.BRC157_PHRASE).toSeed(),
+		);
+		const vault = new real.Vault(real.createVaultDocument());
+		const entries = vault.importPlain(
+			{
+				ids: "synthetic",
+				mnemonic: real.BRC157_PHRASE,
+				xprv: master.toString(),
+			},
+			"synthetic",
+		);
+		const mnemonic = entries.find(
+			(entry: { kind: string }) => entry.kind === "mnemonic",
+		);
+		const hd = entries.find(
+			(entry: { kind: string }) => entry.kind === "hd-private",
+		);
+		const brcLeaf = new KeyDeriver(
+			master.derive("m/0'/7'").privKey,
+		).derivePrivateKey(
+			profileLeaf.protocolID,
+			profileLeaf.keyID,
+			profileLeaf.counterparty,
+		);
+		const { YOURS_LEGACY_PROFILE_PATHS } = await import(
+			"./vaultProfileDerivation"
+		);
+		const candidates = [
+			{
+				entry: mnemonic,
+				contract: "brc157-leaf-v1" as const,
+				derivation: { scheme: "brc157" as const, index: 7, leaf: profileLeaf },
+				expected: brcLeaf,
+			},
+			...YOURS_LEGACY_PROFILE_PATHS.map((path) => ({
+				entry: hd,
+				contract: "yours-legacy-leaf-v1" as const,
+				derivation: { scheme: "yours-legacy-bip32" as const, path },
+				expected: master.derive(path).privKey,
+			})),
+		];
+		const before = vault.list();
+		for (const candidate of candidates) {
+			const f = setup();
+			f.selection.binding = {
+				...f.selection.binding,
+				vaultId: vault.toDocument().id,
+				entryId: candidate.entry.id,
+				keyUseContract: candidate.contract,
+				derivation: candidate.derivation,
+				expectedPublicKey: candidate.expected.toPublicKey().toString(),
+			};
+			const session = await openVaultWalletSession(f.selection, "synthetic", {
+				...f,
+				profileDerivationApi: real,
+				openVault: async () => ({
+					id: vault.toDocument().id,
+					get: (id) => vault.get(id),
+					reveal: (id, reason) => vault.reveal(id, reason),
+					unlock: (reason, ttl) => vault.unlock(reason, ttl),
+					lock: () => vault.lock(),
+				}),
+			});
+			expect(f.initializeWallet.mock.calls[0]?.[0].toHex()).toBe(
+				candidate.expected.toHex(),
+			);
+			expect(f.initializeWallet.mock.calls[0]?.[0].toHex()).not.toBe(
+				master.privKey.toHex(),
+			);
+			await session.lock();
+		}
+		expect(vault.list()).toEqual(before);
+	},
+);

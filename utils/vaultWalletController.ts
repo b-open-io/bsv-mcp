@@ -7,6 +7,7 @@ import {
 	resolveProjectRoleBinding,
 } from "./projectRoleBindings";
 import { loadProjectRoleBindings } from "./projectRoleBindingsStore";
+import type { VaultProfileDerivationApi } from "./vaultProfileDerivation";
 import {
 	createOplVaultLoader,
 	openVaultWalletSession,
@@ -14,10 +15,12 @@ import {
 	VaultWalletError,
 	type VaultWalletSelection,
 	type VaultWalletSession,
+	vaultWalletBindingSchema,
 } from "./vaultWallet";
 
 const VAULT_PACKAGE = "@opl.dev/vault";
-type VaultModule = Parameters<typeof createOplVaultLoader>[0];
+type VaultModule = Parameters<typeof createOplVaultLoader>[0] &
+	Partial<VaultProfileDerivationApi>;
 
 /** Runtime optional dependency: reports local availability, not registry status. */
 export async function loadInstalledVaultModule(
@@ -66,25 +69,24 @@ export function vaultSelectionFromSnapshot(
 	},
 ): VaultWalletSelection {
 	const { binding } = snapshot;
-	if (
-		binding.keyUseContract !== "direct-v1" ||
-		binding.key.derivation !== undefined
-	)
+	const selected = vaultWalletBindingSchema.safeParse({
+		projectId: snapshot.projectId,
+		revision: snapshot.revision,
+		bindingId: binding.bindingId,
+		accountId: binding.accountId,
+		vaultId: binding.key.vaultId,
+		entryId: binding.key.entryId,
+		expectedPublicKey: binding.key.expectedPublicKey,
+		keyUseContract: binding.keyUseContract,
+		...(binding.key.derivation ? { derivation: binding.key.derivation } : {}),
+	});
+	if (!selected.success)
 		throw new VaultWalletError(
 			"UNSUPPORTED_KEY_CONTRACT",
-			"This Vault wallet supports directly selected private-key and WIF entries only.",
+			"Select a supported explicit Vault key contract.",
 		);
 	return {
-		binding: {
-			projectId: snapshot.projectId,
-			revision: snapshot.revision,
-			bindingId: binding.bindingId,
-			accountId: binding.accountId,
-			vaultId: binding.key.vaultId,
-			entryId: binding.key.entryId,
-			expectedPublicKey: binding.key.expectedPublicKey,
-			keyUseContract: "direct-v1",
-		},
+		binding: selected.data,
 		accountName: binding.accountId,
 		...options,
 	};
@@ -171,6 +173,18 @@ export function createVaultWalletController(options: VaultControllerOptions) {
 			const session = await openVaultWalletSession(selection, passphrase, {
 				...options.walletDependencies,
 				openVault: createOplVaultLoader(module),
+				profileDerivationApi:
+					options.walletDependencies?.profileDerivationApi ??
+					([
+						"mnemonicToEntropy",
+						"brc157Profile",
+						"brc42Derive",
+						"bip32Derive",
+					].every(
+						(name) => typeof module[name as keyof VaultModule] === "function",
+					)
+						? (module as VaultModule & VaultProfileDerivationApi)
+						: undefined),
 			});
 			try {
 				if (attempt !== generation)

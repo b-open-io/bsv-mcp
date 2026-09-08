@@ -2,6 +2,14 @@ import { isAbsolute } from "node:path";
 import { PrivateKey, type WalletInterface } from "@bsv/sdk";
 import { z } from "zod";
 import { accountNameSchema } from "./accounts";
+import {
+	resolveVaultProfileBindingKey,
+	vaultProfileBindingSchema,
+} from "./vaultProfileBinding";
+import {
+	type VaultProfileDerivationApi,
+	vaultProfileDerivationSchema,
+} from "./vaultProfileDerivation";
 import { initWallet, type WalletInitResult } from "./walletInit";
 
 /** Public, immutable selection from a trusted project-role resolver. */
@@ -14,9 +22,34 @@ export const vaultWalletBindingSchema = z
 		vaultId: z.string().min(1),
 		entryId: z.string().min(1),
 		expectedPublicKey: z.string().regex(/^(02|03)[0-9a-fA-F]{64}$/),
-		keyUseContract: z.literal("direct-v1"),
+		keyUseContract: z.enum([
+			"direct-v1",
+			"brc157-leaf-v1",
+			"yours-legacy-leaf-v1",
+		]),
+		derivation: vaultProfileDerivationSchema.optional(),
 	})
-	.strict();
+	.strict()
+	.superRefine((binding, ctx) => {
+		const valid =
+			binding.keyUseContract === "direct-v1"
+				? binding.derivation === undefined
+				: vaultProfileBindingSchema.safeParse({
+						keyUseContract: binding.keyUseContract,
+						key: {
+							vaultId: binding.vaultId,
+							entryId: binding.entryId,
+							expectedPublicKey: binding.expectedPublicKey,
+							derivation: binding.derivation,
+						},
+					}).success;
+		if (!valid)
+			ctx.addIssue({
+				code: "custom",
+				path: ["derivation"],
+				message: "Explicit contract and derivation must match",
+			});
+	});
 
 export type VaultWalletBinding = z.infer<typeof vaultWalletBindingSchema>;
 
@@ -123,6 +156,7 @@ export function createOplVaultLoader<Provider>(module: {
 
 export interface VaultWalletDependencies {
 	openVault: VaultWalletLoader;
+	profileDerivationApi?: VaultProfileDerivationApi;
 	/** Factory seam for synthetic tests; production retains initWallet's WPM. */
 	initializeWallet?: (
 		key: PrivateKey,
@@ -178,7 +212,21 @@ export async function openVaultWalletSession(
 			"Vault wallet sessions must last 1–3600 seconds.",
 		);
 	}
-	const binding = Object.freeze(parsed.data);
+	const binding = parsed.data;
+	if (binding.derivation?.scheme === "brc157") {
+		Object.freeze(binding.derivation.leaf.protocolID);
+		Object.freeze(binding.derivation.leaf);
+	}
+	if (binding.derivation) Object.freeze(binding.derivation);
+	Object.freeze(binding);
+	if (
+		binding.keyUseContract !== "direct-v1" &&
+		!dependencies.profileDerivationApi
+	)
+		throw new VaultWalletError(
+			"PROFILE_API_UNAVAILABLE",
+			"The installed Vault profile derivation API is unavailable.",
+		);
 	const pinned = Object.freeze({ ...selection, binding, ttlSeconds: ttl });
 	const now = dependencies.now ?? Date.now;
 	const controller = new AbortController();
@@ -260,13 +308,18 @@ export async function openVaultWalletSession(
 				"The selected Vault entry is unavailable.",
 			);
 		}
-		if (entry.kind !== "private" && entry.kind !== "wif") {
+		if (
+			binding.keyUseContract === "direct-v1" &&
+			entry.kind !== "private" &&
+			entry.kind !== "wif"
+		) {
 			throw new VaultWalletError(
 				"UNSUPPORTED_ENTRY",
 				"This wallet requires an explicitly selected private-key or WIF entry.",
 			);
 		}
 		if (
+			binding.keyUseContract === "direct-v1" &&
 			entry.publicKey !== undefined &&
 			entry.publicKey.toLowerCase() !== binding.expectedPublicKey.toLowerCase()
 		) {
@@ -285,11 +338,36 @@ export async function openVaultWalletSession(
 		);
 		timer.unref?.();
 		try {
-			const value = access.reveal(binding.entryId, pinned.reason);
-			key =
-				entry.kind === "private"
-					? PrivateKey.fromHex(value)
-					: PrivateKey.fromWif(value);
+			if (binding.keyUseContract !== "direct-v1") {
+				const profileApi = dependencies.profileDerivationApi;
+				if (!profileApi) throw new Error("Profile API unavailable");
+				const profileAccess = access;
+				key = resolveVaultProfileBindingKey(
+					{
+						id: access.id,
+						assertActive,
+						get: (id) => profileAccess.get(id),
+						reveal: (id, reason) => profileAccess.reveal(id, reason),
+					},
+					{
+						keyUseContract: binding.keyUseContract,
+						key: {
+							vaultId: binding.vaultId,
+							entryId: binding.entryId,
+							expectedPublicKey: binding.expectedPublicKey,
+							derivation: binding.derivation,
+						},
+					},
+					pinned.reason,
+					profileApi,
+				);
+			} else {
+				const value = access.reveal(binding.entryId, pinned.reason);
+				key =
+					entry.kind === "private"
+						? PrivateKey.fromHex(value)
+						: PrivateKey.fromWif(value);
+			}
 		} catch {
 			throw new VaultWalletError(
 				"KEY_UNAVAILABLE",

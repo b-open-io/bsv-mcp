@@ -166,7 +166,7 @@ describe("local Vault controller", () => {
 				},
 				{ vaultPath: "/synthetic", chain: "test", reason: "test" },
 			),
-		).toThrow("directly selected");
+		).toThrow("supported explicit Vault key contract");
 	});
 	it("locks a session whose project binding changed before another operation", async () => {
 		const f = setup();
@@ -371,4 +371,55 @@ describe("local Vault controller", () => {
 			createVaultWalletController({ ...f.options, projectRoot: "." }),
 		).toThrow("absolute");
 	});
+});
+
+it("passes the selected profile descriptor and installed derivation API through the controller", async () => {
+	const f = setup();
+	const binding = f.config.bindings[0];
+	if (!binding) throw new Error("missing fixture");
+	binding.keyUseContract = "brc157-leaf-v1";
+	binding.key.derivation = {
+		scheme: "brc157",
+		index: 13,
+		leaf: {
+			scheme: "brc42",
+			protocolID: [2, "project signing"],
+			keyID: "selected",
+			counterparty: "self",
+		},
+	};
+	const profile = mock(() => PrivateKey.fromHex("2"));
+	const leaf = mock(() => key);
+	const originalModule = await f.options.loadVaultModule();
+	const controller = createVaultWalletController({
+		...f.options,
+		loadVaultModule: async () => ({
+			...originalModule,
+			openVault: async () => ({
+				toDocument: () => ({ id: "vault" }),
+				get: () => ({ kind: "entropy" }),
+				reveal: () => "synthetic",
+				unlock: () => {},
+				lock: () => {},
+			}),
+			mnemonicToEntropy: () => "synthetic",
+			brc157Profile: profile,
+			brc42Derive: leaf,
+			bip32Derive: () => "unused",
+		}),
+	});
+	const selected = vaultSelectionFromSnapshot(
+		resolveProjectRoleBinding(f.config, "project", "payments"),
+		{ vaultPath: "/synthetic/vault", chain: "test", reason: "test" },
+	);
+	expect(selected.binding.derivation).toEqual(binding.key.derivation);
+	await controller.unlock("payments", "synthetic", "test");
+	expect(profile).toHaveBeenCalledWith("synthetic", 13);
+	expect(leaf).toHaveBeenCalledWith(
+		PrivateKey.fromHex("2").toWif(),
+		[2, "project signing"],
+		"selected",
+		"self",
+	);
+	await controller.lock();
 });
