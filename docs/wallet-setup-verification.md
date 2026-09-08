@@ -94,3 +94,24 @@ with 4 opt-in skips and 0 failures (3,684 assertions across 98 files).
 TypeScript and production builds passed. The focused signature and tool
 preflight tests also cover an explicitly disabled identity and refuse fallback
 to an available funding identity before any transaction creation.
+
+## Packaged stdio and complete balance reads
+
+The npm tarball executable was launched through a real stdio MCP connection
+against a read-only local signer backed by the original Sigma-lab wallet. It
+returned the expected root public key, found the funded SIGMA inscription via
+`wallet_getOrdinals`, and served the dashboard (69 external-signer tools).
+Mutating signer RPCs were disabled. Dependencies were supplied from the
+existing checkout; this was not a clean dependency-install test.
+
+Balance calculation now explicitly paginates default-basket outputs instead
+of relying on the SDK's ten-output default. Tests cover 23 outputs across three
+provider-capped pages, empty wallets, missing pages, duplicates, and changing
+output counts. Reads above 100,000 outputs fail explicitly rather than report a
+partial total.
+
+Final checks: 687 tests passed, 4 opt-in tests skipped, 0 failures (3,697
+assertions across 99 files). TypeScript, scoped lint, and production bundles
+passed. The package contains 12 files (12,669,087 unpacked bytes). The verified
+server bundle SHA-256 is
+`4794a76236b5122ba6930eafcdd3f3bc73adcc48e7f58e1405c1c2bc8e6e7ef4`.

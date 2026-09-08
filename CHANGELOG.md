@@ -27,6 +27,9 @@
 
 ### Changed
 
+- Read every default-basket output page when calculating wallet balance,
+  and refuse partial totals when pagination is inconsistent.
+
 - Supply a non-administrator MCP originator for local SDK calls that omit it,
   preserving spending approval while allowing key and signing operations.
 
