@@ -103,6 +103,45 @@ describe("built MCP wallet modes", () => {
 		}
 	});
 
+	it("denies an embedded spend before any network broadcast", async () => {
+		const embedded = await startMode("embedded");
+		try {
+			const result = await embedded.running.client.callTool({
+				name: "wallet_sendBsv",
+				arguments: {
+					recipients: [
+						{
+							address: "mtestnetaddress",
+							amount: 1,
+							currency: "BSV",
+						},
+					],
+				},
+			});
+			expect(result.isError).toBe(true);
+			expect(textFromResult(result)).toContain("DISABLE_BROADCASTING");
+
+			const action = await embedded.running.client.callTool({
+				name: "wallet_createAction",
+				arguments: {
+					description: "Synthetic unfunded payment",
+					outputsJSON: JSON.stringify([
+						{
+							lockingScript: "51",
+							satoshis: 1,
+							outputDescription: "Synthetic recipient",
+						},
+					]),
+					optionsJSON: JSON.stringify({ signAndProcess: false }),
+				},
+			});
+			expect(action.isError).toBe(true);
+		} finally {
+			await embedded.running.close();
+			await embedded.fixture.cleanup();
+		}
+	});
+
 	it("does not bleed local account state into the external signer mode", async () => {
 		const [external, embedded] = await Promise.all([
 			startMode("external"),
