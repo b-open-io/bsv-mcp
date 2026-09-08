@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
+import type { OneSatContext } from "@1sat/actions";
 import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { registerAllTools } from "../tools";
 import { registerFindSkillsTool } from "../tools/utils/findSkills";
 import { registerAppTool } from "./mcpAppRegistration";
 import {
@@ -197,4 +199,54 @@ test("modern policy permits bounded skill discovery without wallet authority", a
 		expect(result.content).toEqual([{ type: "text", text: '{"skills":[]}' }]);
 		expect(requests).toBe(1);
 	});
+});
+
+test("modern policy denies full and compact PeerPay before wallet access", async () => {
+	for (const profile of ["full", "compact"] as const) {
+		let walletCalls = 0;
+		const ctx = {
+			isBaseWallet: true,
+			wallet: {
+				getPublicKey: async () => {
+					walletCalls += 1;
+					throw new Error("unexpected wallet access");
+				},
+			},
+		} as unknown as OneSatContext;
+		const nativeServer = new McpServer(
+			{ name: "modern-peer", version: "1" },
+			serverOptions,
+		);
+		const server = withModernToolPolicy(nativeServer, "modern");
+		registerAllTools(server, {
+			ctx,
+			toolCatalog: profile,
+			enableWalletTools: true,
+			enableBsvTools: false,
+			enableOrdinalsTools: false,
+			enableUtilsTools: false,
+			enableBapTools: false,
+			enableBsocialTools: false,
+			enableMneeTools: false,
+		});
+		await withClient(server, undefined, async (client) => {
+			const name =
+				profile === "full" ? "wallet_peerPayments" : "wallet_payments";
+			expect((await client.listTools()).tools.map((t) => t.name)).toContain(
+				name,
+			);
+			const result = await client.callTool({
+				name,
+				arguments:
+					profile === "full"
+						? { operation: "list" }
+						: { operation: "wallet_peerPayments", args: { operation: "list" } },
+			});
+			expect(result.isError).toBe(true);
+			expect(JSON.stringify(result.content)).toContain(
+				"unavailable for modern MCP requests",
+			);
+			expect(walletCalls).toBe(0);
+		});
+	}
 });

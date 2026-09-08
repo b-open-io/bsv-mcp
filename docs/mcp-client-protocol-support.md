@@ -116,6 +116,10 @@ arguments:
 | `wallet_read` | `wallet_getAddress`, `wallet_getBalance`, `wallet_getOrdinals`, `wallet_listTokens`, `wallet_getBsv21Balances`, `wallet_getLockData`, `wallet_getHeight`, `wallet_getHeaderForHeight`, `wallet_getNetwork`, `wallet_getVersion`, `wallet_getPublicKey`, `wallet_isAuthenticated`, `wallet_waitForAuthentication` |
 | `utility` | `utils_convertData`, `utils_find_skills` |
 
+Local setup and PeerPay receiving use separate `wallet_setup` and
+`wallet_payments` families when available. Both carry mutating annotations and
+remain unavailable for modern requests.
+
 Wallet operations are filtered when the selected wallet context cannot support
 them. The manifest and catalog tests should verify stable schemas,
 deterministic family names, and one legacy implementation for each compact

@@ -26,7 +26,6 @@ import {
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import packageJson from "./package.json";
-import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
 import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
 import {
@@ -106,7 +105,8 @@ interface ServerFactoryOptions {
 	toolsConfig: ToolsConfig;
 	wallet?: Wallet;
 	ctx?: import("@1sat/actions").OneSatContext;
-	loadPrompts: boolean;
+	/** @deprecated Static tutorial prompts were retired; accepted as a no-op for one release. */
+	loadPrompts?: boolean;
 	loadResources: boolean;
 	era?: ToolPolicyEra;
 }
@@ -125,7 +125,8 @@ type McpAppToolsConfig = {
 };
 
 /**
- * Creates a fully configured McpServer with all tools, prompts, and resources registered.
+ * Creates a fully configured McpServer with all tools and resources registered.
+ * Static tutorial prompts were retired; skill discovery uses utils_find_skills.
  * Used to create per-session server instances for HTTP mode and the single instance for stdio.
  */
 const refreshConfiguredCatalog = new WeakMap<
@@ -139,7 +140,6 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 		{
 			supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
 			capabilities: {
-				prompts: {},
 				resources: {},
 				tools: {},
 				extensions: {
@@ -186,7 +186,9 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 				droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true,
 			});
 		}
-		if (opts.loadPrompts) registerAllPrompts(srv);
+		// Deprecated no-op: static tutorial prompts were retired. loadPrompts is
+		// accepted for one release so old callers remain harmless.
+		void opts.loadPrompts;
 		if (opts.loadResources) registerResources(srv);
 	};
 	registerCatalog(opts);
@@ -1505,9 +1507,7 @@ Authentication:
 
 	logFunc("\nEffective Component Status:");
 	logFunc(`  Transport Mode: ${CONFIG.transportMode.toUpperCase()}`);
-	logFunc(
-		`  Prompts:        ${effectiveConfig.loadPrompts ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
-	);
+	logFunc("  Prompts:        Retired (static tutorial prompts removed)");
 	logFunc(
 		`  Resources:      ${effectiveConfig.loadResources ? "\x1b[32mEnabled\x1b[0m" : "\x1b[31mDisabled\x1b[0m"}`,
 	);

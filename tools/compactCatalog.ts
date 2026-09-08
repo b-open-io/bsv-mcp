@@ -6,6 +6,7 @@ import type {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { isExternalWalletContext } from "../utils/externalWalletConfig";
+import { PEER_PAYMENT_MESSAGEBOX_HOST } from "../utils/peerPaymentReceive";
 import { registerBsvTools } from "./bsv";
 import { registerStatusTool } from "./bsv/status";
 import type { ToolsConfig } from "./index";
@@ -19,6 +20,7 @@ import {
 	WALLET_ONBOARDING_TOOL_NAME,
 	walletOnboardingInputSchema,
 } from "./wallet/onboarding";
+import { registerPeerPaymentsTool } from "./wallet/peerPayments";
 import { registerWalletTools } from "./wallet/tools";
 
 /** The server-selected tool catalog. The default is deliberately full. */
@@ -84,6 +86,10 @@ export const COMPACT_OPERATION_LEGACY_NAMES = {
 	],
 	utility: ["utils_convertData", "utils_find_skills"],
 	wallet_setup: ["wallet_onboarding"],
+	// PeerPay receive stays out of the read-only wallet_read family: its
+	// receive operation internalizes funds and acknowledges the MessageBox
+	// item, so it ships as a dedicated mutating payments capability.
+	wallet_payments: ["wallet_peerPayments"],
 } as const;
 
 export type CompactFamilyName = keyof typeof COMPACT_OPERATION_LEGACY_NAMES;
@@ -102,6 +108,17 @@ const READ_ONLY_ANNOTATIONS: ToolAnnotations = {
 	destructiveHint: false,
 	openWorldHint: true,
 };
+
+// PeerPay receive can mutate: the receive operation internalizes funds into
+// the embedded wallet and acknowledges the MessageBox item.
+const PEER_PAYMENTS_ANNOTATIONS: ToolAnnotations = {
+	readOnlyHint: false,
+	destructiveHint: true,
+	idempotentHint: false,
+	openWorldHint: true,
+};
+
+const PEER_PAYMENTS_LEGACY_NAME = "wallet_peerPayments";
 
 const CORE_WALLET_READS = [
 	"wallet_getAddress",
@@ -236,6 +253,8 @@ function categoryEnabled(
 			return isEnabled(config.enableUtilsTools, "DISABLE_UTILS_TOOLS");
 		case "wallet_read":
 			return isEnabled(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
+		case "wallet_payments":
+			return isEnabled(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
 		case "wallet_setup":
 			// Availability is controlled only by the caller-provided
 			// walletSetupNeeded/openWalletSetup pair, not by category flags.
@@ -273,7 +292,23 @@ function captureConfig(config: ToolsConfig) {
 					}),
 				)
 			: new Map<string, CapturedTool>();
-	return { bsv, ordinals, utility, wallet };
+	const peerPaymentsCtx = config.ctx;
+	const peerPayments =
+		categoryEnabled(config, "wallet_payments") &&
+		peerPaymentsCtx &&
+		!externalWallet &&
+		!config.integratedWallet?.isDroplitMode &&
+		config.walletScope !== "payments"
+			? captureRegistrations((server) =>
+					registerPeerPaymentsTool(
+						server,
+						peerPaymentsCtx,
+						PEER_PAYMENT_MESSAGEBOX_HOST,
+						externalWallet,
+					),
+				)
+			: new Map<string, CapturedTool>();
+	return { bsv, ordinals, utility, wallet, peerPayments };
 }
 
 function walletAvailability({ config }: CatalogContext): Availability {
@@ -283,6 +318,37 @@ function walletAvailability({ config }: CatalogContext): Availability {
 				available: false,
 				reason: "BRC-100 wallet context not available",
 			};
+}
+
+function peerPaymentsAvailability({ config }: CatalogContext): Availability {
+	if (!config.ctx) {
+		return {
+			available: false,
+			reason: "BRC-100 wallet context not available",
+		};
+	}
+	const externalWallet =
+		config.externalWallet ??
+		(isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
+	if (externalWallet) {
+		return {
+			available: false,
+			reason: "PeerPay receive is unavailable in external signer mode",
+		};
+	}
+	if (config.integratedWallet?.isDroplitMode) {
+		return {
+			available: false,
+			reason: "PeerPay receive is unavailable in Droplit mode",
+		};
+	}
+	if (config.walletScope === "payments") {
+		return {
+			available: false,
+			reason: "PeerPay receive is unavailable in project payments scope",
+		};
+	}
+	return { available: true };
 }
 
 /**
@@ -392,6 +458,34 @@ export function buildCompactFamilies(config: ToolsConfig): CompactFamily[] {
 
 	const walletSetupFamily = buildWalletSetupFamily(config);
 	if (walletSetupFamily) families.push(walletSetupFamily);
+
+	// Dedicated PeerPay payments capability. It stays out of wallet_read so
+	// the read-only family keeps its guarantees, and it carries mutating
+	// annotations because the receive operation internalizes funds.
+	if (categoryEnabled(config, "wallet_payments")) {
+		const registration = captured.peerPayments.get(PEER_PAYMENTS_LEGACY_NAME);
+		if (registration) {
+			const operations = new Map<string, CompactOperation>([
+				[
+					registration.name,
+					{
+						id: registration.name,
+						schema: registration.schema,
+						handler: async (args, ctx) => registration.handler(args, ctx),
+						annotations: { ...PEER_PAYMENTS_ANNOTATIONS },
+						availability: peerPaymentsAvailability,
+					},
+				],
+			]);
+			families.push({
+				name: "wallet_payments",
+				description:
+					"PeerPay payment operations. Select operation and pass that operation's arguments in args. Receiving internalizes funds into the embedded wallet and acknowledges the MessageBox item.",
+				operations,
+				annotations: PEER_PAYMENTS_ANNOTATIONS,
+			});
+		}
+	}
 
 	return families.filter((family) => family.operations.size > 0);
 }

@@ -160,12 +160,22 @@ Each mode has its own process environment and should be registered as a separate
 server when you need to switch between them. The hosted plugin is a third path:
 it does not read a wallet on your computer.
 
+Embedded wallets can list pending PeerPay payments and receive a selected
+payment with `wallet_peerPayments`. Receiving requires a message ID and
+acknowledges the message only after the wallet accepts it. These operations do
+not pay MessageBox service fees. External signers, Droplit, and project
+payments-only sessions do not expose this tool.
+
 ## Find a skill
 
 Use `utils_find_skills` with a short keyword query to find skills in the bOpen
 catalog. It returns up to five descriptions and links to versioned `SKILL.md`
 files. It does not download skill contents or install plugins. In compact mode,
 select `utils_find_skills` from the `utility` tool.
+
+The static tutorial prompts and BRC/BitCom resource catalog have been retired.
+Use the skill finder for those references. Changelog, JungleBus documentation,
+and the dashboard app resource remain available.
 
 ## Bring your wallet and infrastructure
 

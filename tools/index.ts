@@ -4,6 +4,7 @@ import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { DroplitClient } from "../utils/droplit";
 import { isExternalWalletContext } from "../utils/externalWalletConfig";
+import { PEER_PAYMENT_MESSAGEBOX_HOST } from "../utils/peerPaymentReceive";
 import { registerBapTools } from "./bap";
 import { registerBapGetIdTool } from "./bap/getId";
 import { registerBsocialTools } from "./bsocial";
@@ -27,6 +28,7 @@ import {
 	isWalletOnboardingAvailable,
 	registerWalletOnboardingTool,
 } from "./wallet/onboarding";
+import { registerPeerPaymentsTool } from "./wallet/peerPayments";
 import { registerSetupDroplitTools } from "./wallet/setupDroplit";
 import { registerWalletTools } from "./wallet/tools";
 import type { Wallet } from "./wallet/wallet";
@@ -205,6 +207,25 @@ export function registerAllTools(
 				scope: config.walletScope,
 			};
 			registerWalletTools(server, config.wallet, walletToolOptions);
+		}
+		// PeerPay receive is embedded-wallet only: it needs the BRC-100 ctx,
+		// never registers for external signer or Droplit modes, stays out of
+		// project payments-only sessions until the role adapter is reviewed,
+		// and performs no polling or network calls at registration time.
+		// There is no separate host configuration, so the adapter default
+		// applies.
+		if (
+			config.ctx &&
+			!externalWallet &&
+			config.integratedWallet?.isDroplitMode !== true &&
+			config.walletScope !== "payments"
+		) {
+			registerPeerPaymentsTool(
+				server,
+				config.ctx,
+				PEER_PAYMENT_MESSAGEBOX_HOST,
+				externalWallet,
+			);
 		}
 	}
 

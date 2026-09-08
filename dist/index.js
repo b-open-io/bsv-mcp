@@ -13220,216 +13220,7 @@ var BRANDS, OAuthError, SdkErrorCode, SdkError, SdkHttpError, REQUIRED_CLIENT_CA
   clear() {
     this._buffer = undefined;
   }
-}, TOOL_NAME_REGEX, MAX_TEMPLATE_LENGTH = 1e6, MAX_VARIABLE_LENGTH = 1e6, MAX_TEMPLATE_EXPRESSIONS = 1e4, MAX_REGEX_LENGTH = 1e6, UriTemplate = class UriTemplate {
-  static isTemplate(str) {
-    return /\{[^}\s]+\}/.test(str);
-  }
-  static validateLength(str, max, context) {
-    if (str.length > max)
-      throw new Error(`${context} exceeds maximum length of ${max} characters (got ${str.length})`);
-  }
-  template;
-  parts;
-  get variableNames() {
-    return this.parts.flatMap((part) => typeof part === "string" ? [] : part.names);
-  }
-  constructor(template) {
-    UriTemplate.validateLength(template, MAX_TEMPLATE_LENGTH, "Template");
-    this.template = template;
-    this.parts = this.parse(template);
-  }
-  toString() {
-    return this.template;
-  }
-  parse(template) {
-    const parts = [];
-    let currentText = "";
-    let i = 0;
-    let expressionCount = 0;
-    while (i < template.length)
-      if (template[i] === "{") {
-        if (currentText) {
-          parts.push(currentText);
-          currentText = "";
-        }
-        const end = template.indexOf("}", i);
-        if (end === -1)
-          throw new Error("Unclosed template expression");
-        expressionCount++;
-        if (expressionCount > MAX_TEMPLATE_EXPRESSIONS)
-          throw new Error(`Template contains too many expressions (max ${MAX_TEMPLATE_EXPRESSIONS})`);
-        const expr = template.slice(i + 1, end);
-        const operator = this.getOperator(expr);
-        const exploded = expr.includes("*");
-        const names = this.getNames(expr);
-        const name = names[0];
-        for (const name$1 of names)
-          UriTemplate.validateLength(name$1, MAX_VARIABLE_LENGTH, "Variable name");
-        parts.push({
-          name,
-          operator,
-          names,
-          exploded
-        });
-        i = end + 1;
-      } else {
-        currentText += template[i];
-        i++;
-      }
-    if (currentText)
-      parts.push(currentText);
-    return parts;
-  }
-  getOperator(expr) {
-    return [
-      "+",
-      "#",
-      ".",
-      "/",
-      "?",
-      "&"
-    ].find((op) => expr.startsWith(op)) || "";
-  }
-  getNames(expr) {
-    const operator = this.getOperator(expr);
-    return expr.slice(operator.length).split(",").map((name) => name.replace("*", "").trim()).filter((name) => name.length > 0);
-  }
-  encodeValue(value, operator) {
-    UriTemplate.validateLength(value, MAX_VARIABLE_LENGTH, "Variable value");
-    if (operator === "+" || operator === "#")
-      return encodeURI(value);
-    return encodeURIComponent(value);
-  }
-  expandPart(part, variables) {
-    if (part.operator === "?" || part.operator === "&") {
-      const pairs = part.names.map((name) => {
-        const value$1 = variables[name];
-        if (value$1 === undefined)
-          return "";
-        return `${name}=${Array.isArray(value$1) ? value$1.map((v) => this.encodeValue(v, part.operator)).join(",") : this.encodeValue(value$1.toString(), part.operator)}`;
-      }).filter((pair) => pair.length > 0);
-      if (pairs.length === 0)
-        return "";
-      return (part.operator === "?" ? "?" : "&") + pairs.join("&");
-    }
-    if (part.names.length > 1) {
-      const values = part.names.map((name) => variables[name]).filter((v) => v !== undefined);
-      if (values.length === 0)
-        return "";
-      return values.map((v) => Array.isArray(v) ? v[0] : v).join(",");
-    }
-    const value = variables[part.name];
-    if (value === undefined)
-      return "";
-    const encoded = (Array.isArray(value) ? value : [value]).map((v) => this.encodeValue(v, part.operator));
-    switch (part.operator) {
-      case "":
-        return encoded.join(",");
-      case "+":
-        return encoded.join(",");
-      case "#":
-        return "#" + encoded.join(",");
-      case ".":
-        return "." + encoded.join(".");
-      case "/":
-        return "/" + encoded.join("/");
-      default:
-        return encoded.join(",");
-    }
-  }
-  expand(variables) {
-    let result = "";
-    let hasQueryParam = false;
-    for (const part of this.parts) {
-      if (typeof part === "string") {
-        result += part;
-        continue;
-      }
-      const expanded = this.expandPart(part, variables);
-      if (!expanded)
-        continue;
-      result += (part.operator === "?" || part.operator === "&") && hasQueryParam ? expanded.replace("?", "&") : expanded;
-      if (part.operator === "?" || part.operator === "&")
-        hasQueryParam = true;
-    }
-    return result;
-  }
-  escapeRegExp(str) {
-    return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  }
-  partToRegExp(part) {
-    const patterns = [];
-    for (const name$1 of part.names)
-      UriTemplate.validateLength(name$1, MAX_VARIABLE_LENGTH, "Variable name");
-    if (part.operator === "?" || part.operator === "&") {
-      for (let i = 0;i < part.names.length; i++) {
-        const name$1 = part.names[i];
-        const prefix = i === 0 ? "\\" + part.operator : "&";
-        patterns.push({
-          pattern: prefix + this.escapeRegExp(name$1) + "=([^&]+)",
-          name: name$1
-        });
-      }
-      return patterns;
-    }
-    let pattern;
-    const name = part.name;
-    switch (part.operator) {
-      case "":
-        pattern = part.exploded ? "([^/,]+(?:,[^/,]+)*)" : "([^/,]+)";
-        break;
-      case "+":
-      case "#":
-        pattern = "(.+)";
-        break;
-      case ".":
-        pattern = String.raw`\.([^/,]+)`;
-        break;
-      case "/":
-        pattern = "/" + (part.exploded ? "([^/,]+(?:,[^/,]+)*)" : "([^/,]+)");
-        break;
-      default:
-        pattern = "([^/]+)";
-    }
-    patterns.push({
-      pattern,
-      name
-    });
-    return patterns;
-  }
-  match(uri) {
-    UriTemplate.validateLength(uri, MAX_TEMPLATE_LENGTH, "URI");
-    let pattern = "^";
-    const names = [];
-    for (const part of this.parts)
-      if (typeof part === "string")
-        pattern += this.escapeRegExp(part);
-      else {
-        const patterns = this.partToRegExp(part);
-        for (const { pattern: partPattern, name } of patterns) {
-          pattern += partPattern;
-          names.push({
-            name,
-            exploded: part.exploded
-          });
-        }
-      }
-    pattern += "$";
-    UriTemplate.validateLength(pattern, MAX_REGEX_LENGTH, "Generated regex pattern");
-    const regex = new RegExp(pattern);
-    const match = uri.match(regex);
-    if (!match)
-      return null;
-    const result = {};
-    for (const [i, name_] of names.entries()) {
-      const { name, exploded } = name_;
-      const value = match[i + 1];
-      const cleanName = name.replace("*", "");
-      result[cleanName] = exploded && value.includes(",") ? value.split(",") : value;
-    }
-    return result;
-  }
-};
+}, TOOL_NAME_REGEX;
 var init_src_CX2iR2pK = __esm(() => {
   init_chunk_Br0eD_fh();
   init_dialects_DoSzNhcb();
@@ -23779,21 +23570,6 @@ var COMPLETABLE_SYMBOL, DEFAULT_SSE_KEEP_ALIVE_MS = 15000, MAX_TIMER_DELAY_MS, I
     if (this.isConnected())
       this.server.sendPromptListChanged();
   }
-}, ResourceTemplate = class {
-  _uriTemplate;
-  constructor(uriTemplate, _callbacks) {
-    this._callbacks = _callbacks;
-    this._uriTemplate = typeof uriTemplate === "string" ? new UriTemplate(uriTemplate) : uriTemplate;
-  }
-  get uriTemplate() {
-    return this._uriTemplate;
-  }
-  get listCallback() {
-    return this._callbacks.list;
-  }
-  completeCallback(variable) {
-    return this._callbacks.complete?.[variable];
-  }
 }, EMPTY_OBJECT_JSON_SCHEMA, EMPTY_COMPLETION_RESULT;
 var init_mcp_DXXb3Vv3 = __esm(() => {
   init_src_CX2iR2pK();
@@ -26081,1488 +25857,6 @@ var init_package = __esm(() => {
   };
 });
 
-// prompts/bsvSdk/auth.ts
-function registerAuthPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_auth", {
-    description: "Detailed information about the authentication functionality in the BSV SDK, including identity protocols, certificates, and session management."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_AUTH_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_AUTH_PROMPT = `
-# BSV SDK - Authentication Module
-
-The Authentication module in the BSV SDK provides robust mechanisms for identity management, peer authentication, and certificate handling on the Bitcoin SV blockchain.
-
-## Key Components
-
-This section includes a placeholder for detailed content about the BSV SDK authentication mechanisms.
-
-## Core Features
-
-- Identity management
-- Certificate handling
-- Peer authentication
-- Session management
-
-## Best Practices
-
-1. **Security**: Follow best practices for authentication security
-2. **Testing**: Test authentication flows thoroughly before production use
-3. **Error Handling**: Implement proper error handling
-
-For complete API documentation and additional authentication features, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/cryptography.ts
-function registerCryptographyPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_cryptography", {
-    description: "Detailed information about the cryptographic functionality in the BSV SDK, including key generation, signing, encryption, and hashing."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_CRYPTOGRAPHY_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_CRYPTOGRAPHY_PROMPT = `
-# BSV SDK - Cryptography Module
-
-The Cryptography module in the BSV SDK provides comprehensive tools for handling cryptographic operations required for secure Bitcoin transactions and applications.
-
-## Key Cryptographic Operations
-
-This section includes a placeholder for detailed content about the BSV SDK cryptographic operations.
-
-## Core Features
-
-- Key generation and management
-- Digital signatures (ECDSA)
-- Message signing and verification
-- Encryption and decryption
-- Hash functions (SHA-256, RIPEMD-160, etc.)
-
-## Best Practices
-
-1. **Key Security**: Always handle private keys securely
-2. **Random Number Generation**: Use cryptographically secure random number generation
-3. **Testing**: Verify cryptographic operations with known test vectors
-
-For complete API documentation and additional cryptographic features, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/overview.ts
-function registerOverviewPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_overview", {
-    description: "General overview of the Bitcoin SV SDK, including its purpose and main components."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_OVERVIEW_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_OVERVIEW_PROMPT = `
-# BSV SDK - Overview
-
-The BSV SDK is a comprehensive TypeScript/JavaScript library designed to provide a unified and modern 
-layer for developing scalable applications on the Bitcoin SV blockchain. This SDK addresses limitations 
-of previous tools by offering a fresh approach that adheres to the principles of SPV (Simplified Payment 
-Verification) while ensuring privacy and scalability.
-
-## Core Objectives
-
-- Provide a unified, modern API for Bitcoin SV development
-- Enable secure, peer-to-peer operations
-- Support SPV (Simplified Payment Verification) principles
-- Ensure privacy and scalability in blockchain applications
-- Simplify integration with the Bitcoin SV ecosystem
-
-## Main Components
-
-The BSV SDK is organized into several key modules:
-
-1. **Wallet**: Manage keys, addresses, and UTXOs
-2. **Transaction**: Build and manipulate Bitcoin transactions
-3. **Auth**: Authentication and identity protocols
-4. **Cryptography**: Signing, encryption, and verification
-5. **Script**: Bitcoin scripting and contract capabilities
-6. **Primitives**: Core data types and structures
-7. **Messages**: Network message handling
-8. **Overlay Tools**: Additional utilities and extensions
-
-## Getting Started
-
-To use the BSV SDK in your project:
-
-\`\`\`bash
-# Install with npm
-npm install @bsv/sdk
-
-# Or with yarn
-yarn add @bsv/sdk
-\`\`\`
-
-Then import the components you need:
-
-\`\`\`typescript
-import { PrivateKey, Transaction } from "@bsv/sdk";
-\`\`\`
-
-## Use Cases
-
-- Wallet applications
-- Payment systems
-- Smart contract platforms
-- Token systems
-- Identity solutions
-- Data storage and verification
-
-## Additional Resources
-
-For detailed information about specific components, please see the dedicated prompts for each module:
-- Wallet operations: Use prompt "bitcoin_sv_sdk_wallet"
-- Transaction building: Use prompt "bitcoin_sv_sdk_transaction"
-- Authentication: Use prompt "bitcoin_sv_sdk_auth"
-- Cryptography: Use prompt "bitcoin_sv_sdk_cryptography"
-- Scripting: Use prompt "bitcoin_sv_sdk_script"
-- Primitives: Use prompt "bitcoin_sv_sdk_primitives"
-
-For official documentation, visit the BSV Blockchain Libraries Project repository.
-`;
-
-// prompts/bsvSdk/primitives.ts
-function registerPrimitivesPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_primitives", {
-    description: "Detailed information about the primitive data types and structures in the BSV SDK, including Binary, Hex, Points, and other fundamental types."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_PRIMITIVES_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_PRIMITIVES_PROMPT = `
-# BSV SDK - Primitives Module
-
-The Primitives module in the BSV SDK provides fundamental data types and structures that form the building blocks for working with Bitcoin transactions and blockchain data.
-
-## Core Primitive Types
-
-This section includes a placeholder for detailed content about the primitive types available in the BSV SDK.
-
-## Key Primitives
-
-- Binary data handling
-- Hex string conversion
-- Point and curve operations
-- Bitcoin-specific data structures
-- Network message formats
-
-## Common Operations
-
-- Serialization and deserialization
-- Type conversion
-- Data validation
-- Encoding and decoding
-
-## Best Practices
-
-1. **Type Safety**: Use appropriate types for Bitcoin operations
-2. **Validation**: Validate input data before processing
-3. **Performance**: Consider performance implications when working with large data structures
-
-For complete API documentation and additional information about primitives, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/script.ts
-function registerScriptPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_script", {
-    description: "Detailed information about the script functionality in the BSV SDK, including Bitcoin Script operations, locking and unlocking scripts, and OP_CODES."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_SCRIPT_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_SCRIPT_PROMPT = `
-# BSV SDK - Script Module
-
-The Script module in the BSV SDK provides comprehensive tools for working with Bitcoin Script, the programming language used to specify conditions for spending Bitcoin.
-
-## Bitcoin Script Basics
-
-This section includes a placeholder for detailed content about Bitcoin Script and its implementation in the BSV SDK.
-
-## Core Features
-
-- Creating and manipulating scripts
-- Locking script (scriptPubKey) creation
-- Unlocking script (scriptSig) creation
-- Script verification and execution
-- Support for all Bitcoin OP_CODES
-
-## Common Script Types
-
-- P2PKH (Pay to Public Key Hash)
-- P2PK (Pay to Public Key)
-- P2MS (Multi-signature)
-- OP_RETURN (Data storage)
-- Custom scripts
-
-## Best Practices
-
-1. **Testing**: Test scripts thoroughly before production use
-2. **Security**: Be aware of potential script vulnerabilities
-3. **Compatibility**: Ensure scripts are compatible with network rules
-
-For complete API documentation and additional script features, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/transaction.ts
-function registerTransactionPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_transaction", {
-    description: "Detailed information about transaction building and management in the BSV SDK, including input/output handling, script integration, and transaction signing."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_TRANSACTION_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_TRANSACTION_PROMPT = `
-# BSV SDK - Transaction Module
-
-The Transaction module in the BSV SDK provides comprehensive functionality for creating, manipulating, and signing Bitcoin transactions. It gives developers fine-grained control over transaction construction while abstracting many of the complexities.
-
-## Key Components
-
-### Transaction Class
-
-The core \`Transaction\` class represents a Bitcoin transaction and provides methods for manipulating its components:
-
-\`\`\`typescript
-import { Transaction, PrivateKey, LockingScript } from "@bsv/sdk";
-
-// Create a new transaction
-const tx = new Transaction();
-
-// Set transaction properties
-tx.version = 1;
-tx.lockTime = 0;
-\`\`\`
-
-## Building Transactions
-
-### Adding Inputs
-
-\`\`\`typescript
-// Add an input by specifying the source transaction and output index
-tx.addInput({
-  sourceTXID: "previous_transaction_id_in_hex",
-  sourceOutputIndex: 0,
-  sequence: 0xffffffff // Optional, defaults to max value
-});
-
-// Add multiple inputs
-const inputs = [
-  { sourceTXID: "txid1", sourceOutputIndex: 0 },
-  { sourceTXID: "txid2", sourceOutputIndex: 1 }
-];
-inputs.forEach(input => tx.addInput(input));
-\`\`\`
-
-### Adding Outputs
-
-\`\`\`typescript
-// Add an output with a locking script and amount
-import { LockingScript } from "@bsv/sdk";
-
-// Create from a Bitcoin address
-const lockingScript = LockingScript.fromAddress("recipient_address");
-
-// Add the output to the transaction
-tx.addOutput({
-  lockingScript,
-  satoshis: 5000 // Amount in satoshis
-});
-
-// Add a data (OP_RETURN) output
-const dataScript = LockingScript.fromData(Utils.toArray("Hello, Bitcoin!", "utf8"));
-tx.addOutput({
-  lockingScript: dataScript,
-  satoshis: 0 // OP_RETURN outputs typically have 0 value
-});
-\`\`\`
-
-### Working with UTXOs
-
-When building transactions with existing UTXOs:
-
-\`\`\`typescript
-import { UnlockingScript } from "@bsv/sdk";
-
-// Example UTXO data
-const utxos = [
-  {
-    txid: "previous_tx_id_in_hex",
-    vout: 0,
-    satoshis: 10000,
-    scriptPubKey: "locking_script_hex"
-  }
-];
-
-// Create transaction using UTXOs
-const tx = new Transaction();
-
-// Add input from UTXO
-utxos.forEach(utxo => {
-  tx.addInput({
-    sourceTXID: utxo.txid,
-    sourceOutputIndex: utxo.vout
-  });
-});
-
-// Add output with recipient address
-tx.addOutput({
-  lockingScript: LockingScript.fromAddress("recipient_address"),
-  satoshis: 9000 // Sending 9000 satoshis (10000 - 1000 fee)
-});
-\`\`\`
-
-## Signing Transactions
-
-### Basic Transaction Signing
-
-\`\`\`typescript
-import { PrivateKey, SigningConfig, Utils } from "@bsv/sdk";
-
-// Create a private key
-const privateKey = PrivateKey.fromWif("your_private_key_wif");
-
-// Sign a specific input
-const inputIndex = 0;
-const signingConfig: SigningConfig = {
-  privateKey,
-  lockingScript: LockingScript.fromAddress(privateKey.toAddress()),
-  satoshis: 10000, // Original amount in the UTXO
-  inputIndex,
-  sigHashType: Utils.SIGHASH_ALL | Utils.SIGHASH_FORKID // Standard signing algorithm
-};
-
-// Apply the signature to the transaction
-tx.sign(signingConfig);
-\`\`\`
-
-### Signing Multiple Inputs
-
-\`\`\`typescript
-// Sign multiple inputs with different keys
-const keys = [privateKey1, privateKey2];
-const utxos = [utxo1, utxo2];
-
-utxos.forEach((utxo, index) => {
-  const signingConfig = {
-    privateKey: keys[index],
-    lockingScript: LockingScript.fromHex(utxo.scriptPubKey),
-    satoshis: utxo.satoshis,
-    inputIndex: index,
-    sigHashType: Utils.SIGHASH_ALL | Utils.SIGHASH_FORKID
-  };
-  
-  tx.sign(signingConfig);
-});
-\`\`\`
-
-## Transaction Serialization
-
-\`\`\`typescript
-// Convert transaction to binary format
-const txBinary = tx.toBinary();
-
-// Convert to hex string
-const txHex = tx.toHex();
-
-// Get transaction ID
-const txid = tx.hash("hex");
-
-// Parse an existing transaction
-const parsedTx = Transaction.fromHex("transaction_hex_string");
-\`\`\`
-
-## Fee Calculation
-
-\`\`\`typescript
-// Manual fee calculation based on transaction size
-const txSize = tx.toBinary().length;
-const feeRate = 0.5; // satoshis per byte
-const fee = Math.ceil(txSize * feeRate);
-
-// Adjust output amount to include fee
-outputAmount = inputAmount - fee;
-\`\`\`
-
-## Advanced Transaction Features
-
-### Time Locks
-
-\`\`\`typescript
-// Set absolute locktime (by block height)
-tx.lockTime = 700000; // Transaction can't be mined until block 700000
-
-// Set relative locktime using sequence number (BIP 68)
-const sequenceForBlocks = (blocks) => 0xffffffff - blocks;
-tx.inputs[0].sequence = sequenceForBlocks(10); // Locked for 10 blocks
-\`\`\`
-
-### Custom Scripts
-
-\`\`\`typescript
-import { Script, OpCodes } from "@bsv/sdk";
-
-// Create a custom script
-const customScript = new Script();
-customScript.add(OpCodes.OP_DUP);
-customScript.add(OpCodes.OP_HASH160);
-customScript.add(Utils.toArray("public_key_hash", "hex"));
-customScript.add(OpCodes.OP_EQUALVERIFY);
-customScript.add(OpCodes.OP_CHECKSIG);
-
-// Create a locking script from the custom script
-const customLockingScript = LockingScript.fromScript(customScript);
-\`\`\`
-
-## Best Practices
-
-1. **Fee Management**: Calculate appropriate fees based on transaction size and network conditions
-2. **Input/Output Management**: Properly track inputs and outputs to avoid double-spending
-3. **Change Handling**: Always account for change when not spending the full UTXO amount
-4. **Testing**: Test transactions on testnet before deploying to mainnet
-5. **Error Handling**: Implement proper error handling for transaction building and signing
-
-For complete API documentation and additional transaction features, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/wallet.ts
-function registerWalletPrompt(server) {
-  server.registerPrompt("bitcoin_sv_sdk_wallet", {
-    description: "Detailed information about the wallet functionality in the BSV SDK, including key management, address handling, and UTXO management."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: BSV_SDK_WALLET_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var BSV_SDK_WALLET_PROMPT = `
-# BSV SDK - Wallet Module
-
-The wallet module in BSV SDK provides comprehensive functionality for managing Bitcoin keys, addresses, and UTXOs (Unspent Transaction Outputs). It forms the foundation for creating and managing Bitcoin wallets in your applications.
-
-## Key Classes and Interfaces
-
-### ProtoWallet
-
-The \`ProtoWallet\` class provides a basic implementation of the wallet interface with core functionality:
-
-\`\`\`typescript
-import { PrivateKey, ProtoWallet } from "@bsv/sdk";
-
-// Create a new wallet with a random private key
-const privateKey = PrivateKey.fromRandom();
-const wallet = new ProtoWallet(privateKey);
-\`\`\`
-
-### WalletInterface
-
-The \`WalletInterface\` defines the standard interface that wallet implementations should follow. It includes methods for:
-
-- Key management
-- Cryptographic operations
-- Transaction creation and signing
-- Output management
-- Certificate handling
-
-## Key Management
-
-### Generating Keys
-
-\`\`\`typescript
-import { PrivateKey } from "@bsv/sdk";
-
-// Generate a random private key
-const privateKey = PrivateKey.fromRandom();
-
-// Generate from a WIF (Wallet Import Format) string
-const importedKey = PrivateKey.fromWif("your-wif-string");
-
-// Generate from a seed
-const seedKey = PrivateKey.fromSeed(Utils.toArray("your-seed-data", "utf8"));
-
-// Get the corresponding public key
-const publicKey = privateKey.toPublicKey();
-\`\`\`
-
-### KeyDeriver & CachedKeyDeriver
-
-For HD (Hierarchical Deterministic) wallet functionality:
-
-\`\`\`typescript
-import { KeyDeriver } from "@bsv/sdk";
-
-// Create a key deriver with a seed
-const deriver = new KeyDeriver(seed);
-
-// Derive a key at a specific path
-const derivedKey = await deriver.deriveKey("m/44'/0'/0'/0/0");
-\`\`\`
-
-## Address Management
-
-\`\`\`typescript
-// Get the address for a private key
-const address = privateKey.toAddress();
-
-// Get the address for a public key
-const address = publicKey.toAddress();
-
-// Get the address string
-const addressString = address.toString();
-\`\`\`
-
-## UTXO Management
-
-Managing UTXOs (Unspent Transaction Outputs) is a critical part of wallet functionality:
-
-\`\`\`typescript
-// Example of tracking UTXOs
-class MyWallet extends ProtoWallet {
-  private utxos = [];
-  
-  async refreshUtxos(address) {
-    // Fetch UTXOs from a service or API
-    this.utxos = await fetchUtxosFromService(address);
-  }
-  
-  getAvailableUtxos() {
-    return this.utxos.filter(utxo => !utxo.spent);
-  }
-  
-  getBalance() {
-    return this.getAvailableUtxos().reduce((sum, utxo) => sum + utxo.satoshis, 0);
-  }
-}
-\`\`\`
-
-## Cryptographic Operations
-
-The wallet module provides various cryptographic operations:
-
-\`\`\`typescript
-// Signing data
-const signature = await wallet.createSignature({
-  data: [1, 2, 3, 4],  // Data to sign
-  protocolID: [1, "ecdsa"],  // Protocol to use
-  keyID: "default"  // Key identifier
-});
-
-// Verifying signatures
-const isValid = await wallet.verifySignature({
-  data: [1, 2, 3, 4],  // Original data
-  signature: signatureBytes,  // Signature to verify
-  protocolID: [1, "ecdsa"],
-  keyID: "default"
-});
-
-// Encryption and decryption
-const encrypted = await wallet.encrypt({
-  plaintext: [1, 2, 3, 4],
-  protocolID: [1, "aes256"],
-  keyID: "default"
-});
-
-const decrypted = await wallet.decrypt({
-  ciphertext: encrypted.ciphertext,
-  protocolID: [1, "aes256"],
-  keyID: "default"
-});
-\`\`\`
-
-## Best Practices
-
-1. **Key Security**: Always handle private keys securely and never expose them unnecessarily
-2. **UTXO Management**: Maintain accurate UTXO information for wallet functionality
-3. **Error Handling**: Implement proper error handling for all wallet operations
-4. **Testing**: Test wallet functionality thoroughly on testnet before deploying to mainnet
-5. **Backup**: Provide key backup and recovery mechanisms for users
-
-## Advanced Topics
-
-- **Multi-signature wallets**: Implementing wallets requiring multiple signatures
-- **HD Wallets**: Creating hierarchical deterministic wallets for key derivation
-- **Watch-only wallets**: Tracking addresses without private keys
-- **Hardware wallet integration**: Connecting to hardware security devices
-
-For complete API documentation and additional wallet features, refer to the official BSV SDK documentation.
-`;
-
-// prompts/bsvSdk/index.ts
-function registerAllBsvSdkPrompts(server) {
-  registerOverviewPrompt(server);
-  registerWalletPrompt(server);
-  registerTransactionPrompt(server);
-  registerAuthPrompt(server);
-  registerCryptographyPrompt(server);
-  registerScriptPrompt(server);
-  registerPrimitivesPrompt(server);
-}
-var init_bsvSdk = () => {};
-
-// prompts/ordinals.ts
-function registerOrdinalsPrompt(server) {
-  server.registerPrompt("bitcoin_sv_ordinals", {
-    description: "Comprehensive information about Bitcoin SV ordinals, including what they are, how they work, and how to use them."
-  }, async (_ctx) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: ORDINALS_PROMPT
-          }
-        }
-      ]
-    };
-  });
-}
-var ORDINALS_PROMPT = `
-# 1Sat Ordinals - Comprehensive Guide
-
-Ordinals are a way to uniquely identify and track specific satoshis (the smallest unit of Bitcoin) 
-on the blockchain. This concept allows for "inscriptions" - embedding data directly into a satoshi, 
-effectively creating NFT-like functionality native to the Bitcoin protocol.
-
-## Key Concepts
-
-1. **Ordinal Theory**: Each satoshi has a unique position in the Bitcoin ledger, determined by the order 
-   in which they were mined.
-
-2. **Inscriptions**: Content embedded directly into a specific satoshi. Can be any valid content type.
-
-3. **On-chain Storage**: All ordinal data is stored immutably on the blockchain.
-
-## BSV Ordinals (1Sat Ordinals) vs. BTC Ordinals
-
-- 1Sat Ordinals leverage the larger block sizes and lower fees of Bitcoin SV, making them more practical
-  for storing meaningful data and media.
-  
-- 1Sat Ordinals can store much larger inscriptions compared to BTC, enabling richer media and applications.
-
-- 1Sat Ordinals typically cost a fraction of what BTC ordinals cost to create and transfer.
-
-## Creating Ordinals
-
-To create a BSV ordinal:
-
-1. Choose the content to inscribe (image, text, audio, etc.)
-2. Use a compatible wallet or service that supports ordinal creation
-3. Pay the transaction fee to inscribe your content on-chain
-4. Receive a unique ordinal ID that references your specific satoshi
-
-## Transferring Ordinals
-
-Ordinals are transferred by sending the specific satoshi that contains the inscription. Compatible wallets
-ensure that when you transfer an ordinal, the specific satoshi containing the inscription is included in
-the transaction.
-
-## Viewing Ordinals
-
-Ordinal inscriptions can be viewed through:
-
-1. Specialized ordinal explorers
-2. Compatible wallets with ordinal support
-3. Marketplaces that support BSV ordinals
-
-## Use Cases
-
-- Digital Art and Collectibles
-- Certificates of Authenticity
-- Domain Names
-- Documentation and Verification
-- Gaming Assets
-- Media Distribution
-
-## Best Practices
-
-- Verify file sizes and transaction costs before inscribing
-- Use appropriate file formats optimized for on-chain storage
-- Keep private keys secure to maintain ownership of valuable ordinals
-- Consider using a specialized wallet for managing valuable ordinal collections
-
-For technical implementation details, refer to the official documentation and BSV ordinals standards.
-`;
-
-// prompts/index.ts
-function registerAllPrompts(server) {
-  registerOrdinalsPrompt(server);
-  registerAllBsvSdkPrompts(server);
-}
-var init_prompts = __esm(() => {
-  init_bsvSdk();
-  init_bsvSdk();
-});
-
-// resources/bitcom.ts
-function registerBitcomResource(server) {
-  server.registerResource("bitcom_protocol", bitcomResourceTemplate, {
-    title: "Bitcom Protocol Documentation",
-    description: "Documentation for supported Bitcom protocols"
-  }, async (uri, params) => {
-    const protocolName = params.protocolName;
-    if (!protocolName || !(protocolName in bitcomProtocols)) {
-      const available = Object.keys(bitcomProtocols).join(", ");
-      return {
-        code: -32602,
-        message: `Invalid or missing protocol name. Available: ${available}`,
-        contents: []
-      };
-    }
-    const proto = bitcomProtocols[protocolName];
-    const notesString = "notes" in proto && proto.notes ? `\\nNotes:\\n${proto.notes}\\n` : "";
-    const textContent = `
-Protocol: ${proto.name}
-Prefix: ${proto.prefix || "N/A"}
-Reference: ${proto.reference}
-
-Description:
-${proto.description}
-
-Structure:
-\`\`\`
-${proto.structure.trim()}
-\`\`\`
-${notesString}      `.trim();
-    return {
-      contents: [
-        {
-          uri: uri.href,
-          text: textContent,
-          mimeType: "text/plain"
-        }
-      ]
-    };
-  });
-}
-var bitcomProtocols, bitcomResourceTemplate;
-var init_bitcom = __esm(() => {
-  init_dist();
-  bitcomProtocols = {
-    AIP: {
-      name: "Author Identity Protocol (AIP)",
-      prefix: "15PciHG22SNLQJXMoSUaWVi7WSqc7hCfva",
-      description: "A simple and flexible method to sign arbitrary OP_RETURN data with Bitcoin ECDSA signatures, decoupling the signing address from the funding source.",
-      structure: `
-OP_RETURN
-  [Data]
-  [Media Type]
-  [Encoding]
-  [Filename]
-  |
-  15PciHG22SNLQJXMoSUaWVi7WSqc7hCfva (AIP Prefix)
-  [Signing Algorithm] (e.g., BITCOIN_ECDSA)
-  [Signing Address]
-  [Signature] (Base64 Encoded)
-  [Field Index 0] (Optional, 0 = OP_RETURN 0x6a)
-  [Field Index 1] (Optional)
-  ... (If indexes are omitted, all fields left of '|' are signed)
-`,
-      reference: "https://raw.githubusercontent.com/b-open-io/AIP/refs/heads/main/README.md"
-    },
-    MAP: {
-      name: "Magic Attribute Protocol (MAP)",
-      prefix: "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5",
-      description: "A simple protocol for associating data in a single transaction by defining key-value pairs, often used for mapping content (like B:// protocol data) to identifiers or actions.",
-      structure: `
-OP_RETURN
-  ... (Optional Input Data Protocol, e.g., B://)
-  |
-  1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5 (MAP Prefix)
-  'SET'
-  [Key 1] (UTF8 String)
-  [Value 1] (UTF8 String)
-  [Key 2] (Optional UTF8 String)
-  [Value 2] (Optional UTF8 String)
-  ...
-`,
-      notes: "Can be used standalone or chained after other protocols (like B). Keys can represent attributes (url, type, coordinates.lat) or actions (like, follow.user).",
-      reference: "https://raw.githubusercontent.com/rohenaz/MAP/refs/heads/master/README.md"
-    },
-    SIGMA: {
-      name: "Sigma Protocol",
-      prefix: "SIGMA",
-      description: "Enhances transaction security by signing custom output scripts, incorporating input txid and output data hashes to mitigate replay attacks.",
-      structure: `
-<locking script>
-OP_RETURN
-  [Additional Data] (Optional)
-  | (Optional Separator)
-  SIGMA (Protocol Identifier)
-  [Signing Algorithm] (e.g., ECDSA)
-  [Signing Address]
-  [Signature] (Base64 Encoded in lib, Hex in script)
-  [VIN] (Index of input whose txid is included in signature, -1 for corresponding input)
-`,
-      reference: "User provided text (Abstract/Introduction)"
-    }
-  };
-  bitcomResourceTemplate = new ResourceTemplate("bitcom://protocol/{protocolName}", { list: undefined });
-});
-
-// resources/brcs.ts
-function registerBRCsResources(server) {
-  server.registerResource("brcs_readme", "https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/README.md", {
-    title: "Bitcoin SV BRCs Overview",
-    description: "Overview of all Bitcoin SV protocol specifications in the BRCs repository"
-  }, async (uri) => {
-    const resp = await fetch(uri.href);
-    const text = await resp.text();
-    return {
-      contents: [
-        {
-          uri: uri.href,
-          text
-        }
-      ]
-    };
-  });
-  server.registerResource("brcs_summary", "https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/SUMMARY.md", {
-    title: "Bitcoin SV BRCs Summary",
-    description: "Table of contents for all Bitcoin SV BRCs"
-  }, async (uri) => {
-    const resp = await fetch(uri.href);
-    const text = await resp.text();
-    return {
-      contents: [
-        {
-          uri: uri.href,
-          text
-        }
-      ]
-    };
-  });
-  server.registerResource("brc_spec", new ResourceTemplate("brc://{category}/{brcNumber}", { list: undefined }), {
-    title: "Bitcoin SV BRC Specification",
-    description: "Access specific BRC specifications by category and number"
-  }, async (uri, { category, brcNumber }) => {
-    const path = `${category}/${brcNumber}.md`;
-    const resp = await fetch(`https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/${path}`);
-    if (!resp.ok) {
-      throw new Error(`BRC specification not found: ${path}`);
-    }
-    const text = await resp.text();
-    return {
-      contents: [
-        {
-          uri: uri.href,
-          text
-        }
-      ]
-    };
-  });
-  registerAllBRCs(server);
-}
-function registerAllBRCs(server) {
-  const brcs = [
-    {
-      number: "0",
-      title: "Banana-Powered Bitcoin Wallet Control Protocol",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "1",
-      title: "Transaction Creation",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "2",
-      title: "Data Encryption and Decryption",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "3",
-      title: "Digital Signature Creation and Verification",
-      category: "wallet" /* Wallet */
-    },
-    { number: "4", title: "Input Redemption", category: "wallet" /* Wallet */ },
-    {
-      number: "5",
-      title: "HTTP Wallet Communications Substrate",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "6",
-      title: "XDM Wallet Communications Substrate",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "7",
-      title: "Window Wallet Communication Substrate",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "8",
-      title: "Everett-style Transaction Envelopes",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "9",
-      title: "Simplified Payment Verification",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "10",
-      title: "Merkle proof standardised format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "11",
-      title: "TSC Proof Format with Heights",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "12",
-      title: "Raw Transaction Format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "13",
-      title: "TXO Transaction Object Format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "14",
-      title: "Bitcoin Script Binary, Hex and ASM Formats",
-      category: "scripts" /* Scripts */
-    },
-    {
-      number: "15",
-      title: "Bitcoin Script Assembly Language",
-      category: "scripts" /* Scripts */
-    },
-    {
-      number: "16",
-      title: "Pay to Public Key Hash",
-      category: "scripts" /* Scripts */
-    },
-    {
-      number: "17",
-      title: "Pay to R Puzzle Hash",
-      category: "scripts" /* Scripts */
-    },
-    {
-      number: "18",
-      title: "Pay to False Return",
-      category: "scripts" /* Scripts */
-    },
-    {
-      number: "19",
-      title: "Pay to True Return",
-      category: "scripts" /* Scripts */
-    },
-    { number: "20", title: "There is no BRC-20", category: "tokens" /* Tokens */ },
-    { number: "21", title: "Push TX", category: "scripts" /* Scripts */ },
-    {
-      number: "22",
-      title: "Overlay Network Data Synchronization",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "23",
-      title: "Confederacy Host Interconnect Protocol (CHIP)",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "24",
-      title: "Overlay Network Lookup Services",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "25",
-      title: "Confederacy Lookup Availability Protocol (CLAP)",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "26",
-      title: "Universal Hash Resolution Protocol",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "27",
-      title: "Direct Payment Protocol (DPP)",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "28",
-      title: "Paymail Payment Destinations",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "29",
-      title: "Simple Authenticated BSV P2PKH Payment Protocol",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "30",
-      title: "Transaction Extended Format (EF)",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "31",
-      title: "Authrite Mutual Authentication",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "32",
-      title: "BIP32 Key Derivation Scheme",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "33",
-      title: "PeerServ Message Relay Interface",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "34",
-      title: "PeerServ Host Interconnect Protocol",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "36",
-      title: "Format for Bitcoin Outpoints",
-      category: "outpoints" /* Outpoints */
-    },
-    {
-      number: "37",
-      title: "Spending Instructions Extension for UTXO Storage Format",
-      category: "outpoints" /* Outpoints */
-    },
-    {
-      number: "41",
-      title: "PacketPay HTTP Payment Mechanism",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "42",
-      title: "BSV Key Derivation Scheme (BKDS)",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "43",
-      title: "Security Levels, Protocol IDs, Key IDs and Counterparties",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "44",
-      title: "Admin-reserved and Prohibited Key Derivation Protocols",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "45",
-      title: "Definition of UTXOs as Bitcoin Tokens",
-      category: "tokens" /* Tokens */
-    },
-    {
-      number: "46",
-      title: "Wallet Transaction Output Tracking (Output Baskets)",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "47",
-      title: "Bare Multi-Signature",
-      category: "scripts" /* Scripts */
-    },
-    { number: "48", title: "Pay to Push Drop", category: "scripts" /* Scripts */ },
-    {
-      number: "49",
-      title: "Users should never see an address",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "50",
-      title: "Submitting Received Payments to a Wallet",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "51",
-      title: "List of user experiences",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "52",
-      title: "Identity Certificates",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "53",
-      title: "Certificate Creation and Revelation",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "54",
-      title: "Hybrid Payment Mode for DPP",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "55",
-      title: "HTTPS Transport Mechanism for DPP",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "56",
-      title: "Unified Abstract Wallet-to-Application Messaging Layer",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "57",
-      title: "Legitimate Uses for mAPI",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "58",
-      title: "Merkle Path JSON format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "59",
-      title: "Security and Scalability Benefits of UTXO-based Overlay Networks",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "60",
-      title: "Simplifying State Machine Event Chains in Bitcoin",
-      category: "state-machines" /* StateMachines */
-    },
-    {
-      number: "61",
-      title: "Compound Merkle Path Format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "62",
-      title: "Background Evaluation Extended Format (BEEF) Transactions",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "63",
-      title: "Genealogical Identity Protocol",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "64",
-      title: "Overlay Network Transaction History Tracking",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "65",
-      title: "Transaction Labels and List Actions",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "66",
-      title: "Output Basket Removal and Certificate Deletion",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "67",
-      title: "Simplified Payment Verification",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "68",
-      title: "Publishing Trust Anchor Details at an Internet Domain",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "69",
-      title: "Revealing Key Linkages",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "70",
-      title: "Paymail BEEF Transaction",
-      category: "payments" /* Payments */
-    },
-    {
-      number: "71",
-      title: "Merkle Path Binary Format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "72",
-      title: "Protecting BRC-69 Key Linkage Information in Transit",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "73",
-      title: "Group Permissions for App Access",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "74",
-      title: "BSV Unified Merkle Path (BUMP) Format",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "75",
-      title: "Mnemonic For Master Private Key",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "76",
-      title: "Graph Aware Sync Protocol",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "77",
-      title: "Message Signature Creation and Verification",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "78",
-      title: "Serialization Format for Portable Encrypted Messages",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "79",
-      title: "Token Exchange Protocol for UTXO-based Overlay Networks",
-      category: "tokens" /* Tokens */
-    },
-    {
-      number: "80",
-      title: "Improving on MLD for BSV Multicast Services",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "81",
-      title: "Private Overlays with P2PKH Transactions",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "82",
-      title: "Defining a Scalable IPv6 Multicast Protocol for Blockchain Transaction Broadcast",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "83",
-      title: "Scalable Transaction Processing in the BSV Network",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "84",
-      title: "Linked Key Derivation Scheme",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "85",
-      title: "Proven Identity Key Exchange (PIKE)",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "86",
-      title: "Bidirectionally Authenticated Derivation of Privacy Restricted Type 42 Keys",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "87",
-      title: "Standardized Naming Conventions for BRC-22 Topic Managers and BRC-24 Lookup Services",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "88",
-      title: "Overlay Services Synchronization Architecture",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "89",
-      title: "Web 3.0 Standard (at a high level)",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "90",
-      title: "Thoughts on the Mandala Network",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "91",
-      title: "Outputs, Overlays, and Scripts in the Mandala Network",
-      category: "opinions" /* Opinions */
-    },
-    {
-      number: "92",
-      title: "Mandala Token Protocol",
-      category: "tokens" /* Tokens */
-    },
-    {
-      number: "93",
-      title: "Limitations of BRC-69 Key Linkage Revelation",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "94",
-      title: "Verifiable Revelation of Shared Secrets Using Schnorr Protocol",
-      category: "key-derivation" /* KeyDerivation */
-    },
-    {
-      number: "95",
-      title: "Atomic BEEF Transactions",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "96",
-      title: "BEEF V2 Txid Only Extension",
-      category: "transactions" /* Transactions */
-    },
-    {
-      number: "97",
-      title: "Extensible Proof-Type Format for Specific Key Linkage Claims",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "98",
-      title: "P Protocols: Allowing future wallet protocol permission schemes",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "99",
-      title: "P Baskets: Allowing Future Wallet Basket and Digital Asset Permission Schemes",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "100",
-      title: "Unified, Vendor-Neutral, Unchanging, and Open BSV Blockchain Standard Wallet-to-Application Interface",
-      category: "wallet" /* Wallet */
-    },
-    {
-      number: "101",
-      title: "Diverse Facilitators and URL Protocols for SHIP and SLAP Overlay Advertisements",
-      category: "overlays" /* Overlays */
-    },
-    {
-      number: "102",
-      title: "The deployment-info.json Specification",
-      category: "apps" /* Apps */
-    },
-    {
-      number: "103",
-      title: "Peer-to-Peer Mutual Authentication and Certificate Exchange Protocol",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "104",
-      title: "HTTP Transport for BRC-103 Mutual Authentication",
-      category: "peer-to-peer" /* PeerToPeer */
-    },
-    {
-      number: "105",
-      title: "HTTP Service Monetization Framework",
-      category: "payments" /* Payments */
-    }
-  ];
-  for (const brc of brcs) {
-    const paddedNumber = brc.number.padStart(4, "0");
-    const titleKeywords = brc.title.replace(/[^a-zA-Z0-9 ]/g, "").split(" ");
-    const keyword = titleKeywords.find((word) => word.length > 3 && ![
-      "with",
-      "from",
-      "that",
-      "this",
-      "your",
-      "when",
-      "then",
-      "them",
-      "they",
-      "bitcoin"
-    ].includes(word.toLowerCase())) || titleKeywords[0] || "brc";
-    const resourceId = `brc_${paddedNumber}_${keyword.toLowerCase()}`;
-    const url = `https://raw.githubusercontent.com/bitcoin-sv/BRCs/master/${brc.category}/${brc.number.padStart(4, "0")}.md`;
-    server.registerResource(resourceId, url, {
-      title: `BRC-${brc.number}: ${brc.title}`,
-      description: `Bitcoin SV BRC-${brc.number}: ${brc.title}`
-    }, async (uri) => {
-      const resp = await fetch(uri.href);
-      if (!resp.ok) {
-        throw new Error(`BRC-${brc.number} not found at ${uri.href}`);
-      }
-      const text = await resp.text();
-      return {
-        contents: [
-          {
-            uri: uri.href,
-            text
-          }
-        ]
-      };
-    });
-  }
-}
-var init_brcs = __esm(() => {
-  init_dist();
-});
-
 // resources/changelog.ts
 async function fetchChangelog() {
   try {
@@ -27824,15 +26118,10 @@ var JUNGLEBUS_DOCS_URL = "https://junglebus.gorillapool.io/docs/";
 
 // resources/resources.ts
 function registerResources(server) {
-  registerBRCsResources(server);
   registerChangelogResource(server);
   registerJungleBusResource(server);
-  registerBitcomResource(server);
 }
-var init_resources = __esm(() => {
-  init_bitcom();
-  init_brcs();
-});
+var init_resources = () => {};
 
 // node_modules/@1sat/client/dist/errors.js
 var HttpError;
@@ -52799,7 +51088,220 @@ var init_RemittanceManager = () => {};
 var init_RemittanceModule = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/remittance/modules/BasicBRC29.js
-var init_BasicBRC29 = () => {};
+class Brc29RemittanceModule {
+  id = "brc29.p2pkh";
+  name = "BSV (BRC-29 derived P2PKH)";
+  allowUnsolicitedSettlements = true;
+  protocolID;
+  labels;
+  description;
+  outputDescription;
+  refundFeeSatoshis;
+  minRefundSatoshis;
+  internalizeProtocol;
+  nonceProvider;
+  lockingScriptProvider;
+  constructor(cfg = {}) {
+    this.protocolID = cfg.protocolID ?? [2, "3241645161d8"];
+    this.labels = cfg.labels ?? ["brc29"];
+    this.description = cfg.description ?? "BRC-29 payment";
+    this.outputDescription = cfg.outputDescription ?? "Payment for remittance invoice";
+    this.refundFeeSatoshis = cfg.refundFeeSatoshis ?? 1000;
+    this.minRefundSatoshis = cfg.minRefundSatoshis ?? 1000;
+    const legacyInternalizeProtocol = cfg.internalizeProtocol;
+    if (legacyInternalizeProtocol === "basket insertion") {
+      throw new TypeError("BRC-29 settlements cannot be internalized as basket insertions. " + "Use wallet payment for spendable wallet balance, or implement a separate custom-output protocol with insertionRemittance.");
+    }
+    this.internalizeProtocol = "wallet payment";
+    this.nonceProvider = cfg.nonceProvider ?? DefaultNonceProvider;
+    this.lockingScriptProvider = cfg.lockingScriptProvider ?? DefaultLockingScriptProvider;
+  }
+  async buildSettlement(args, ctx) {
+    const { wallet, originator } = ctx;
+    let option;
+    try {
+      option = ensureValidOption(args.option);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return terminate("brc29.invalid_option", message);
+    }
+    const amountSatoshis = option.amountSatoshis;
+    const origin = originator;
+    try {
+      const derivationPrefix = await this.nonceProvider.createNonce(wallet, "self", origin);
+      const derivationSuffix = await this.nonceProvider.createNonce(wallet, "self", origin);
+      const protocolID = option.protocolID ?? this.protocolID;
+      const keyID = `${derivationPrefix} ${derivationSuffix}`;
+      const { publicKey } = await wallet.getPublicKey({
+        protocolID,
+        keyID,
+        counterparty: option.payee
+      }, origin);
+      if (typeof publicKey !== "string" || publicKey.trim() === "") {
+        return terminate("brc29.public_key_missing", "Failed to derive payee public key for BRC-29 settlement.");
+      }
+      const lockingScript = await this.lockingScriptProvider.pubKeyToP2PKHLockingScript(publicKey);
+      if (typeof lockingScript !== "string" || lockingScript.trim() === "") {
+        return terminate("brc29.locking_script_missing", "Failed to produce P2PKH locking script.");
+      }
+      const action = await wallet.createAction({
+        description: option.description ?? this.description,
+        labels: option.labels ?? this.labels,
+        outputs: [
+          {
+            satoshis: amountSatoshis,
+            lockingScript,
+            customInstructions: JSON.stringify({
+              derivationPrefix,
+              derivationSuffix,
+              payee: option.payee,
+              threadId: args.threadId,
+              note: args.note
+            }),
+            outputDescription: this.outputDescription
+          }
+        ],
+        options: {
+          randomizeOutputs: false
+        }
+      }, origin);
+      const tx = action.tx ?? action.signableTransaction?.tx;
+      if (tx == null) {
+        return terminate("brc29.missing_tx", "wallet.createAction did not return a transaction.");
+      }
+      const transaction = toPortableTransaction(tx);
+      if (transaction == null) {
+        return terminate("brc29.invalid_tx", "wallet.createAction returned an invalid transaction payload.");
+      }
+      return {
+        action: "settle",
+        artifact: {
+          customInstructions: { derivationPrefix, derivationSuffix },
+          transaction,
+          amountSatoshis: option.amountSatoshis,
+          outputIndex: option.outputIndex ?? 0
+        }
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return terminate("brc29.build_failed", `BRC-29 settlement failed: ${message}`);
+    }
+  }
+  async acceptSettlement(args, ctx) {
+    const { wallet, originator } = ctx;
+    const origin = originator;
+    try {
+      const settlement = ensureValidSettlement(args.settlement);
+      const outputIndex = settlement.outputIndex ?? 0;
+      const internalizeResult = await wallet.internalizeAction({
+        tx: settlement.transaction,
+        outputs: [
+          {
+            paymentRemittance: {
+              derivationPrefix: settlement.customInstructions.derivationPrefix,
+              derivationSuffix: settlement.customInstructions.derivationSuffix,
+              senderIdentityKey: args.sender
+            },
+            outputIndex,
+            protocol: this.internalizeProtocol
+          }
+        ],
+        labels: this.labels,
+        description: "BRC-29 payment received"
+      }, origin);
+      return { action: "accept", receiptData: { internalizeResult } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return terminate("brc29.internalize_failed", `Failed to internalize BRC-29 settlement: ${message}`);
+    }
+  }
+}
+function terminate(code, message, details) {
+  return { action: "terminate", termination: { code, message, details } };
+}
+function ensureValidOption(option) {
+  if (option == null || typeof option !== "object") {
+    throw new Error("BRC-29 option terms are required");
+  }
+  const amountSatoshis = option.amountSatoshis;
+  if (!Number.isInteger(amountSatoshis) || amountSatoshis <= 0) {
+    throw new Error("BRC-29 option amount must be a positive integer");
+  }
+  const outputIndex = option.outputIndex;
+  if (outputIndex != null && (!Number.isInteger(outputIndex) || outputIndex < 0)) {
+    throw new Error("BRC-29 option outputIndex must be a non-negative integer");
+  }
+  const protocolID = option.protocolID;
+  if (protocolID != null) {
+    if (!Array.isArray(protocolID) || protocolID.length !== 2) {
+      throw new Error("BRC-29 option protocolID must be a tuple [number, string]");
+    }
+    const [protocolNumber, protocolString] = protocolID;
+    if (!Number.isInteger(protocolNumber) || protocolNumber < 0 || !isNonEmptyString(protocolString)) {
+      throw new Error("BRC-29 option protocolID must be a tuple [number, string]");
+    }
+  }
+  const labels = option.labels;
+  if (labels != null && (!Array.isArray(labels) || labels.some((label) => !isNonEmptyString(label)))) {
+    throw new Error("BRC-29 option labels must be a list of non-empty strings");
+  }
+  const description = option.description;
+  if (description != null && !isNonEmptyString(description)) {
+    throw new Error("BRC-29 option description must be a non-empty string");
+  }
+  return option;
+}
+function ensureValidSettlement(settlement) {
+  if (settlement == null || typeof settlement !== "object") {
+    throw new Error("BRC-29 settlement artifact is required");
+  }
+  const instructions = settlement.customInstructions;
+  if (instructions == null || typeof instructions !== "object") {
+    throw new Error("BRC-29 settlement requires customInstructions");
+  }
+  if (!isNonEmptyString(instructions.derivationPrefix) || !isNonEmptyString(instructions.derivationSuffix)) {
+    throw new Error("BRC-29 settlement derivation values are required");
+  }
+  const amountSatoshis = settlement.amountSatoshis;
+  if (!Number.isInteger(amountSatoshis) || amountSatoshis <= 0) {
+    throw new Error("BRC-29 settlement amount must be a positive integer");
+  }
+  const outputIndex = settlement.outputIndex;
+  if (outputIndex != null && (!Number.isInteger(outputIndex) || outputIndex < 0)) {
+    throw new Error("BRC-29 settlement outputIndex must be a non-negative integer");
+  }
+  const transaction = toPortableTransaction(settlement.transaction);
+  if (transaction == null) {
+    throw new Error("BRC-29 settlement transaction must be a non-empty byte array");
+  }
+  return transaction === settlement.transaction ? settlement : { ...settlement, transaction };
+}
+function toPortableTransaction(tx) {
+  const bytes = toBRC100PortableByteArray(tx);
+  return bytes != null && bytes.length > 0 ? bytes : undefined;
+}
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+var DefaultNonceProvider, DefaultLockingScriptProvider;
+var init_BasicBRC29 = __esm(() => {
+  init_createNonce();
+  init_P2PKH();
+  init_PublicKey();
+  init_BRC100ByteEncoding();
+  DefaultNonceProvider = {
+    async createNonce(wallet, scope, originator) {
+      const origin = originator;
+      return await createNonce(wallet, scope, origin);
+    }
+  };
+  DefaultLockingScriptProvider = {
+    async pubKeyToP2PKHLockingScript(publicKey) {
+      const address = PublicKey.fromString(publicKey).toAddress();
+      return new P2PKH().lock(address).toHex();
+    }
+  };
+});
 
 // node_modules/@bsv/sdk/dist/esm/src/remittance/modules/index.js
 var init_modules = __esm(() => {
@@ -57414,11 +55916,11 @@ function throwDummyReviewActions() {
     status: "failed"
   }], txid, beef.toBinaryAtomic(txid), [`${txid}.0`]);
 }
-function isNonEmptyString(value) {
+function isNonEmptyString2(value) {
   return typeof value === "string" && value.length > 0;
 }
 function isManagedChangeOutput(output) {
-  return output?.type === managedChangeOutputFields.type && output.change === managedChangeOutputFields.change && output.providedBy === managedChangeOutputFields.providedBy && output.purpose === managedChangeOutputFields.purpose && isNonEmptyString(output.derivationPrefix) && isNonEmptyString(output.derivationSuffix);
+  return output?.type === managedChangeOutputFields.type && output.change === managedChangeOutputFields.change && output.providedBy === managedChangeOutputFields.providedBy && output.purpose === managedChangeOutputFields.purpose && isNonEmptyString2(output.derivationPrefix) && isNonEmptyString2(output.derivationSuffix);
 }
 function isAutoSpendableChangeOutput(output) {
   return isManagedChangeOutput(output) && output.spendable && output.spentBy == null;
@@ -74168,6 +72670,9423 @@ var init_externalWalletConfig = __esm(() => {
   EXTERNAL_WALLET_CONTEXT = Symbol.for("bsv-mcp.external-wallet-context");
 });
 
+// node_modules/@bsv/message-box-client/dist/_virtual/_rolldown/runtime.js
+var __defProp4, __exportAll3 = (all, no_symbols) => {
+  let target = {};
+  for (var name in all)
+    __defProp4(target, name, {
+      get: all[name],
+      enumerable: true
+    });
+  if (!no_symbols)
+    __defProp4(target, Symbol.toStringTag, { value: "Module" });
+  return target;
+};
+var init_runtime = __esm(() => {
+  __defProp4 = Object.defineProperty;
+});
+
+// node_modules/@bsv/message-box-client/dist/src/Utils/logger.js
+function enable() {
+  isEnabled = true;
+}
+function disable() {
+  isEnabled = false;
+}
+function log(...args) {
+  if (isEnabled)
+    console.log(...args);
+}
+function warn(...args) {
+  if (isEnabled)
+    console.warn(...args);
+}
+function error2(...args) {
+  console.error(...args);
+}
+var logger_exports, isEnabled = false;
+var init_logger = __esm(() => {
+  init_runtime();
+  logger_exports = /* @__PURE__ */ __exportAll3({
+    disable: () => disable,
+    enable: () => enable,
+    error: () => error2,
+    log: () => log,
+    warn: () => warn
+  });
+});
+
+// node_modules/@bsv/message-box-client/dist/src/host.js
+function isPrivateIpv4(hostname) {
+  const octets = hostname.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255))
+    return false;
+  const [first, second] = octets;
+  return first === 0 || first === 10 || first === 127 || first === 100 && second >= 64 && second <= 127 || first === 169 && second === 254 || first === 172 && second >= 16 && second <= 31 || first === 192 && second === 0 && (octets[2] === 0 || octets[2] === 2) || first === 192 && second === 168 || first === 198 && (second === 18 || second === 19 || second === 51 && octets[2] === 100) || first === 203 && second === 0 && octets[2] === 113 || first >= 224;
+}
+function isPrivateIpv6(hostname) {
+  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!normalized.includes(":"))
+    return false;
+  return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") || normalized.startsWith("2001:db8:") || normalized.startsWith("::ffff:");
+}
+function isLocalHostname(hostname) {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  return normalized === "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local") || normalized.endsWith(".lan") || normalized.endsWith(".home") || normalized.endsWith(".internal") || normalized.endsWith(".test") || normalized.endsWith(".invalid") || normalized === "example.com" || normalized.endsWith(".example.com") || isPrivateIpv4(normalized) || isPrivateIpv6(normalized);
+}
+function normalizeMessageBoxHost(host) {
+  if (typeof host !== "string")
+    throw new TypeError("Message Box host must be a string");
+  const candidate = host.trim();
+  if (candidate === "" || candidate.length > MAX_HOST_LENGTH)
+    throw new TypeError("Message Box host must be a non-empty URL of at most 2048 characters");
+  let url;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw new TypeError("Message Box host must be an absolute HTTP(S) URL");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:")
+    throw new TypeError("Message Box host must use HTTP or HTTPS");
+  if (url.username !== "" || url.password !== "")
+    throw new TypeError("Message Box host must not contain credentials");
+  if (url.search !== "" || url.hash !== "")
+    throw new TypeError("Message Box host must not contain a query or fragment");
+  let pathname = url.pathname;
+  while (pathname.endsWith("/"))
+    pathname = pathname.slice(0, -1);
+  return pathname === "" ? url.origin : `${url.origin}${pathname}`;
+}
+function normalizeOverlayMessageBoxHost(host) {
+  try {
+    const normalized = normalizeMessageBoxHost(host);
+    const url = new URL(normalized);
+    if (url.protocol !== "https:" || isLocalHostname(url.hostname))
+      return;
+    return normalized;
+  } catch {
+    return;
+  }
+}
+function messageBoxEndpoint(host, path) {
+  const normalizedHost = normalizeMessageBoxHost(host);
+  const normalizedPath = path.replace(/^\/+/, "");
+  if (normalizedPath === "")
+    throw new TypeError("Message Box endpoint path must not be empty");
+  return `${normalizedHost}/${normalizedPath}`;
+}
+var MAX_HOST_LENGTH = 2048;
+var init_host = () => {};
+
+// node_modules/@bsv/authsocket-client/dist/src/SocketClientTransport.js
+var DEFAULT_MAX_PENDING_MESSAGES = 32, SocketClientTransport = class {
+  socket;
+  onDataCallback;
+  maxPendingMessages;
+  onError;
+  pendingMessages = 0;
+  failed = false;
+  constructor(socket, options = {}) {
+    this.socket = socket;
+    const maxPendingMessages = options.maxPendingMessages ?? DEFAULT_MAX_PENDING_MESSAGES;
+    if (!Number.isSafeInteger(maxPendingMessages) || maxPendingMessages < 1)
+      throw new RangeError("maxPendingMessages must be a positive safe integer");
+    this.maxPendingMessages = maxPendingMessages;
+    this.onError = options.onError;
+    this.socket.on("authMessage", (msg) => {
+      return this.processMessage(msg);
+    });
+  }
+  async send(message) {
+    this.socket.emit("authMessage", message);
+  }
+  async onData(callback) {
+    this.onDataCallback = callback;
+  }
+  async processMessage(message) {
+    if (this.failed || this.onDataCallback === undefined)
+      return;
+    if (this.pendingMessages >= this.maxPendingMessages) {
+      this.fail(/* @__PURE__ */ new Error("Authentication message concurrency limit exceeded"));
+      return;
+    }
+    this.pendingMessages += 1;
+    try {
+      await this.onDataCallback(message);
+    } catch (error) {
+      this.fail(error);
+    } finally {
+      this.pendingMessages -= 1;
+    }
+  }
+  fail(error) {
+    if (this.failed)
+      return;
+    this.failed = true;
+    Promise.resolve().then(async () => await this.onError?.(error)).catch(() => {});
+    try {
+      this.socket.disconnect();
+    } catch {}
+  }
+};
+var init_SocketClientTransport = () => {};
+
+// node_modules/xmlhttprequest-ssl/lib/XMLHttpRequest.js
+var require_XMLHttpRequest = __commonJS(function(exports, module) {
+  var fs = __require("fs");
+  var Url = __require("url");
+  var spawn = __require("child_process").spawn;
+  module.exports = XMLHttpRequest2;
+  XMLHttpRequest2.XMLHttpRequest = XMLHttpRequest2;
+  function XMLHttpRequest2(opts) {
+    opts = opts || {};
+    var self2 = this;
+    var http = __require("http");
+    var https = __require("https");
+    var request;
+    var response;
+    var settings = {};
+    var disableHeaderCheck = false;
+    var defaultHeaders = {
+      "User-Agent": "node-XMLHttpRequest",
+      Accept: "*/*"
+    };
+    var headers = Object.assign({}, defaultHeaders);
+    var forbiddenRequestHeaders = [
+      "accept-charset",
+      "accept-encoding",
+      "access-control-request-headers",
+      "access-control-request-method",
+      "connection",
+      "content-length",
+      "content-transfer-encoding",
+      "cookie",
+      "cookie2",
+      "date",
+      "expect",
+      "host",
+      "keep-alive",
+      "origin",
+      "referer",
+      "te",
+      "trailer",
+      "transfer-encoding",
+      "upgrade",
+      "via"
+    ];
+    var forbiddenRequestMethods = [
+      "TRACE",
+      "TRACK",
+      "CONNECT"
+    ];
+    var sendFlag = false;
+    var errorFlag = false;
+    var abortedFlag = false;
+    var listeners = {};
+    this.UNSENT = 0;
+    this.OPENED = 1;
+    this.HEADERS_RECEIVED = 2;
+    this.LOADING = 3;
+    this.DONE = 4;
+    this.readyState = this.UNSENT;
+    this.onreadystatechange = null;
+    this.responseText = "";
+    this.responseXML = "";
+    this.response = Buffer.alloc(0);
+    this.status = null;
+    this.statusText = null;
+    var isAllowedHttpHeader = function(header) {
+      return disableHeaderCheck || header && forbiddenRequestHeaders.indexOf(header.toLowerCase()) === -1;
+    };
+    var isAllowedHttpMethod = function(method) {
+      return method && forbiddenRequestMethods.indexOf(method) === -1;
+    };
+    this.open = function(method, url, async, user, password) {
+      this.abort();
+      errorFlag = false;
+      abortedFlag = false;
+      if (!isAllowedHttpMethod(method)) {
+        throw new Error("SecurityError: Request method not allowed");
+      }
+      settings = {
+        method,
+        url: url.toString(),
+        async: typeof async !== "boolean" ? true : async,
+        user: user || null,
+        password: password || null
+      };
+      setState(this.OPENED);
+    };
+    this.setDisableHeaderCheck = function(state) {
+      disableHeaderCheck = state;
+    };
+    this.setRequestHeader = function(header, value) {
+      if (this.readyState != this.OPENED) {
+        throw new Error("INVALID_STATE_ERR: setRequestHeader can only be called when state is OPEN");
+      }
+      if (!isAllowedHttpHeader(header)) {
+        console.warn('Refused to set unsafe header "' + header + '"');
+        return false;
+      }
+      if (sendFlag) {
+        throw new Error("INVALID_STATE_ERR: send flag is true");
+      }
+      headers[header] = value;
+      return true;
+    };
+    this.getResponseHeader = function(header) {
+      if (typeof header === "string" && this.readyState > this.OPENED && response.headers[header.toLowerCase()] && !errorFlag) {
+        return response.headers[header.toLowerCase()];
+      }
+      return null;
+    };
+    this.getAllResponseHeaders = function() {
+      if (this.readyState < this.HEADERS_RECEIVED || errorFlag) {
+        return "";
+      }
+      var result = "";
+      for (var i in response.headers) {
+        if (i !== "set-cookie" && i !== "set-cookie2") {
+          result += i + ": " + response.headers[i] + `\r
+`;
+        }
+      }
+      return result.substr(0, result.length - 2);
+    };
+    this.getRequestHeader = function(name) {
+      if (typeof name === "string" && headers[name]) {
+        return headers[name];
+      }
+      return "";
+    };
+    this.send = function(data) {
+      if (this.readyState != this.OPENED) {
+        throw new Error("INVALID_STATE_ERR: connection must be opened before send() is called");
+      }
+      if (sendFlag) {
+        throw new Error("INVALID_STATE_ERR: send has already been called");
+      }
+      var ssl = false, local = false;
+      var url = Url.parse(settings.url);
+      var host;
+      switch (url.protocol) {
+        case "https:":
+          ssl = true;
+        case "http:":
+          host = url.hostname;
+          break;
+        case "file:":
+          local = true;
+          break;
+        case undefined:
+        case "":
+          host = "localhost";
+          break;
+        default:
+          throw new Error("Protocol not supported.");
+      }
+      if (local) {
+        if (settings.method !== "GET") {
+          throw new Error("XMLHttpRequest: Only GET method is supported");
+        }
+        if (settings.async) {
+          fs.readFile(unescape(url.pathname), function(error, data) {
+            if (error) {
+              self2.handleError(error, error.errno || -1);
+            } else {
+              self2.status = 200;
+              self2.responseText = data.toString("utf8");
+              self2.response = data;
+              setState(self2.DONE);
+            }
+          });
+        } else {
+          try {
+            this.response = fs.readFileSync(unescape(url.pathname));
+            this.responseText = this.response.toString("utf8");
+            this.status = 200;
+            setState(self2.DONE);
+          } catch (e) {
+            this.handleError(e, e.errno || -1);
+          }
+        }
+        return;
+      }
+      var port = url.port || (ssl ? 443 : 80);
+      var uri = url.pathname + (url.search ? url.search : "");
+      headers["Host"] = host;
+      if (!(ssl && port === 443 || port === 80)) {
+        headers["Host"] += ":" + url.port;
+      }
+      if (settings.user) {
+        if (typeof settings.password == "undefined") {
+          settings.password = "";
+        }
+        var authBuf = new Buffer(settings.user + ":" + settings.password);
+        headers["Authorization"] = "Basic " + authBuf.toString("base64");
+      }
+      if (settings.method === "GET" || settings.method === "HEAD") {
+        data = null;
+      } else if (data) {
+        headers["Content-Length"] = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(data);
+        var headersKeys = Object.keys(headers);
+        if (!headersKeys.some(function(h) {
+          return h.toLowerCase() === "content-type";
+        })) {
+          headers["Content-Type"] = "text/plain;charset=UTF-8";
+        }
+      } else if (settings.method === "POST") {
+        headers["Content-Length"] = 0;
+      }
+      var agent = opts.agent || false;
+      var options = {
+        host,
+        port,
+        path: uri,
+        method: settings.method,
+        headers,
+        agent
+      };
+      if (ssl) {
+        options.pfx = opts.pfx;
+        options.key = opts.key;
+        options.passphrase = opts.passphrase;
+        options.cert = opts.cert;
+        options.ca = opts.ca;
+        options.ciphers = opts.ciphers;
+        options.rejectUnauthorized = opts.rejectUnauthorized === false ? false : true;
+      }
+      errorFlag = false;
+      if (settings.async) {
+        var doRequest = ssl ? https.request : http.request;
+        sendFlag = true;
+        self2.dispatchEvent("readystatechange");
+        var responseHandler = function(resp) {
+          response = resp;
+          if (response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307) {
+            settings.url = response.headers.location;
+            var url = Url.parse(settings.url);
+            host = url.hostname;
+            var newOptions = {
+              hostname: url.hostname,
+              port: url.port,
+              path: url.path,
+              method: response.statusCode === 303 ? "GET" : settings.method,
+              headers
+            };
+            if (ssl) {
+              newOptions.pfx = opts.pfx;
+              newOptions.key = opts.key;
+              newOptions.passphrase = opts.passphrase;
+              newOptions.cert = opts.cert;
+              newOptions.ca = opts.ca;
+              newOptions.ciphers = opts.ciphers;
+              newOptions.rejectUnauthorized = opts.rejectUnauthorized === false ? false : true;
+            }
+            request = doRequest(newOptions, responseHandler).on("error", errorHandler);
+            request.end();
+            return;
+          }
+          setState(self2.HEADERS_RECEIVED);
+          self2.status = response.statusCode;
+          response.on("data", function(chunk) {
+            if (chunk) {
+              var data = Buffer.from(chunk);
+              self2.response = Buffer.concat([self2.response, data]);
+            }
+            if (sendFlag) {
+              setState(self2.LOADING);
+            }
+          });
+          response.on("end", function() {
+            if (sendFlag) {
+              sendFlag = false;
+              setState(self2.DONE);
+              self2.responseText = self2.response.toString("utf8");
+            }
+          });
+          response.on("error", function(error) {
+            self2.handleError(error);
+          });
+        };
+        var errorHandler = function(error) {
+          if (request.reusedSocket && error.code === "ECONNRESET")
+            return doRequest(options, responseHandler).on("error", errorHandler);
+          self2.handleError(error);
+        };
+        request = doRequest(options, responseHandler).on("error", errorHandler);
+        if (opts.autoUnref) {
+          request.on("socket", (socket) => {
+            socket.unref();
+          });
+        }
+        if (data) {
+          request.write(data);
+        }
+        request.end();
+        self2.dispatchEvent("loadstart");
+      } else {
+        var contentFile = ".node-xmlhttprequest-content-" + process.pid;
+        var syncFile = ".node-xmlhttprequest-sync-" + process.pid;
+        fs.writeFileSync(syncFile, "", "utf8");
+        var execString = "var http = require('http'), https = require('https'), fs = require('fs');" + "var doRequest = http" + (ssl ? "s" : "") + ".request;" + "var options = " + JSON.stringify(options) + ";" + "var responseText = '';" + "var responseData = Buffer.alloc(0);" + "var req = doRequest(options, function(response) {" + "response.on('data', function(chunk) {" + "  var data = Buffer.from(chunk);" + "  responseText += data.toString('utf8');" + "  responseData = Buffer.concat([responseData, data]);" + "});" + "response.on('end', function() {" + "fs.writeFileSync('" + contentFile + "', JSON.stringify({err: null, data: {statusCode: response.statusCode, headers: response.headers, text: responseText, data: responseData.toString('base64')}}), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + "response.on('error', function(error) {" + "fs.writeFileSync('" + contentFile + "', 'NODE-XMLHTTPREQUEST-ERROR:' + JSON.stringify(error), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + "}).on('error', function(error) {" + "fs.writeFileSync('" + contentFile + "', 'NODE-XMLHTTPREQUEST-ERROR:' + JSON.stringify(error), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + (data ? "req.write('" + JSON.stringify(data).slice(1, -1).replace(/'/g, "\\'") + "');" : "") + "req.end();";
+        var syncProc = spawn(process.argv[0], ["-e", execString]);
+        var statusText;
+        while (fs.existsSync(syncFile)) {}
+        self2.responseText = fs.readFileSync(contentFile, "utf8");
+        syncProc.stdin.end();
+        fs.unlinkSync(contentFile);
+        if (self2.responseText.match(/^NODE-XMLHTTPREQUEST-ERROR:/)) {
+          var errorObj = JSON.parse(self2.responseText.replace(/^NODE-XMLHTTPREQUEST-ERROR:/, ""));
+          self2.handleError(errorObj, 503);
+        } else {
+          self2.status = self2.responseText.replace(/^NODE-XMLHTTPREQUEST-STATUS:([0-9]*),.*/, "$1");
+          var resp = JSON.parse(self2.responseText.replace(/^NODE-XMLHTTPREQUEST-STATUS:[0-9]*,(.*)/, "$1"));
+          response = {
+            statusCode: self2.status,
+            headers: resp.data.headers
+          };
+          self2.responseText = resp.data.text;
+          self2.response = Buffer.from(resp.data.data, "base64");
+          setState(self2.DONE, true);
+        }
+      }
+    };
+    this.handleError = function(error, status) {
+      this.status = status || 0;
+      this.statusText = error;
+      this.responseText = error.stack;
+      errorFlag = true;
+      setState(this.DONE);
+    };
+    this.abort = function() {
+      if (request) {
+        request.abort();
+        request = null;
+      }
+      headers = Object.assign({}, defaultHeaders);
+      this.responseText = "";
+      this.responseXML = "";
+      this.response = Buffer.alloc(0);
+      errorFlag = abortedFlag = true;
+      if (this.readyState !== this.UNSENT && (this.readyState !== this.OPENED || sendFlag) && this.readyState !== this.DONE) {
+        sendFlag = false;
+        setState(this.DONE);
+      }
+      this.readyState = this.UNSENT;
+    };
+    this.addEventListener = function(event, callback) {
+      if (!(event in listeners)) {
+        listeners[event] = [];
+      }
+      listeners[event].push(callback);
+    };
+    this.removeEventListener = function(event, callback) {
+      if (event in listeners) {
+        listeners[event] = listeners[event].filter(function(ev) {
+          return ev !== callback;
+        });
+      }
+    };
+    this.dispatchEvent = function(event) {
+      if (typeof self2["on" + event] === "function") {
+        if (this.readyState === this.DONE && settings.async)
+          setTimeout(function() {
+            self2["on" + event]();
+          }, 0);
+        else
+          self2["on" + event]();
+      }
+      if (event in listeners) {
+        for (let i = 0, len = listeners[event].length;i < len; i++) {
+          if (this.readyState === this.DONE)
+            setTimeout(function() {
+              listeners[event][i].call(self2);
+            }, 0);
+          else
+            listeners[event][i].call(self2);
+        }
+      }
+    };
+    var setState = function(state) {
+      if (self2.readyState === state || self2.readyState === self2.UNSENT && abortedFlag)
+        return;
+      self2.readyState = state;
+      if (settings.async || self2.readyState < self2.OPENED || self2.readyState === self2.DONE) {
+        self2.dispatchEvent("readystatechange");
+      }
+      if (self2.readyState === self2.DONE) {
+        let fire;
+        if (abortedFlag)
+          fire = "abort";
+        else if (errorFlag)
+          fire = "error";
+        else
+          fire = "load";
+        self2.dispatchEvent(fire);
+        self2.dispatchEvent("loadend");
+      }
+    };
+  }
+});
+
+// node_modules/engine.io-parser/build/esm/commons.js
+var PACKET_TYPES, PACKET_TYPES_REVERSE, ERROR_PACKET;
+var init_commons = __esm(() => {
+  PACKET_TYPES = Object.create(null);
+  PACKET_TYPES["open"] = "0";
+  PACKET_TYPES["close"] = "1";
+  PACKET_TYPES["ping"] = "2";
+  PACKET_TYPES["pong"] = "3";
+  PACKET_TYPES["message"] = "4";
+  PACKET_TYPES["upgrade"] = "5";
+  PACKET_TYPES["noop"] = "6";
+  PACKET_TYPES_REVERSE = Object.create(null);
+  Object.keys(PACKET_TYPES).forEach((key) => {
+    PACKET_TYPES_REVERSE[PACKET_TYPES[key]] = key;
+  });
+  ERROR_PACKET = { type: "error", data: "parser error" };
+});
+
+// node_modules/engine.io-parser/build/esm/encodePacket.js
+function encodePacketToBinary(packet, callback) {
+  if (packet.data instanceof ArrayBuffer || ArrayBuffer.isView(packet.data)) {
+    return callback(toBuffer(packet.data, false));
+  }
+  encodePacket(packet, true, (encoded) => {
+    if (!TEXT_ENCODER) {
+      TEXT_ENCODER = new TextEncoder;
+    }
+    callback(TEXT_ENCODER.encode(encoded));
+  });
+}
+var encodePacket = ({ type, data }, supportsBinary, callback) => {
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+    return callback(supportsBinary ? data : "b" + toBuffer(data, true).toString("base64"));
+  }
+  return callback(PACKET_TYPES[type] + (data || ""));
+}, toBuffer = (data, forceBufferConversion) => {
+  if (Buffer.isBuffer(data) || data instanceof Uint8Array && !forceBufferConversion) {
+    return data;
+  } else if (data instanceof ArrayBuffer) {
+    return Buffer.from(data);
+  } else {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+}, TEXT_ENCODER;
+var init_encodePacket = __esm(() => {
+  init_commons();
+});
+
+// node_modules/engine.io-parser/build/esm/decodePacket.js
+var decodePacket = (encodedPacket, binaryType) => {
+  if (typeof encodedPacket !== "string") {
+    return {
+      type: "message",
+      data: mapBinary(encodedPacket, binaryType)
+    };
+  }
+  const type = encodedPacket.charAt(0);
+  if (type === "b") {
+    const buffer = Buffer.from(encodedPacket.substring(1), "base64");
+    return {
+      type: "message",
+      data: mapBinary(buffer, binaryType)
+    };
+  }
+  if (!PACKET_TYPES_REVERSE[type]) {
+    return ERROR_PACKET;
+  }
+  return encodedPacket.length > 1 ? {
+    type: PACKET_TYPES_REVERSE[type],
+    data: encodedPacket.substring(1)
+  } : {
+    type: PACKET_TYPES_REVERSE[type]
+  };
+}, mapBinary = (data, binaryType) => {
+  switch (binaryType) {
+    case "arraybuffer":
+      if (data instanceof ArrayBuffer) {
+        return data;
+      } else if (Buffer.isBuffer(data)) {
+        return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+      } else {
+        return data.buffer;
+      }
+    case "nodebuffer":
+    default:
+      if (Buffer.isBuffer(data)) {
+        return data;
+      } else {
+        return Buffer.from(data);
+      }
+  }
+};
+var init_decodePacket = __esm(() => {
+  init_commons();
+});
+
+// node_modules/engine.io-parser/build/esm/index.js
+function createPacketEncoderStream() {
+  return new TransformStream({
+    transform(packet, controller) {
+      encodePacketToBinary(packet, (encodedPacket) => {
+        const payloadLength = encodedPacket.length;
+        let header;
+        if (payloadLength < 126) {
+          header = new Uint8Array(1);
+          new DataView(header.buffer).setUint8(0, payloadLength);
+        } else if (payloadLength < 65536) {
+          header = new Uint8Array(3);
+          const view = new DataView(header.buffer);
+          view.setUint8(0, 126);
+          view.setUint16(1, payloadLength);
+        } else {
+          header = new Uint8Array(9);
+          const view = new DataView(header.buffer);
+          view.setUint8(0, 127);
+          view.setBigUint64(1, BigInt(payloadLength));
+        }
+        if (packet.data && typeof packet.data !== "string") {
+          header[0] |= 128;
+        }
+        controller.enqueue(header);
+        controller.enqueue(encodedPacket);
+      });
+    }
+  });
+}
+function totalLength(chunks) {
+  return chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+}
+function concatChunks(chunks, size) {
+  if (chunks[0].length === size) {
+    return chunks.shift();
+  }
+  const buffer = new Uint8Array(size);
+  let j = 0;
+  for (let i = 0;i < size; i++) {
+    buffer[i] = chunks[0][j++];
+    if (j === chunks[0].length) {
+      chunks.shift();
+      j = 0;
+    }
+  }
+  if (chunks.length && j < chunks[0].length) {
+    chunks[0] = chunks[0].slice(j);
+  }
+  return buffer;
+}
+function createPacketDecoderStream(maxPayload, binaryType) {
+  if (!TEXT_DECODER) {
+    TEXT_DECODER = new TextDecoder;
+  }
+  const chunks = [];
+  let state = 0;
+  let expectedLength = -1;
+  let isBinary = false;
+  return new TransformStream({
+    transform(chunk, controller) {
+      chunks.push(chunk);
+      while (true) {
+        if (state === 0) {
+          if (totalLength(chunks) < 1) {
+            break;
+          }
+          const header = concatChunks(chunks, 1);
+          isBinary = (header[0] & 128) === 128;
+          expectedLength = header[0] & 127;
+          if (expectedLength < 126) {
+            state = 3;
+          } else if (expectedLength === 126) {
+            state = 1;
+          } else {
+            state = 2;
+          }
+        } else if (state === 1) {
+          if (totalLength(chunks) < 2) {
+            break;
+          }
+          const headerArray = concatChunks(chunks, 2);
+          expectedLength = new DataView(headerArray.buffer, headerArray.byteOffset, headerArray.length).getUint16(0);
+          state = 3;
+        } else if (state === 2) {
+          if (totalLength(chunks) < 8) {
+            break;
+          }
+          const headerArray = concatChunks(chunks, 8);
+          const view = new DataView(headerArray.buffer, headerArray.byteOffset, headerArray.length);
+          const n = view.getUint32(0);
+          if (n > Math.pow(2, 53 - 32) - 1) {
+            controller.enqueue(ERROR_PACKET);
+            break;
+          }
+          expectedLength = n * Math.pow(2, 32) + view.getUint32(4);
+          state = 3;
+        } else {
+          if (totalLength(chunks) < expectedLength) {
+            break;
+          }
+          const data = concatChunks(chunks, expectedLength);
+          controller.enqueue(decodePacket(isBinary ? data : TEXT_DECODER.decode(data), binaryType));
+          state = 0;
+        }
+        if (expectedLength === 0 || expectedLength > maxPayload) {
+          controller.enqueue(ERROR_PACKET);
+          break;
+        }
+      }
+    }
+  });
+}
+var SEPARATOR, encodePayload = (packets, callback) => {
+  const length = packets.length;
+  const encodedPackets = new Array(length);
+  let count = 0;
+  packets.forEach((packet, i) => {
+    encodePacket(packet, false, (encodedPacket) => {
+      encodedPackets[i] = encodedPacket;
+      if (++count === length) {
+        callback(encodedPackets.join(SEPARATOR));
+      }
+    });
+  });
+}, decodePayload = (encodedPayload, binaryType) => {
+  const encodedPackets = encodedPayload.split(SEPARATOR);
+  const packets = [];
+  for (let i = 0;i < encodedPackets.length; i++) {
+    const decodedPacket = decodePacket(encodedPackets[i], binaryType);
+    packets.push(decodedPacket);
+    if (decodedPacket.type === "error") {
+      break;
+    }
+  }
+  return packets;
+}, TEXT_DECODER, protocol = 4;
+var init_esm2 = __esm(() => {
+  init_encodePacket();
+  init_decodePacket();
+  init_commons();
+  SEPARATOR = String.fromCharCode(30);
+});
+
+// node_modules/@socket.io/component-emitter/lib/cjs/index.js
+function Emitter(obj) {
+  if (obj)
+    return mixin(obj);
+}
+function mixin(obj) {
+  for (var key in Emitter.prototype) {
+    obj[key] = Emitter.prototype[key];
+  }
+  return obj;
+}
+var $Emitter;
+var init_cjs = __esm(() => {
+  $Emitter = Emitter;
+  Emitter.prototype.on = Emitter.prototype.addEventListener = function(event, fn) {
+    this._callbacks = this._callbacks || {};
+    (this._callbacks["$" + event] = this._callbacks["$" + event] || []).push(fn);
+    return this;
+  };
+  Emitter.prototype.once = function(event, fn) {
+    function on() {
+      this.off(event, on);
+      fn.apply(this, arguments);
+    }
+    on.fn = fn;
+    this.on(event, on);
+    return this;
+  };
+  Emitter.prototype.off = Emitter.prototype.removeListener = Emitter.prototype.removeAllListeners = Emitter.prototype.removeEventListener = function(event, fn) {
+    this._callbacks = this._callbacks || {};
+    if (arguments.length == 0) {
+      this._callbacks = {};
+      return this;
+    }
+    var callbacks = this._callbacks["$" + event];
+    if (!callbacks)
+      return this;
+    if (arguments.length == 1) {
+      delete this._callbacks["$" + event];
+      return this;
+    }
+    var cb;
+    for (var i = 0;i < callbacks.length; i++) {
+      cb = callbacks[i];
+      if (cb === fn || cb.fn === fn) {
+        callbacks.splice(i, 1);
+        break;
+      }
+    }
+    if (callbacks.length === 0) {
+      delete this._callbacks["$" + event];
+    }
+    return this;
+  };
+  Emitter.prototype.emit = function(event) {
+    this._callbacks = this._callbacks || {};
+    var args = new Array(arguments.length - 1), callbacks = this._callbacks["$" + event];
+    for (var i = 1;i < arguments.length; i++) {
+      args[i - 1] = arguments[i];
+    }
+    if (callbacks) {
+      callbacks = callbacks.slice(0);
+      for (var i = 0, len = callbacks.length;i < len; ++i) {
+        callbacks[i].apply(this, args);
+      }
+    }
+    return this;
+  };
+  Emitter.prototype.emitReserved = Emitter.prototype.emit;
+  Emitter.prototype.listeners = function(event) {
+    this._callbacks = this._callbacks || {};
+    return this._callbacks["$" + event] || [];
+  };
+  Emitter.prototype.hasListeners = function(event) {
+    return !!this.listeners(event).length;
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/globals.node.js
+function createCookieJar() {
+  return new CookieJar;
+}
+function parse6(setCookieString) {
+  const parts = setCookieString.split("; ");
+  const i = parts[0].indexOf("=");
+  if (i === -1) {
+    return;
+  }
+  const name = parts[0].substring(0, i).trim();
+  if (!name.length) {
+    return;
+  }
+  let value = parts[0].substring(i + 1).trim();
+  if (value.charCodeAt(0) === 34) {
+    value = value.slice(1, -1);
+  }
+  const cookie = {
+    name,
+    value
+  };
+  for (let j = 1;j < parts.length; j++) {
+    const subParts = parts[j].split("=");
+    if (subParts.length !== 2) {
+      continue;
+    }
+    const key = subParts[0].trim();
+    const value = subParts[1].trim();
+    switch (key) {
+      case "Expires":
+        cookie.expires = new Date(value);
+        break;
+      case "Max-Age":
+        const expiration = new Date;
+        expiration.setUTCSeconds(expiration.getUTCSeconds() + parseInt(value, 10));
+        cookie.expires = expiration;
+        break;
+      default:
+    }
+  }
+  return cookie;
+}
+
+class CookieJar {
+  constructor() {
+    this._cookies = new Map;
+  }
+  parseCookies(values) {
+    if (!values) {
+      return;
+    }
+    values.forEach((value) => {
+      const parsed = parse6(value);
+      if (parsed) {
+        this._cookies.set(parsed.name, parsed);
+      }
+    });
+  }
+  get cookies() {
+    const now = Date.now();
+    this._cookies.forEach((cookie, name) => {
+      var _a;
+      if (((_a = cookie.expires) === null || _a === undefined ? undefined : _a.getTime()) < now) {
+        this._cookies.delete(name);
+      }
+    });
+    return this._cookies.entries();
+  }
+  addCookies(xhr) {
+    const cookies = [];
+    for (const [name, cookie] of this.cookies) {
+      cookies.push(`${name}=${cookie.value}`);
+    }
+    if (cookies.length) {
+      xhr.setDisableHeaderCheck(true);
+      xhr.setRequestHeader("cookie", cookies.join("; "));
+    }
+  }
+  appendCookies(headers) {
+    for (const [name, cookie] of this.cookies) {
+      headers.append("cookie", `${name}=${cookie.value}`);
+    }
+  }
+}
+var nextTick, globalThisShim, defaultBinaryType = "nodebuffer";
+var init_globals_node = __esm(() => {
+  nextTick = process.nextTick;
+  globalThisShim = global;
+});
+
+// node_modules/engine.io-client/build/esm-debug/util.js
+function pick2(obj, ...attr) {
+  return attr.reduce((acc, k) => {
+    if (obj.hasOwnProperty(k)) {
+      acc[k] = obj[k];
+    }
+    return acc;
+  }, {});
+}
+function installTimerFunctions(obj, opts) {
+  if (opts.useNativeTimers) {
+    obj.setTimeoutFn = NATIVE_SET_TIMEOUT.bind(globalThisShim);
+    obj.clearTimeoutFn = NATIVE_CLEAR_TIMEOUT.bind(globalThisShim);
+  } else {
+    obj.setTimeoutFn = globalThisShim.setTimeout.bind(globalThisShim);
+    obj.clearTimeoutFn = globalThisShim.clearTimeout.bind(globalThisShim);
+  }
+}
+function byteLength(obj) {
+  if (typeof obj === "string") {
+    return utf8Length(obj);
+  }
+  return Math.ceil((obj.byteLength || obj.size) * BASE64_OVERHEAD);
+}
+function utf8Length(str) {
+  let c = 0, length = 0;
+  for (let i = 0, l = str.length;i < l; i++) {
+    c = str.charCodeAt(i);
+    if (c < 128) {
+      length += 1;
+    } else if (c < 2048) {
+      length += 2;
+    } else if (c < 55296 || c >= 57344) {
+      length += 3;
+    } else {
+      i++;
+      length += 4;
+    }
+  }
+  return length;
+}
+function randomString() {
+  return Date.now().toString(36).substring(3) + Math.random().toString(36).substring(2, 5);
+}
+var NATIVE_SET_TIMEOUT, NATIVE_CLEAR_TIMEOUT, BASE64_OVERHEAD = 1.33;
+var init_util2 = __esm(() => {
+  init_globals_node();
+  NATIVE_SET_TIMEOUT = globalThisShim.setTimeout;
+  NATIVE_CLEAR_TIMEOUT = globalThisShim.clearTimeout;
+});
+
+// node_modules/engine.io-client/build/esm-debug/contrib/parseqs.js
+function encode4(obj) {
+  let str = "";
+  for (let i in obj) {
+    if (obj.hasOwnProperty(i)) {
+      if (str.length)
+        str += "&";
+      str += encodeURIComponent(i) + "=" + encodeURIComponent(obj[i]);
+    }
+  }
+  return str;
+}
+function decode3(qs) {
+  let qry = {};
+  let pairs = qs.split("&");
+  for (let i = 0, l = pairs.length;i < l; i++) {
+    let pair = pairs[i].split("=");
+    qry[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
+  }
+  return qry;
+}
+
+// node_modules/ms/index.js
+var require_ms = __commonJS(function(exports, module) {
+  var s = 1000;
+  var m = s * 60;
+  var h = m * 60;
+  var d = h * 24;
+  var w = d * 7;
+  var y = d * 365.25;
+  module.exports = function(val, options) {
+    options = options || {};
+    var type = typeof val;
+    if (type === "string" && val.length > 0) {
+      return parse(val);
+    } else if (type === "number" && isFinite(val)) {
+      return options.long ? fmtLong(val) : fmtShort(val);
+    }
+    throw new Error("val is not a non-empty string or a valid number. val=" + JSON.stringify(val));
+  };
+  function parse(str) {
+    str = String(str);
+    if (str.length > 100) {
+      return;
+    }
+    var match = /^(-?(?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$/i.exec(str);
+    if (!match) {
+      return;
+    }
+    var n = parseFloat(match[1]);
+    var type = (match[2] || "ms").toLowerCase();
+    switch (type) {
+      case "years":
+      case "year":
+      case "yrs":
+      case "yr":
+      case "y":
+        return n * y;
+      case "weeks":
+      case "week":
+      case "w":
+        return n * w;
+      case "days":
+      case "day":
+      case "d":
+        return n * d;
+      case "hours":
+      case "hour":
+      case "hrs":
+      case "hr":
+      case "h":
+        return n * h;
+      case "minutes":
+      case "minute":
+      case "mins":
+      case "min":
+      case "m":
+        return n * m;
+      case "seconds":
+      case "second":
+      case "secs":
+      case "sec":
+      case "s":
+        return n * s;
+      case "milliseconds":
+      case "millisecond":
+      case "msecs":
+      case "msec":
+      case "ms":
+        return n;
+      default:
+        return;
+    }
+  }
+  function fmtShort(ms) {
+    var msAbs = Math.abs(ms);
+    if (msAbs >= d) {
+      return Math.round(ms / d) + "d";
+    }
+    if (msAbs >= h) {
+      return Math.round(ms / h) + "h";
+    }
+    if (msAbs >= m) {
+      return Math.round(ms / m) + "m";
+    }
+    if (msAbs >= s) {
+      return Math.round(ms / s) + "s";
+    }
+    return ms + "ms";
+  }
+  function fmtLong(ms) {
+    var msAbs = Math.abs(ms);
+    if (msAbs >= d) {
+      return plural(ms, msAbs, d, "day");
+    }
+    if (msAbs >= h) {
+      return plural(ms, msAbs, h, "hour");
+    }
+    if (msAbs >= m) {
+      return plural(ms, msAbs, m, "minute");
+    }
+    if (msAbs >= s) {
+      return plural(ms, msAbs, s, "second");
+    }
+    return ms + " ms";
+  }
+  function plural(ms, msAbs, n, name) {
+    var isPlural = msAbs >= n * 1.5;
+    return Math.round(ms / n) + " " + name + (isPlural ? "s" : "");
+  }
+});
+
+// node_modules/debug/src/common.js
+var require_common = __commonJS(function(exports, module) {
+  function setup(env) {
+    createDebug.debug = createDebug;
+    createDebug.default = createDebug;
+    createDebug.coerce = coerce;
+    createDebug.disable = disable;
+    createDebug.enable = enable;
+    createDebug.enabled = enabled;
+    createDebug.humanize = require_ms();
+    createDebug.destroy = destroy;
+    Object.keys(env).forEach((key) => {
+      createDebug[key] = env[key];
+    });
+    createDebug.names = [];
+    createDebug.skips = [];
+    createDebug.formatters = {};
+    function selectColor(namespace) {
+      let hash = 0;
+      for (let i = 0;i < namespace.length; i++) {
+        hash = (hash << 5) - hash + namespace.charCodeAt(i);
+        hash |= 0;
+      }
+      return createDebug.colors[Math.abs(hash) % createDebug.colors.length];
+    }
+    createDebug.selectColor = selectColor;
+    function createDebug(namespace) {
+      let prevTime;
+      let enableOverride = null;
+      let namespacesCache;
+      let enabledCache;
+      function debug(...args) {
+        if (!debug.enabled) {
+          return;
+        }
+        const self2 = debug;
+        const curr = Number(new Date);
+        const ms = curr - (prevTime || curr);
+        self2.diff = ms;
+        self2.prev = prevTime;
+        self2.curr = curr;
+        prevTime = curr;
+        args[0] = createDebug.coerce(args[0]);
+        if (typeof args[0] !== "string") {
+          args.unshift("%O");
+        }
+        let index = 0;
+        args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format) => {
+          if (match === "%%") {
+            return "%";
+          }
+          index++;
+          const formatter = createDebug.formatters[format];
+          if (typeof formatter === "function") {
+            const val = args[index];
+            match = formatter.call(self2, val);
+            args.splice(index, 1);
+            index--;
+          }
+          return match;
+        });
+        createDebug.formatArgs.call(self2, args);
+        const logFn = self2.log || createDebug.log;
+        logFn.apply(self2, args);
+      }
+      debug.namespace = namespace;
+      debug.useColors = createDebug.useColors();
+      debug.color = createDebug.selectColor(namespace);
+      debug.extend = extend;
+      debug.destroy = createDebug.destroy;
+      Object.defineProperty(debug, "enabled", {
+        enumerable: true,
+        configurable: false,
+        get: () => {
+          if (enableOverride !== null) {
+            return enableOverride;
+          }
+          if (namespacesCache !== createDebug.namespaces) {
+            namespacesCache = createDebug.namespaces;
+            enabledCache = createDebug.enabled(namespace);
+          }
+          return enabledCache;
+        },
+        set: (v) => {
+          enableOverride = v;
+        }
+      });
+      if (typeof createDebug.init === "function") {
+        createDebug.init(debug);
+      }
+      return debug;
+    }
+    function extend(namespace, delimiter) {
+      const newDebug = createDebug(this.namespace + (typeof delimiter === "undefined" ? ":" : delimiter) + namespace);
+      newDebug.log = this.log;
+      return newDebug;
+    }
+    function enable(namespaces) {
+      createDebug.save(namespaces);
+      createDebug.namespaces = namespaces;
+      createDebug.names = [];
+      createDebug.skips = [];
+      const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
+      for (const ns of split) {
+        if (ns[0] === "-") {
+          createDebug.skips.push(ns.slice(1));
+        } else {
+          createDebug.names.push(ns);
+        }
+      }
+    }
+    function matchesTemplate(search, template) {
+      let searchIndex = 0;
+      let templateIndex = 0;
+      let starIndex = -1;
+      let matchIndex = 0;
+      while (searchIndex < search.length) {
+        if (templateIndex < template.length && (template[templateIndex] === search[searchIndex] || template[templateIndex] === "*")) {
+          if (template[templateIndex] === "*") {
+            starIndex = templateIndex;
+            matchIndex = searchIndex;
+            templateIndex++;
+          } else {
+            searchIndex++;
+            templateIndex++;
+          }
+        } else if (starIndex !== -1) {
+          templateIndex = starIndex + 1;
+          matchIndex++;
+          searchIndex = matchIndex;
+        } else {
+          return false;
+        }
+      }
+      while (templateIndex < template.length && template[templateIndex] === "*") {
+        templateIndex++;
+      }
+      return templateIndex === template.length;
+    }
+    function disable() {
+      const namespaces = [
+        ...createDebug.names,
+        ...createDebug.skips.map((namespace) => "-" + namespace)
+      ].join(",");
+      createDebug.enable("");
+      return namespaces;
+    }
+    function enabled(name) {
+      for (const skip of createDebug.skips) {
+        if (matchesTemplate(name, skip)) {
+          return false;
+        }
+      }
+      for (const ns of createDebug.names) {
+        if (matchesTemplate(name, ns)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function coerce(val) {
+      if (val instanceof Error) {
+        return val.stack || val.message;
+      }
+      return val;
+    }
+    function destroy() {
+      console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+    }
+    createDebug.enable(createDebug.load());
+    return createDebug;
+  }
+  module.exports = setup;
+});
+
+// node_modules/debug/src/browser.js
+var require_browser = __commonJS(function(exports, module) {
+  exports.formatArgs = formatArgs;
+  exports.save = save;
+  exports.load = load;
+  exports.useColors = useColors;
+  exports.storage = localstorage();
+  exports.destroy = (() => {
+    let warned = false;
+    return () => {
+      if (!warned) {
+        warned = true;
+        console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+      }
+    };
+  })();
+  exports.colors = [
+    "#0000CC",
+    "#0000FF",
+    "#0033CC",
+    "#0033FF",
+    "#0066CC",
+    "#0066FF",
+    "#0099CC",
+    "#0099FF",
+    "#00CC00",
+    "#00CC33",
+    "#00CC66",
+    "#00CC99",
+    "#00CCCC",
+    "#00CCFF",
+    "#3300CC",
+    "#3300FF",
+    "#3333CC",
+    "#3333FF",
+    "#3366CC",
+    "#3366FF",
+    "#3399CC",
+    "#3399FF",
+    "#33CC00",
+    "#33CC33",
+    "#33CC66",
+    "#33CC99",
+    "#33CCCC",
+    "#33CCFF",
+    "#6600CC",
+    "#6600FF",
+    "#6633CC",
+    "#6633FF",
+    "#66CC00",
+    "#66CC33",
+    "#9900CC",
+    "#9900FF",
+    "#9933CC",
+    "#9933FF",
+    "#99CC00",
+    "#99CC33",
+    "#CC0000",
+    "#CC0033",
+    "#CC0066",
+    "#CC0099",
+    "#CC00CC",
+    "#CC00FF",
+    "#CC3300",
+    "#CC3333",
+    "#CC3366",
+    "#CC3399",
+    "#CC33CC",
+    "#CC33FF",
+    "#CC6600",
+    "#CC6633",
+    "#CC9900",
+    "#CC9933",
+    "#CCCC00",
+    "#CCCC33",
+    "#FF0000",
+    "#FF0033",
+    "#FF0066",
+    "#FF0099",
+    "#FF00CC",
+    "#FF00FF",
+    "#FF3300",
+    "#FF3333",
+    "#FF3366",
+    "#FF3399",
+    "#FF33CC",
+    "#FF33FF",
+    "#FF6600",
+    "#FF6633",
+    "#FF9900",
+    "#FF9933",
+    "#FFCC00",
+    "#FFCC33"
+  ];
+  function useColors() {
+    if (typeof window !== "undefined" && window.process && (window.process.type === "renderer" || window.process.__nwjs)) {
+      return true;
+    }
+    if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
+      return false;
+    }
+    let m;
+    return typeof document !== "undefined" && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance || typeof window !== "undefined" && window.console && (window.console.firebug || window.console.exception && window.console.table) || typeof navigator !== "undefined" && navigator.userAgent && (m = navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/)) && parseInt(m[1], 10) >= 31 || typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/);
+  }
+  function formatArgs(args) {
+    args[0] = (this.useColors ? "%c" : "") + this.namespace + (this.useColors ? " %c" : " ") + args[0] + (this.useColors ? "%c " : " ") + "+" + module.exports.humanize(this.diff);
+    if (!this.useColors) {
+      return;
+    }
+    const c = "color: " + this.color;
+    args.splice(1, 0, c, "color: inherit");
+    let index = 0;
+    let lastC = 0;
+    args[0].replace(/%[a-zA-Z%]/g, (match) => {
+      if (match === "%%") {
+        return;
+      }
+      index++;
+      if (match === "%c") {
+        lastC = index;
+      }
+    });
+    args.splice(lastC, 0, c);
+  }
+  exports.log = console.debug || console.log || (() => {});
+  function save(namespaces) {
+    try {
+      if (namespaces) {
+        exports.storage.setItem("debug", namespaces);
+      } else {
+        exports.storage.removeItem("debug");
+      }
+    } catch (error) {}
+  }
+  function load() {
+    let r;
+    try {
+      r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
+    } catch (error) {}
+    if (!r && typeof process !== "undefined" && "env" in process) {
+      r = process.env.DEBUG;
+    }
+    return r;
+  }
+  function localstorage() {
+    try {
+      return localStorage;
+    } catch (error) {}
+  }
+  module.exports = require_common()(exports);
+  var { formatters } = module.exports;
+  formatters.j = function(v) {
+    try {
+      return JSON.stringify(v);
+    } catch (error) {
+      return "[UnexpectedJSONParseError]: " + error.message;
+    }
+  };
+});
+
+// node_modules/debug/src/node.js
+var require_node = __commonJS(function(exports, module) {
+  var tty = __require("tty");
+  var util = __require("util");
+  exports.init = init;
+  exports.log = log;
+  exports.formatArgs = formatArgs;
+  exports.save = save;
+  exports.load = load;
+  exports.useColors = useColors;
+  exports.destroy = util.deprecate(() => {}, "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
+  exports.colors = [6, 2, 3, 4, 5, 1];
+  try {
+    const supportsColor = (()=>{throw new Error("Cannot require module "+"supports-color");})();
+    if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
+      exports.colors = [
+        20,
+        21,
+        26,
+        27,
+        32,
+        33,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        56,
+        57,
+        62,
+        63,
+        68,
+        69,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        92,
+        93,
+        98,
+        99,
+        112,
+        113,
+        128,
+        129,
+        134,
+        135,
+        148,
+        149,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        178,
+        179,
+        184,
+        185,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        214,
+        215,
+        220,
+        221
+      ];
+    }
+  } catch (error) {}
+  exports.inspectOpts = Object.keys(process.env).filter((key) => {
+    return /^debug_/i.test(key);
+  }).reduce((obj, key) => {
+    const prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, (_, k) => {
+      return k.toUpperCase();
+    });
+    let val = process.env[key];
+    if (/^(yes|on|true|enabled)$/i.test(val)) {
+      val = true;
+    } else if (/^(no|off|false|disabled)$/i.test(val)) {
+      val = false;
+    } else if (val === "null") {
+      val = null;
+    } else {
+      val = Number(val);
+    }
+    obj[prop] = val;
+    return obj;
+  }, {});
+  function useColors() {
+    return "colors" in exports.inspectOpts ? Boolean(exports.inspectOpts.colors) : tty.isatty(process.stderr.fd);
+  }
+  function formatArgs(args) {
+    const { namespace: name, useColors } = this;
+    if (useColors) {
+      const c = this.color;
+      const colorCode = "\x1B[3" + (c < 8 ? c : "8;5;" + c);
+      const prefix = `  ${colorCode};1m${name} \x1B[0m`;
+      args[0] = prefix + args[0].split(`
+`).join(`
+` + prefix);
+      args.push(colorCode + "m+" + module.exports.humanize(this.diff) + "\x1B[0m");
+    } else {
+      args[0] = getDate() + name + " " + args[0];
+    }
+  }
+  function getDate() {
+    if (exports.inspectOpts.hideDate) {
+      return "";
+    }
+    return new Date().toISOString() + " ";
+  }
+  function log(...args) {
+    return process.stderr.write(util.formatWithOptions(exports.inspectOpts, ...args) + `
+`);
+  }
+  function save(namespaces) {
+    if (namespaces) {
+      process.env.DEBUG = namespaces;
+    } else {
+      delete process.env.DEBUG;
+    }
+  }
+  function load() {
+    return process.env.DEBUG;
+  }
+  function init(debug) {
+    debug.inspectOpts = {};
+    const keys = Object.keys(exports.inspectOpts);
+    for (let i = 0;i < keys.length; i++) {
+      debug.inspectOpts[keys[i]] = exports.inspectOpts[keys[i]];
+    }
+  }
+  module.exports = require_common()(exports);
+  var { formatters } = module.exports;
+  formatters.o = function(v) {
+    this.inspectOpts.colors = this.useColors;
+    return util.inspect(v, this.inspectOpts).split(`
+`).map((str) => str.trim()).join(" ");
+  };
+  formatters.O = function(v) {
+    this.inspectOpts.colors = this.useColors;
+    return util.inspect(v, this.inspectOpts);
+  };
+});
+
+// node_modules/debug/src/index.js
+var require_src = __commonJS(function(exports, module) {
+  if (typeof process === "undefined" || process.type === "renderer" || false || process.__nwjs) {
+    module.exports = require_browser();
+  } else {
+    module.exports = require_node();
+  }
+});
+
+// node_modules/engine.io-client/build/esm-debug/transport.js
+var import_debug, debug, TransportError, Transport;
+var init_transport = __esm(() => {
+  init_esm2();
+  init_cjs();
+  init_util2();
+  import_debug = __toESM(require_src(), 1);
+  debug = import_debug.default("engine.io-client:transport");
+  TransportError = class TransportError extends Error {
+    constructor(reason, description, context) {
+      super(reason);
+      this.description = description;
+      this.context = context;
+      this.type = "TransportError";
+    }
+  };
+  Transport = class Transport extends $Emitter {
+    constructor(opts) {
+      super();
+      this.writable = false;
+      installTimerFunctions(this, opts);
+      this.opts = opts;
+      this.query = opts.query;
+      this.socket = opts.socket;
+      this.supportsBinary = !opts.forceBase64;
+    }
+    onError(reason, description, context) {
+      super.emitReserved("error", new TransportError(reason, description, context));
+      return this;
+    }
+    open() {
+      this.readyState = "opening";
+      this.doOpen();
+      return this;
+    }
+    close() {
+      if (this.readyState === "opening" || this.readyState === "open") {
+        this.doClose();
+        this.onClose();
+      }
+      return this;
+    }
+    send(packets) {
+      if (this.readyState === "open") {
+        this.write(packets);
+      } else {
+        debug("transport is not open, discarding packets");
+      }
+    }
+    onOpen() {
+      this.readyState = "open";
+      this.writable = true;
+      super.emitReserved("open");
+    }
+    onData(data) {
+      const packet = decodePacket(data, this.socket.binaryType);
+      this.onPacket(packet);
+    }
+    onPacket(packet) {
+      super.emitReserved("packet", packet);
+    }
+    onClose(details) {
+      this.readyState = "closed";
+      super.emitReserved("close", details);
+    }
+    pause(onPause) {}
+    createUri(schema, query = {}) {
+      return schema + "://" + this._hostname() + this._port() + this.opts.path + this._query(query);
+    }
+    _hostname() {
+      const hostname = this.opts.hostname;
+      return hostname.indexOf(":") === -1 ? hostname : "[" + hostname + "]";
+    }
+    _port() {
+      if (this.opts.port && (this.opts.secure && Number(this.opts.port) !== 443 || !this.opts.secure && Number(this.opts.port) !== 80)) {
+        return ":" + this.opts.port;
+      } else {
+        return "";
+      }
+    }
+    _query(query) {
+      const encodedQuery = encode4(query);
+      return encodedQuery.length ? "?" + encodedQuery : "";
+    }
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/polling.js
+var import_debug2, debug2, Polling;
+var init_polling = __esm(() => {
+  init_transport();
+  init_util2();
+  init_esm2();
+  import_debug2 = __toESM(require_src(), 1);
+  debug2 = import_debug2.default("engine.io-client:polling");
+  Polling = class Polling extends Transport {
+    constructor() {
+      super(...arguments);
+      this._polling = false;
+    }
+    get name() {
+      return "polling";
+    }
+    doOpen() {
+      this._poll();
+    }
+    pause(onPause) {
+      this.readyState = "pausing";
+      const pause = () => {
+        debug2("paused");
+        this.readyState = "paused";
+        onPause();
+      };
+      if (this._polling || !this.writable) {
+        let total = 0;
+        if (this._polling) {
+          debug2("we are currently polling - waiting to pause");
+          total++;
+          this.once("pollComplete", function() {
+            debug2("pre-pause polling complete");
+            --total || pause();
+          });
+        }
+        if (!this.writable) {
+          debug2("we are currently writing - waiting to pause");
+          total++;
+          this.once("drain", function() {
+            debug2("pre-pause writing complete");
+            --total || pause();
+          });
+        }
+      } else {
+        pause();
+      }
+    }
+    _poll() {
+      debug2("polling");
+      this._polling = true;
+      this.doPoll();
+      this.emitReserved("poll");
+    }
+    onData(data) {
+      debug2("polling got data %s", data);
+      const callback = (packet) => {
+        if (this.readyState === "opening" && packet.type === "open") {
+          this.onOpen();
+        }
+        if (packet.type === "close") {
+          this.onClose({ description: "transport closed by the server" });
+          return false;
+        }
+        this.onPacket(packet);
+      };
+      decodePayload(data, this.socket.binaryType).forEach(callback);
+      if (this.readyState !== "closed") {
+        this._polling = false;
+        this.emitReserved("pollComplete");
+        if (this.readyState === "open") {
+          this._poll();
+        } else {
+          debug2('ignoring poll - transport state "%s"', this.readyState);
+        }
+      }
+    }
+    doClose() {
+      const close = () => {
+        debug2("writing close packet");
+        this.write([{ type: "close" }]);
+      };
+      if (this.readyState === "open") {
+        debug2("transport open - closing");
+        close();
+      } else {
+        debug2("transport not open - deferring close");
+        this.once("open", close);
+      }
+    }
+    write(packets) {
+      this.writable = false;
+      encodePayload(packets, (data) => {
+        this.doWrite(data, () => {
+          this.writable = true;
+          this.emitReserved("drain");
+        });
+      });
+    }
+    uri() {
+      const schema = this.opts.secure ? "https" : "http";
+      const query = this.query || {};
+      if (this.opts.timestampRequests !== false) {
+        query[this.opts.timestampParam] = randomString();
+      }
+      if (!this.supportsBinary && !query.sid) {
+        query.b64 = 1;
+      }
+      return this.createUri(schema, query);
+    }
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/contrib/has-cors.js
+var value = false, hasCORS;
+var init_has_cors = __esm(() => {
+  try {
+    value = typeof XMLHttpRequest !== "undefined" && "withCredentials" in new XMLHttpRequest;
+  } catch (err) {}
+  hasCORS = value;
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.js
+function empty() {}
+function unloadHandler() {
+  for (let i in Request.requests) {
+    if (Request.requests.hasOwnProperty(i)) {
+      Request.requests[i].abort();
+    }
+  }
+}
+function newRequest(opts) {
+  const xdomain = opts.xdomain;
+  try {
+    if (typeof XMLHttpRequest !== "undefined" && (!xdomain || hasCORS)) {
+      return new XMLHttpRequest;
+    }
+  } catch (e) {}
+  if (!xdomain) {
+    try {
+      return new globalThisShim[["Active"].concat("Object").join("X")]("Microsoft.XMLHTTP");
+    } catch (e) {}
+  }
+}
+var import_debug3, debug3, BaseXHR, Request, hasXHR2;
+var init_polling_xhr = __esm(() => {
+  init_polling();
+  init_cjs();
+  init_util2();
+  init_globals_node();
+  init_has_cors();
+  import_debug3 = __toESM(require_src(), 1);
+  debug3 = import_debug3.default("engine.io-client:polling");
+  BaseXHR = class BaseXHR extends Polling {
+    constructor(opts) {
+      super(opts);
+      if (typeof location !== "undefined") {
+        const isSSL = location.protocol === "https:";
+        let port = location.port;
+        if (!port) {
+          port = isSSL ? "443" : "80";
+        }
+        this.xd = typeof location !== "undefined" && opts.hostname !== location.hostname || port !== opts.port;
+      }
+    }
+    doWrite(data, fn) {
+      const req = this.request({
+        method: "POST",
+        data
+      });
+      req.on("success", fn);
+      req.on("error", (xhrStatus, context) => {
+        this.onError("xhr post error", xhrStatus, context);
+      });
+    }
+    doPoll() {
+      debug3("xhr poll");
+      const req = this.request();
+      req.on("data", this.onData.bind(this));
+      req.on("error", (xhrStatus, context) => {
+        this.onError("xhr poll error", xhrStatus, context);
+      });
+      this.pollXhr = req;
+    }
+  };
+  Request = class Request extends $Emitter {
+    constructor(createRequest, uri, opts) {
+      super();
+      this.createRequest = createRequest;
+      installTimerFunctions(this, opts);
+      this._opts = opts;
+      this._method = opts.method || "GET";
+      this._uri = uri;
+      this._data = opts.data !== undefined ? opts.data : null;
+      this._create();
+    }
+    _create() {
+      var _a;
+      const opts = pick2(this._opts, "agent", "pfx", "key", "passphrase", "cert", "ca", "ciphers", "rejectUnauthorized", "autoUnref");
+      opts.xdomain = !!this._opts.xd;
+      const xhr = this._xhr = this.createRequest(opts);
+      try {
+        debug3("xhr open %s: %s", this._method, this._uri);
+        xhr.open(this._method, this._uri, true);
+        try {
+          if (this._opts.extraHeaders) {
+            xhr.setDisableHeaderCheck && xhr.setDisableHeaderCheck(true);
+            for (let i in this._opts.extraHeaders) {
+              if (this._opts.extraHeaders.hasOwnProperty(i)) {
+                xhr.setRequestHeader(i, this._opts.extraHeaders[i]);
+              }
+            }
+          }
+        } catch (e) {}
+        if (this._method === "POST") {
+          try {
+            xhr.setRequestHeader("Content-type", "text/plain;charset=UTF-8");
+          } catch (e) {}
+        }
+        try {
+          xhr.setRequestHeader("Accept", "*/*");
+        } catch (e) {}
+        (_a = this._opts.cookieJar) === null || _a === undefined || _a.addCookies(xhr);
+        if ("withCredentials" in xhr) {
+          xhr.withCredentials = this._opts.withCredentials;
+        }
+        if (this._opts.requestTimeout) {
+          xhr.timeout = this._opts.requestTimeout;
+        }
+        xhr.onreadystatechange = () => {
+          var _a;
+          if (xhr.readyState === 3) {
+            (_a = this._opts.cookieJar) === null || _a === undefined || _a.parseCookies(xhr.getResponseHeader("set-cookie"));
+          }
+          if (xhr.readyState !== 4)
+            return;
+          if (xhr.status === 200 || xhr.status === 1223) {
+            this._onLoad();
+          } else {
+            this.setTimeoutFn(() => {
+              this._onError(typeof xhr.status === "number" ? xhr.status : 0);
+            }, 0);
+          }
+        };
+        debug3("xhr data %s", this._data);
+        xhr.send(this._data);
+      } catch (e) {
+        this.setTimeoutFn(() => {
+          this._onError(e);
+        }, 0);
+        return;
+      }
+      if (typeof document !== "undefined") {
+        this._index = Request.requestsCount++;
+        Request.requests[this._index] = this;
+      }
+    }
+    _onError(err) {
+      this.emitReserved("error", err, this._xhr);
+      this._cleanup(true);
+    }
+    _cleanup(fromError) {
+      if (typeof this._xhr === "undefined" || this._xhr === null) {
+        return;
+      }
+      this._xhr.onreadystatechange = empty;
+      if (fromError) {
+        try {
+          this._xhr.abort();
+        } catch (e) {}
+      }
+      if (typeof document !== "undefined") {
+        delete Request.requests[this._index];
+      }
+      this._xhr = null;
+    }
+    _onLoad() {
+      const data = this._xhr.responseText;
+      if (data !== null) {
+        this.emitReserved("data", data);
+        this.emitReserved("success");
+        this._cleanup();
+      }
+    }
+    abort() {
+      this._cleanup();
+    }
+  };
+  Request.requestsCount = 0;
+  Request.requests = {};
+  if (typeof document !== "undefined") {
+    if (typeof attachEvent === "function") {
+      attachEvent("onunload", unloadHandler);
+    } else if (typeof addEventListener === "function") {
+      const terminationEvent = "onpagehide" in globalThisShim ? "pagehide" : "unload";
+      addEventListener(terminationEvent, unloadHandler, false);
+    }
+  }
+  hasXHR2 = function() {
+    const xhr = newRequest({
+      xdomain: false
+    });
+    return xhr && xhr.responseType !== null;
+  }();
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.node.js
+var XMLHttpRequestModule, XMLHttpRequest2, XHR;
+var init_polling_xhr_node = __esm(() => {
+  init_polling_xhr();
+  XMLHttpRequestModule = __toESM(require_XMLHttpRequest(), 1);
+  XMLHttpRequest2 = XMLHttpRequestModule.default || XMLHttpRequestModule;
+  XHR = class XHR extends BaseXHR {
+    request(opts = {}) {
+      var _a;
+      Object.assign(opts, { xd: this.xd, cookieJar: (_a = this.socket) === null || _a === undefined ? undefined : _a._cookieJar }, this.opts);
+      return new Request((opts) => new XMLHttpRequest2(opts), this.uri(), opts);
+    }
+  };
+});
+
+// node_modules/ws/lib/constants.js
+var require_constants = __commonJS(function(exports, module) {
+  var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
+  var hasBlob = typeof Blob !== "undefined";
+  if (hasBlob)
+    BINARY_TYPES.push("blob");
+  module.exports = {
+    BINARY_TYPES,
+    CLOSE_TIMEOUT: 30000,
+    EMPTY_BUFFER: Buffer.alloc(0),
+    GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
+    hasBlob,
+    kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
+    kListener: Symbol("kListener"),
+    kStatusCode: Symbol("status-code"),
+    kWebSocket: Symbol("websocket"),
+    NOOP: () => {}
+  };
+});
+
+// node_modules/ws/lib/buffer-util.js
+var require_buffer_util = __commonJS(function(exports, module) {
+  var { EMPTY_BUFFER } = require_constants();
+  var FastBuffer = Buffer[Symbol.species];
+  function concat(list, totalLength) {
+    if (list.length === 0)
+      return EMPTY_BUFFER;
+    if (list.length === 1)
+      return list[0];
+    const target = Buffer.allocUnsafe(totalLength);
+    let offset = 0;
+    for (let i = 0;i < list.length; i++) {
+      const buf = list[i];
+      target.set(buf, offset);
+      offset += buf.length;
+    }
+    if (offset < totalLength) {
+      return new FastBuffer(target.buffer, target.byteOffset, offset);
+    }
+    return target;
+  }
+  function _mask(source, mask, output, offset, length) {
+    for (let i = 0;i < length; i++) {
+      output[offset + i] = source[i] ^ mask[i & 3];
+    }
+  }
+  function _unmask(buffer, mask) {
+    for (let i = 0;i < buffer.length; i++) {
+      buffer[i] ^= mask[i & 3];
+    }
+  }
+  function toArrayBuffer(buf) {
+    if (buf.length === buf.buffer.byteLength) {
+      return buf.buffer;
+    }
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
+  }
+  function toBuffer(data) {
+    toBuffer.readOnly = true;
+    if (Buffer.isBuffer(data))
+      return data;
+    let buf;
+    if (data instanceof ArrayBuffer) {
+      buf = new FastBuffer(data);
+    } else if (ArrayBuffer.isView(data)) {
+      buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
+    } else {
+      buf = Buffer.from(data);
+      toBuffer.readOnly = false;
+    }
+    return buf;
+  }
+  module.exports = {
+    concat,
+    mask: _mask,
+    toArrayBuffer,
+    toBuffer,
+    unmask: _unmask
+  };
+  if (!process.env.WS_NO_BUFFER_UTIL) {
+    try {
+      const bufferUtil = (()=>{throw new Error("Cannot require module "+"bufferutil");})();
+      module.exports.mask = function(source, mask2, output, offset, length) {
+        if (length < 48)
+          _mask(source, mask2, output, offset, length);
+        else
+          bufferUtil.mask(source, mask2, output, offset, length);
+      };
+      module.exports.unmask = function(buffer, mask) {
+        if (buffer.length < 32)
+          _unmask(buffer, mask);
+        else
+          bufferUtil.unmask(buffer, mask);
+      };
+    } catch (e) {}
+  }
+});
+
+// node_modules/ws/lib/limiter.js
+var require_limiter = __commonJS(function(exports, module) {
+  var kDone = Symbol("kDone");
+  var kRun = Symbol("kRun");
+
+  class Limiter {
+    constructor(concurrency) {
+      this[kDone] = () => {
+        this.pending--;
+        this[kRun]();
+      };
+      this.concurrency = concurrency || Infinity;
+      this.jobs = [];
+      this.pending = 0;
+    }
+    add(job) {
+      this.jobs.push(job);
+      this[kRun]();
+    }
+    [kRun]() {
+      if (this.pending === this.concurrency)
+        return;
+      if (this.jobs.length) {
+        const job = this.jobs.shift();
+        this.pending++;
+        job(this[kDone]);
+      }
+    }
+  }
+  module.exports = Limiter;
+});
+
+// node_modules/ws/lib/permessage-deflate.js
+var require_permessage_deflate = __commonJS(function(exports, module) {
+  var zlib = __require("zlib");
+  var bufferUtil = require_buffer_util();
+  var Limiter = require_limiter();
+  var { kStatusCode } = require_constants();
+  var FastBuffer = Buffer[Symbol.species];
+  var TRAILER = Buffer.from([0, 0, 255, 255]);
+  var kPerMessageDeflate = Symbol("permessage-deflate");
+  var kTotalLength = Symbol("total-length");
+  var kCallback = Symbol("callback");
+  var kBuffers = Symbol("buffers");
+  var kError = Symbol("error");
+  var zlibLimiter;
+
+  class PerMessageDeflate {
+    constructor(options) {
+      this._options = options || {};
+      this._threshold = this._options.threshold !== undefined ? this._options.threshold : 1024;
+      this._maxPayload = this._options.maxPayload | 0;
+      this._isServer = !!this._options.isServer;
+      this._deflate = null;
+      this._inflate = null;
+      this.params = null;
+      if (!zlibLimiter) {
+        const concurrency = this._options.concurrencyLimit !== undefined ? this._options.concurrencyLimit : 10;
+        zlibLimiter = new Limiter(concurrency);
+      }
+    }
+    static get extensionName() {
+      return "permessage-deflate";
+    }
+    offer() {
+      const params = {};
+      if (this._options.serverNoContextTakeover) {
+        params.server_no_context_takeover = true;
+      }
+      if (this._options.clientNoContextTakeover) {
+        params.client_no_context_takeover = true;
+      }
+      if (this._options.serverMaxWindowBits) {
+        params.server_max_window_bits = this._options.serverMaxWindowBits;
+      }
+      if (this._options.clientMaxWindowBits) {
+        params.client_max_window_bits = this._options.clientMaxWindowBits;
+      } else if (this._options.clientMaxWindowBits == null) {
+        params.client_max_window_bits = true;
+      }
+      return params;
+    }
+    accept(configurations) {
+      configurations = this.normalizeParams(configurations);
+      this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
+      return this.params;
+    }
+    cleanup() {
+      if (this._inflate) {
+        this._inflate.close();
+        this._inflate = null;
+      }
+      if (this._deflate) {
+        const callback = this._deflate[kCallback];
+        this._deflate.close();
+        this._deflate = null;
+        if (callback) {
+          callback(new Error("The deflate stream was closed while data was being processed"));
+        }
+      }
+    }
+    acceptAsServer(offers) {
+      const opts = this._options;
+      const accepted = offers.find((params) => {
+        if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && (typeof params.client_max_window_bits === "number" ? opts.clientMaxWindowBits > params.client_max_window_bits : !params.client_max_window_bits)) {
+          return false;
+        }
+        return true;
+      });
+      if (!accepted) {
+        throw new Error("None of the extension offers can be accepted");
+      }
+      if (opts.serverNoContextTakeover) {
+        accepted.server_no_context_takeover = true;
+      }
+      if (opts.clientNoContextTakeover) {
+        accepted.client_no_context_takeover = true;
+      }
+      if (typeof opts.serverMaxWindowBits === "number") {
+        accepted.server_max_window_bits = opts.serverMaxWindowBits;
+      }
+      if (typeof opts.clientMaxWindowBits === "number") {
+        accepted.client_max_window_bits = opts.clientMaxWindowBits;
+      } else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) {
+        delete accepted.client_max_window_bits;
+      }
+      return accepted;
+    }
+    acceptAsClient(response) {
+      const params = response[0];
+      if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) {
+        throw new Error('Unexpected parameter "client_no_context_takeover"');
+      }
+      if (!params.client_max_window_bits) {
+        if (typeof this._options.clientMaxWindowBits === "number") {
+          params.client_max_window_bits = this._options.clientMaxWindowBits;
+        }
+      } else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) {
+        throw new Error('Unexpected or invalid parameter "client_max_window_bits"');
+      }
+      return params;
+    }
+    normalizeParams(configurations) {
+      configurations.forEach((params) => {
+        Object.keys(params).forEach((key) => {
+          let value = params[key];
+          if (value.length > 1) {
+            throw new Error(`Parameter "${key}" must have only a single value`);
+          }
+          value = value[0];
+          if (key === "client_max_window_bits") {
+            if (value !== true) {
+              const num = +value;
+              if (!Number.isInteger(num) || num < 8 || num > 15) {
+                throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+              }
+              value = num;
+            } else if (!this._isServer) {
+              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+            }
+          } else if (key === "server_max_window_bits") {
+            const num = +value;
+            if (!Number.isInteger(num) || num < 8 || num > 15) {
+              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+            }
+            value = num;
+          } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
+            if (value !== true) {
+              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
+            }
+          } else {
+            throw new Error(`Unknown parameter "${key}"`);
+          }
+          params[key] = value;
+        });
+      });
+      return configurations;
+    }
+    decompress(data, fin, callback) {
+      zlibLimiter.add((done) => {
+        this._decompress(data, fin, (err, result) => {
+          done();
+          callback(err, result);
+        });
+      });
+    }
+    compress(data, fin, callback) {
+      zlibLimiter.add((done) => {
+        this._compress(data, fin, (err, result) => {
+          done();
+          callback(err, result);
+        });
+      });
+    }
+    _decompress(data, fin, callback) {
+      const endpoint = this._isServer ? "client" : "server";
+      if (!this._inflate) {
+        const key = `${endpoint}_max_window_bits`;
+        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+        this._inflate = zlib.createInflateRaw({
+          ...this._options.zlibInflateOptions,
+          windowBits
+        });
+        this._inflate[kPerMessageDeflate] = this;
+        this._inflate[kTotalLength] = 0;
+        this._inflate[kBuffers] = [];
+        this._inflate.on("error", inflateOnError);
+        this._inflate.on("data", inflateOnData);
+      }
+      this._inflate[kCallback] = callback;
+      this._inflate.write(data);
+      if (fin)
+        this._inflate.write(TRAILER);
+      this._inflate.flush(() => {
+        const err = this._inflate[kError];
+        if (err) {
+          this._inflate.close();
+          this._inflate = null;
+          callback(err);
+          return;
+        }
+        const data = bufferUtil.concat(this._inflate[kBuffers], this._inflate[kTotalLength]);
+        if (this._inflate._readableState.endEmitted) {
+          this._inflate.close();
+          this._inflate = null;
+        } else {
+          this._inflate[kTotalLength] = 0;
+          this._inflate[kBuffers] = [];
+          if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+            this._inflate.reset();
+          }
+        }
+        callback(null, data);
+      });
+    }
+    _compress(data, fin, callback) {
+      const endpoint = this._isServer ? "server" : "client";
+      if (!this._deflate) {
+        const key = `${endpoint}_max_window_bits`;
+        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
+        this._deflate = zlib.createDeflateRaw({
+          ...this._options.zlibDeflateOptions,
+          windowBits
+        });
+        this._deflate[kTotalLength] = 0;
+        this._deflate[kBuffers] = [];
+        this._deflate.on("data", deflateOnData);
+      }
+      this._deflate[kCallback] = callback;
+      this._deflate.write(data);
+      this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
+        if (!this._deflate) {
+          return;
+        }
+        let data = bufferUtil.concat(this._deflate[kBuffers], this._deflate[kTotalLength]);
+        if (fin) {
+          data = new FastBuffer(data.buffer, data.byteOffset, data.length - 4);
+        }
+        this._deflate[kCallback] = null;
+        this._deflate[kTotalLength] = 0;
+        this._deflate[kBuffers] = [];
+        if (fin && this.params[`${endpoint}_no_context_takeover`]) {
+          this._deflate.reset();
+        }
+        callback(null, data);
+      });
+    }
+  }
+  module.exports = PerMessageDeflate;
+  function deflateOnData(chunk) {
+    this[kBuffers].push(chunk);
+    this[kTotalLength] += chunk.length;
+  }
+  function inflateOnData(chunk) {
+    this[kTotalLength] += chunk.length;
+    if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
+      this[kBuffers].push(chunk);
+      return;
+    }
+    this[kError] = new RangeError("Max payload size exceeded");
+    this[kError].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
+    this[kError][kStatusCode] = 1009;
+    this.removeListener("data", inflateOnData);
+    this.reset();
+  }
+  function inflateOnError(err) {
+    this[kPerMessageDeflate]._inflate = null;
+    if (this[kError]) {
+      this[kCallback](this[kError]);
+      return;
+    }
+    err[kStatusCode] = 1007;
+    this[kCallback](err);
+  }
+});
+
+// node_modules/ws/lib/validation.js
+var require_validation2 = __commonJS(function(exports, module) {
+  var { isUtf8 } = __require("buffer");
+  var { hasBlob } = require_constants();
+  var tokenChars = [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    0,
+    1,
+    0,
+    1,
+    0
+  ];
+  function isValidStatusCode(code) {
+    return code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3000 && code <= 4999;
+  }
+  function _isValidUTF8(buf) {
+    const len = buf.length;
+    let i = 0;
+    while (i < len) {
+      if ((buf[i] & 128) === 0) {
+        i++;
+      } else if ((buf[i] & 224) === 192) {
+        if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) {
+          return false;
+        }
+        i += 2;
+      } else if ((buf[i] & 240) === 224) {
+        if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || buf[i] === 237 && (buf[i + 1] & 224) === 160) {
+          return false;
+        }
+        i += 3;
+      } else if ((buf[i] & 248) === 240) {
+        if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) {
+          return false;
+        }
+        i += 4;
+      } else {
+        return false;
+      }
+    }
+    return true;
+  }
+  function isBlob(value) {
+    return hasBlob && typeof value === "object" && typeof value.arrayBuffer === "function" && typeof value.type === "string" && typeof value.stream === "function" && (value[Symbol.toStringTag] === "Blob" || value[Symbol.toStringTag] === "File");
+  }
+  module.exports = {
+    isBlob,
+    isValidStatusCode,
+    isValidUTF8: _isValidUTF8,
+    tokenChars
+  };
+  if (isUtf8) {
+    module.exports.isValidUTF8 = function(buf) {
+      return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
+    };
+  } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
+    try {
+      const isValidUTF8 = (()=>{throw new Error("Cannot require module "+"utf-8-validate");})();
+      module.exports.isValidUTF8 = function(buf) {
+        return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
+      };
+    } catch (e) {}
+  }
+});
+
+// node_modules/ws/lib/receiver.js
+var require_receiver = __commonJS(function(exports, module) {
+  var { Writable } = __require("stream");
+  var PerMessageDeflate = require_permessage_deflate();
+  var {
+    BINARY_TYPES,
+    EMPTY_BUFFER,
+    kStatusCode,
+    kWebSocket
+  } = require_constants();
+  var { concat, toArrayBuffer, unmask } = require_buffer_util();
+  var { isValidStatusCode, isValidUTF8 } = require_validation2();
+  var FastBuffer = Buffer[Symbol.species];
+  var GET_INFO = 0;
+  var GET_PAYLOAD_LENGTH_16 = 1;
+  var GET_PAYLOAD_LENGTH_64 = 2;
+  var GET_MASK = 3;
+  var GET_DATA = 4;
+  var INFLATING = 5;
+  var DEFER_EVENT = 6;
+
+  class Receiver extends Writable {
+    constructor(options = {}) {
+      super();
+      this._allowSynchronousEvents = options.allowSynchronousEvents !== undefined ? options.allowSynchronousEvents : true;
+      this._binaryType = options.binaryType || BINARY_TYPES[0];
+      this._extensions = options.extensions || {};
+      this._isServer = !!options.isServer;
+      this._maxBufferedChunks = options.maxBufferedChunks | 0;
+      this._maxFragments = options.maxFragments | 0;
+      this._maxPayload = options.maxPayload | 0;
+      this._skipUTF8Validation = !!options.skipUTF8Validation;
+      this[kWebSocket] = undefined;
+      this._bufferedBytes = 0;
+      this._buffers = [];
+      this._compressed = false;
+      this._payloadLength = 0;
+      this._mask = undefined;
+      this._fragmented = 0;
+      this._masked = false;
+      this._fin = false;
+      this._opcode = 0;
+      this._totalPayloadLength = 0;
+      this._messageLength = 0;
+      this._numFragments = 0;
+      this._fragments = [];
+      this._errored = false;
+      this._loop = false;
+      this._state = GET_INFO;
+    }
+    _write(chunk, encoding, cb) {
+      if (this._opcode === 8 && this._state == GET_INFO)
+        return cb();
+      if (this._maxBufferedChunks > 0 && this._buffers.length >= this._maxBufferedChunks) {
+        cb(this.createError(RangeError, "Too many buffered chunks", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS"));
+        return;
+      }
+      this._bufferedBytes += chunk.length;
+      this._buffers.push(chunk);
+      this.startLoop(cb);
+    }
+    consume(n) {
+      this._bufferedBytes -= n;
+      if (n === this._buffers[0].length)
+        return this._buffers.shift();
+      if (n < this._buffers[0].length) {
+        const buf = this._buffers[0];
+        this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
+        return new FastBuffer(buf.buffer, buf.byteOffset, n);
+      }
+      const dst = Buffer.allocUnsafe(n);
+      do {
+        const buf = this._buffers[0];
+        const offset = dst.length - n;
+        if (n >= buf.length) {
+          dst.set(this._buffers.shift(), offset);
+        } else {
+          dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
+          this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
+        }
+        n -= buf.length;
+      } while (n > 0);
+      return dst;
+    }
+    startLoop(cb) {
+      this._loop = true;
+      do {
+        switch (this._state) {
+          case GET_INFO:
+            this.getInfo(cb);
+            break;
+          case GET_PAYLOAD_LENGTH_16:
+            this.getPayloadLength16(cb);
+            break;
+          case GET_PAYLOAD_LENGTH_64:
+            this.getPayloadLength64(cb);
+            break;
+          case GET_MASK:
+            this.getMask();
+            break;
+          case GET_DATA:
+            this.getData(cb);
+            break;
+          case INFLATING:
+          case DEFER_EVENT:
+            this._loop = false;
+            return;
+        }
+      } while (this._loop);
+      if (!this._errored)
+        cb();
+    }
+    getInfo(cb) {
+      if (this._bufferedBytes < 2) {
+        this._loop = false;
+        return;
+      }
+      const buf = this.consume(2);
+      if ((buf[0] & 48) !== 0) {
+        const error = this.createError(RangeError, "RSV2 and RSV3 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_2_3");
+        cb(error);
+        return;
+      }
+      const compressed = (buf[0] & 64) === 64;
+      if (compressed && !this._extensions[PerMessageDeflate.extensionName]) {
+        const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+        cb(error);
+        return;
+      }
+      this._fin = (buf[0] & 128) === 128;
+      this._opcode = buf[0] & 15;
+      this._payloadLength = buf[1] & 127;
+      if (this._opcode === 0) {
+        if (compressed) {
+          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+          cb(error);
+          return;
+        }
+        if (!this._fragmented) {
+          const error = this.createError(RangeError, "invalid opcode 0", true, 1002, "WS_ERR_INVALID_OPCODE");
+          cb(error);
+          return;
+        }
+        this._opcode = this._fragmented;
+      } else if (this._opcode === 1 || this._opcode === 2) {
+        if (this._fragmented) {
+          const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
+          cb(error);
+          return;
+        }
+        this._compressed = compressed;
+      } else if (this._opcode > 7 && this._opcode < 11) {
+        if (!this._fin) {
+          const error = this.createError(RangeError, "FIN must be set", true, 1002, "WS_ERR_EXPECTED_FIN");
+          cb(error);
+          return;
+        }
+        if (compressed) {
+          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
+          cb(error);
+          return;
+        }
+        if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
+          const error = this.createError(RangeError, `invalid payload length ${this._payloadLength}`, true, 1002, "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH");
+          cb(error);
+          return;
+        }
+      } else {
+        const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
+        cb(error);
+        return;
+      }
+      if (!this._fin && !this._fragmented)
+        this._fragmented = this._opcode;
+      this._masked = (buf[1] & 128) === 128;
+      if (this._isServer) {
+        if (!this._masked) {
+          const error = this.createError(RangeError, "MASK must be set", true, 1002, "WS_ERR_EXPECTED_MASK");
+          cb(error);
+          return;
+        }
+      } else if (this._masked) {
+        const error = this.createError(RangeError, "MASK must be clear", true, 1002, "WS_ERR_UNEXPECTED_MASK");
+        cb(error);
+        return;
+      }
+      if (this._payloadLength === 126)
+        this._state = GET_PAYLOAD_LENGTH_16;
+      else if (this._payloadLength === 127)
+        this._state = GET_PAYLOAD_LENGTH_64;
+      else
+        this.haveLength(cb);
+    }
+    getPayloadLength16(cb) {
+      if (this._bufferedBytes < 2) {
+        this._loop = false;
+        return;
+      }
+      this._payloadLength = this.consume(2).readUInt16BE(0);
+      this.haveLength(cb);
+    }
+    getPayloadLength64(cb) {
+      if (this._bufferedBytes < 8) {
+        this._loop = false;
+        return;
+      }
+      const buf = this.consume(8);
+      const num = buf.readUInt32BE(0);
+      if (num > Math.pow(2, 53 - 32) - 1) {
+        const error = this.createError(RangeError, "Unsupported WebSocket frame: payload length > 2^53 - 1", false, 1009, "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH");
+        cb(error);
+        return;
+      }
+      this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
+      this.haveLength(cb);
+    }
+    haveLength(cb) {
+      if (this._payloadLength && this._opcode < 8) {
+        this._totalPayloadLength += this._payloadLength;
+        if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
+          const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
+          cb(error);
+          return;
+        }
+      }
+      if (this._masked)
+        this._state = GET_MASK;
+      else
+        this._state = GET_DATA;
+    }
+    getMask() {
+      if (this._bufferedBytes < 4) {
+        this._loop = false;
+        return;
+      }
+      this._mask = this.consume(4);
+      this._state = GET_DATA;
+    }
+    getData(cb) {
+      let data = EMPTY_BUFFER;
+      if (this._payloadLength) {
+        if (this._bufferedBytes < this._payloadLength) {
+          this._loop = false;
+          return;
+        }
+        data = this.consume(this._payloadLength);
+        if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) {
+          unmask(data, this._mask);
+        }
+      }
+      if (this._opcode > 7) {
+        this.controlMessage(data, cb);
+        return;
+      }
+      if (this._maxFragments > 0 && ++this._numFragments > this._maxFragments) {
+        const error = this.createError(RangeError, "Too many message fragments", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS");
+        cb(error);
+        return;
+      }
+      if (this._compressed) {
+        this._state = INFLATING;
+        this.decompress(data, cb);
+        return;
+      }
+      if (data.length) {
+        this._messageLength = this._totalPayloadLength;
+        this._fragments.push(data);
+      }
+      this.dataMessage(cb);
+    }
+    decompress(data, cb) {
+      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+      perMessageDeflate.decompress(data, this._fin, (err, buf) => {
+        if (err)
+          return cb(err);
+        if (buf.length) {
+          this._messageLength += buf.length;
+          if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
+            const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
+            cb(error);
+            return;
+          }
+          this._fragments.push(buf);
+        }
+        this.dataMessage(cb);
+        if (this._state === GET_INFO)
+          this.startLoop(cb);
+      });
+    }
+    dataMessage(cb) {
+      if (!this._fin) {
+        this._state = GET_INFO;
+        return;
+      }
+      const messageLength = this._messageLength;
+      const fragments = this._fragments;
+      this._totalPayloadLength = 0;
+      this._messageLength = 0;
+      this._fragmented = 0;
+      this._numFragments = 0;
+      this._fragments = [];
+      if (this._opcode === 2) {
+        let data;
+        if (this._binaryType === "nodebuffer") {
+          data = concat(fragments, messageLength);
+        } else if (this._binaryType === "arraybuffer") {
+          data = toArrayBuffer(concat(fragments, messageLength));
+        } else if (this._binaryType === "blob") {
+          data = new Blob(fragments);
+        } else {
+          data = fragments;
+        }
+        if (this._allowSynchronousEvents) {
+          this.emit("message", data, true);
+          this._state = GET_INFO;
+        } else {
+          this._state = DEFER_EVENT;
+          setImmediate(() => {
+            this.emit("message", data, true);
+            this._state = GET_INFO;
+            this.startLoop(cb);
+          });
+        }
+      } else {
+        const buf = concat(fragments, messageLength);
+        if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+          const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
+          cb(error);
+          return;
+        }
+        if (this._state === INFLATING || this._allowSynchronousEvents) {
+          this.emit("message", buf, false);
+          this._state = GET_INFO;
+        } else {
+          this._state = DEFER_EVENT;
+          setImmediate(() => {
+            this.emit("message", buf, false);
+            this._state = GET_INFO;
+            this.startLoop(cb);
+          });
+        }
+      }
+    }
+    controlMessage(data, cb) {
+      if (this._opcode === 8) {
+        if (data.length === 0) {
+          this._loop = false;
+          this.emit("conclude", 1005, EMPTY_BUFFER);
+          this.end();
+        } else {
+          const code = data.readUInt16BE(0);
+          if (!isValidStatusCode(code)) {
+            const error = this.createError(RangeError, `invalid status code ${code}`, true, 1002, "WS_ERR_INVALID_CLOSE_CODE");
+            cb(error);
+            return;
+          }
+          const buf = new FastBuffer(data.buffer, data.byteOffset + 2, data.length - 2);
+          if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
+            const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
+            cb(error);
+            return;
+          }
+          this._loop = false;
+          this.emit("conclude", code, buf);
+          this.end();
+        }
+        this._state = GET_INFO;
+        return;
+      }
+      if (this._allowSynchronousEvents) {
+        this.emit(this._opcode === 9 ? "ping" : "pong", data);
+        this._state = GET_INFO;
+      } else {
+        this._state = DEFER_EVENT;
+        setImmediate(() => {
+          this.emit(this._opcode === 9 ? "ping" : "pong", data);
+          this._state = GET_INFO;
+          this.startLoop(cb);
+        });
+      }
+    }
+    createError(ErrorCtor, message, prefix, statusCode, errorCode) {
+      this._loop = false;
+      this._errored = true;
+      const err = new ErrorCtor(prefix ? `Invalid WebSocket frame: ${message}` : message);
+      Error.captureStackTrace(err, this.createError);
+      err.code = errorCode;
+      err[kStatusCode] = statusCode;
+      return err;
+    }
+  }
+  module.exports = Receiver;
+});
+
+// node_modules/ws/lib/sender.js
+var require_sender = __commonJS(function(exports, module) {
+  var { Duplex } = __require("stream");
+  var { randomFillSync } = __require("crypto");
+  var {
+    types: { isUint8Array }
+  } = __require("util");
+  var PerMessageDeflate = require_permessage_deflate();
+  var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
+  var { isBlob, isValidStatusCode } = require_validation2();
+  var { mask: applyMask, toBuffer } = require_buffer_util();
+  var kByteLength = Symbol("kByteLength");
+  var maskBuffer = Buffer.alloc(4);
+  var RANDOM_POOL_SIZE = 8 * 1024;
+  var randomPool;
+  var randomPoolPointer = RANDOM_POOL_SIZE;
+  var DEFAULT = 0;
+  var DEFLATING = 1;
+  var GET_BLOB_DATA = 2;
+
+  class Sender {
+    constructor(socket, extensions, generateMask) {
+      this._extensions = extensions || {};
+      if (generateMask) {
+        this._generateMask = generateMask;
+        this._maskBuffer = Buffer.alloc(4);
+      }
+      this._socket = socket;
+      this._firstFragment = true;
+      this._compress = false;
+      this._bufferedBytes = 0;
+      this._queue = [];
+      this._state = DEFAULT;
+      this.onerror = NOOP;
+      this[kWebSocket] = undefined;
+    }
+    static frame(data, options) {
+      let mask;
+      let merge = false;
+      let offset = 2;
+      let skipMasking = false;
+      if (options.mask) {
+        mask = options.maskBuffer || maskBuffer;
+        if (options.generateMask) {
+          options.generateMask(mask);
+        } else {
+          if (randomPoolPointer === RANDOM_POOL_SIZE) {
+            if (randomPool === undefined) {
+              randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
+            }
+            randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
+            randomPoolPointer = 0;
+          }
+          mask[0] = randomPool[randomPoolPointer++];
+          mask[1] = randomPool[randomPoolPointer++];
+          mask[2] = randomPool[randomPoolPointer++];
+          mask[3] = randomPool[randomPoolPointer++];
+        }
+        skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
+        offset = 6;
+      }
+      let dataLength;
+      if (typeof data === "string") {
+        if ((!options.mask || skipMasking) && options[kByteLength] !== undefined) {
+          dataLength = options[kByteLength];
+        } else {
+          data = Buffer.from(data);
+          dataLength = data.length;
+        }
+      } else {
+        dataLength = data.length;
+        merge = options.mask && options.readOnly && !skipMasking;
+      }
+      let payloadLength = dataLength;
+      if (dataLength >= 65536) {
+        offset += 8;
+        payloadLength = 127;
+      } else if (dataLength > 125) {
+        offset += 2;
+        payloadLength = 126;
+      }
+      const target = Buffer.allocUnsafe(merge ? dataLength + offset : offset);
+      target[0] = options.fin ? options.opcode | 128 : options.opcode;
+      if (options.rsv1)
+        target[0] |= 64;
+      target[1] = payloadLength;
+      if (payloadLength === 126) {
+        target.writeUInt16BE(dataLength, 2);
+      } else if (payloadLength === 127) {
+        target[2] = target[3] = 0;
+        target.writeUIntBE(dataLength, 4, 6);
+      }
+      if (!options.mask)
+        return [target, data];
+      target[1] |= 128;
+      target[offset - 4] = mask[0];
+      target[offset - 3] = mask[1];
+      target[offset - 2] = mask[2];
+      target[offset - 1] = mask[3];
+      if (skipMasking)
+        return [target, data];
+      if (merge) {
+        applyMask(data, mask, target, offset, dataLength);
+        return [target];
+      }
+      applyMask(data, mask, data, 0, dataLength);
+      return [target, data];
+    }
+    close(code, data, mask, cb) {
+      let buf;
+      if (code === undefined) {
+        buf = EMPTY_BUFFER;
+      } else if (typeof code !== "number" || !isValidStatusCode(code)) {
+        throw new TypeError("First argument must be a valid error code number");
+      } else if (data === undefined || !data.length) {
+        buf = Buffer.allocUnsafe(2);
+        buf.writeUInt16BE(code, 0);
+      } else {
+        const length = Buffer.byteLength(data);
+        if (length > 123) {
+          throw new RangeError("The message must not be greater than 123 bytes");
+        }
+        buf = Buffer.allocUnsafe(2 + length);
+        buf.writeUInt16BE(code, 0);
+        if (typeof data === "string") {
+          buf.write(data, 2);
+        } else if (isUint8Array(data)) {
+          buf.set(data, 2);
+        } else {
+          throw new TypeError("Second argument must be a string or a Uint8Array");
+        }
+      }
+      const options = {
+        [kByteLength]: buf.length,
+        fin: true,
+        generateMask: this._generateMask,
+        mask,
+        maskBuffer: this._maskBuffer,
+        opcode: 8,
+        readOnly: false,
+        rsv1: false
+      };
+      if (this._state !== DEFAULT) {
+        this.enqueue([this.dispatch, buf, false, options, cb]);
+      } else {
+        this.sendFrame(Sender.frame(buf, options), cb);
+      }
+    }
+    ping(data, mask, cb) {
+      let byteLength;
+      let readOnly;
+      if (typeof data === "string") {
+        byteLength = Buffer.byteLength(data);
+        readOnly = false;
+      } else if (isBlob(data)) {
+        byteLength = data.size;
+        readOnly = false;
+      } else {
+        data = toBuffer(data);
+        byteLength = data.length;
+        readOnly = toBuffer.readOnly;
+      }
+      if (byteLength > 125) {
+        throw new RangeError("The data size must not be greater than 125 bytes");
+      }
+      const options = {
+        [kByteLength]: byteLength,
+        fin: true,
+        generateMask: this._generateMask,
+        mask,
+        maskBuffer: this._maskBuffer,
+        opcode: 9,
+        readOnly,
+        rsv1: false
+      };
+      if (isBlob(data)) {
+        if (this._state !== DEFAULT) {
+          this.enqueue([this.getBlobData, data, false, options, cb]);
+        } else {
+          this.getBlobData(data, false, options, cb);
+        }
+      } else if (this._state !== DEFAULT) {
+        this.enqueue([this.dispatch, data, false, options, cb]);
+      } else {
+        this.sendFrame(Sender.frame(data, options), cb);
+      }
+    }
+    pong(data, mask, cb) {
+      let byteLength;
+      let readOnly;
+      if (typeof data === "string") {
+        byteLength = Buffer.byteLength(data);
+        readOnly = false;
+      } else if (isBlob(data)) {
+        byteLength = data.size;
+        readOnly = false;
+      } else {
+        data = toBuffer(data);
+        byteLength = data.length;
+        readOnly = toBuffer.readOnly;
+      }
+      if (byteLength > 125) {
+        throw new RangeError("The data size must not be greater than 125 bytes");
+      }
+      const options = {
+        [kByteLength]: byteLength,
+        fin: true,
+        generateMask: this._generateMask,
+        mask,
+        maskBuffer: this._maskBuffer,
+        opcode: 10,
+        readOnly,
+        rsv1: false
+      };
+      if (isBlob(data)) {
+        if (this._state !== DEFAULT) {
+          this.enqueue([this.getBlobData, data, false, options, cb]);
+        } else {
+          this.getBlobData(data, false, options, cb);
+        }
+      } else if (this._state !== DEFAULT) {
+        this.enqueue([this.dispatch, data, false, options, cb]);
+      } else {
+        this.sendFrame(Sender.frame(data, options), cb);
+      }
+    }
+    send(data, options, cb) {
+      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+      let opcode = options.binary ? 2 : 1;
+      let rsv1 = options.compress;
+      let byteLength;
+      let readOnly;
+      if (typeof data === "string") {
+        byteLength = Buffer.byteLength(data);
+        readOnly = false;
+      } else if (isBlob(data)) {
+        byteLength = data.size;
+        readOnly = false;
+      } else {
+        data = toBuffer(data);
+        byteLength = data.length;
+        readOnly = toBuffer.readOnly;
+      }
+      if (this._firstFragment) {
+        this._firstFragment = false;
+        if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) {
+          rsv1 = byteLength >= perMessageDeflate._threshold;
+        }
+        this._compress = rsv1;
+      } else {
+        rsv1 = false;
+        opcode = 0;
+      }
+      if (options.fin)
+        this._firstFragment = true;
+      const opts = {
+        [kByteLength]: byteLength,
+        fin: options.fin,
+        generateMask: this._generateMask,
+        mask: options.mask,
+        maskBuffer: this._maskBuffer,
+        opcode,
+        readOnly,
+        rsv1
+      };
+      if (isBlob(data)) {
+        if (this._state !== DEFAULT) {
+          this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
+        } else {
+          this.getBlobData(data, this._compress, opts, cb);
+        }
+      } else if (this._state !== DEFAULT) {
+        this.enqueue([this.dispatch, data, this._compress, opts, cb]);
+      } else {
+        this.dispatch(data, this._compress, opts, cb);
+      }
+    }
+    getBlobData(blob, compress, options, cb) {
+      this._bufferedBytes += options[kByteLength];
+      this._state = GET_BLOB_DATA;
+      blob.arrayBuffer().then((arrayBuffer) => {
+        if (this._socket.destroyed) {
+          const err = new Error("The socket was closed while the blob was being read");
+          process.nextTick(callCallbacks, this, err, cb);
+          return;
+        }
+        this._bufferedBytes -= options[kByteLength];
+        const data = toBuffer(arrayBuffer);
+        if (!compress) {
+          this._state = DEFAULT;
+          this.sendFrame(Sender.frame(data, options), cb);
+          this.dequeue();
+        } else {
+          this.dispatch(data, compress, options, cb);
+        }
+      }).catch((err) => {
+        process.nextTick(onError, this, err, cb);
+      });
+    }
+    dispatch(data, compress, options, cb) {
+      if (!compress) {
+        this.sendFrame(Sender.frame(data, options), cb);
+        return;
+      }
+      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
+      this._bufferedBytes += options[kByteLength];
+      this._state = DEFLATING;
+      perMessageDeflate.compress(data, options.fin, (_, buf) => {
+        if (this._socket.destroyed) {
+          const err = new Error("The socket was closed while data was being compressed");
+          callCallbacks(this, err, cb);
+          return;
+        }
+        this._bufferedBytes -= options[kByteLength];
+        this._state = DEFAULT;
+        options.readOnly = false;
+        this.sendFrame(Sender.frame(buf, options), cb);
+        this.dequeue();
+      });
+    }
+    dequeue() {
+      while (this._state === DEFAULT && this._queue.length) {
+        const params = this._queue.shift();
+        this._bufferedBytes -= params[3][kByteLength];
+        Reflect.apply(params[0], this, params.slice(1));
+      }
+    }
+    enqueue(params) {
+      this._bufferedBytes += params[3][kByteLength];
+      this._queue.push(params);
+    }
+    sendFrame(list, cb) {
+      if (list.length === 2) {
+        this._socket.cork();
+        this._socket.write(list[0]);
+        this._socket.write(list[1], cb);
+        this._socket.uncork();
+      } else {
+        this._socket.write(list[0], cb);
+      }
+    }
+  }
+  module.exports = Sender;
+  function callCallbacks(sender, err, cb) {
+    if (typeof cb === "function")
+      cb(err);
+    for (let i = 0;i < sender._queue.length; i++) {
+      const params = sender._queue[i];
+      const callback = params[params.length - 1];
+      if (typeof callback === "function")
+        callback(err);
+    }
+  }
+  function onError(sender, err, cb) {
+    callCallbacks(sender, err, cb);
+    sender.onerror(err);
+  }
+});
+
+// node_modules/ws/lib/event-target.js
+var require_event_target = __commonJS(function(exports, module) {
+  var { kForOnEventAttribute, kListener } = require_constants();
+  var kCode = Symbol("kCode");
+  var kData = Symbol("kData");
+  var kError = Symbol("kError");
+  var kMessage = Symbol("kMessage");
+  var kReason = Symbol("kReason");
+  var kTarget = Symbol("kTarget");
+  var kType = Symbol("kType");
+  var kWasClean = Symbol("kWasClean");
+
+  class Event {
+    constructor(type) {
+      this[kTarget] = null;
+      this[kType] = type;
+    }
+    get target() {
+      return this[kTarget];
+    }
+    get type() {
+      return this[kType];
+    }
+  }
+  Object.defineProperty(Event.prototype, "target", { enumerable: true });
+  Object.defineProperty(Event.prototype, "type", { enumerable: true });
+
+  class CloseEvent extends Event {
+    constructor(type, options = {}) {
+      super(type);
+      this[kCode] = options.code === undefined ? 0 : options.code;
+      this[kReason] = options.reason === undefined ? "" : options.reason;
+      this[kWasClean] = options.wasClean === undefined ? false : options.wasClean;
+    }
+    get code() {
+      return this[kCode];
+    }
+    get reason() {
+      return this[kReason];
+    }
+    get wasClean() {
+      return this[kWasClean];
+    }
+  }
+  Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
+  Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
+  Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
+
+  class ErrorEvent extends Event {
+    constructor(type, options = {}) {
+      super(type);
+      this[kError] = options.error === undefined ? null : options.error;
+      this[kMessage] = options.message === undefined ? "" : options.message;
+    }
+    get error() {
+      return this[kError];
+    }
+    get message() {
+      return this[kMessage];
+    }
+  }
+  Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
+  Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
+
+  class MessageEvent extends Event {
+    constructor(type, options = {}) {
+      super(type);
+      this[kData] = options.data === undefined ? null : options.data;
+    }
+    get data() {
+      return this[kData];
+    }
+  }
+  Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
+  var EventTarget = {
+    addEventListener(type, handler, options = {}) {
+      for (const listener of this.listeners(type)) {
+        if (!options[kForOnEventAttribute] && listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+          return;
+        }
+      }
+      let wrapper;
+      if (type === "message") {
+        wrapper = function onMessage(data, isBinary) {
+          const event = new MessageEvent("message", {
+            data: isBinary ? data : data.toString()
+          });
+          event[kTarget] = this;
+          callListener(handler, this, event);
+        };
+      } else if (type === "close") {
+        wrapper = function onClose(code, message) {
+          const event = new CloseEvent("close", {
+            code,
+            reason: message.toString(),
+            wasClean: this._closeFrameReceived && this._closeFrameSent
+          });
+          event[kTarget] = this;
+          callListener(handler, this, event);
+        };
+      } else if (type === "error") {
+        wrapper = function onError(error) {
+          const event = new ErrorEvent("error", {
+            error,
+            message: error.message
+          });
+          event[kTarget] = this;
+          callListener(handler, this, event);
+        };
+      } else if (type === "open") {
+        wrapper = function onOpen() {
+          const event = new Event("open");
+          event[kTarget] = this;
+          callListener(handler, this, event);
+        };
+      } else {
+        return;
+      }
+      wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
+      wrapper[kListener] = handler;
+      if (options.once) {
+        this.once(type, wrapper);
+      } else {
+        this.on(type, wrapper);
+      }
+    },
+    removeEventListener(type, handler) {
+      for (const listener of this.listeners(type)) {
+        if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
+          this.removeListener(type, listener);
+          break;
+        }
+      }
+    }
+  };
+  module.exports = {
+    CloseEvent,
+    ErrorEvent,
+    Event,
+    EventTarget,
+    MessageEvent
+  };
+  function callListener(listener, thisArg, event) {
+    if (typeof listener === "object" && listener.handleEvent) {
+      listener.handleEvent.call(listener, event);
+    } else {
+      listener.call(thisArg, event);
+    }
+  }
+});
+
+// node_modules/ws/lib/extension.js
+var require_extension = __commonJS(function(exports, module) {
+  var { tokenChars } = require_validation2();
+  function push(dest, name, elem) {
+    if (dest[name] === undefined)
+      dest[name] = [elem];
+    else
+      dest[name].push(elem);
+  }
+  function parse(header) {
+    const offers = Object.create(null);
+    let params = Object.create(null);
+    let mustUnescape = false;
+    let isEscaping = false;
+    let inQuotes = false;
+    let extensionName;
+    let paramName;
+    let start = -1;
+    let code = -1;
+    let end = -1;
+    let i = 0;
+    for (;i < header.length; i++) {
+      code = header.charCodeAt(i);
+      if (extensionName === undefined) {
+        if (end === -1 && tokenChars[code] === 1) {
+          if (start === -1)
+            start = i;
+        } else if (i !== 0 && (code === 32 || code === 9)) {
+          if (end === -1 && start !== -1)
+            end = i;
+        } else if (code === 59 || code === 44) {
+          if (start === -1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (end === -1)
+            end = i;
+          const name = header.slice(start, end);
+          if (code === 44) {
+            push(offers, name, params);
+            params = Object.create(null);
+          } else {
+            extensionName = name;
+          }
+          start = end = -1;
+        } else {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+      } else if (paramName === undefined) {
+        if (end === -1 && tokenChars[code] === 1) {
+          if (start === -1)
+            start = i;
+        } else if (code === 32 || code === 9) {
+          if (end === -1 && start !== -1)
+            end = i;
+        } else if (code === 59 || code === 44) {
+          if (start === -1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (end === -1)
+            end = i;
+          push(params, header.slice(start, end), true);
+          if (code === 44) {
+            push(offers, extensionName, params);
+            params = Object.create(null);
+            extensionName = undefined;
+          }
+          start = end = -1;
+        } else if (code === 61 && start !== -1 && end === -1) {
+          paramName = header.slice(start, i);
+          start = end = -1;
+        } else {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+      } else {
+        if (isEscaping) {
+          if (tokenChars[code] !== 1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (start === -1)
+            start = i;
+          else if (!mustUnescape)
+            mustUnescape = true;
+          isEscaping = false;
+        } else if (inQuotes) {
+          if (tokenChars[code] === 1) {
+            if (start === -1)
+              start = i;
+          } else if (code === 34 && start !== -1) {
+            inQuotes = false;
+            end = i;
+          } else if (code === 92) {
+            isEscaping = true;
+          } else {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+        } else if (code === 34 && header.charCodeAt(i - 1) === 61) {
+          inQuotes = true;
+        } else if (end === -1 && tokenChars[code] === 1) {
+          if (start === -1)
+            start = i;
+        } else if (start !== -1 && (code === 32 || code === 9)) {
+          if (end === -1)
+            end = i;
+        } else if (code === 59 || code === 44) {
+          if (start === -1) {
+            throw new SyntaxError(`Unexpected character at index ${i}`);
+          }
+          if (end === -1)
+            end = i;
+          let value = header.slice(start, end);
+          if (mustUnescape) {
+            value = value.replace(/\\/g, "");
+            mustUnescape = false;
+          }
+          push(params, paramName, value);
+          if (code === 44) {
+            push(offers, extensionName, params);
+            params = Object.create(null);
+            extensionName = undefined;
+          }
+          paramName = undefined;
+          start = end = -1;
+        } else {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+      }
+    }
+    if (start === -1 || inQuotes || code === 32 || code === 9) {
+      throw new SyntaxError("Unexpected end of input");
+    }
+    if (end === -1)
+      end = i;
+    const token = header.slice(start, end);
+    if (extensionName === undefined) {
+      push(offers, token, params);
+    } else {
+      if (paramName === undefined) {
+        push(params, token, true);
+      } else if (mustUnescape) {
+        push(params, paramName, token.replace(/\\/g, ""));
+      } else {
+        push(params, paramName, token);
+      }
+      push(offers, extensionName, params);
+    }
+    return offers;
+  }
+  function format(extensions) {
+    return Object.keys(extensions).map((extension) => {
+      let configurations = extensions[extension];
+      if (!Array.isArray(configurations))
+        configurations = [configurations];
+      return configurations.map((params) => {
+        return [extension].concat(Object.keys(params).map((k) => {
+          let values = params[k];
+          if (!Array.isArray(values))
+            values = [values];
+          return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
+        })).join("; ");
+      }).join(", ");
+    }).join(", ");
+  }
+  module.exports = { format, parse };
+});
+
+// node_modules/ws/lib/websocket.js
+var require_websocket = __commonJS(function(exports, module) {
+  var EventEmitter = __require("events");
+  var https = __require("https");
+  var http = __require("http");
+  var net = __require("net");
+  var tls = __require("tls");
+  var { randomBytes, createHash } = __require("crypto");
+  var { Duplex, Readable } = __require("stream");
+  var { URL: URL2 } = __require("url");
+  var PerMessageDeflate = require_permessage_deflate();
+  var Receiver = require_receiver();
+  var Sender = require_sender();
+  var { isBlob } = require_validation2();
+  var {
+    BINARY_TYPES,
+    CLOSE_TIMEOUT,
+    EMPTY_BUFFER,
+    GUID,
+    kForOnEventAttribute,
+    kListener,
+    kStatusCode,
+    kWebSocket,
+    NOOP
+  } = require_constants();
+  var {
+    EventTarget: { addEventListener: addEventListener2, removeEventListener: removeEventListener2 }
+  } = require_event_target();
+  var { format, parse } = require_extension();
+  var { toBuffer } = require_buffer_util();
+  var kAborted = Symbol("kAborted");
+  var protocolVersions = [8, 13];
+  var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
+  var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
+
+  class WebSocket extends EventEmitter {
+    constructor(address, protocols, options) {
+      super();
+      this._binaryType = BINARY_TYPES[0];
+      this._closeCode = 1006;
+      this._closeFrameReceived = false;
+      this._closeFrameSent = false;
+      this._closeMessage = EMPTY_BUFFER;
+      this._closeTimer = null;
+      this._errorEmitted = false;
+      this._extensions = {};
+      this._paused = false;
+      this._protocol = "";
+      this._readyState = WebSocket.CONNECTING;
+      this._receiver = null;
+      this._sender = null;
+      this._socket = null;
+      if (address !== null) {
+        this._bufferedAmount = 0;
+        this._isServer = false;
+        this._redirects = 0;
+        if (protocols === undefined) {
+          protocols = [];
+        } else if (!Array.isArray(protocols)) {
+          if (typeof protocols === "object" && protocols !== null) {
+            options = protocols;
+            protocols = [];
+          } else {
+            protocols = [protocols];
+          }
+        }
+        initAsClient(this, address, protocols, options);
+      } else {
+        this._autoPong = options.autoPong;
+        this._closeTimeout = options.closeTimeout;
+        this._isServer = true;
+      }
+    }
+    get binaryType() {
+      return this._binaryType;
+    }
+    set binaryType(type) {
+      if (!BINARY_TYPES.includes(type))
+        return;
+      this._binaryType = type;
+      if (this._receiver)
+        this._receiver._binaryType = type;
+    }
+    get bufferedAmount() {
+      if (!this._socket)
+        return this._bufferedAmount;
+      return this._socket._writableState.length + this._sender._bufferedBytes;
+    }
+    get extensions() {
+      return Object.keys(this._extensions).join();
+    }
+    get isPaused() {
+      return this._paused;
+    }
+    get onclose() {
+      return null;
+    }
+    get onerror() {
+      return null;
+    }
+    get onopen() {
+      return null;
+    }
+    get onmessage() {
+      return null;
+    }
+    get protocol() {
+      return this._protocol;
+    }
+    get readyState() {
+      return this._readyState;
+    }
+    get url() {
+      return this._url;
+    }
+    setSocket(socket, head, options) {
+      const receiver = new Receiver({
+        allowSynchronousEvents: options.allowSynchronousEvents,
+        binaryType: this.binaryType,
+        extensions: this._extensions,
+        isServer: this._isServer,
+        maxBufferedChunks: options.maxBufferedChunks,
+        maxFragments: options.maxFragments,
+        maxPayload: options.maxPayload,
+        skipUTF8Validation: options.skipUTF8Validation
+      });
+      const sender = new Sender(socket, this._extensions, options.generateMask);
+      this._receiver = receiver;
+      this._sender = sender;
+      this._socket = socket;
+      receiver[kWebSocket] = this;
+      sender[kWebSocket] = this;
+      socket[kWebSocket] = this;
+      receiver.on("conclude", receiverOnConclude);
+      receiver.on("drain", receiverOnDrain);
+      receiver.on("error", receiverOnError);
+      receiver.on("message", receiverOnMessage);
+      receiver.on("ping", receiverOnPing);
+      receiver.on("pong", receiverOnPong);
+      sender.onerror = senderOnError;
+      if (socket.setTimeout)
+        socket.setTimeout(0);
+      if (socket.setNoDelay)
+        socket.setNoDelay();
+      if (head.length > 0)
+        socket.unshift(head);
+      socket.on("close", socketOnClose);
+      socket.on("data", socketOnData);
+      socket.on("end", socketOnEnd);
+      socket.on("error", socketOnError);
+      this._readyState = WebSocket.OPEN;
+      this.emit("open");
+    }
+    emitClose() {
+      if (!this._socket) {
+        this._readyState = WebSocket.CLOSED;
+        this.emit("close", this._closeCode, this._closeMessage);
+        return;
+      }
+      if (this._extensions[PerMessageDeflate.extensionName]) {
+        this._extensions[PerMessageDeflate.extensionName].cleanup();
+      }
+      this._receiver.removeAllListeners();
+      this._readyState = WebSocket.CLOSED;
+      this.emit("close", this._closeCode, this._closeMessage);
+    }
+    close(code, data) {
+      if (this.readyState === WebSocket.CLOSED)
+        return;
+      if (this.readyState === WebSocket.CONNECTING) {
+        const msg = "WebSocket was closed before the connection was established";
+        abortHandshake(this, this._req, msg);
+        return;
+      }
+      if (this.readyState === WebSocket.CLOSING) {
+        if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
+          this._socket.end();
+        }
+        return;
+      }
+      this._readyState = WebSocket.CLOSING;
+      this._sender.close(code, data, !this._isServer, (err) => {
+        if (err)
+          return;
+        this._closeFrameSent = true;
+        if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) {
+          this._socket.end();
+        }
+      });
+      setCloseTimer(this);
+    }
+    pause() {
+      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
+        return;
+      }
+      this._paused = true;
+      this._socket.pause();
+    }
+    ping(data, mask, cb) {
+      if (this.readyState === WebSocket.CONNECTING) {
+        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+      }
+      if (typeof data === "function") {
+        cb = data;
+        data = mask = undefined;
+      } else if (typeof mask === "function") {
+        cb = mask;
+        mask = undefined;
+      }
+      if (typeof data === "number")
+        data = data.toString();
+      if (this.readyState !== WebSocket.OPEN) {
+        sendAfterClose(this, data, cb);
+        return;
+      }
+      if (mask === undefined)
+        mask = !this._isServer;
+      this._sender.ping(data || EMPTY_BUFFER, mask, cb);
+    }
+    pong(data, mask, cb) {
+      if (this.readyState === WebSocket.CONNECTING) {
+        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+      }
+      if (typeof data === "function") {
+        cb = data;
+        data = mask = undefined;
+      } else if (typeof mask === "function") {
+        cb = mask;
+        mask = undefined;
+      }
+      if (typeof data === "number")
+        data = data.toString();
+      if (this.readyState !== WebSocket.OPEN) {
+        sendAfterClose(this, data, cb);
+        return;
+      }
+      if (mask === undefined)
+        mask = !this._isServer;
+      this._sender.pong(data || EMPTY_BUFFER, mask, cb);
+    }
+    resume() {
+      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
+        return;
+      }
+      this._paused = false;
+      if (!this._receiver._writableState.needDrain)
+        this._socket.resume();
+    }
+    send(data, options, cb) {
+      if (this.readyState === WebSocket.CONNECTING) {
+        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
+      }
+      if (typeof options === "function") {
+        cb = options;
+        options = {};
+      }
+      if (typeof data === "number")
+        data = data.toString();
+      if (this.readyState !== WebSocket.OPEN) {
+        sendAfterClose(this, data, cb);
+        return;
+      }
+      const opts = {
+        binary: typeof data !== "string",
+        mask: !this._isServer,
+        compress: true,
+        fin: true,
+        ...options
+      };
+      if (!this._extensions[PerMessageDeflate.extensionName]) {
+        opts.compress = false;
+      }
+      this._sender.send(data || EMPTY_BUFFER, opts, cb);
+    }
+    terminate() {
+      if (this.readyState === WebSocket.CLOSED)
+        return;
+      if (this.readyState === WebSocket.CONNECTING) {
+        const msg = "WebSocket was closed before the connection was established";
+        abortHandshake(this, this._req, msg);
+        return;
+      }
+      if (this._socket) {
+        this._readyState = WebSocket.CLOSING;
+        this._socket.destroy();
+      }
+    }
+  }
+  Object.defineProperty(WebSocket, "CONNECTING", {
+    enumerable: true,
+    value: readyStates.indexOf("CONNECTING")
+  });
+  Object.defineProperty(WebSocket.prototype, "CONNECTING", {
+    enumerable: true,
+    value: readyStates.indexOf("CONNECTING")
+  });
+  Object.defineProperty(WebSocket, "OPEN", {
+    enumerable: true,
+    value: readyStates.indexOf("OPEN")
+  });
+  Object.defineProperty(WebSocket.prototype, "OPEN", {
+    enumerable: true,
+    value: readyStates.indexOf("OPEN")
+  });
+  Object.defineProperty(WebSocket, "CLOSING", {
+    enumerable: true,
+    value: readyStates.indexOf("CLOSING")
+  });
+  Object.defineProperty(WebSocket.prototype, "CLOSING", {
+    enumerable: true,
+    value: readyStates.indexOf("CLOSING")
+  });
+  Object.defineProperty(WebSocket, "CLOSED", {
+    enumerable: true,
+    value: readyStates.indexOf("CLOSED")
+  });
+  Object.defineProperty(WebSocket.prototype, "CLOSED", {
+    enumerable: true,
+    value: readyStates.indexOf("CLOSED")
+  });
+  [
+    "binaryType",
+    "bufferedAmount",
+    "extensions",
+    "isPaused",
+    "protocol",
+    "readyState",
+    "url"
+  ].forEach((property) => {
+    Object.defineProperty(WebSocket.prototype, property, { enumerable: true });
+  });
+  ["open", "error", "close", "message"].forEach((method) => {
+    Object.defineProperty(WebSocket.prototype, `on${method}`, {
+      enumerable: true,
+      get() {
+        for (const listener of this.listeners(method)) {
+          if (listener[kForOnEventAttribute])
+            return listener[kListener];
+        }
+        return null;
+      },
+      set(handler) {
+        for (const listener of this.listeners(method)) {
+          if (listener[kForOnEventAttribute]) {
+            this.removeListener(method, listener);
+            break;
+          }
+        }
+        if (typeof handler !== "function")
+          return;
+        this.addEventListener(method, handler, {
+          [kForOnEventAttribute]: true
+        });
+      }
+    });
+  });
+  WebSocket.prototype.addEventListener = addEventListener2;
+  WebSocket.prototype.removeEventListener = removeEventListener2;
+  module.exports = WebSocket;
+  function initAsClient(websocket, address, protocols, options) {
+    const opts = {
+      allowSynchronousEvents: true,
+      autoPong: true,
+      closeTimeout: CLOSE_TIMEOUT,
+      protocolVersion: protocolVersions[1],
+      maxBufferedChunks: 256 * 1024,
+      maxFragments: 16 * 1024,
+      maxPayload: 100 * 1024 * 1024,
+      skipUTF8Validation: false,
+      perMessageDeflate: true,
+      followRedirects: false,
+      maxRedirects: 10,
+      ...options,
+      socketPath: undefined,
+      hostname: undefined,
+      protocol: undefined,
+      timeout: undefined,
+      method: "GET",
+      host: undefined,
+      path: undefined,
+      port: undefined
+    };
+    websocket._autoPong = opts.autoPong;
+    websocket._closeTimeout = opts.closeTimeout;
+    if (!protocolVersions.includes(opts.protocolVersion)) {
+      throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} ` + `(supported versions: ${protocolVersions.join(", ")})`);
+    }
+    let parsedUrl;
+    if (address instanceof URL2) {
+      parsedUrl = address;
+    } else {
+      try {
+        parsedUrl = new URL2(address);
+      } catch {
+        throw new SyntaxError(`Invalid URL: ${address}`);
+      }
+    }
+    if (parsedUrl.protocol === "http:") {
+      parsedUrl.protocol = "ws:";
+    } else if (parsedUrl.protocol === "https:") {
+      parsedUrl.protocol = "wss:";
+    }
+    websocket._url = parsedUrl.href;
+    const isSecure = parsedUrl.protocol === "wss:";
+    const isIpcUrl = parsedUrl.protocol === "ws+unix:";
+    let invalidUrlMessage;
+    if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) {
+      invalidUrlMessage = `The URL's protocol must be one of "ws:", "wss:", ` + '"http:", "https:", or "ws+unix:"';
+    } else if (isIpcUrl && !parsedUrl.pathname) {
+      invalidUrlMessage = "The URL's pathname is empty";
+    } else if (parsedUrl.hash) {
+      invalidUrlMessage = "The URL contains a fragment identifier";
+    }
+    if (invalidUrlMessage) {
+      const err = new SyntaxError(invalidUrlMessage);
+      if (websocket._redirects === 0) {
+        throw err;
+      } else {
+        emitErrorAndClose(websocket, err);
+        return;
+      }
+    }
+    const defaultPort = isSecure ? 443 : 80;
+    const key = randomBytes(16).toString("base64");
+    const request3 = isSecure ? https.request : http.request;
+    const protocolSet = new Set;
+    let perMessageDeflate;
+    opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
+    opts.defaultPort = opts.defaultPort || defaultPort;
+    opts.port = parsedUrl.port || defaultPort;
+    opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
+    opts.headers = {
+      ...opts.headers,
+      "Sec-WebSocket-Version": opts.protocolVersion,
+      "Sec-WebSocket-Key": key,
+      Connection: "Upgrade",
+      Upgrade: "websocket"
+    };
+    opts.path = parsedUrl.pathname + parsedUrl.search;
+    opts.timeout = opts.handshakeTimeout;
+    if (opts.perMessageDeflate) {
+      perMessageDeflate = new PerMessageDeflate({
+        ...opts.perMessageDeflate,
+        isServer: false,
+        maxPayload: opts.maxPayload
+      });
+      opts.headers["Sec-WebSocket-Extensions"] = format({
+        [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
+      });
+    }
+    if (protocols.length) {
+      for (const protocol of protocols) {
+        if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) {
+          throw new SyntaxError("An invalid or duplicated subprotocol was specified");
+        }
+        protocolSet.add(protocol);
+      }
+      opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
+    }
+    if (opts.origin) {
+      if (opts.protocolVersion < 13) {
+        opts.headers["Sec-WebSocket-Origin"] = opts.origin;
+      } else {
+        opts.headers.Origin = opts.origin;
+      }
+    }
+    if (parsedUrl.username || parsedUrl.password) {
+      opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
+    }
+    if (isIpcUrl) {
+      const parts = opts.path.split(":");
+      opts.socketPath = parts[0];
+      opts.path = parts[1];
+    }
+    let req;
+    if (opts.followRedirects) {
+      if (websocket._redirects === 0) {
+        websocket._originalIpc = isIpcUrl;
+        websocket._originalSecure = isSecure;
+        websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
+        const headers = options && options.headers;
+        options = { ...options, headers: {} };
+        if (headers) {
+          for (const [key, value] of Object.entries(headers)) {
+            options.headers[key.toLowerCase()] = value;
+          }
+        }
+      } else if (websocket.listenerCount("redirect") === 0) {
+        const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
+        if (!isSameHost || websocket._originalSecure && !isSecure) {
+          delete opts.headers.authorization;
+          delete opts.headers.cookie;
+          if (!isSameHost)
+            delete opts.headers.host;
+          opts.auth = undefined;
+        }
+      }
+      if (opts.auth && !options.headers.authorization) {
+        options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
+      }
+      req = websocket._req = request3(opts);
+      if (websocket._redirects) {
+        websocket.emit("redirect", websocket.url, req);
+      }
+    } else {
+      req = websocket._req = request3(opts);
+    }
+    if (opts.timeout) {
+      req.on("timeout", () => {
+        abortHandshake(websocket, req, "Opening handshake has timed out");
+      });
+    }
+    req.on("error", (err) => {
+      if (req === null || req[kAborted])
+        return;
+      req = websocket._req = null;
+      emitErrorAndClose(websocket, err);
+    });
+    req.on("response", (res) => {
+      const location2 = res.headers.location;
+      const statusCode = res.statusCode;
+      if (location2 && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
+        if (++websocket._redirects > opts.maxRedirects) {
+          abortHandshake(websocket, req, "Maximum redirects exceeded");
+          return;
+        }
+        req.abort();
+        let addr;
+        try {
+          addr = new URL2(location2, address);
+        } catch (e) {
+          const err = new SyntaxError(`Invalid URL: ${location2}`);
+          emitErrorAndClose(websocket, err);
+          return;
+        }
+        initAsClient(websocket, addr, protocols, options);
+      } else if (!websocket.emit("unexpected-response", req, res)) {
+        abortHandshake(websocket, req, `Unexpected server response: ${res.statusCode}`);
+      }
+    });
+    req.on("upgrade", (res, socket, head) => {
+      websocket.emit("upgrade", res);
+      if (websocket.readyState !== WebSocket.CONNECTING)
+        return;
+      req = websocket._req = null;
+      const upgrade = res.headers.upgrade;
+      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
+        abortHandshake(websocket, socket, "Invalid Upgrade header");
+        return;
+      }
+      const digest = createHash("sha1").update(key + GUID).digest("base64");
+      if (res.headers["sec-websocket-accept"] !== digest) {
+        abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
+        return;
+      }
+      const serverProt = res.headers["sec-websocket-protocol"];
+      let protError;
+      if (serverProt !== undefined) {
+        if (!protocolSet.size) {
+          protError = "Server sent a subprotocol but none was requested";
+        } else if (!protocolSet.has(serverProt)) {
+          protError = "Server sent an invalid subprotocol";
+        }
+      } else if (protocolSet.size) {
+        protError = "Server sent no subprotocol";
+      }
+      if (protError) {
+        abortHandshake(websocket, socket, protError);
+        return;
+      }
+      if (serverProt)
+        websocket._protocol = serverProt;
+      const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
+      if (secWebSocketExtensions !== undefined) {
+        if (!perMessageDeflate) {
+          const message = "Server sent a Sec-WebSocket-Extensions header but no extension " + "was requested";
+          abortHandshake(websocket, socket, message);
+          return;
+        }
+        let extensions;
+        try {
+          extensions = parse(secWebSocketExtensions);
+        } catch (err) {
+          const message = "Invalid Sec-WebSocket-Extensions header";
+          abortHandshake(websocket, socket, message);
+          return;
+        }
+        const extensionNames = Object.keys(extensions);
+        if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate.extensionName) {
+          const message = "Server indicated an extension that was not requested";
+          abortHandshake(websocket, socket, message);
+          return;
+        }
+        try {
+          perMessageDeflate.accept(extensions[PerMessageDeflate.extensionName]);
+        } catch (err) {
+          const message = "Invalid Sec-WebSocket-Extensions header";
+          abortHandshake(websocket, socket, message);
+          return;
+        }
+        websocket._extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+      }
+      websocket.setSocket(socket, head, {
+        allowSynchronousEvents: opts.allowSynchronousEvents,
+        generateMask: opts.generateMask,
+        maxBufferedChunks: opts.maxBufferedChunks,
+        maxFragments: opts.maxFragments,
+        maxPayload: opts.maxPayload,
+        skipUTF8Validation: opts.skipUTF8Validation
+      });
+    });
+    if (opts.finishRequest) {
+      opts.finishRequest(req, websocket);
+    } else {
+      req.end();
+    }
+  }
+  function emitErrorAndClose(websocket, err) {
+    websocket._readyState = WebSocket.CLOSING;
+    websocket._errorEmitted = true;
+    websocket.emit("error", err);
+    websocket.emitClose();
+  }
+  function netConnect(options) {
+    options.path = options.socketPath;
+    return net.connect(options);
+  }
+  function tlsConnect(options) {
+    options.path = undefined;
+    if (!options.servername && options.servername !== "") {
+      options.servername = net.isIP(options.host) ? "" : options.host;
+    }
+    return tls.connect(options);
+  }
+  function abortHandshake(websocket, stream, message) {
+    websocket._readyState = WebSocket.CLOSING;
+    const err = new Error(message);
+    Error.captureStackTrace(err, abortHandshake);
+    if (stream.setHeader) {
+      stream[kAborted] = true;
+      stream.abort();
+      if (stream.socket && !stream.socket.destroyed) {
+        stream.socket.destroy();
+      }
+      process.nextTick(emitErrorAndClose, websocket, err);
+    } else {
+      stream.destroy(err);
+      stream.once("error", websocket.emit.bind(websocket, "error"));
+      stream.once("close", websocket.emitClose.bind(websocket));
+    }
+  }
+  function sendAfterClose(websocket, data, cb) {
+    if (data) {
+      const length = isBlob(data) ? data.size : toBuffer(data).length;
+      if (websocket._socket)
+        websocket._sender._bufferedBytes += length;
+      else
+        websocket._bufferedAmount += length;
+    }
+    if (cb) {
+      const err = new Error(`WebSocket is not open: readyState ${websocket.readyState} ` + `(${readyStates[websocket.readyState]})`);
+      process.nextTick(cb, err);
+    }
+  }
+  function receiverOnConclude(code, reason) {
+    const websocket = this[kWebSocket];
+    websocket._closeFrameReceived = true;
+    websocket._closeMessage = reason;
+    websocket._closeCode = code;
+    if (websocket._socket[kWebSocket] === undefined)
+      return;
+    websocket._socket.removeListener("data", socketOnData);
+    process.nextTick(resume, websocket._socket);
+    if (code === 1005)
+      websocket.close();
+    else
+      websocket.close(code, reason);
+  }
+  function receiverOnDrain() {
+    const websocket = this[kWebSocket];
+    if (!websocket.isPaused)
+      websocket._socket.resume();
+  }
+  function receiverOnError(err) {
+    const websocket = this[kWebSocket];
+    if (websocket._socket[kWebSocket] !== undefined) {
+      websocket._socket.removeListener("data", socketOnData);
+      process.nextTick(resume, websocket._socket);
+      websocket.close(err[kStatusCode]);
+    }
+    if (!websocket._errorEmitted) {
+      websocket._errorEmitted = true;
+      websocket.emit("error", err);
+    }
+  }
+  function receiverOnFinish() {
+    this[kWebSocket].emitClose();
+  }
+  function receiverOnMessage(data, isBinary) {
+    this[kWebSocket].emit("message", data, isBinary);
+  }
+  function receiverOnPing(data) {
+    const websocket = this[kWebSocket];
+    if (websocket._autoPong)
+      websocket.pong(data, !this._isServer, NOOP);
+    websocket.emit("ping", data);
+  }
+  function receiverOnPong(data) {
+    this[kWebSocket].emit("pong", data);
+  }
+  function resume(stream) {
+    stream.resume();
+  }
+  function senderOnError(err) {
+    const websocket = this[kWebSocket];
+    if (websocket.readyState === WebSocket.CLOSED)
+      return;
+    if (websocket.readyState === WebSocket.OPEN) {
+      websocket._readyState = WebSocket.CLOSING;
+      setCloseTimer(websocket);
+    }
+    this._socket.end();
+    if (!websocket._errorEmitted) {
+      websocket._errorEmitted = true;
+      websocket.emit("error", err);
+    }
+  }
+  function setCloseTimer(websocket) {
+    websocket._closeTimer = setTimeout(websocket._socket.destroy.bind(websocket._socket), websocket._closeTimeout);
+  }
+  function socketOnClose() {
+    const websocket = this[kWebSocket];
+    this.removeListener("close", socketOnClose);
+    this.removeListener("data", socketOnData);
+    this.removeListener("end", socketOnEnd);
+    websocket._readyState = WebSocket.CLOSING;
+    if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
+      const chunk = this.read(this._readableState.length);
+      websocket._receiver.write(chunk);
+    }
+    websocket._receiver.end();
+    this[kWebSocket] = undefined;
+    clearTimeout(websocket._closeTimer);
+    if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) {
+      websocket.emitClose();
+    } else {
+      websocket._receiver.on("error", receiverOnFinish);
+      websocket._receiver.on("finish", receiverOnFinish);
+    }
+  }
+  function socketOnData(chunk) {
+    if (!this[kWebSocket]._receiver.write(chunk)) {
+      this.pause();
+    }
+  }
+  function socketOnEnd() {
+    const websocket = this[kWebSocket];
+    websocket._readyState = WebSocket.CLOSING;
+    websocket._receiver.end();
+    this.end();
+  }
+  function socketOnError() {
+    const websocket = this[kWebSocket];
+    this.removeListener("error", socketOnError);
+    this.on("error", NOOP);
+    if (websocket) {
+      websocket._readyState = WebSocket.CLOSING;
+      this.destroy();
+    }
+  }
+});
+
+// node_modules/ws/lib/stream.js
+var require_stream = __commonJS(function(exports, module) {
+  var WebSocket = require_websocket();
+  var { Duplex } = __require("stream");
+  function emitClose(stream) {
+    stream.emit("close");
+  }
+  function duplexOnEnd() {
+    if (!this.destroyed && this._writableState.finished) {
+      this.destroy();
+    }
+  }
+  function duplexOnError(err) {
+    this.removeListener("error", duplexOnError);
+    this.destroy();
+    if (this.listenerCount("error") === 0) {
+      this.emit("error", err);
+    }
+  }
+  function createWebSocketStream(ws, options) {
+    let terminateOnDestroy = true;
+    const duplex = new Duplex({
+      ...options,
+      autoDestroy: false,
+      emitClose: false,
+      objectMode: false,
+      writableObjectMode: false
+    });
+    ws.on("message", function message(msg, isBinary) {
+      const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
+      if (!duplex.push(data))
+        ws.pause();
+    });
+    ws.once("error", function error(err) {
+      if (duplex.destroyed)
+        return;
+      terminateOnDestroy = false;
+      duplex.destroy(err);
+    });
+    ws.once("close", function close() {
+      if (duplex.destroyed)
+        return;
+      duplex.push(null);
+    });
+    duplex._destroy = function(err, callback) {
+      if (ws.readyState === ws.CLOSED) {
+        callback(err);
+        process.nextTick(emitClose, duplex);
+        return;
+      }
+      let called = false;
+      ws.once("error", function error(err) {
+        called = true;
+        callback(err);
+      });
+      ws.once("close", function close() {
+        if (!called)
+          callback(err);
+        process.nextTick(emitClose, duplex);
+      });
+      if (terminateOnDestroy)
+        ws.terminate();
+    };
+    duplex._final = function(callback) {
+      if (ws.readyState === ws.CONNECTING) {
+        ws.once("open", function open() {
+          duplex._final(callback);
+        });
+        return;
+      }
+      if (ws._socket === null)
+        return;
+      if (ws._socket._writableState.finished) {
+        callback();
+        if (duplex._readableState.endEmitted)
+          duplex.destroy();
+      } else {
+        ws._socket.once("finish", function finish() {
+          callback();
+        });
+        ws.close();
+      }
+    };
+    duplex._read = function() {
+      if (ws.isPaused)
+        ws.resume();
+    };
+    duplex._write = function(chunk, encoding, callback) {
+      if (ws.readyState === ws.CONNECTING) {
+        ws.once("open", function open() {
+          duplex._write(chunk, encoding, callback);
+        });
+        return;
+      }
+      ws.send(chunk, callback);
+    };
+    duplex.on("end", duplexOnEnd);
+    duplex.on("error", duplexOnError);
+    return duplex;
+  }
+  module.exports = createWebSocketStream;
+});
+
+// node_modules/ws/lib/subprotocol.js
+var require_subprotocol = __commonJS(function(exports, module) {
+  var { tokenChars } = require_validation2();
+  function parse(header) {
+    const protocols = new Set;
+    let start = -1;
+    let end = -1;
+    let i = 0;
+    for (i;i < header.length; i++) {
+      const code = header.charCodeAt(i);
+      if (end === -1 && tokenChars[code] === 1) {
+        if (start === -1)
+          start = i;
+      } else if (i !== 0 && (code === 32 || code === 9)) {
+        if (end === -1 && start !== -1)
+          end = i;
+      } else if (code === 44) {
+        if (start === -1) {
+          throw new SyntaxError(`Unexpected character at index ${i}`);
+        }
+        if (end === -1)
+          end = i;
+        const protocol = header.slice(start, end);
+        if (protocols.has(protocol)) {
+          throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+        }
+        protocols.add(protocol);
+        start = end = -1;
+      } else {
+        throw new SyntaxError(`Unexpected character at index ${i}`);
+      }
+    }
+    if (start === -1 || end !== -1) {
+      throw new SyntaxError("Unexpected end of input");
+    }
+    const protocol = header.slice(start, i);
+    if (protocols.has(protocol)) {
+      throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
+    }
+    protocols.add(protocol);
+    return protocols;
+  }
+  module.exports = { parse };
+});
+
+// node_modules/ws/lib/websocket-server.js
+var require_websocket_server = __commonJS(function(exports, module) {
+  var EventEmitter = __require("events");
+  var http = __require("http");
+  var { Duplex } = __require("stream");
+  var { createHash } = __require("crypto");
+  var extension = require_extension();
+  var PerMessageDeflate = require_permessage_deflate();
+  var subprotocol = require_subprotocol();
+  var WebSocket = require_websocket();
+  var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
+  var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
+  var RUNNING = 0;
+  var CLOSING = 1;
+  var CLOSED = 2;
+
+  class WebSocketServer extends EventEmitter {
+    constructor(options, callback) {
+      super();
+      options = {
+        allowSynchronousEvents: true,
+        autoPong: true,
+        maxBufferedChunks: 256 * 1024,
+        maxFragments: 16 * 1024,
+        maxPayload: 100 * 1024 * 1024,
+        skipUTF8Validation: false,
+        perMessageDeflate: false,
+        handleProtocols: null,
+        clientTracking: true,
+        closeTimeout: CLOSE_TIMEOUT,
+        verifyClient: null,
+        noServer: false,
+        backlog: null,
+        server: null,
+        host: null,
+        path: null,
+        port: null,
+        WebSocket,
+        ...options
+      };
+      if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
+        throw new TypeError('One and only one of the "port", "server", or "noServer" options ' + "must be specified");
+      }
+      if (options.port != null) {
+        this._server = http.createServer((req, res) => {
+          const body = http.STATUS_CODES[426];
+          res.writeHead(426, {
+            "Content-Length": body.length,
+            "Content-Type": "text/plain"
+          });
+          res.end(body);
+        });
+        this._server.listen(options.port, options.host, options.backlog, callback);
+      } else if (options.server) {
+        this._server = options.server;
+      }
+      if (this._server) {
+        const emitConnection = this.emit.bind(this, "connection");
+        this._removeListeners = addListeners(this._server, {
+          listening: this.emit.bind(this, "listening"),
+          error: this.emit.bind(this, "error"),
+          upgrade: (req, socket, head) => {
+            this.handleUpgrade(req, socket, head, emitConnection);
+          }
+        });
+      }
+      if (options.perMessageDeflate === true)
+        options.perMessageDeflate = {};
+      if (options.clientTracking) {
+        this.clients = new Set;
+        this._shouldEmitClose = false;
+      }
+      this.options = options;
+      this._state = RUNNING;
+    }
+    address() {
+      if (this.options.noServer) {
+        throw new Error('The server is operating in "noServer" mode');
+      }
+      if (!this._server)
+        return null;
+      return this._server.address();
+    }
+    close(cb) {
+      if (this._state === CLOSED) {
+        if (cb) {
+          this.once("close", () => {
+            cb(new Error("The server is not running"));
+          });
+        }
+        process.nextTick(emitClose, this);
+        return;
+      }
+      if (cb)
+        this.once("close", cb);
+      if (this._state === CLOSING)
+        return;
+      this._state = CLOSING;
+      if (this.options.noServer || this.options.server) {
+        if (this._server) {
+          this._removeListeners();
+          this._removeListeners = this._server = null;
+        }
+        if (this.clients) {
+          if (!this.clients.size) {
+            process.nextTick(emitClose, this);
+          } else {
+            this._shouldEmitClose = true;
+          }
+        } else {
+          process.nextTick(emitClose, this);
+        }
+      } else {
+        const server = this._server;
+        this._removeListeners();
+        this._removeListeners = this._server = null;
+        server.close(() => {
+          emitClose(this);
+        });
+      }
+    }
+    shouldHandle(req) {
+      if (this.options.path) {
+        const index = req.url.indexOf("?");
+        const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
+        if (pathname !== this.options.path)
+          return false;
+      }
+      return true;
+    }
+    handleUpgrade(req, socket, head, cb) {
+      socket.on("error", socketOnError);
+      const key = req.headers["sec-websocket-key"];
+      const upgrade = req.headers.upgrade;
+      const version = +req.headers["sec-websocket-version"];
+      if (req.method !== "GET") {
+        const message = "Invalid HTTP method";
+        abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
+        return;
+      }
+      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
+        const message = "Invalid Upgrade header";
+        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+        return;
+      }
+      if (key === undefined || !keyRegex.test(key)) {
+        const message = "Missing or invalid Sec-WebSocket-Key header";
+        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+        return;
+      }
+      if (version !== 13 && version !== 8) {
+        const message = "Missing or invalid Sec-WebSocket-Version header";
+        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, {
+          "Sec-WebSocket-Version": "13, 8"
+        });
+        return;
+      }
+      if (!this.shouldHandle(req)) {
+        abortHandshake(socket, 400);
+        return;
+      }
+      const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
+      let protocols = new Set;
+      if (secWebSocketProtocol !== undefined) {
+        try {
+          protocols = subprotocol.parse(secWebSocketProtocol);
+        } catch (err) {
+          const message = "Invalid Sec-WebSocket-Protocol header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+      }
+      const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
+      const extensions = {};
+      if (this.options.perMessageDeflate && secWebSocketExtensions !== undefined) {
+        const perMessageDeflate = new PerMessageDeflate({
+          ...this.options.perMessageDeflate,
+          isServer: true,
+          maxPayload: this.options.maxPayload
+        });
+        try {
+          const offers = extension.parse(secWebSocketExtensions);
+          if (offers[PerMessageDeflate.extensionName]) {
+            perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
+            extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
+          }
+        } catch (err) {
+          const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
+          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
+          return;
+        }
+      }
+      if (this.options.verifyClient) {
+        const info = {
+          origin: req.headers[`${version === 8 ? "sec-websocket-origin" : "origin"}`],
+          secure: !!(req.socket.authorized || req.socket.encrypted),
+          req
+        };
+        if (this.options.verifyClient.length === 2) {
+          this.options.verifyClient(info, (verified, code, message, headers) => {
+            if (!verified) {
+              return abortHandshake(socket, code || 401, message, headers);
+            }
+            this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+          });
+          return;
+        }
+        if (!this.options.verifyClient(info))
+          return abortHandshake(socket, 401);
+      }
+      this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
+    }
+    completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
+      if (!socket.readable || !socket.writable)
+        return socket.destroy();
+      if (socket[kWebSocket]) {
+        throw new Error("server.handleUpgrade() was called more than once with the same " + "socket, possibly due to a misconfiguration");
+      }
+      if (this._state > RUNNING)
+        return abortHandshake(socket, 503);
+      const digest = createHash("sha1").update(key + GUID).digest("base64");
+      const headers = [
+        "HTTP/1.1 101 Switching Protocols",
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        `Sec-WebSocket-Accept: ${digest}`
+      ];
+      const ws = new this.options.WebSocket(null, undefined, this.options);
+      if (protocols.size) {
+        const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
+        if (protocol) {
+          headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
+          ws._protocol = protocol;
+        }
+      }
+      if (extensions[PerMessageDeflate.extensionName]) {
+        const params = extensions[PerMessageDeflate.extensionName].params;
+        const value = extension.format({
+          [PerMessageDeflate.extensionName]: [params]
+        });
+        headers.push(`Sec-WebSocket-Extensions: ${value}`);
+        ws._extensions = extensions;
+      }
+      this.emit("headers", headers, req);
+      socket.write(headers.concat(`\r
+`).join(`\r
+`));
+      socket.removeListener("error", socketOnError);
+      ws.setSocket(socket, head, {
+        allowSynchronousEvents: this.options.allowSynchronousEvents,
+        maxBufferedChunks: this.options.maxBufferedChunks,
+        maxFragments: this.options.maxFragments,
+        maxPayload: this.options.maxPayload,
+        skipUTF8Validation: this.options.skipUTF8Validation
+      });
+      if (this.clients) {
+        this.clients.add(ws);
+        ws.on("close", () => {
+          this.clients.delete(ws);
+          if (this._shouldEmitClose && !this.clients.size) {
+            process.nextTick(emitClose, this);
+          }
+        });
+      }
+      cb(ws, req);
+    }
+  }
+  module.exports = WebSocketServer;
+  function addListeners(server, map) {
+    for (const event of Object.keys(map))
+      server.on(event, map[event]);
+    return function removeListeners() {
+      for (const event of Object.keys(map)) {
+        server.removeListener(event, map[event]);
+      }
+    };
+  }
+  function emitClose(server) {
+    server._state = CLOSED;
+    server.emit("close");
+  }
+  function socketOnError() {
+    this.destroy();
+  }
+  function abortHandshake(socket, code, message, headers) {
+    message = message || http.STATUS_CODES[code];
+    headers = {
+      Connection: "close",
+      "Content-Type": "text/html",
+      "Content-Length": Buffer.byteLength(message),
+      ...headers
+    };
+    socket.once("finish", socket.destroy);
+    socket.end(`HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
+` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join(`\r
+`) + `\r
+\r
+` + message);
+  }
+  function abortHandshakeOrEmitwsClientError(server, req, socket, code, message, headers) {
+    if (server.listenerCount("wsClientError")) {
+      const err = new Error(message);
+      Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
+      server.emit("wsClientError", err, socket, req);
+    } else {
+      abortHandshake(socket, code, message, headers);
+    }
+  }
+});
+
+// node_modules/ws/wrapper.mjs
+var import_stream, import_extension, import_permessage_deflate, import_receiver, import_sender, import_subprotocol, import_websocket, import_websocket_server;
+var init_wrapper = __esm(() => {
+  import_stream = __toESM(require_stream(), 1);
+  import_extension = __toESM(require_extension(), 1);
+  import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
+  import_receiver = __toESM(require_receiver(), 1);
+  import_sender = __toESM(require_sender(), 1);
+  import_subprotocol = __toESM(require_subprotocol(), 1);
+  import_websocket = __toESM(require_websocket(), 1);
+  import_websocket_server = __toESM(require_websocket_server(), 1);
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/websocket.js
+var import_debug4, debug4, isReactNative, BaseWS, WebSocketCtor;
+var init_websocket = __esm(() => {
+  init_transport();
+  init_util2();
+  init_esm2();
+  init_globals_node();
+  import_debug4 = __toESM(require_src(), 1);
+  debug4 = import_debug4.default("engine.io-client:websocket");
+  isReactNative = typeof navigator !== "undefined" && typeof navigator.product === "string" && navigator.product.toLowerCase() === "reactnative";
+  BaseWS = class BaseWS extends Transport {
+    get name() {
+      return "websocket";
+    }
+    doOpen() {
+      const uri = this.uri();
+      const protocols = this.opts.protocols;
+      const opts = isReactNative ? {} : pick2(this.opts, "agent", "perMessageDeflate", "pfx", "key", "passphrase", "cert", "ca", "ciphers", "rejectUnauthorized", "localAddress", "protocolVersion", "origin", "maxPayload", "family", "checkServerIdentity");
+      if (this.opts.extraHeaders) {
+        opts.headers = this.opts.extraHeaders;
+      }
+      try {
+        this.ws = this.createSocket(uri, protocols, opts);
+      } catch (err) {
+        return this.emitReserved("error", err);
+      }
+      this.ws.binaryType = this.socket.binaryType;
+      this.addEventListeners();
+    }
+    addEventListeners() {
+      this.ws.onopen = () => {
+        if (this.opts.autoUnref) {
+          this.ws._socket.unref();
+        }
+        this.onOpen();
+      };
+      this.ws.onclose = (closeEvent) => this.onClose({
+        description: "websocket connection closed",
+        context: closeEvent
+      });
+      this.ws.onmessage = (ev) => this.onData(ev.data);
+      this.ws.onerror = (e) => this.onError("websocket error", e);
+    }
+    write(packets) {
+      this.writable = false;
+      for (let i = 0;i < packets.length; i++) {
+        const packet = packets[i];
+        const lastPacket = i === packets.length - 1;
+        encodePacket(packet, this.supportsBinary, (data) => {
+          try {
+            this.doWrite(packet, data);
+          } catch (e) {
+            debug4("websocket closed before onclose event");
+          }
+          if (lastPacket) {
+            nextTick(() => {
+              this.writable = true;
+              this.emitReserved("drain");
+            }, this.setTimeoutFn);
+          }
+        });
+      }
+    }
+    doClose() {
+      if (typeof this.ws !== "undefined") {
+        this.ws.onerror = () => {};
+        this.ws.close();
+        this.ws = null;
+      }
+    }
+    uri() {
+      const schema = this.opts.secure ? "wss" : "ws";
+      const query = this.query || {};
+      if (this.opts.timestampRequests) {
+        query[this.opts.timestampParam] = randomString();
+      }
+      if (!this.supportsBinary) {
+        query.b64 = 1;
+      }
+      return this.createUri(schema, query);
+    }
+  };
+  WebSocketCtor = globalThisShim.WebSocket || globalThisShim.MozWebSocket;
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/websocket.node.js
+var WS;
+var init_websocket_node = __esm(() => {
+  init_wrapper();
+  init_websocket();
+  WS = class WS extends BaseWS {
+    createSocket(uri, protocols, opts) {
+      var _a;
+      if ((_a = this.socket) === null || _a === undefined ? undefined : _a._cookieJar) {
+        opts.headers = opts.headers || {};
+        opts.headers.cookie = typeof opts.headers.cookie === "string" ? [opts.headers.cookie] : opts.headers.cookie || [];
+        for (const [name, cookie] of this.socket._cookieJar.cookies) {
+          opts.headers.cookie.push(`${name}=${cookie.value}`);
+        }
+      }
+      return new import_websocket.default(uri, protocols, opts);
+    }
+    doWrite(packet, data) {
+      const opts = {};
+      if (packet.options) {
+        opts.compress = packet.options.compress;
+      }
+      if (this.opts.perMessageDeflate) {
+        const len = typeof data === "string" ? Buffer.byteLength(data) : data.length;
+        if (len < this.opts.perMessageDeflate.threshold) {
+          opts.compress = false;
+        }
+      }
+      this.ws.send(data, opts);
+    }
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/webtransport.js
+var import_debug5, debug5, WT;
+var init_webtransport = __esm(() => {
+  init_transport();
+  init_globals_node();
+  init_esm2();
+  import_debug5 = __toESM(require_src(), 1);
+  debug5 = import_debug5.default("engine.io-client:webtransport");
+  WT = class WT extends Transport {
+    get name() {
+      return "webtransport";
+    }
+    doOpen() {
+      try {
+        this._transport = new WebTransport(this.createUri("https"), this.opts.transportOptions[this.name]);
+      } catch (err) {
+        return this.emitReserved("error", err);
+      }
+      this._transport.closed.then(() => {
+        debug5("transport closed gracefully");
+        this.onClose();
+      }).catch((err) => {
+        debug5("transport closed due to %s", err);
+        this.onError("webtransport error", err);
+      });
+      this._transport.ready.then(() => {
+        this._transport.createBidirectionalStream().then((stream) => {
+          const decoderStream = createPacketDecoderStream(Number.MAX_SAFE_INTEGER, this.socket.binaryType);
+          const reader = stream.readable.pipeThrough(decoderStream).getReader();
+          const encoderStream = createPacketEncoderStream();
+          encoderStream.readable.pipeTo(stream.writable);
+          this._writer = encoderStream.writable.getWriter();
+          const read = () => {
+            reader.read().then(({ done, value }) => {
+              if (done) {
+                debug5("session is closed");
+                return;
+              }
+              debug5("received chunk: %o", value);
+              this.onPacket(value);
+              read();
+            }).catch((err) => {
+              debug5("an error occurred while reading: %s", err);
+            });
+          };
+          read();
+          const packet = { type: "open" };
+          if (this.query.sid) {
+            packet.data = `{"sid":"${this.query.sid}"}`;
+          }
+          this._writer.write(packet).then(() => this.onOpen());
+        });
+      });
+    }
+    write(packets) {
+      this.writable = false;
+      for (let i = 0;i < packets.length; i++) {
+        const packet = packets[i];
+        const lastPacket = i === packets.length - 1;
+        this._writer.write(packet).then(() => {
+          if (lastPacket) {
+            nextTick(() => {
+              this.writable = true;
+              this.emitReserved("drain");
+            }, this.setTimeoutFn);
+          }
+        });
+      }
+    }
+    doClose() {
+      var _a;
+      (_a = this._transport) === null || _a === undefined || _a.close();
+    }
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/index.js
+var transports2;
+var init_transports2 = __esm(() => {
+  init_polling_xhr_node();
+  init_websocket_node();
+  init_webtransport();
+  transports2 = {
+    websocket: WS,
+    webtransport: WT,
+    polling: XHR
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/contrib/parseuri.js
+function parse7(str) {
+  if (str.length > 8000) {
+    throw "URI too long";
+  }
+  const src = str, b = str.indexOf("["), e = str.indexOf("]");
+  if (b != -1 && e != -1) {
+    str = str.substring(0, b) + str.substring(b, e).replace(/:/g, ";") + str.substring(e, str.length);
+  }
+  let m = re.exec(str || ""), uri = {}, i = 14;
+  while (i--) {
+    uri[parts[i]] = m[i] || "";
+  }
+  if (b != -1 && e != -1) {
+    uri.source = src;
+    uri.host = uri.host.substring(1, uri.host.length - 1).replace(/;/g, ":");
+    uri.authority = uri.authority.replace("[", "").replace("]", "").replace(/;/g, ":");
+    uri.ipv6uri = true;
+  }
+  uri.pathNames = pathNames(uri, uri["path"]);
+  uri.queryKey = queryKey(uri, uri["query"]);
+  return uri;
+}
+function pathNames(obj, path) {
+  const regx = /\/{2,9}/g, names = path.replace(regx, "/").split("/");
+  if (path.slice(0, 1) == "/" || path.length === 0) {
+    names.splice(0, 1);
+  }
+  if (path.slice(-1) == "/") {
+    names.splice(names.length - 1, 1);
+  }
+  return names;
+}
+function queryKey(uri, query) {
+  const data = {};
+  query.replace(/(?:^|&)([^&=]*)=?([^&]*)/g, function($0, $1, $2) {
+    if ($1) {
+      data[$1] = $2;
+    }
+  });
+  return data;
+}
+var re, parts;
+var init_parseuri = __esm(() => {
+  re = /^(?:(?![^:@\/?#]+:[^:@\/]*@)(http|https|ws|wss):\/\/)?((?:(([^:@\/?#]*)(?::([^:@\/?#]*))?)?@)?((?:[a-f0-9]{0,4}:){2,7}[a-f0-9]{0,4}|[^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/;
+  parts = [
+    "source",
+    "protocol",
+    "authority",
+    "userInfo",
+    "user",
+    "password",
+    "host",
+    "port",
+    "relative",
+    "path",
+    "directory",
+    "file",
+    "query",
+    "anchor"
+  ];
+});
+
+// node_modules/engine.io-client/build/esm-debug/socket.js
+var import_debug6, debug6, withEventListeners, OFFLINE_EVENT_LISTENERS, SocketWithoutUpgrade, SocketWithUpgrade, Socket;
+var init_socket = __esm(() => {
+  init_transports2();
+  init_util2();
+  init_parseuri();
+  init_cjs();
+  init_esm2();
+  init_globals_node();
+  import_debug6 = __toESM(require_src(), 1);
+  debug6 = import_debug6.default("engine.io-client:socket");
+  withEventListeners = typeof addEventListener === "function" && typeof removeEventListener === "function";
+  OFFLINE_EVENT_LISTENERS = [];
+  if (withEventListeners) {
+    addEventListener("offline", () => {
+      debug6("closing %d connection(s) because the network was lost", OFFLINE_EVENT_LISTENERS.length);
+      OFFLINE_EVENT_LISTENERS.forEach((listener) => listener());
+    }, false);
+  }
+  SocketWithoutUpgrade = class SocketWithoutUpgrade extends $Emitter {
+    constructor(uri, opts) {
+      super();
+      this.binaryType = defaultBinaryType;
+      this.writeBuffer = [];
+      this._prevBufferLen = 0;
+      this._pingInterval = -1;
+      this._pingTimeout = -1;
+      this._maxPayload = -1;
+      this._pingTimeoutTime = Infinity;
+      if (uri && typeof uri === "object") {
+        opts = uri;
+        uri = null;
+      }
+      if (uri) {
+        const parsedUri = parse7(uri);
+        opts.hostname = parsedUri.host;
+        opts.secure = parsedUri.protocol === "https" || parsedUri.protocol === "wss";
+        opts.port = parsedUri.port;
+        if (parsedUri.query)
+          opts.query = parsedUri.query;
+      } else if (opts.host) {
+        opts.hostname = parse7(opts.host).host;
+      }
+      installTimerFunctions(this, opts);
+      this.secure = opts.secure != null ? opts.secure : typeof location !== "undefined" && location.protocol === "https:";
+      if (opts.hostname && !opts.port) {
+        opts.port = this.secure ? "443" : "80";
+      }
+      this.hostname = opts.hostname || (typeof location !== "undefined" ? location.hostname : "localhost");
+      this.port = opts.port || (typeof location !== "undefined" && location.port ? location.port : this.secure ? "443" : "80");
+      this.transports = [];
+      this._transportsByName = {};
+      opts.transports.forEach((t) => {
+        const transportName = t.prototype.name;
+        this.transports.push(transportName);
+        this._transportsByName[transportName] = t;
+      });
+      this.opts = Object.assign({
+        path: "/engine.io",
+        agent: false,
+        withCredentials: false,
+        upgrade: true,
+        timestampParam: "t",
+        rememberUpgrade: false,
+        addTrailingSlash: true,
+        rejectUnauthorized: true,
+        perMessageDeflate: {
+          threshold: 1024
+        },
+        transportOptions: {},
+        closeOnBeforeunload: false
+      }, opts);
+      this.opts.path = this.opts.path.replace(/\/$/, "") + (this.opts.addTrailingSlash ? "/" : "");
+      if (typeof this.opts.query === "string") {
+        this.opts.query = decode3(this.opts.query);
+      }
+      if (withEventListeners) {
+        if (this.opts.closeOnBeforeunload) {
+          this._beforeunloadEventListener = () => {
+            if (this.transport) {
+              this.transport.removeAllListeners();
+              this.transport.close();
+            }
+          };
+          addEventListener("beforeunload", this._beforeunloadEventListener, false);
+        }
+        if (this.hostname !== "localhost") {
+          debug6("adding listener for the 'offline' event");
+          this._offlineEventListener = () => {
+            this._onClose("transport close", {
+              description: "network connection lost"
+            });
+          };
+          OFFLINE_EVENT_LISTENERS.push(this._offlineEventListener);
+        }
+      }
+      if (this.opts.withCredentials) {
+        this._cookieJar = createCookieJar();
+      }
+      this._open();
+    }
+    createTransport(name) {
+      debug6('creating transport "%s"', name);
+      const query = Object.assign({}, this.opts.query);
+      query.EIO = protocol;
+      query.transport = name;
+      if (this.id)
+        query.sid = this.id;
+      const opts = Object.assign({}, this.opts, {
+        query,
+        socket: this,
+        hostname: this.hostname,
+        secure: this.secure,
+        port: this.port
+      }, this.opts.transportOptions[name]);
+      debug6("options: %j", opts);
+      return new this._transportsByName[name](opts);
+    }
+    _open() {
+      if (this.transports.length === 0) {
+        this.setTimeoutFn(() => {
+          this.emitReserved("error", "No transports available");
+        }, 0);
+        return;
+      }
+      const transportName = this.opts.rememberUpgrade && SocketWithoutUpgrade.priorWebsocketSuccess && this.transports.indexOf("websocket") !== -1 ? "websocket" : this.transports[0];
+      this.readyState = "opening";
+      const transport = this.createTransport(transportName);
+      transport.open();
+      this.setTransport(transport);
+    }
+    setTransport(transport) {
+      debug6("setting transport %s", transport.name);
+      if (this.transport) {
+        debug6("clearing existing transport %s", this.transport.name);
+        this.transport.removeAllListeners();
+      }
+      this.transport = transport;
+      transport.on("drain", this._onDrain.bind(this)).on("packet", this._onPacket.bind(this)).on("error", this._onError.bind(this)).on("close", (reason) => this._onClose("transport close", reason));
+    }
+    onOpen() {
+      debug6("socket open");
+      this.readyState = "open";
+      SocketWithoutUpgrade.priorWebsocketSuccess = this.transport.name === "websocket";
+      this.emitReserved("open");
+      this.flush();
+    }
+    _onPacket(packet) {
+      if (this.readyState === "opening" || this.readyState === "open" || this.readyState === "closing") {
+        debug6('socket receive: type "%s", data "%s"', packet.type, packet.data);
+        this.emitReserved("packet", packet);
+        this.emitReserved("heartbeat");
+        switch (packet.type) {
+          case "open":
+            this.onHandshake(JSON.parse(packet.data));
+            break;
+          case "ping":
+            this._sendPacket("pong");
+            this.emitReserved("ping");
+            this.emitReserved("pong");
+            this._resetPingTimeout();
+            break;
+          case "error":
+            const err = new Error("server error");
+            err.code = packet.data;
+            this._onError(err);
+            break;
+          case "message":
+            this.emitReserved("data", packet.data);
+            this.emitReserved("message", packet.data);
+            break;
+        }
+      } else {
+        debug6('packet received with socket readyState "%s"', this.readyState);
+      }
+    }
+    onHandshake(data) {
+      this.emitReserved("handshake", data);
+      this.id = data.sid;
+      this.transport.query.sid = data.sid;
+      this._pingInterval = data.pingInterval;
+      this._pingTimeout = data.pingTimeout;
+      this._maxPayload = data.maxPayload;
+      this.onOpen();
+      if (this.readyState === "closed")
+        return;
+      this._resetPingTimeout();
+    }
+    _resetPingTimeout() {
+      this.clearTimeoutFn(this._pingTimeoutTimer);
+      const delay = this._pingInterval + this._pingTimeout;
+      this._pingTimeoutTime = Date.now() + delay;
+      this._pingTimeoutTimer = this.setTimeoutFn(() => {
+        this._onClose("ping timeout");
+      }, delay);
+      if (this.opts.autoUnref) {
+        this._pingTimeoutTimer.unref();
+      }
+    }
+    _onDrain() {
+      this.writeBuffer.splice(0, this._prevBufferLen);
+      this._prevBufferLen = 0;
+      if (this.writeBuffer.length === 0) {
+        this.emitReserved("drain");
+      } else {
+        this.flush();
+      }
+    }
+    flush() {
+      if (this.readyState !== "closed" && this.transport.writable && !this.upgrading && this.writeBuffer.length) {
+        const packets = this._getWritablePackets();
+        debug6("flushing %d packets in socket", packets.length);
+        this.transport.send(packets);
+        this._prevBufferLen = packets.length;
+        this.emitReserved("flush");
+      }
+    }
+    _getWritablePackets() {
+      const shouldCheckPayloadSize = this._maxPayload && this.transport.name === "polling" && this.writeBuffer.length > 1;
+      if (!shouldCheckPayloadSize) {
+        return this.writeBuffer;
+      }
+      let payloadSize = 1;
+      for (let i = 0;i < this.writeBuffer.length; i++) {
+        const data = this.writeBuffer[i].data;
+        if (data) {
+          payloadSize += byteLength(data);
+        }
+        if (i > 0 && payloadSize > this._maxPayload) {
+          debug6("only send %d out of %d packets", i, this.writeBuffer.length);
+          return this.writeBuffer.slice(0, i);
+        }
+        payloadSize += 2;
+      }
+      debug6("payload size is %d (max: %d)", payloadSize, this._maxPayload);
+      return this.writeBuffer;
+    }
+    _hasPingExpired() {
+      if (!this._pingTimeoutTime)
+        return true;
+      const hasExpired = Date.now() > this._pingTimeoutTime;
+      if (hasExpired) {
+        debug6("throttled timer detected, scheduling connection close");
+        this._pingTimeoutTime = 0;
+        nextTick(() => {
+          this._onClose("ping timeout");
+        }, this.setTimeoutFn);
+      }
+      return hasExpired;
+    }
+    write(msg, options, fn) {
+      this._sendPacket("message", msg, options, fn);
+      return this;
+    }
+    send(msg, options, fn) {
+      this._sendPacket("message", msg, options, fn);
+      return this;
+    }
+    _sendPacket(type, data, options, fn) {
+      if (typeof data === "function") {
+        fn = data;
+        data = undefined;
+      }
+      if (typeof options === "function") {
+        fn = options;
+        options = null;
+      }
+      if (this.readyState === "closing" || this.readyState === "closed") {
+        return;
+      }
+      options = options || {};
+      options.compress = options.compress !== false;
+      const packet = {
+        type,
+        data,
+        options
+      };
+      this.emitReserved("packetCreate", packet);
+      this.writeBuffer.push(packet);
+      if (fn)
+        this.once("flush", fn);
+      this.flush();
+    }
+    close() {
+      const close = () => {
+        this._onClose("forced close");
+        debug6("socket closing - telling transport to close");
+        this.transport.close();
+      };
+      const cleanupAndClose = () => {
+        this.off("upgrade", cleanupAndClose);
+        this.off("upgradeError", cleanupAndClose);
+        close();
+      };
+      const waitForUpgrade = () => {
+        this.once("upgrade", cleanupAndClose);
+        this.once("upgradeError", cleanupAndClose);
+      };
+      if (this.readyState === "opening" || this.readyState === "open") {
+        this.readyState = "closing";
+        if (this.writeBuffer.length) {
+          this.once("drain", () => {
+            if (this.upgrading) {
+              waitForUpgrade();
+            } else {
+              close();
+            }
+          });
+        } else if (this.upgrading) {
+          waitForUpgrade();
+        } else {
+          close();
+        }
+      }
+      return this;
+    }
+    _onError(err) {
+      debug6("socket error %j", err);
+      SocketWithoutUpgrade.priorWebsocketSuccess = false;
+      if (this.opts.tryAllTransports && this.transports.length > 1 && this.readyState === "opening") {
+        debug6("trying next transport");
+        this.transports.shift();
+        return this._open();
+      }
+      this.emitReserved("error", err);
+      this._onClose("transport error", err);
+    }
+    _onClose(reason, description) {
+      if (this.readyState === "opening" || this.readyState === "open" || this.readyState === "closing") {
+        debug6('socket close with reason: "%s"', reason);
+        this.clearTimeoutFn(this._pingTimeoutTimer);
+        this.transport.removeAllListeners("close");
+        this.transport.close();
+        this.transport.removeAllListeners();
+        if (withEventListeners) {
+          if (this._beforeunloadEventListener) {
+            removeEventListener("beforeunload", this._beforeunloadEventListener, false);
+          }
+          if (this._offlineEventListener) {
+            const i = OFFLINE_EVENT_LISTENERS.indexOf(this._offlineEventListener);
+            if (i !== -1) {
+              debug6("removing listener for the 'offline' event");
+              OFFLINE_EVENT_LISTENERS.splice(i, 1);
+            }
+          }
+        }
+        this.readyState = "closed";
+        this.id = null;
+        this.emitReserved("close", reason, description);
+        this.writeBuffer = [];
+        this._prevBufferLen = 0;
+      }
+    }
+  };
+  SocketWithoutUpgrade.protocol = protocol;
+  SocketWithUpgrade = class SocketWithUpgrade extends SocketWithoutUpgrade {
+    constructor() {
+      super(...arguments);
+      this._upgrades = [];
+    }
+    onOpen() {
+      super.onOpen();
+      if (this.readyState === "open" && this.opts.upgrade) {
+        debug6("starting upgrade probes");
+        for (let i = 0;i < this._upgrades.length; i++) {
+          this._probe(this._upgrades[i]);
+        }
+      }
+    }
+    _probe(name) {
+      debug6('probing transport "%s"', name);
+      let transport = this.createTransport(name);
+      let failed = false;
+      SocketWithoutUpgrade.priorWebsocketSuccess = false;
+      const onTransportOpen = () => {
+        if (failed)
+          return;
+        debug6('probe transport "%s" opened', name);
+        transport.send([{ type: "ping", data: "probe" }]);
+        transport.once("packet", (msg) => {
+          if (failed)
+            return;
+          if (msg.type === "pong" && msg.data === "probe") {
+            debug6('probe transport "%s" pong', name);
+            this.upgrading = true;
+            this.emitReserved("upgrading", transport);
+            if (!transport)
+              return;
+            SocketWithoutUpgrade.priorWebsocketSuccess = transport.name === "websocket";
+            debug6('pausing current transport "%s"', this.transport.name);
+            this.transport.pause(() => {
+              if (failed)
+                return;
+              if (this.readyState === "closed")
+                return;
+              debug6("changing transport and sending upgrade packet");
+              cleanup();
+              this.setTransport(transport);
+              transport.send([{ type: "upgrade" }]);
+              this.emitReserved("upgrade", transport);
+              transport = null;
+              this.upgrading = false;
+              this.flush();
+            });
+          } else {
+            debug6('probe transport "%s" failed', name);
+            const err = new Error("probe error");
+            err.transport = transport.name;
+            this.emitReserved("upgradeError", err);
+          }
+        });
+      };
+      function freezeTransport() {
+        if (failed)
+          return;
+        failed = true;
+        cleanup();
+        transport.close();
+        transport = null;
+      }
+      const onerror = (err) => {
+        const error = new Error("probe error: " + err);
+        error.transport = transport.name;
+        freezeTransport();
+        debug6('probe transport "%s" failed because of error: %s', name, err);
+        this.emitReserved("upgradeError", error);
+      };
+      function onTransportClose() {
+        onerror("transport closed");
+      }
+      function onclose() {
+        onerror("socket closed");
+      }
+      function onupgrade(to) {
+        if (transport && to.name !== transport.name) {
+          debug6('"%s" works - aborting "%s"', to.name, transport.name);
+          freezeTransport();
+        }
+      }
+      const cleanup = () => {
+        transport.removeListener("open", onTransportOpen);
+        transport.removeListener("error", onerror);
+        transport.removeListener("close", onTransportClose);
+        this.off("close", onclose);
+        this.off("upgrading", onupgrade);
+      };
+      transport.once("open", onTransportOpen);
+      transport.once("error", onerror);
+      transport.once("close", onTransportClose);
+      this.once("close", onclose);
+      this.once("upgrading", onupgrade);
+      if (this._upgrades.indexOf("webtransport") !== -1 && name !== "webtransport") {
+        this.setTimeoutFn(() => {
+          if (!failed) {
+            transport.open();
+          }
+        }, 200);
+      } else {
+        transport.open();
+      }
+    }
+    onHandshake(data) {
+      this._upgrades = this._filterUpgrades(data.upgrades);
+      super.onHandshake(data);
+    }
+    _filterUpgrades(upgrades) {
+      const filteredUpgrades = [];
+      for (let i = 0;i < upgrades.length; i++) {
+        if (~this.transports.indexOf(upgrades[i]))
+          filteredUpgrades.push(upgrades[i]);
+      }
+      return filteredUpgrades;
+    }
+  };
+  Socket = class Socket extends SocketWithUpgrade {
+    constructor(uri, opts = {}) {
+      const isOptionsOnly = typeof uri === "object";
+      const o = isOptionsOnly ? { ...uri } : { ...opts };
+      if (!o.transports || o.transports && typeof o.transports[0] === "string") {
+        o.transports = (o.transports || ["polling", "websocket", "webtransport"]).map((transportName) => transports2[transportName]).filter((t) => !!t);
+      }
+      super(isOptionsOnly ? o : uri, o);
+    }
+  };
+});
+
+// node_modules/engine.io-client/build/esm-debug/transports/polling-fetch.js
+var init_polling_fetch = __esm(() => {
+  init_polling();
+});
+
+// node_modules/engine.io-client/build/esm-debug/index.js
+var protocol2;
+var init_esm_debug = __esm(() => {
+  init_socket();
+  init_socket();
+  init_transport();
+  init_transports2();
+  init_util2();
+  init_parseuri();
+  init_globals_node();
+  init_polling_fetch();
+  init_polling_xhr_node();
+  init_polling_xhr();
+  init_websocket_node();
+  init_websocket();
+  init_webtransport();
+  protocol2 = Socket.protocol;
+});
+
+// node_modules/socket.io-client/build/esm-debug/url.js
+function url2(uri, path = "", loc) {
+  let obj = uri;
+  loc = loc || typeof location !== "undefined" && location;
+  if (uri == null)
+    uri = loc.protocol + "//" + loc.host;
+  if (typeof uri === "string") {
+    if (uri.charAt(0) === "/") {
+      if (uri.charAt(1) === "/") {
+        uri = loc.protocol + uri;
+      } else {
+        uri = loc.host + uri;
+      }
+    }
+    if (!/^(https?|wss?):\/\//.test(uri)) {
+      debug7("protocol-less url %s", uri);
+      if (typeof loc !== "undefined") {
+        uri = loc.protocol + "//" + uri;
+      } else {
+        uri = "https://" + uri;
+      }
+    }
+    debug7("parse %s", uri);
+    obj = parse7(uri);
+  }
+  if (!obj.port) {
+    if (/^(http|ws)$/.test(obj.protocol)) {
+      obj.port = "80";
+    } else if (/^(http|ws)s$/.test(obj.protocol)) {
+      obj.port = "443";
+    }
+  }
+  obj.path = obj.path || "/";
+  const ipv6 = obj.host.indexOf(":") !== -1;
+  const host = ipv6 ? "[" + obj.host + "]" : obj.host;
+  obj.id = obj.protocol + "://" + host + ":" + obj.port + path;
+  obj.href = obj.protocol + "://" + host + (loc && loc.port === obj.port ? "" : ":" + obj.port);
+  return obj;
+}
+var import_debug7, debug7;
+var init_url = __esm(() => {
+  init_esm_debug();
+  import_debug7 = __toESM(require_src(), 1);
+  debug7 = import_debug7.default("socket.io-client:url");
+});
+
+// node_modules/socket.io-parser/build/esm-debug/is-binary.js
+function isBinary(obj) {
+  return withNativeArrayBuffer && (obj instanceof ArrayBuffer || isView(obj)) || withNativeBlob && obj instanceof Blob || withNativeFile && obj instanceof File;
+}
+function hasBinary(obj, toJSON) {
+  if (!obj || typeof obj !== "object") {
+    return false;
+  }
+  if (Array.isArray(obj)) {
+    for (let i = 0, l = obj.length;i < l; i++) {
+      if (hasBinary(obj[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (isBinary(obj)) {
+    return true;
+  }
+  if (obj.toJSON && typeof obj.toJSON === "function" && arguments.length === 1) {
+    return hasBinary(obj.toJSON(), true);
+  }
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key) && hasBinary(obj[key])) {
+      return true;
+    }
+  }
+  return false;
+}
+var withNativeArrayBuffer, isView = (obj) => {
+  return typeof ArrayBuffer.isView === "function" ? ArrayBuffer.isView(obj) : obj.buffer instanceof ArrayBuffer;
+}, toString, withNativeBlob, withNativeFile;
+var init_is_binary = __esm(() => {
+  withNativeArrayBuffer = typeof ArrayBuffer === "function";
+  toString = Object.prototype.toString;
+  withNativeBlob = typeof Blob === "function" || typeof Blob !== "undefined" && toString.call(Blob) === "[object BlobConstructor]";
+  withNativeFile = typeof File === "function" || typeof File !== "undefined" && toString.call(File) === "[object FileConstructor]";
+});
+
+// node_modules/socket.io-parser/build/esm-debug/binary.js
+function deconstructPacket(packet) {
+  const buffers = [];
+  const packetData = packet.data;
+  const pack = packet;
+  pack.data = _deconstructPacket(packetData, buffers);
+  pack.attachments = buffers.length;
+  return { packet: pack, buffers };
+}
+function _deconstructPacket(data, buffers, toJSON) {
+  if (!data)
+    return data;
+  if (isBinary(data)) {
+    const placeholder = { _placeholder: true, num: buffers.length };
+    buffers.push(data);
+    return placeholder;
+  } else if (Array.isArray(data)) {
+    const newData = new Array(data.length);
+    for (let i = 0;i < data.length; i++) {
+      newData[i] = _deconstructPacket(data[i], buffers);
+    }
+    return newData;
+  } else if (typeof data === "object" && !(data instanceof Date)) {
+    if (data.toJSON && typeof data.toJSON === "function" && !toJSON) {
+      return _deconstructPacket(data.toJSON(), buffers, true);
+    }
+    const newData = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        newData[key] = _deconstructPacket(data[key], buffers);
+      }
+    }
+    return newData;
+  }
+  return data;
+}
+function reconstructPacket(packet, buffers) {
+  packet.data = _reconstructPacket(packet.data, buffers);
+  delete packet.attachments;
+  return packet;
+}
+function _reconstructPacket(data, buffers) {
+  if (!data)
+    return data;
+  if (data && data._placeholder === true) {
+    const isIndexValid = typeof data.num === "number" && data.num >= 0 && data.num < buffers.length;
+    if (isIndexValid) {
+      return buffers[data.num];
+    } else {
+      throw new Error("illegal attachments");
+    }
+  } else if (Array.isArray(data)) {
+    for (let i = 0;i < data.length; i++) {
+      data[i] = _reconstructPacket(data[i], buffers);
+    }
+  } else if (typeof data === "object") {
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        data[key] = _reconstructPacket(data[key], buffers);
+      }
+    }
+  }
+  return data;
+}
+var init_binary = __esm(() => {
+  init_is_binary();
+});
+
+// node_modules/socket.io-parser/build/esm-debug/index.js
+var exports_esm_debug = {};
+__export(exports_esm_debug, {
+  Decoder: () => Decoder,
+  Encoder: () => Encoder,
+  PacketType: () => PacketType,
+  isPacketValid: () => isPacketValid,
+  protocol: () => protocol3
+});
+
+class Encoder {
+  constructor(replacer) {
+    this.replacer = replacer;
+  }
+  encode(obj) {
+    debug8("encoding packet %j", obj);
+    if (obj.type === PacketType.EVENT || obj.type === PacketType.ACK) {
+      if (hasBinary(obj)) {
+        return this.encodeAsBinary({
+          type: obj.type === PacketType.EVENT ? PacketType.BINARY_EVENT : PacketType.BINARY_ACK,
+          nsp: obj.nsp,
+          data: obj.data,
+          id: obj.id
+        });
+      }
+    }
+    return [this.encodeAsString(obj)];
+  }
+  encodeAsString(obj) {
+    let str = "" + obj.type;
+    if (obj.type === PacketType.BINARY_EVENT || obj.type === PacketType.BINARY_ACK) {
+      str += obj.attachments + "-";
+    }
+    if (obj.nsp && obj.nsp !== "/") {
+      str += obj.nsp + ",";
+    }
+    if (obj.id != null) {
+      str += obj.id;
+    }
+    if (obj.data != null) {
+      str += JSON.stringify(obj.data, this.replacer);
+    }
+    debug8("encoded %j as %s", obj, str);
+    return str;
+  }
+  encodeAsBinary(obj) {
+    const deconstruction = deconstructPacket(obj);
+    const pack = this.encodeAsString(deconstruction.packet);
+    const buffers = deconstruction.buffers;
+    buffers.unshift(pack);
+    return buffers;
+  }
+}
+
+class BinaryReconstructor {
+  constructor(packet) {
+    this.packet = packet;
+    this.buffers = [];
+    this.reconPack = packet;
+  }
+  takeBinaryData(binData) {
+    this.buffers.push(binData);
+    if (this.buffers.length === this.reconPack.attachments) {
+      const packet = reconstructPacket(this.reconPack, this.buffers);
+      this.finishedReconstruction();
+      return packet;
+    }
+    return null;
+  }
+  finishedReconstruction() {
+    this.reconPack = null;
+    this.buffers = [];
+  }
+}
+function isNamespaceValid(nsp) {
+  return typeof nsp === "string";
+}
+function isAckIdValid(id) {
+  return id === undefined || isInteger(id);
+}
+function isObject3(value) {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+function isDataValid(type, payload) {
+  switch (type) {
+    case PacketType.CONNECT:
+      return payload === undefined || isObject3(payload);
+    case PacketType.DISCONNECT:
+      return payload === undefined;
+    case PacketType.EVENT:
+      return Array.isArray(payload) && (typeof payload[0] === "number" || typeof payload[0] === "string" && RESERVED_EVENTS.indexOf(payload[0]) === -1);
+    case PacketType.ACK:
+      return Array.isArray(payload);
+    case PacketType.CONNECT_ERROR:
+      return typeof payload === "string" || isObject3(payload);
+    default:
+      return false;
+  }
+}
+function isPacketValid(packet) {
+  return isNamespaceValid(packet.nsp) && isAckIdValid(packet.id) && isDataValid(packet.type, packet.data);
+}
+var import_debug8, debug8, RESERVED_EVENTS, protocol3 = 5, PacketType, Decoder, isInteger;
+var init_esm_debug2 = __esm(() => {
+  init_cjs();
+  init_binary();
+  init_is_binary();
+  import_debug8 = __toESM(require_src(), 1);
+  debug8 = import_debug8.default("socket.io-parser");
+  RESERVED_EVENTS = [
+    "connect",
+    "connect_error",
+    "disconnect",
+    "disconnecting",
+    "newListener",
+    "removeListener"
+  ];
+  (function(PacketType2) {
+    PacketType2[PacketType2["CONNECT"] = 0] = "CONNECT";
+    PacketType2[PacketType2["DISCONNECT"] = 1] = "DISCONNECT";
+    PacketType2[PacketType2["EVENT"] = 2] = "EVENT";
+    PacketType2[PacketType2["ACK"] = 3] = "ACK";
+    PacketType2[PacketType2["CONNECT_ERROR"] = 4] = "CONNECT_ERROR";
+    PacketType2[PacketType2["BINARY_EVENT"] = 5] = "BINARY_EVENT";
+    PacketType2[PacketType2["BINARY_ACK"] = 6] = "BINARY_ACK";
+  })(PacketType || (PacketType = {}));
+  Decoder = class Decoder extends $Emitter {
+    constructor(opts) {
+      super();
+      this.opts = Object.assign({
+        reviver: undefined,
+        maxAttachments: 10
+      }, typeof opts === "function" ? { reviver: opts } : opts);
+    }
+    add(obj) {
+      let packet;
+      if (typeof obj === "string") {
+        if (this.reconstructor) {
+          throw new Error("got plaintext data when reconstructing a packet");
+        }
+        packet = this.decodeString(obj);
+        const isBinaryEvent = packet.type === PacketType.BINARY_EVENT;
+        if (isBinaryEvent || packet.type === PacketType.BINARY_ACK) {
+          packet.type = isBinaryEvent ? PacketType.EVENT : PacketType.ACK;
+          this.reconstructor = new BinaryReconstructor(packet);
+        } else {
+          super.emitReserved("decoded", packet);
+        }
+      } else if (isBinary(obj) || obj.base64) {
+        if (!this.reconstructor) {
+          throw new Error("got binary data when not reconstructing a packet");
+        } else {
+          packet = this.reconstructor.takeBinaryData(obj);
+          if (packet) {
+            this.reconstructor = null;
+            super.emitReserved("decoded", packet);
+          }
+        }
+      } else {
+        throw new Error("Unknown type: " + obj);
+      }
+    }
+    decodeString(str) {
+      let i = 0;
+      const p = {
+        type: Number(str.charAt(0))
+      };
+      if (PacketType[p.type] === undefined) {
+        throw new Error("unknown packet type " + p.type);
+      }
+      if (p.type === PacketType.BINARY_EVENT || p.type === PacketType.BINARY_ACK) {
+        const start = i + 1;
+        while (str.charAt(++i) !== "-" && i != str.length) {}
+        const buf = str.substring(start, i);
+        if (buf != Number(buf) || str.charAt(i) !== "-") {
+          throw new Error("Illegal attachments");
+        }
+        const n = Number(buf);
+        if (!isInteger(n) || n < 1) {
+          throw new Error("Illegal attachments");
+        } else if (n > this.opts.maxAttachments) {
+          throw new Error("too many attachments");
+        }
+        p.attachments = n;
+      }
+      if (str.charAt(i + 1) === "/") {
+        const start = i + 1;
+        while (++i) {
+          const c = str.charAt(i);
+          if (c === ",")
+            break;
+          if (i === str.length)
+            break;
+        }
+        p.nsp = str.substring(start, i);
+      } else {
+        p.nsp = "/";
+      }
+      const next = str.charAt(i + 1);
+      if (next !== "" && Number(next) == next) {
+        const start = i + 1;
+        while (++i) {
+          const c = str.charAt(i);
+          if (c == null || Number(c) != c) {
+            --i;
+            break;
+          }
+          if (i === str.length)
+            break;
+        }
+        p.id = Number(str.substring(start, i + 1));
+      }
+      if (str.charAt(++i)) {
+        const payload = this.tryParse(str.substr(i));
+        if (Decoder.isPayloadValid(p.type, payload)) {
+          p.data = payload;
+        } else {
+          throw new Error("invalid payload");
+        }
+      }
+      debug8("decoded %s as %j", str, p);
+      return p;
+    }
+    tryParse(str) {
+      try {
+        return JSON.parse(str, this.opts.reviver);
+      } catch (e) {
+        return false;
+      }
+    }
+    static isPayloadValid(type, payload) {
+      switch (type) {
+        case PacketType.CONNECT:
+          return isObject3(payload);
+        case PacketType.DISCONNECT:
+          return payload === undefined;
+        case PacketType.CONNECT_ERROR:
+          return typeof payload === "string" || isObject3(payload);
+        case PacketType.EVENT:
+        case PacketType.BINARY_EVENT:
+          return Array.isArray(payload) && (typeof payload[0] === "number" || typeof payload[0] === "string" && RESERVED_EVENTS.indexOf(payload[0]) === -1);
+        case PacketType.ACK:
+        case PacketType.BINARY_ACK:
+          return Array.isArray(payload);
+      }
+    }
+    destroy() {
+      if (this.reconstructor) {
+        this.reconstructor.finishedReconstruction();
+        this.reconstructor = null;
+      }
+    }
+  };
+  isInteger = Number.isInteger || function(value) {
+    return typeof value === "number" && isFinite(value) && Math.floor(value) === value;
+  };
+});
+
+// node_modules/socket.io-client/build/esm-debug/on.js
+function on(obj, ev, fn) {
+  obj.on(ev, fn);
+  return function subDestroy() {
+    obj.off(ev, fn);
+  };
+}
+
+// node_modules/socket.io-client/build/esm-debug/socket.js
+var import_debug9, debug9, RESERVED_EVENTS2, Socket2;
+var init_socket2 = __esm(() => {
+  init_esm_debug2();
+  init_cjs();
+  import_debug9 = __toESM(require_src(), 1);
+  debug9 = import_debug9.default("socket.io-client:socket");
+  RESERVED_EVENTS2 = Object.freeze({
+    connect: 1,
+    connect_error: 1,
+    disconnect: 1,
+    disconnecting: 1,
+    newListener: 1,
+    removeListener: 1
+  });
+  Socket2 = class Socket2 extends $Emitter {
+    constructor(io, nsp, opts) {
+      super();
+      this.connected = false;
+      this.recovered = false;
+      this.receiveBuffer = [];
+      this.sendBuffer = [];
+      this._queue = [];
+      this._queueSeq = 0;
+      this.ids = 0;
+      this.acks = {};
+      this.flags = {};
+      this.io = io;
+      this.nsp = nsp;
+      if (opts && opts.auth) {
+        this.auth = opts.auth;
+      }
+      this._opts = Object.assign({}, opts);
+      if (this.io._autoConnect)
+        this.open();
+    }
+    get disconnected() {
+      return !this.connected;
+    }
+    subEvents() {
+      if (this.subs)
+        return;
+      const io = this.io;
+      this.subs = [
+        on(io, "open", this.onopen.bind(this)),
+        on(io, "packet", this.onpacket.bind(this)),
+        on(io, "error", this.onerror.bind(this)),
+        on(io, "close", this.onclose.bind(this))
+      ];
+    }
+    get active() {
+      return !!this.subs;
+    }
+    connect() {
+      if (this.connected)
+        return this;
+      this.subEvents();
+      if (!this.io["_reconnecting"])
+        this.io.open();
+      if (this.io._readyState === "open")
+        this.onopen();
+      return this;
+    }
+    open() {
+      return this.connect();
+    }
+    send(...args) {
+      args.unshift("message");
+      this.emit.apply(this, args);
+      return this;
+    }
+    emit(ev, ...args) {
+      var _a, _b, _c;
+      if (RESERVED_EVENTS2.hasOwnProperty(ev)) {
+        throw new Error('"' + ev.toString() + '" is a reserved event name');
+      }
+      args.unshift(ev);
+      if (this._opts.retries && !this.flags.fromQueue && !this.flags.volatile) {
+        this._addToQueue(args);
+        return this;
+      }
+      const packet = {
+        type: PacketType.EVENT,
+        data: args
+      };
+      packet.options = {};
+      packet.options.compress = this.flags.compress !== false;
+      if (typeof args[args.length - 1] === "function") {
+        const id = this.ids++;
+        debug9("emitting packet with ack id %d", id);
+        const ack = args.pop();
+        this._registerAckCallback(id, ack);
+        packet.id = id;
+      }
+      const isTransportWritable = (_b = (_a = this.io.engine) === null || _a === undefined ? undefined : _a.transport) === null || _b === undefined ? undefined : _b.writable;
+      const isConnected = this.connected && !((_c = this.io.engine) === null || _c === undefined ? undefined : _c._hasPingExpired());
+      const discardPacket = this.flags.volatile && !isTransportWritable;
+      if (discardPacket) {
+        debug9("discard packet as the transport is not currently writable");
+      } else if (isConnected) {
+        this.notifyOutgoingListeners(packet);
+        this.packet(packet);
+      } else {
+        this.sendBuffer.push(packet);
+      }
+      this.flags = {};
+      return this;
+    }
+    _registerAckCallback(id, ack) {
+      var _a;
+      const timeout = (_a = this.flags.timeout) !== null && _a !== undefined ? _a : this._opts.ackTimeout;
+      if (timeout === undefined) {
+        this.acks[id] = ack;
+        return;
+      }
+      const timer = this.io.setTimeoutFn(() => {
+        delete this.acks[id];
+        for (let i = 0;i < this.sendBuffer.length; i++) {
+          if (this.sendBuffer[i].id === id) {
+            debug9("removing packet with ack id %d from the buffer", id);
+            this.sendBuffer.splice(i, 1);
+          }
+        }
+        debug9("event with ack id %d has timed out after %d ms", id, timeout);
+        ack.call(this, new Error("operation has timed out"));
+      }, timeout);
+      const fn = (...args) => {
+        this.io.clearTimeoutFn(timer);
+        ack.apply(this, args);
+      };
+      fn.withError = true;
+      this.acks[id] = fn;
+    }
+    emitWithAck(ev, ...args) {
+      return new Promise((resolve, reject) => {
+        const fn = (arg1, arg2) => {
+          return arg1 ? reject(arg1) : resolve(arg2);
+        };
+        fn.withError = true;
+        args.push(fn);
+        this.emit(ev, ...args);
+      });
+    }
+    _addToQueue(args) {
+      let ack;
+      if (typeof args[args.length - 1] === "function") {
+        ack = args.pop();
+      }
+      const packet = {
+        id: this._queueSeq++,
+        tryCount: 0,
+        pending: false,
+        args,
+        flags: Object.assign({ fromQueue: true }, this.flags)
+      };
+      args.push((err, ...responseArgs) => {
+        if (packet !== this._queue[0]) {
+          return debug9("packet [%d] already acknowledged", packet.id);
+        }
+        const hasError = err !== null;
+        if (hasError) {
+          if (packet.tryCount > this._opts.retries) {
+            debug9("packet [%d] is discarded after %d tries", packet.id, packet.tryCount);
+            this._queue.shift();
+            if (ack) {
+              ack(err);
+            }
+          }
+        } else {
+          debug9("packet [%d] was successfully sent", packet.id);
+          this._queue.shift();
+          if (ack) {
+            ack(null, ...responseArgs);
+          }
+        }
+        packet.pending = false;
+        return this._drainQueue();
+      });
+      this._queue.push(packet);
+      this._drainQueue();
+    }
+    _drainQueue(force = false) {
+      debug9("draining queue");
+      if (!this.connected || this._queue.length === 0) {
+        return;
+      }
+      const packet = this._queue[0];
+      if (packet.pending && !force) {
+        debug9("packet [%d] has already been sent and is waiting for an ack", packet.id);
+        return;
+      }
+      packet.pending = true;
+      packet.tryCount++;
+      debug9("sending packet [%d] (try n°%d)", packet.id, packet.tryCount);
+      this.flags = packet.flags;
+      this.emit.apply(this, packet.args);
+    }
+    packet(packet) {
+      packet.nsp = this.nsp;
+      this.io._packet(packet);
+    }
+    onopen() {
+      debug9("transport is open - connecting");
+      if (typeof this.auth == "function") {
+        this.auth((data) => {
+          this._sendConnectPacket(data);
+        });
+      } else {
+        this._sendConnectPacket(this.auth);
+      }
+    }
+    _sendConnectPacket(data) {
+      this.packet({
+        type: PacketType.CONNECT,
+        data: this._pid ? Object.assign({ pid: this._pid, offset: this._lastOffset }, data) : data
+      });
+    }
+    onerror(err) {
+      if (!this.connected) {
+        this.emitReserved("connect_error", err);
+      }
+    }
+    onclose(reason, description) {
+      debug9("close (%s)", reason);
+      this.connected = false;
+      delete this.id;
+      this.emitReserved("disconnect", reason, description);
+      this._clearAcks();
+    }
+    _clearAcks() {
+      Object.keys(this.acks).forEach((id) => {
+        const isBuffered = this.sendBuffer.some((packet) => String(packet.id) === id);
+        if (!isBuffered) {
+          const ack = this.acks[id];
+          delete this.acks[id];
+          if (ack.withError) {
+            ack.call(this, new Error("socket has been disconnected"));
+          }
+        }
+      });
+    }
+    onpacket(packet) {
+      const sameNamespace = packet.nsp === this.nsp;
+      if (!sameNamespace)
+        return;
+      switch (packet.type) {
+        case PacketType.CONNECT:
+          if (packet.data && packet.data.sid) {
+            this.onconnect(packet.data.sid, packet.data.pid);
+          } else {
+            this.emitReserved("connect_error", new Error("It seems you are trying to reach a Socket.IO server in v2.x with a v3.x client, but they are not compatible (more information here: https://socket.io/docs/v3/migrating-from-2-x-to-3-0/)"));
+          }
+          break;
+        case PacketType.EVENT:
+        case PacketType.BINARY_EVENT:
+          this.onevent(packet);
+          break;
+        case PacketType.ACK:
+        case PacketType.BINARY_ACK:
+          this.onack(packet);
+          break;
+        case PacketType.DISCONNECT:
+          this.ondisconnect();
+          break;
+        case PacketType.CONNECT_ERROR:
+          this.destroy();
+          const err = new Error(packet.data.message);
+          err.data = packet.data.data;
+          this.emitReserved("connect_error", err);
+          break;
+      }
+    }
+    onevent(packet) {
+      const args = packet.data || [];
+      debug9("emitting event %j", args);
+      if (packet.id != null) {
+        debug9("attaching ack callback to event");
+        args.push(this.ack(packet.id));
+      }
+      if (this.connected) {
+        this.emitEvent(args);
+      } else {
+        this.receiveBuffer.push(Object.freeze(args));
+      }
+    }
+    emitEvent(args) {
+      if (this._anyListeners && this._anyListeners.length) {
+        const listeners = this._anyListeners.slice();
+        for (const listener of listeners) {
+          listener.apply(this, args);
+        }
+      }
+      super.emit.apply(this, args);
+      if (this._pid && args.length && typeof args[args.length - 1] === "string") {
+        this._lastOffset = args[args.length - 1];
+      }
+    }
+    ack(id) {
+      const self2 = this;
+      let sent = false;
+      return function(...args) {
+        if (sent)
+          return;
+        sent = true;
+        debug9("sending ack %j", args);
+        self2.packet({
+          type: PacketType.ACK,
+          id,
+          data: args
+        });
+      };
+    }
+    onack(packet) {
+      const ack = this.acks[packet.id];
+      if (typeof ack !== "function") {
+        debug9("bad ack %s", packet.id);
+        return;
+      }
+      delete this.acks[packet.id];
+      debug9("calling ack %s with %j", packet.id, packet.data);
+      if (ack.withError) {
+        packet.data.unshift(null);
+      }
+      ack.apply(this, packet.data);
+    }
+    onconnect(id, pid2) {
+      debug9("socket connected with id %s", id);
+      this.id = id;
+      this.recovered = pid2 && this._pid === pid2;
+      this._pid = pid2;
+      this.connected = true;
+      this.emitBuffered();
+      this._drainQueue(true);
+      this.emitReserved("connect");
+    }
+    emitBuffered() {
+      this.receiveBuffer.forEach((args) => this.emitEvent(args));
+      this.receiveBuffer = [];
+      this.sendBuffer.forEach((packet) => {
+        this.notifyOutgoingListeners(packet);
+        this.packet(packet);
+      });
+      this.sendBuffer = [];
+    }
+    ondisconnect() {
+      debug9("server disconnect (%s)", this.nsp);
+      this.destroy();
+      this.onclose("io server disconnect");
+    }
+    destroy() {
+      if (this.subs) {
+        this.subs.forEach((subDestroy) => subDestroy());
+        this.subs = undefined;
+      }
+      this.io["_destroy"](this);
+    }
+    disconnect() {
+      if (this.connected) {
+        debug9("performing disconnect (%s)", this.nsp);
+        this.packet({ type: PacketType.DISCONNECT });
+      }
+      this.destroy();
+      if (this.connected) {
+        this.onclose("io client disconnect");
+      }
+      return this;
+    }
+    close() {
+      return this.disconnect();
+    }
+    compress(compress) {
+      this.flags.compress = compress;
+      return this;
+    }
+    get volatile() {
+      this.flags.volatile = true;
+      return this;
+    }
+    timeout(timeout) {
+      this.flags.timeout = timeout;
+      return this;
+    }
+    onAny(listener) {
+      this._anyListeners = this._anyListeners || [];
+      this._anyListeners.push(listener);
+      return this;
+    }
+    prependAny(listener) {
+      this._anyListeners = this._anyListeners || [];
+      this._anyListeners.unshift(listener);
+      return this;
+    }
+    offAny(listener) {
+      if (!this._anyListeners) {
+        return this;
+      }
+      if (listener) {
+        const listeners = this._anyListeners;
+        for (let i = 0;i < listeners.length; i++) {
+          if (listener === listeners[i]) {
+            listeners.splice(i, 1);
+            return this;
+          }
+        }
+      } else {
+        this._anyListeners = [];
+      }
+      return this;
+    }
+    listenersAny() {
+      return this._anyListeners || [];
+    }
+    onAnyOutgoing(listener) {
+      this._anyOutgoingListeners = this._anyOutgoingListeners || [];
+      this._anyOutgoingListeners.push(listener);
+      return this;
+    }
+    prependAnyOutgoing(listener) {
+      this._anyOutgoingListeners = this._anyOutgoingListeners || [];
+      this._anyOutgoingListeners.unshift(listener);
+      return this;
+    }
+    offAnyOutgoing(listener) {
+      if (!this._anyOutgoingListeners) {
+        return this;
+      }
+      if (listener) {
+        const listeners = this._anyOutgoingListeners;
+        for (let i = 0;i < listeners.length; i++) {
+          if (listener === listeners[i]) {
+            listeners.splice(i, 1);
+            return this;
+          }
+        }
+      } else {
+        this._anyOutgoingListeners = [];
+      }
+      return this;
+    }
+    listenersAnyOutgoing() {
+      return this._anyOutgoingListeners || [];
+    }
+    notifyOutgoingListeners(packet) {
+      if (this._anyOutgoingListeners && this._anyOutgoingListeners.length) {
+        const listeners = this._anyOutgoingListeners.slice();
+        for (const listener of listeners) {
+          listener.apply(this, packet.data);
+        }
+      }
+    }
+  };
+});
+
+// node_modules/socket.io-client/build/esm-debug/contrib/backo2.js
+function Backoff(opts) {
+  opts = opts || {};
+  this.ms = opts.min || 100;
+  this.max = opts.max || 1e4;
+  this.factor = opts.factor || 2;
+  this.jitter = opts.jitter > 0 && opts.jitter <= 1 ? opts.jitter : 0;
+  this.attempts = 0;
+}
+var init_backo2 = __esm(() => {
+  Backoff.prototype.duration = function() {
+    var ms = this.ms * Math.pow(this.factor, this.attempts++);
+    if (this.jitter) {
+      var rand = Math.random();
+      var deviation = Math.floor(rand * this.jitter * ms);
+      ms = (Math.floor(rand * 10) & 1) == 0 ? ms - deviation : ms + deviation;
+    }
+    return Math.min(ms, this.max) | 0;
+  };
+  Backoff.prototype.reset = function() {
+    this.attempts = 0;
+  };
+  Backoff.prototype.setMin = function(min) {
+    this.ms = min;
+  };
+  Backoff.prototype.setMax = function(max) {
+    this.max = max;
+  };
+  Backoff.prototype.setJitter = function(jitter) {
+    this.jitter = jitter;
+  };
+});
+
+// node_modules/socket.io-client/build/esm-debug/manager.js
+var import_debug10, debug10, Manager;
+var init_manager = __esm(() => {
+  init_esm_debug();
+  init_socket2();
+  init_esm_debug2();
+  init_backo2();
+  init_cjs();
+  import_debug10 = __toESM(require_src(), 1);
+  debug10 = import_debug10.default("socket.io-client:manager");
+  Manager = class Manager extends $Emitter {
+    constructor(uri, opts) {
+      var _a;
+      super();
+      this.nsps = {};
+      this.subs = [];
+      if (uri && typeof uri === "object") {
+        opts = uri;
+        uri = undefined;
+      }
+      opts = opts || {};
+      opts.path = opts.path || "/socket.io";
+      this.opts = opts;
+      installTimerFunctions(this, opts);
+      this.reconnection(opts.reconnection !== false);
+      this.reconnectionAttempts(opts.reconnectionAttempts || Infinity);
+      this.reconnectionDelay(opts.reconnectionDelay || 1000);
+      this.reconnectionDelayMax(opts.reconnectionDelayMax || 5000);
+      this.randomizationFactor((_a = opts.randomizationFactor) !== null && _a !== undefined ? _a : 0.5);
+      this.backoff = new Backoff({
+        min: this.reconnectionDelay(),
+        max: this.reconnectionDelayMax(),
+        jitter: this.randomizationFactor()
+      });
+      this.timeout(opts.timeout == null ? 20000 : opts.timeout);
+      this._readyState = "closed";
+      this.uri = uri;
+      const _parser = opts.parser || exports_esm_debug;
+      this.encoder = new _parser.Encoder;
+      this.decoder = new _parser.Decoder;
+      this._autoConnect = opts.autoConnect !== false;
+      if (this._autoConnect)
+        this.open();
+    }
+    reconnection(v) {
+      if (!arguments.length)
+        return this._reconnection;
+      this._reconnection = !!v;
+      if (!v) {
+        this.skipReconnect = true;
+      }
+      return this;
+    }
+    reconnectionAttempts(v) {
+      if (v === undefined)
+        return this._reconnectionAttempts;
+      this._reconnectionAttempts = v;
+      return this;
+    }
+    reconnectionDelay(v) {
+      var _a;
+      if (v === undefined)
+        return this._reconnectionDelay;
+      this._reconnectionDelay = v;
+      (_a = this.backoff) === null || _a === undefined || _a.setMin(v);
+      return this;
+    }
+    randomizationFactor(v) {
+      var _a;
+      if (v === undefined)
+        return this._randomizationFactor;
+      this._randomizationFactor = v;
+      (_a = this.backoff) === null || _a === undefined || _a.setJitter(v);
+      return this;
+    }
+    reconnectionDelayMax(v) {
+      var _a;
+      if (v === undefined)
+        return this._reconnectionDelayMax;
+      this._reconnectionDelayMax = v;
+      (_a = this.backoff) === null || _a === undefined || _a.setMax(v);
+      return this;
+    }
+    timeout(v) {
+      if (!arguments.length)
+        return this._timeout;
+      this._timeout = v;
+      return this;
+    }
+    maybeReconnectOnOpen() {
+      if (!this._reconnecting && this._reconnection && this.backoff.attempts === 0) {
+        this.reconnect();
+      }
+    }
+    open(fn) {
+      debug10("readyState %s", this._readyState);
+      if (~this._readyState.indexOf("open"))
+        return this;
+      debug10("opening %s", this.uri);
+      this.engine = new Socket(this.uri, this.opts);
+      const socket = this.engine;
+      const self2 = this;
+      this._readyState = "opening";
+      this.skipReconnect = false;
+      const openSubDestroy = on(socket, "open", function() {
+        self2.onopen();
+        fn && fn();
+      });
+      const onError = (err) => {
+        debug10("error");
+        this.cleanup();
+        this._readyState = "closed";
+        this.emitReserved("error", err);
+        if (fn) {
+          fn(err);
+        } else {
+          this.maybeReconnectOnOpen();
+        }
+      };
+      const errorSub = on(socket, "error", onError);
+      if (this._timeout !== false) {
+        const timeout = this._timeout;
+        debug10("connect attempt will timeout after %d", timeout);
+        const timer = this.setTimeoutFn(() => {
+          debug10("connect attempt timed out after %d", timeout);
+          openSubDestroy();
+          onError(new Error("timeout"));
+          socket.close();
+        }, timeout);
+        if (this.opts.autoUnref) {
+          timer.unref();
+        }
+        this.subs.push(() => {
+          this.clearTimeoutFn(timer);
+        });
+      }
+      this.subs.push(openSubDestroy);
+      this.subs.push(errorSub);
+      return this;
+    }
+    connect(fn) {
+      return this.open(fn);
+    }
+    onopen() {
+      debug10("open");
+      this.cleanup();
+      this._readyState = "open";
+      this.emitReserved("open");
+      const socket = this.engine;
+      this.subs.push(on(socket, "ping", this.onping.bind(this)), on(socket, "data", this.ondata.bind(this)), on(socket, "error", this.onerror.bind(this)), on(socket, "close", this.onclose.bind(this)), on(this.decoder, "decoded", this.ondecoded.bind(this)));
+    }
+    onping() {
+      this.emitReserved("ping");
+    }
+    ondata(data) {
+      try {
+        this.decoder.add(data);
+      } catch (e) {
+        this.onclose("parse error", e);
+      }
+    }
+    ondecoded(packet) {
+      nextTick(() => {
+        this.emitReserved("packet", packet);
+      }, this.setTimeoutFn);
+    }
+    onerror(err) {
+      debug10("error", err);
+      this.emitReserved("error", err);
+    }
+    socket(nsp, opts) {
+      let socket = this.nsps[nsp];
+      if (!socket) {
+        socket = new Socket2(this, nsp, opts);
+        this.nsps[nsp] = socket;
+      } else if (this._autoConnect && !socket.active) {
+        socket.connect();
+      }
+      return socket;
+    }
+    _destroy(socket) {
+      const nsps = Object.keys(this.nsps);
+      for (const nsp of nsps) {
+        const socket = this.nsps[nsp];
+        if (socket.active) {
+          debug10("socket %s is still active, skipping close", nsp);
+          return;
+        }
+      }
+      this._close();
+    }
+    _packet(packet) {
+      debug10("writing packet %j", packet);
+      const encodedPackets = this.encoder.encode(packet);
+      for (let i = 0;i < encodedPackets.length; i++) {
+        this.engine.write(encodedPackets[i], packet.options);
+      }
+    }
+    cleanup() {
+      debug10("cleanup");
+      this.subs.forEach((subDestroy) => subDestroy());
+      this.subs.length = 0;
+      this.decoder.destroy();
+    }
+    _close() {
+      debug10("disconnect");
+      this.skipReconnect = true;
+      this._reconnecting = false;
+      this.onclose("forced close");
+    }
+    disconnect() {
+      return this._close();
+    }
+    onclose(reason, description) {
+      var _a;
+      debug10("closed due to %s", reason);
+      this.cleanup();
+      (_a = this.engine) === null || _a === undefined || _a.close();
+      this.backoff.reset();
+      this._readyState = "closed";
+      this.emitReserved("close", reason, description);
+      if (this._reconnection && !this.skipReconnect) {
+        this.reconnect();
+      }
+    }
+    reconnect() {
+      if (this._reconnecting || this.skipReconnect)
+        return this;
+      const self2 = this;
+      if (this.backoff.attempts >= this._reconnectionAttempts) {
+        debug10("reconnect failed");
+        this.backoff.reset();
+        this.emitReserved("reconnect_failed");
+        this._reconnecting = false;
+      } else {
+        const delay = this.backoff.duration();
+        debug10("will wait %dms before reconnect attempt", delay);
+        this._reconnecting = true;
+        const timer = this.setTimeoutFn(() => {
+          if (self2.skipReconnect)
+            return;
+          debug10("attempting reconnect");
+          this.emitReserved("reconnect_attempt", self2.backoff.attempts);
+          if (self2.skipReconnect)
+            return;
+          self2.open((err) => {
+            if (err) {
+              debug10("reconnect attempt error");
+              self2._reconnecting = false;
+              self2.reconnect();
+              this.emitReserved("reconnect_error", err);
+            } else {
+              debug10("reconnect success");
+              self2.onreconnect();
+            }
+          });
+        }, delay);
+        if (this.opts.autoUnref) {
+          timer.unref();
+        }
+        this.subs.push(() => {
+          this.clearTimeoutFn(timer);
+        });
+      }
+    }
+    onreconnect() {
+      const attempt = this.backoff.attempts;
+      this._reconnecting = false;
+      this.backoff.reset();
+      this.emitReserved("reconnect", attempt);
+    }
+  };
+});
+
+// node_modules/socket.io-client/build/esm-debug/index.js
+function lookup(uri, opts) {
+  if (typeof uri === "object") {
+    opts = uri;
+    uri = undefined;
+  }
+  opts = opts || {};
+  const parsed = url2(uri, opts.path || "/socket.io");
+  const source = parsed.source;
+  const id = parsed.id;
+  const path = parsed.path;
+  const sameNamespace = cache[id] && path in cache[id]["nsps"];
+  const newConnection = opts.forceNew || opts["force new connection"] || opts.multiplex === false || sameNamespace;
+  let io;
+  if (newConnection) {
+    debug11("ignoring socket cache for %s", source);
+    io = new Manager(source, opts);
+  } else {
+    if (!cache[id]) {
+      debug11("new io instance for %s", source);
+      cache[id] = new Manager(source, opts);
+    }
+    io = cache[id];
+  }
+  if (parsed.query && !opts.query) {
+    opts.query = parsed.queryKey;
+  }
+  return io.socket(parsed.path, opts);
+}
+var import_debug11, debug11, cache;
+var init_esm_debug3 = __esm(() => {
+  init_url();
+  init_manager();
+  init_socket2();
+  init_esm_debug2();
+  init_esm_debug();
+  import_debug11 = __toESM(require_src(), 1);
+  debug11 = import_debug11.default("socket.io-client");
+  cache = {};
+  Object.assign(lookup, {
+    Manager,
+    Socket: Socket2,
+    io: lookup,
+    connect: lookup
+  });
+});
+
+// node_modules/@bsv/authsocket-client/dist/src/AuthSocketClient.js
+function decodeAuthSocketEventPayload(payload) {
+  try {
+    const str = toUTF8(payload);
+    const decoded = JSON.parse(str);
+    if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded) || typeof decoded.eventName !== "string")
+      return {
+        eventName: "_unknown",
+        data: undefined
+      };
+    return {
+      eventName: decoded.eventName,
+      data: decoded.data
+    };
+  } catch {
+    return {
+      eventName: "_unknown",
+      data: undefined
+    };
+  }
+}
+function AuthSocketClient(url, opts) {
+  const socket = lookup(url, opts.managerOptions);
+  const transport = new SocketClientTransport(socket, {
+    maxPendingMessages: opts.maxPendingAuthMessages,
+    onError: (error) => {
+      reportErrorSafely(opts.onError, error, {
+        phase: "authentication",
+        socketId: socket.id
+      });
+    }
+  });
+  return new AuthSocketClientImpl(socket, new Peer(opts.wallet, transport, opts.requestedCertificates, opts.sessionManager, undefined, opts.originator), (error, context) => {
+    reportErrorSafely(opts.onError, error, context);
+  });
+}
+function reportErrorSafely(handler, error, context) {
+  Promise.resolve().then(async () => await handler?.(error, context)).catch(() => {});
+}
+var AuthSocketClientImpl = class {
+  ioSocket;
+  peer;
+  onError;
+  connected = false;
+  id = "";
+  serverIdentityKey;
+  eventCallbacks = /* @__PURE__ */ new Map;
+  constructor(ioSocket, peer, onError = () => {}) {
+    this.ioSocket = ioSocket;
+    this.peer = peer;
+    this.onError = onError;
+    this.ioSocket.on("connect", () => {
+      this.connected = true;
+      this.id = this.ioSocket.id ?? "";
+      this.fireEventCallbacks("connect");
+    });
+    this.ioSocket.on("disconnect", (reason) => {
+      this.connected = false;
+      this.fireEventCallbacks("disconnect", reason);
+    });
+    this.peer.listenForGeneralMessages(async (senderKey, payload) => {
+      this.serverIdentityKey = senderKey;
+      const { eventName, data } = this.decodeEventPayload(payload);
+      await this.fireEventCallbacks(eventName, data);
+    });
+  }
+  on(eventName, callback) {
+    let arr = this.eventCallbacks.get(eventName);
+    if (arr === undefined) {
+      arr = [];
+      this.eventCallbacks.set(eventName, arr);
+    }
+    arr.push(callback);
+    return this;
+  }
+  emit(eventName, data) {
+    let encoded;
+    try {
+      encoded = this.encodeEventPayload(eventName, data);
+    } catch (error) {
+      this.reportError(error, {
+        phase: "send",
+        socketId: this.ioSocket.id ?? this.id,
+        eventName
+      });
+      return this;
+    }
+    this.peer.toPeer(encoded, this.serverIdentityKey).catch((err) => {
+      this.reportError(err, {
+        phase: "send",
+        socketId: this.ioSocket.id ?? this.id,
+        eventName
+      });
+    });
+    return this;
+  }
+  disconnect() {
+    this.serverIdentityKey = undefined;
+    this.ioSocket.disconnect();
+  }
+  async fireEventCallbacks(eventName, data) {
+    const cbs = this.eventCallbacks.get(eventName);
+    if (cbs === undefined)
+      return;
+    try {
+      for (const cb of cbs) {
+        const result = cb(data);
+        if (result != null && typeof result.then === "function")
+          await result;
+      }
+    } catch (error) {
+      this.reportError(error, {
+        phase: "application",
+        socketId: this.ioSocket.id ?? this.id,
+        eventName
+      });
+      if (eventName !== "disconnect")
+        this.disconnectSafely();
+    }
+  }
+  encodeEventPayload(eventName, data) {
+    const obj = {
+      eventName,
+      data
+    };
+    return toArray2(stringifyBRC100(obj), "utf8");
+  }
+  decodeEventPayload(payload) {
+    return decodeAuthSocketEventPayload(payload);
+  }
+  reportError(error, context) {
+    Promise.resolve().then(async () => await this.onError(error, context)).catch(() => {});
+  }
+  disconnectSafely() {
+    try {
+      this.ioSocket.disconnect();
+    } catch {}
+  }
+};
+var init_AuthSocketClient = __esm(() => {
+  init_SocketClientTransport();
+  init_esm_debug3();
+  init_mod();
+});
+
+// node_modules/@bsv/authsocket-client/dist/mod.js
+var init_mod2 = __esm(() => {
+  init_AuthSocketClient();
+});
+
+// node_modules/@bsv/message-box-client/dist/src/MessageBoxClient.js
+function buildBatchSendResult(sentCount, allowedCount, blockedCount) {
+  if (sentCount === allowedCount)
+    return {
+      status: "success",
+      description: `Sent to ${sentCount} recipients.`
+    };
+  if (sentCount > 0)
+    return {
+      status: "partial",
+      description: `Sent to ${sentCount} recipients; ${allowedCount - sentCount} failed; ${blockedCount} blocked.`
+    };
+  return {
+    status: "error",
+    description: `Failed to send to ${allowedCount} allowed recipients. ${blockedCount} blocked.`
+  };
+}
+function assertBatchSendParams(params) {
+  if (!Array.isArray(params.recipients) || params.recipients.length === 0)
+    throw new Error("You must provide at least one recipient!");
+  if (params.recipients.length > 100)
+    throw new Error("A batch may include at most 100 recipients.");
+  if (!params.messageBox || params.messageBox.trim() === "")
+    throw new Error("You must provide a messageBox to send this message into!");
+  if (params.body == null || typeof params.body === "string" && params.body.trim().length === 0)
+    throw new Error("Every message must have a body!");
+  if (params.skipEncryption !== true)
+    throw new Error("A shared multi-recipient batch cannot be encrypted per recipient. Set skipEncryption: true explicitly or send encrypted messages individually.");
+}
+function buildRecipientQuoteMap(quotes) {
+  return new Map(quotes.map((quote) => [quote.recipient, {
+    recipientFee: quote.recipientFee,
+    deliveryFee: quote.deliveryFee
+  }]));
+}
+function selectDeliveryAgentIdentityKey(identityKeysByHost, finalHost, hasOverrideHost) {
+  const entries = Object.entries(identityKeysByHost ?? {});
+  if (entries.length === 0)
+    throw new Error("Missing delivery agent identity keys in quote response.");
+  if (entries.length > 1 && !hasOverrideHost)
+    throw new Error("Recipients resolve to multiple hosts. Use overrideHost to force a single server or split by host.");
+  const identityKey = identityKeysByHost?.[finalHost] ?? entries[0][1];
+  if (!identityKey)
+    throw new Error("Could not determine server delivery agent identity key.");
+  return identityKey;
+}
+var DEFAULT_MAINNET_HOST = "https://message-box-us-1.bsvb.tech", DEFAULT_TESTNET_HOST, MessageBoxClient = class MessageBoxClient {
+  host;
+  authFetch;
+  walletClient;
+  socket;
+  myIdentityKey;
+  joinedRooms = /* @__PURE__ */ new Set;
+  lookupResolver;
+  networkPreset;
+  initialized = false;
+  socketAuthenticated = false;
+  connectionInitPromise;
+  originator;
+  constructor(options = {}) {
+    const { host, walletClient, enableLogging = false, networkPreset = "mainnet", originator = undefined } = options;
+    if (networkPreset === "teratestnet" && host == null)
+      throw new Error("MessageBoxClient requires an explicit host for TerraTestNet until a dedicated TTN Message Box deployment is available.");
+    let defaultHost = DEFAULT_MAINNET_HOST;
+    if (networkPreset === "testnet")
+      defaultHost = DEFAULT_TESTNET_HOST;
+    this.host = normalizeMessageBoxHost(host ?? defaultHost);
+    this.originator = originator;
+    this.walletClient = walletClient ?? new WalletClient("auto", originator);
+    this.authFetch = new AuthFetch(this.walletClient, undefined, undefined, originator);
+    this.networkPreset = networkPreset;
+    this.lookupResolver = new LookupResolver({ networkPreset });
+    if (enableLogging)
+      enable();
+  }
+  async init(targetHost = this.host) {
+    let normalizedHost;
+    try {
+      normalizedHost = normalizeMessageBoxHost(targetHost);
+    } catch (error) {
+      throw new Error(`Cannot initialize: ${error instanceof Error ? error.message : "No valid host provided"}`);
+    }
+    if (normalizedHost !== this.host) {
+      this.initialized = false;
+      this.host = normalizedHost;
+    }
+    if (this.initialized)
+      return;
+    await this.getIdentityKey();
+    this.initialized = true;
+  }
+  async assertInitialized() {
+    if (!this.initialized || this.host == null || this.host.trim() === "")
+      await this.init();
+  }
+  getJoinedRooms() {
+    return this.joinedRooms;
+  }
+  async getIdentityKey() {
+    if (this.myIdentityKey != null && this.myIdentityKey.trim() !== "")
+      return this.myIdentityKey;
+    log("[MB CLIENT] Fetching identity key...");
+    try {
+      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
+      this.myIdentityKey = keyResult.publicKey;
+      log(`[MB CLIENT] Identity key fetched: ${this.myIdentityKey}`);
+      return this.myIdentityKey;
+    } catch (error$1) {
+      error2("[MB CLIENT ERROR] Failed to fetch identity key:", error$1);
+      throw new Error("Identity key retrieval failed");
+    }
+  }
+  get testSocket() {
+    return this.socket;
+  }
+  async initializeConnection(overrideHost) {
+    log("[MB CLIENT] initializeConnection() STARTED");
+    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
+      await this.getIdentityKey();
+    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "") {
+      error2("[MB CLIENT ERROR] Identity key is still missing after retrieval!");
+      throw new Error("Identity key is missing");
+    }
+    log("[MB CLIENT] Setting up WebSocket connection...");
+    if (this.socketAuthenticated && this.socket != null)
+      return;
+    if (this.connectionInitPromise != null) {
+      await this.connectionInitPromise;
+      return;
+    }
+    if (this.socket == null) {
+      const targetHost = normalizeMessageBoxHost(overrideHost ?? this.host);
+      this.socket = AuthSocketClient(targetHost, {
+        wallet: this.walletClient,
+        originator: this.originator
+      });
+      this.socket.on("connect", () => {
+        log("[MB CLIENT] Connected to WebSocket.");
+        log("[MB CLIENT] Sending authentication data:", this.myIdentityKey);
+        if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
+          error2("[MB CLIENT ERROR] Cannot send authentication: Identity key is missing!");
+        else
+          this.socket?.emit("authenticated", { identityKey: this.myIdentityKey });
+      });
+      this.socket.on("authenticationSuccess", (data) => {
+        log(`[MB CLIENT] WebSocket authentication successful: ${stringifyBRC100(data)}`);
+        this.socketAuthenticated = true;
+      });
+      this.socket.on("authenticationFailed", (data) => {
+        error2(`[MB CLIENT ERROR] WebSocket authentication failed: ${stringifyBRC100(data)}`);
+        this.socketAuthenticated = false;
+      });
+      this.socket.on("disconnect", () => {
+        log("[MB CLIENT] Disconnected from MessageBox server");
+        this.socket = undefined;
+        this.socketAuthenticated = false;
+      });
+      this.socket.on("error", (error$4) => {
+        error2("[MB CLIENT ERROR] WebSocket error:", error$4);
+      });
+    }
+    if (this.socket?.connected && !this.socketAuthenticated)
+      this.socket.emit("authenticated", { identityKey: this.myIdentityKey });
+    this.connectionInitPromise = new Promise((resolve, reject) => {
+      const socketAny = this.socket;
+      let settled = false;
+      let timeoutId;
+      const finalizeResolve = () => {
+        if (settled)
+          return;
+        settled = true;
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        if (typeof socketAny?.off === "function") {
+          socketAny.off("authenticationSuccess", onSuccess);
+          socketAny.off("authenticationFailed", onFailed);
+          socketAny.off("disconnect", onDisconnectBeforeAuth);
+        }
+        this.connectionInitPromise = undefined;
+        log("[MB CLIENT] WebSocket fully authenticated and ready!");
+        resolve();
+      };
+      const finalizeReject = (error) => {
+        if (settled)
+          return;
+        settled = true;
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        if (typeof socketAny?.off === "function") {
+          socketAny.off("authenticationSuccess", onSuccess);
+          socketAny.off("authenticationFailed", onFailed);
+          socketAny.off("disconnect", onDisconnectBeforeAuth);
+        }
+        this.connectionInitPromise = undefined;
+        reject(error);
+      };
+      const onSuccess = () => {
+        this.socketAuthenticated = true;
+        finalizeResolve();
+      };
+      const onFailed = () => {
+        this.socketAuthenticated = false;
+        finalizeReject(/* @__PURE__ */ new Error("[MB CLIENT ERROR] WebSocket authentication failed!"));
+      };
+      const onDisconnectBeforeAuth = () => {
+        this.socketAuthenticated = false;
+      };
+      if (this.socketAuthenticated) {
+        finalizeResolve();
+        return;
+      }
+      socketAny?.on("authenticationSuccess", onSuccess);
+      socketAny?.on("authenticationFailed", onFailed);
+      socketAny?.on("disconnect", onDisconnectBeforeAuth);
+      timeoutId = setTimeout(() => {
+        if (this.socketAuthenticated)
+          finalizeResolve();
+        else
+          finalizeReject(/* @__PURE__ */ new Error("[MB CLIENT ERROR] WebSocket authentication timed out!"));
+      }, 5000);
+    });
+    await this.connectionInitPromise;
+  }
+  async resolveHostForRecipient(identityKey) {
+    const advertisementTokens = await this.queryAdvertisements(identityKey);
+    if (advertisementTokens.length === 0) {
+      warn(`[MB CLIENT] No advertisements for ${identityKey}, using default host ${this.host}`);
+      return this.host;
+    }
+    return advertisementTokens[0].host;
+  }
+  async queryAdvertisements(identityKey, host) {
+    const hosts = [];
+    try {
+      const query = { identityKey: identityKey ?? await this.getIdentityKey() };
+      if (host != null && host.trim() !== "")
+        query.host = host;
+      const result = await this.lookupResolver.query({
+        service: "ls_messagebox",
+        query
+      });
+      if (result.type !== "output-list")
+        throw new Error(`Unexpected result type: ${String(result.type)}`);
+      for (const output of result.outputs)
+        try {
+          const tx = Transaction.fromBEEF(output.beef);
+          const script = tx.outputs[output.outputIndex].lockingScript;
+          const [, hostBuf] = PushDrop.decode(script).fields;
+          if (hostBuf == null || hostBuf.length === 0)
+            throw new Error("Empty host field");
+          hosts.push({
+            host: toUTF8(hostBuf),
+            txid: tx.id("hex"),
+            outputIndex: output.outputIndex,
+            lockingScript: script,
+            beef: output.beef
+          });
+        } catch {}
+    } catch (err) {
+      error2("[MB CLIENT ERROR] _queryAdvertisements failed:", err);
+    }
+    return hosts.flatMap((item) => {
+      const normalizedHost = normalizeOverlayMessageBoxHost(item.host);
+      return normalizedHost == null ? [] : [{
+        ...item,
+        host: normalizedHost
+      }];
+    });
+  }
+  async joinRoom(messageBox, overrideHost) {
+    log(`[MB CLIENT] Attempting to join WebSocket room: ${messageBox}`);
+    if (this.socket == null) {
+      log("[MB CLIENT] No WebSocket connection. Initializing...");
+      await this.initializeConnection(overrideHost);
+    }
+    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
+      throw new Error("[MB CLIENT ERROR] Identity key is not defined");
+    const roomId = `${this.myIdentityKey ?? ""}-${messageBox}`;
+    if (this.joinedRooms.has(roomId)) {
+      log(`[MB CLIENT] Already joined WebSocket room: ${roomId}`);
+      return;
+    }
+    try {
+      log(`[MB CLIENT] Joining WebSocket room: ${roomId}`);
+      this.socket?.emit("joinRoom", roomId);
+      this.joinedRooms.add(roomId);
+      log(`[MB CLIENT] Successfully joined room: ${roomId}`);
+    } catch (error$2) {
+      error2(`[MB CLIENT ERROR] Failed to join WebSocket room: ${roomId}`, error$2);
+    }
+  }
+  async listenForLiveMessages({ onMessage, messageBox, overrideHost }) {
+    log(`[MB CLIENT] Setting up listener for WebSocket room: ${messageBox}`);
+    if (this.socket == null) {
+      log("[MB CLIENT] No WebSocket connection. Initializing...");
+      await this.initializeConnection(overrideHost);
+    }
+    await this.joinRoom(messageBox, overrideHost);
+    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
+      throw new Error("[MB CLIENT ERROR] Identity key is missing. Cannot construct room ID.");
+    const roomId = `${this.myIdentityKey}-${messageBox}`;
+    log(`[MB CLIENT] Listening for messages in room: ${roomId}`);
+    this.socket?.on(`sendMessage-${roomId}`, (message) => {
+      (async () => {
+        log(`[MB CLIENT] Received message in room ${roomId}:`, message);
+        try {
+          let parsedBody = message.body;
+          if (typeof parsedBody === "string")
+            try {
+              parsedBody = JSON.parse(parsedBody);
+            } catch {}
+          if (parsedBody != null && typeof parsedBody === "object" && typeof parsedBody.encryptedMessage === "string") {
+            log(`[MB CLIENT] Decrypting message from ${String(message.sender)}...`);
+            const decrypted = await this.walletClient.decrypt({
+              protocolID: [1, "messagebox"],
+              keyID: "1",
+              counterparty: message.sender,
+              ciphertext: toArray2(parsedBody.encryptedMessage, "base64")
+            }, this.originator);
+            message.body = toUTF8(decrypted.plaintext);
+          } else {
+            log("[MB CLIENT] Message is not encrypted.");
+            message.body = typeof parsedBody === "string" ? parsedBody : (() => {
+              try {
+                return stringifyBRC100(parsedBody);
+              } catch {
+                return "[Error: Unstringifiable message]";
+              }
+            })();
+          }
+        } catch (err) {
+          error2("[MB CLIENT ERROR] Failed to parse or decrypt live message:", err);
+          message.body = "[Error: Failed to decrypt or parse message]";
+        }
+        onMessage(message);
+      })();
+    });
+  }
+  async sendLiveMessage({ recipient, messageBox, body, messageId, skipEncryption, checkPermissions }, overrideHost) {
+    if (recipient == null || recipient.trim() === "")
+      throw new Error("[MB CLIENT ERROR] Recipient identity key is required");
+    if (messageBox == null || messageBox.trim() === "")
+      throw new Error("[MB CLIENT ERROR] MessageBox is required");
+    if (body == null || typeof body === "string" && body.trim() === "")
+      throw new Error("[MB CLIENT ERROR] Message body cannot be empty");
+    await this.joinRoom(messageBox, overrideHost);
+    if (!this.socket?.connected) {
+      warn("[MB CLIENT WARNING] WebSocket not connected, falling back to HTTP");
+      return await this.sendMessage({
+        recipient,
+        messageBox,
+        body,
+        messageId,
+        skipEncryption,
+        checkPermissions
+      }, overrideHost);
+    }
+    let finalMessageId;
+    try {
+      const hmac = await this.walletClient.createHmac({
+        data: Array.from(new TextEncoder().encode(stringifyBRC100(body))),
+        protocolID: [1, "messagebox"],
+        keyID: "1",
+        counterparty: recipient
+      }, this.originator);
+      finalMessageId = messageId ?? Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (error$7) {
+      error2("[MB CLIENT ERROR] Failed to generate HMAC:", error$7);
+      throw new Error("Failed to generate message identifier.");
+    }
+    const roomId = `${recipient}-${messageBox}`;
+    log(`[MB CLIENT] Sending WebSocket message to room: ${roomId}`);
+    let outgoingBody;
+    if (skipEncryption === true)
+      outgoingBody = typeof body === "string" ? body : stringifyBRC100(body);
+    else {
+      const encryptedMessage = await this.walletClient.encrypt({
+        protocolID: [1, "messagebox"],
+        keyID: "1",
+        counterparty: recipient,
+        plaintext: toArray2(typeof body === "string" ? body : stringifyBRC100(body), "utf8")
+      }, this.originator);
+      outgoingBody = stringifyBRC100({ encryptedMessage: toBase64(encryptedMessage.ciphertext) });
+    }
+    return await new Promise((resolve, reject) => {
+      const ackEvent = `sendMessageAck-${roomId}`;
+      let handled = false;
+      let timeoutId;
+      const ackHandler = (response) => {
+        if (handled)
+          return;
+        handled = true;
+        if (timeoutId != null) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+        const socketAny = this.socket;
+        if (typeof socketAny?.off === "function")
+          socketAny.off(ackEvent, ackHandler);
+        log("[MB CLIENT] Received WebSocket acknowledgment:", response);
+        if (response?.status !== "success") {
+          warn("[MB CLIENT] WebSocket message failed or returned unexpected response. Falling back to HTTP.");
+          const fallbackMessage = {
+            recipient,
+            messageBox,
+            body,
+            messageId: finalMessageId,
+            skipEncryption,
+            checkPermissions
+          };
+          this.sendMessage(fallbackMessage, overrideHost).then(resolve).catch(reject);
+        } else {
+          log("[MB CLIENT] Message sent successfully via WebSocket:", response);
+          resolve(response);
+        }
+      };
+      this.socket?.on(ackEvent, ackHandler);
+      this.socket?.emit("sendMessage", {
+        roomId,
+        message: {
+          messageId: finalMessageId,
+          recipient,
+          body: outgoingBody
+        }
+      });
+      timeoutId = setTimeout(() => {
+        if (!handled) {
+          handled = true;
+          timeoutId = undefined;
+          const socketAny = this.socket;
+          if (typeof socketAny?.off === "function")
+            socketAny.off(ackEvent, ackHandler);
+          warn("[CLIENT] WebSocket acknowledgment timed out, falling back to HTTP");
+          const fallbackMessage = {
+            recipient,
+            messageBox,
+            body,
+            messageId: finalMessageId,
+            skipEncryption,
+            checkPermissions
+          };
+          this.sendMessage(fallbackMessage, overrideHost).then(resolve).catch(reject);
+        }
+      }, 1e4);
+    });
+  }
+  async leaveRoom(messageBox) {
+    await this.assertInitialized();
+    if (this.socket == null) {
+      warn("[MB CLIENT] Attempted to leave a room but WebSocket is not connected.");
+      return;
+    }
+    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
+      throw new Error("[MB CLIENT ERROR] Identity key is not defined");
+    const roomId = `${this.myIdentityKey}-${messageBox}`;
+    log(`[MB CLIENT] Leaving WebSocket room: ${roomId}`);
+    this.socket.emit("leaveRoom", roomId);
+    this.joinedRooms.delete(roomId);
+  }
+  async disconnectWebSocket() {
+    await this.assertInitialized();
+    if (this.socket == null)
+      log("[MB CLIENT] No active WebSocket connection to close.");
+    else {
+      log("[MB CLIENT] Closing WebSocket connection...");
+      this.socket.disconnect();
+      this.socket = undefined;
+    }
+  }
+  async sendMessage(message, overrideHost) {
+    await this.assertInitialized();
+    this.validateSendMessageParams(message);
+    const paymentData = await this.resolveMessagePayment(message, overrideHost);
+    const messageId = await this.generateMessageId(message);
+    const finalBody = await this.encodeMessageBody(message);
+    const requestBody = {
+      message: {
+        ...message,
+        messageId,
+        body: finalBody
+      },
+      ...paymentData != null && { payment: paymentData }
+    };
+    try {
+      const sendUrl = messageBoxEndpoint(normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(message.recipient)), "/sendMessage");
+      log("[MB CLIENT] Sending HTTP request to:", sendUrl);
+      log("[MB CLIENT] Request Body:", stringifyBRC100(requestBody, 2));
+      await this.ensureIdentityKey();
+      const response = await this.authFetch.fetch(sendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: stringifyBRC100(requestBody)
+      });
+      if (response.bodyUsed)
+        throw new Error("[MB CLIENT ERROR] Response body has already been used!");
+      const parsedResponse = await response.json();
+      log("[MB CLIENT] Raw Response Body:", parsedResponse);
+      if (!response.ok) {
+        error2(`[MB CLIENT ERROR] Failed to send message. HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`Message sending failed: HTTP ${response.status} - ${response.statusText}`);
+      }
+      if (parsedResponse.status !== "success") {
+        error2(`[MB CLIENT ERROR] Server returned an error: ${String(parsedResponse.description)}`);
+        throw new Error(parsedResponse.description ?? "Unknown error from server.");
+      }
+      log("[MB CLIENT] Message successfully sent.");
+      return {
+        ...parsedResponse,
+        messageId
+      };
+    } catch (error$6) {
+      error2("[MB CLIENT ERROR] Network or timeout error:", error$6);
+      const errorMessage = error$6 instanceof Error ? error$6.message : "Unknown error";
+      throw new Error(`Failed to send message: ${errorMessage}`);
+    }
+  }
+  validateSendMessageParams(message) {
+    if (message.recipient == null || message.recipient.trim() === "")
+      throw new Error("You must provide a message recipient!");
+    if (message.messageBox == null || message.messageBox.trim() === "")
+      throw new Error("You must provide a messageBox to send this message into!");
+    if (message.body == null || typeof message.body === "string" && message.body.trim().length === 0)
+      throw new Error("Every message must have a body!");
+  }
+  async resolveMessagePayment(message, overrideHost) {
+    if (message.checkPermissions !== true)
+      return;
+    try {
+      log("[MB CLIENT] Checking permissions and fees for message...");
+      const quote = await this.getMessageBoxQuote({
+        recipient: message.recipient,
+        messageBox: message.messageBox
+      }, overrideHost);
+      if (quote.recipientFee === -1)
+        throw new Error("You have been blocked from sending messages to this recipient.");
+      if (quote.recipientFee <= 0 && quote.deliveryFee <= 0)
+        return;
+      const requiredPayment = quote.recipientFee + quote.deliveryFee;
+      if (requiredPayment <= 0)
+        return;
+      log(`[MB CLIENT] Creating payment of ${requiredPayment} sats for message...`);
+      const paymentData = await this.createMessagePayment(message.recipient, quote, overrideHost);
+      log("[MB CLIENT] Payment data prepared:", paymentData);
+      return paymentData;
+    } catch (error) {
+      throw new Error(`Permission check failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+  async generateMessageId(message) {
+    try {
+      const hmac = await this.walletClient.createHmac({
+        data: Array.from(new TextEncoder().encode(stringifyBRC100(message.body))),
+        protocolID: [1, "messagebox"],
+        keyID: "1",
+        counterparty: message.recipient
+      }, this.originator);
+      return message.messageId ?? Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (error$3) {
+      error2("[MB CLIENT ERROR] Failed to generate HMAC:", error$3);
+      throw new Error("Failed to generate message identifier.");
+    }
+  }
+  async encodeMessageBody(message) {
+    const bodyStr = typeof message.body === "string" ? message.body : stringifyBRC100(message.body);
+    if (message.skipEncryption === true)
+      return bodyStr;
+    const encryptedMessage = await this.walletClient.encrypt({
+      protocolID: [1, "messagebox"],
+      keyID: "1",
+      counterparty: message.recipient,
+      plaintext: toArray2(bodyStr, "utf8")
+    }, this.originator);
+    return stringifyBRC100({ encryptedMessage: toBase64(encryptedMessage.ciphertext) });
+  }
+  async ensureIdentityKey() {
+    if (this.myIdentityKey != null && this.myIdentityKey !== "")
+      return;
+    try {
+      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
+      this.myIdentityKey = keyResult.publicKey;
+      log(`[MB CLIENT] Fetched identity key before sending request: ${this.myIdentityKey}`);
+    } catch (error$5) {
+      error2("[MB CLIENT ERROR] Failed to fetch identity key:", error$5);
+      throw new Error("Identity key retrieval failed");
+    }
+  }
+  parseMessageEnvelope(message) {
+    const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
+    let messageContent = parsedBody;
+    let paymentData;
+    if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody) {
+      const wrappedMessage = parsedBody.message;
+      messageContent = typeof wrappedMessage === "string" ? this.tryParse(wrappedMessage) : wrappedMessage;
+      paymentData = parsedBody.payment;
+    }
+    return {
+      message,
+      parsedBody,
+      messageContent,
+      paymentData
+    };
+  }
+  async internalizeRecipientPayment(p) {
+    try {
+      log(`[MB CLIENT] Processing recipient payment in message from ${String(p.message.sender)}…`);
+      const recipientOutputs = p.paymentData.outputs.filter((output) => output.protocol === "wallet payment");
+      if (recipientOutputs.length === 0) {
+        log("[MB CLIENT] No wallet payment outputs found in payment data");
+        return;
+      }
+      log(`[MB CLIENT] Internalizing ${recipientOutputs.length} recipient payment output(s)…`);
+      const tx = normalizeBRC100ByteArray(p.paymentData.tx);
+      if (tx == null || tx.length === 0)
+        throw new Error("Message payment transaction must be a non-empty BRC-100 byte array");
+      if ((await this.walletClient.internalizeAction({
+        tx,
+        outputs: recipientOutputs,
+        description: p.paymentData.description ?? "MessageBox recipient payment"
+      }, this.originator)).accepted)
+        log("[MB CLIENT] Successfully internalized recipient payment");
+      else
+        warn("[MB CLIENT] Recipient payment internalization was not accepted");
+    } catch (paymentError) {
+      error2("[MB CLIENT ERROR] Failed to internalize recipient payment:", paymentError);
+    }
+  }
+  async decryptMessageBody(p) {
+    try {
+      if (p.messageContent != null && typeof p.messageContent === "object" && typeof p.messageContent.encryptedMessage === "string") {
+        log(`[MB CLIENT] Decrypting message from ${String(p.message.sender)}…`);
+        const decrypted = await this.walletClient.decrypt({
+          protocolID: [1, "messagebox"],
+          keyID: "1",
+          counterparty: p.message.sender,
+          ciphertext: toArray2(p.messageContent.encryptedMessage, "base64")
+        }, this.originator);
+        p.message.body = this.tryParse(toUTF8(decrypted.plaintext));
+      } else
+        p.message.body = p.messageContent ?? p.parsedBody;
+    } catch (err) {
+      error2("[MB CLIENT ERROR] Failed to parse or decrypt message in list:", err);
+      p.message.body = "[Error: Failed to decrypt or parse message]";
+    }
+  }
+  async sendMesagetoRecepients(params, overrideHost) {
+    return this.sendMessageToRecipients(params, overrideHost);
+  }
+  async sendMessageToRecipients(params, overrideHost) {
+    await this.assertInitialized();
+    assertBatchSendParams(params);
+    const { recipients, messageBox, body } = params;
+    const quoteResponse = await this.getMessageBoxQuote({
+      recipient: recipients,
+      messageBox
+    }, overrideHost);
+    const quotesByRecipient = Array.isArray(quoteResponse?.quotesByRecipient) ? quoteResponse.quotesByRecipient : [];
+    const blocked = quoteResponse?.blockedRecipients ?? [];
+    const totals = quoteResponse?.totals;
+    const allowedRecipients = recipients.filter((r) => !blocked.includes(r));
+    if (allowedRecipients.length === 0)
+      return {
+        status: "error",
+        description: `All ${recipients.length} recipients are blocked.`,
+        sent: [],
+        blocked,
+        failed: recipients.map((r) => ({
+          recipient: r,
+          error: "blocked"
+        })),
+        totals
+      };
+    const perRecipientQuotes = buildRecipientQuoteMap(quotesByRecipient);
+    const { deliveryAgentIdentityKeyByHost } = quoteResponse;
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(allowedRecipients[0]));
+    const singleDeliveryKey = selectDeliveryAgentIdentityKey(deliveryAgentIdentityKeyByHost, finalHost, overrideHost != null);
+    if (!this.myIdentityKey) {
+      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
+      this.myIdentityKey = keyResult.publicKey;
+    }
+    const bodyBytes = Array.from(new TextEncoder().encode(stringifyBRC100(body)));
+    const messageIds = await this.mapWithConcurrency(allowedRecipients, 8, async (r) => {
+      const hmac = await this.walletClient.createHmac({
+        data: bodyBytes,
+        protocolID: [1, "messagebox"],
+        keyID: "1",
+        counterparty: r
+      }, this.originator);
+      return Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
+    });
+    const finalBody = typeof body === "string" ? body : stringifyBRC100(body);
+    const paymentData = await this.createMessagePaymentBatch(allowedRecipients, perRecipientQuotes, singleDeliveryKey);
+    const requestBody = {
+      message: {
+        recipients: allowedRecipients,
+        messageBox,
+        messageId: messageIds,
+        body: finalBody
+      },
+      payment: paymentData
+    };
+    const sendUrl = messageBoxEndpoint(finalHost, "/sendMessage");
+    log("[MB CLIENT] Sending HTTP request to:", sendUrl);
+    log("[MB CLIENT] Request Body (batch):", stringifyBRC100({
+      ...requestBody,
+      payment: {
+        ...paymentData,
+        tx: "<omitted>"
+      }
+    }, 2));
+    try {
+      const response = await this.authFetch.fetch(sendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: stringifyBRC100(requestBody)
+      });
+      const parsed = await response.json().catch(() => ({}));
+      if (!response.ok || parsed.status !== "success") {
+        const msg = response.ok ? parsed.description ?? "Unknown server error" : `HTTP ${response.status} - ${response.statusText}`;
+        throw new Error(msg);
+      }
+      const sent = Array.isArray(parsed.results) ? parsed.results : [];
+      const failed = [];
+      const { status, description } = buildBatchSendResult(sent.length, allowedRecipients.length, blocked.length);
+      return {
+        status,
+        description,
+        sent,
+        blocked,
+        failed,
+        totals
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      return {
+        status: "error",
+        description: `Batch send failed: ${msg}`,
+        sent: [],
+        blocked,
+        failed: allowedRecipients.map((r) => ({
+          recipient: r,
+          error: msg
+        })),
+        totals
+      };
+    }
+  }
+  async anointHost(host) {
+    log("[MB CLIENT] Starting anointHost...");
+    host = normalizeMessageBoxHost(host);
+    const identityKey = await this.getIdentityKey();
+    const overlayTokens = await this.queryAdvertisements(identityKey);
+    log(`[MB CLIENT] Found ${overlayTokens.length} existing advertisement(s) on overlay`);
+    const basketResult = await this.walletClient.listOutputs({
+      basket: "overlay advertisements",
+      limit: 1e4
+    }, this.originator);
+    const spendableOutpoints = new Set(basketResult.outputs.filter((o) => o.spendable).map((o) => o.outpoint));
+    const tokensToSpend = overlayTokens.filter((t) => spendableOutpoints.has(`${t.txid}.${t.outputIndex}`));
+    const skipped = overlayTokens.length - tokensToSpend.length;
+    if (skipped > 0)
+      log(`[MB CLIENT] Skipping ${skipped} overlay token(s) not in spendable wallet basket`);
+    log(`[MB CLIENT] Revoking ${tokensToSpend.length} spendable token(s) in combined tx`);
+    const fields = [toArray2(identityKey, "hex"), toArray2(host, "utf8")];
+    const pushdrop = new PushDrop(this.walletClient, this.originator);
+    const script = await pushdrop.lock(fields, [1, "messagebox advertisement"], "1", "anyone", true);
+    log("[MB CLIENT] PushDrop script:", script.toASM());
+    try {
+      let inputBEEF;
+      if (tokensToSpend.length > 0) {
+        const mergedBeef = Beef.fromBinary(tokensToSpend[0].beef);
+        for (let i = 1;i < tokensToSpend.length; i++)
+          mergedBeef.mergeBeef(Beef.fromBinary(tokensToSpend[i].beef));
+        inputBEEF = mergedBeef.toBinary();
+      }
+      const { signableTransaction, tx: directTx, txid: directTxid } = await this.walletClient.createAction({
+        description: "Anoint host for overlay routing",
+        ...inputBEEF !== undefined && {
+          inputBEEF,
+          inputs: tokensToSpend.map((token) => ({
+            outpoint: `${token.txid}.${token.outputIndex}`,
+            unlockingScriptLength: 73,
+            inputDescription: `Revoking advertisement for ${token.host}`
+          }))
+        },
+        outputs: [{
+          basket: "overlay advertisements",
+          lockingScript: script.toHex(),
+          satoshis: 1,
+          outputDescription: "Overlay advertisement output"
+        }],
+        options: {
+          randomizeOutputs: false,
+          acceptDelayedBroadcast: false
+        }
+      }, this.originator);
+      if (signableTransaction === undefined) {
+        if (directTx === undefined)
+          throw new Error("Anoint failed: no transaction returned");
+        log("[MB CLIENT] Transaction created (no inputs to sign):", directTxid);
+        const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(directTx));
+        log("[MB CLIENT] Advertisement broadcast succeeded. TXID:", result.txid);
+        if (typeof result.txid !== "string")
+          throw new Error("Anoint failed: broadcast did not return a txid");
+        return { txid: result.txid };
+      }
+      const partialTx = Transaction.fromAtomicBEEF(signableTransaction.tx);
+      const spends = {};
+      for (let i = 0;i < tokensToSpend.length; i++) {
+        const token = tokensToSpend[i];
+        const sourceSatoshis = Transaction.fromBEEF(token.beef).outputs[token.outputIndex]?.satoshis ?? 1;
+        spends[i] = { unlockingScript: (await pushdrop.unlock([1, "messagebox advertisement"], "1", "anyone", "all", false, sourceSatoshis, token.lockingScript).sign(partialTx, i)).toHex() };
+      }
+      const { tx: signedTx, txid: signedTxid } = await this.walletClient.signAction({
+        reference: signableTransaction.reference,
+        spends,
+        options: { acceptDelayedBroadcast: false }
+      }, this.originator);
+      if (signedTx === undefined)
+        throw new Error("Anoint failed: signing did not return a transaction");
+      log("[MB CLIENT] Transaction created:", signedTxid);
+      const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(signedTx));
+      log("[MB CLIENT] Advertisement broadcast succeeded. TXID:", result.txid);
+      if (typeof result.txid !== "string")
+        throw new Error("Anoint failed: broadcast did not return a txid");
+      return { txid: result.txid };
+    } catch (err) {
+      error2("[MB CLIENT ERROR] anointHost threw:", err);
+      throw err;
+    }
+  }
+  async revokeHostAdvertisement(advertisementToken) {
+    log("[MB CLIENT] Starting revokeHost...");
+    const outpoint = `${advertisementToken.txid}.${advertisementToken.outputIndex}`;
+    try {
+      const { signableTransaction } = await this.walletClient.createAction({
+        description: "Revoke MessageBox host advertisement",
+        inputBEEF: advertisementToken.beef,
+        inputs: [{
+          outpoint,
+          unlockingScriptLength: 73,
+          inputDescription: "Revoking host advertisement token"
+        }]
+      }, this.originator);
+      if (signableTransaction === undefined)
+        throw new Error("Failed to create signable transaction.");
+      const partialTx = Transaction.fromAtomicBEEF(signableTransaction.tx);
+      const sourceSatoshis = Transaction.fromBEEF(advertisementToken.beef).outputs[advertisementToken.outputIndex]?.satoshis ?? 1;
+      const finalUnlockScript = await new PushDrop(this.walletClient, this.originator).unlock([1, "messagebox advertisement"], "1", "anyone", "all", false, sourceSatoshis, advertisementToken.lockingScript).sign(partialTx, 0);
+      const { tx: signedTx } = await this.walletClient.signAction({
+        reference: signableTransaction.reference,
+        spends: { 0: { unlockingScript: finalUnlockScript.toHex() } },
+        options: { acceptDelayedBroadcast: false }
+      }, this.originator);
+      if (signedTx === undefined)
+        throw new Error("Failed to finalize the transaction signature.");
+      const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(signedTx));
+      log("[MB CLIENT] Revocation broadcast succeeded. TXID:", result.txid);
+      if (typeof result.txid !== "string")
+        throw new TypeError("Revoke failed: broadcast did not return a txid");
+      return { txid: result.txid };
+    } catch (err) {
+      error2("[MB CLIENT ERROR] revokeHost threw:", err);
+      throw err;
+    }
+  }
+  async listMessages({ messageBox, host, acceptPayments, offset, skip, limit, pageSize, maxPages }) {
+    const shouldAcceptPayments = acceptPayments !== false;
+    if (typeof messageBox !== "string" || messageBox.trim() === "")
+      throw new Error("MessageBox cannot be empty");
+    const hosts = await this.resolveMessageHosts(host);
+    const fetchFromHost = async (host) => {
+      try {
+        log(`[MB CLIENT] Listing messages from ${host}…`);
+        return await this.fetchMessagePages(host, messageBox, {
+          offset,
+          skip,
+          limit,
+          pageSize,
+          maxPages
+        });
+      } catch (err) {
+        log(`[MB CLIENT DEBUG] listMessages failed for ${host}:`, err);
+        throw err;
+      }
+    };
+    const settled = await Promise.allSettled(hosts.map(fetchFromHost));
+    const messagesByHost = [];
+    for (const r of settled)
+      if (r.status === "fulfilled")
+        messagesByHost.push(r.value);
+    if (messagesByHost.length === 0)
+      throw new Error("Failed to retrieve messages from any host");
+    const dedupMap = /* @__PURE__ */ new Map;
+    for (const messageList of messagesByHost)
+      for (const m of messageList)
+        if (!dedupMap.has(m.messageId))
+          dedupMap.set(m.messageId, m);
+    if (dedupMap.size === 0)
+      return [];
+    const deduplicated = Array.from(dedupMap.values());
+    const messages = limit == null ? deduplicated : deduplicated.slice(0, limit);
+    const parsed = messages.map((message) => this.parseMessageEnvelope(message));
+    if (shouldAcceptPayments) {
+      const paymentJobs = parsed.filter((p) => p.paymentData?.tx != null && p.paymentData.outputs != null);
+      await this.mapWithConcurrency(paymentJobs, 2, async (p) => {
+        await this.internalizeRecipientPayment(p);
+        return null;
+      });
+    }
+    await this.mapWithConcurrency(parsed, 4, async (p) => {
+      await this.decryptMessageBody(p);
+      return null;
+    });
+    messages.sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0));
+    return messages;
+  }
+  async resolveMessageHosts(host) {
+    if (host != null)
+      return [normalizeMessageBoxHost(host)];
+    const advertisedHosts = await this.queryAdvertisements(await this.getIdentityKey());
+    return Array.from(/* @__PURE__ */ new Set([this.host, ...advertisedHosts.map((advertisement) => advertisement.host)]));
+  }
+  async listMessagesLite({ messageBox, host, offset, skip, limit, pageSize, maxPages }) {
+    if (typeof messageBox !== "string" || messageBox.trim() === "")
+      throw new Error("MessageBox cannot be empty");
+    const finalHost = normalizeMessageBoxHost(host ?? this.host);
+    const messages = await this.fetchMessagePages(finalHost, messageBox, {
+      offset,
+      skip,
+      limit,
+      pageSize,
+      maxPages
+    });
+    await this.mapWithConcurrency(messages, 4, async (message) => {
+      try {
+        const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
+        let messageContent = parsedBody;
+        if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody) {
+          const wrappedMessage = parsedBody.message;
+          messageContent = typeof wrappedMessage === "string" ? this.tryParse(wrappedMessage) : wrappedMessage;
+        }
+        if (messageContent != null && typeof messageContent === "object" && typeof messageContent.encryptedMessage === "string") {
+          const decrypted = await this.walletClient.decrypt({
+            protocolID: [1, "messagebox"],
+            keyID: "1",
+            counterparty: message.sender,
+            ciphertext: toArray2(messageContent.encryptedMessage, "base64")
+          });
+          const decryptedText = toUTF8(decrypted.plaintext);
+          message.body = this.tryParse(decryptedText);
+        } else
+          message.body = messageContent ?? parsedBody;
+      } catch (err) {
+        error2("[MB CLIENT ERROR] Failed to parse or decrypt message in list:", err);
+        message.body = "[Error: Failed to decrypt or parse message]";
+      }
+      return null;
+    });
+    return messages;
+  }
+  async fetchMessagePages(host, messageBox, options = {}) {
+    const { startingOffset, totalLimit, requestedPageSize, maximumPages } = this.normalizeMessagePageOptions(options);
+    const messages = [];
+    let offset = startingOffset;
+    let page = 0;
+    while (maximumPages === -1 || page < maximumPages) {
+      const remaining = totalLimit == null ? undefined : totalLimit - messages.length;
+      if (remaining != null && remaining <= 0)
+        return messages;
+      const pageLimit = this.messagePageLimit(requestedPageSize, remaining);
+      const { data, pageMessages } = await this.fetchMessagePage(host, messageBox, offset, pageLimit);
+      const accepted = remaining == null ? pageMessages : pageMessages.slice(0, remaining);
+      messages.push(...accepted);
+      if (data.hasMore !== true)
+        return messages;
+      offset = this.nextMessagePageOffset(data, pageMessages.length, offset, requestedPageSize);
+      page += 1;
+    }
+    throw new Error(`Message Box pagination exceeded ${maximumPages} pages; acknowledge messages, raise maxPages, or set an application-level limit.`);
+  }
+  normalizeMessagePageOptions(options) {
+    if (options.offset != null && options.skip != null && options.offset !== options.skip)
+      throw new RangeError("offset and skip must match when both are provided");
+    const startingOffset = options.offset ?? options.skip ?? 0;
+    const maximumPages = options.maxPages ?? -1;
+    this.assertMessagePageOption("offset", startingOffset, 0);
+    this.assertMessagePageOption("limit", options.limit, 1);
+    this.assertMessagePageOption("pageSize", options.pageSize, 1);
+    this.assertMessagePageOption("maxPages", maximumPages, 1, true);
+    return {
+      startingOffset,
+      totalLimit: options.limit,
+      requestedPageSize: options.pageSize,
+      maximumPages
+    };
+  }
+  assertMessagePageOption(name, value, minimum, allowUnlimited = false) {
+    if (value == null)
+      return;
+    const unlimited = allowUnlimited && value === -1;
+    if (Number.isSafeInteger(value) && (unlimited || value >= minimum))
+      return;
+    throw new RangeError(`${name} must be ${allowUnlimited ? "-1 or " : ""}a ${minimum === 0 ? "non-negative" : "positive"} safe integer`);
+  }
+  messagePageLimit(requestedPageSize, remaining) {
+    if (requestedPageSize == null)
+      return remaining;
+    if (remaining == null)
+      return requestedPageSize;
+    return Math.min(requestedPageSize, remaining);
+  }
+  async fetchMessagePage(host, messageBox, offset, limit) {
+    const body = {
+      messageBox,
+      offset
+    };
+    if (limit != null)
+      body.limit = limit;
+    const response = await this.authFetch.fetch(messageBoxEndpoint(host, "/listMessages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: stringifyBRC100(body)
+    });
+    if (!response.ok)
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    const data = await response.json();
+    if (data.status === "error")
+      throw new Error(data.description ?? "Unknown server error");
+    if (!Array.isArray(data.messages))
+      throw new TypeError("Message Box server returned an invalid messages payload");
+    return {
+      data,
+      pageMessages: data.messages
+    };
+  }
+  nextMessagePageOffset(data, pageMessageCount, currentOffset, requestedPageSize) {
+    const nextOffset = Number(data.nextOffset);
+    if (Number.isSafeInteger(nextOffset) && nextOffset > currentOffset)
+      return nextOffset;
+    if (pageMessageCount > 0)
+      return currentOffset + pageMessageCount;
+    const serverLimit = Number(data.limit);
+    if (Number.isSafeInteger(serverLimit) && serverLimit > 0)
+      return currentOffset + serverLimit;
+    return currentOffset + (requestedPageSize ?? 1000);
+  }
+  tryParse(raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  async mapWithConcurrency(items, limit, fn) {
+    if (items.length === 0)
+      return [];
+    if (!Number.isFinite(limit) || limit >= items.length)
+      return await Promise.all(items.map((item, index) => fn(item, index)));
+    const workerCount = Math.max(1, Math.min(limit, items.length));
+    const results = [];
+    let nextIndex = 0;
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const currentIndex = nextIndex;
+        nextIndex++;
+        if (currentIndex >= items.length)
+          return;
+        results[currentIndex] = await fn(items[currentIndex], currentIndex);
+      }
+    });
+    await Promise.all(workers);
+    return results;
+  }
+  async acknowledgeNotification(message) {
+    await this.acknowledgeMessage({ messageIds: [message.messageId] });
+    const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
+    let paymentData;
+    if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody)
+      paymentData = parsedBody.payment;
+    if (paymentData?.tx != null && paymentData.outputs != null)
+      try {
+        log(`[MB CLIENT] Processing recipient payment in message from ${String(message.sender)}…`);
+        const recipientOutputs = paymentData.outputs.filter((output) => output.protocol === "wallet payment");
+        if (recipientOutputs.length < 1) {
+          log("[MB CLIENT] No wallet payment outputs found in payment data");
+          return false;
+        }
+        log(`[MB CLIENT] Internalizing ${recipientOutputs.length} recipient payment output(s)…`);
+        const tx = normalizeBRC100ByteArray(paymentData.tx);
+        if (tx == null || tx.length === 0)
+          throw new Error("Message payment transaction must be a non-empty BRC-100 byte array");
+        if ((await this.walletClient.internalizeAction({
+          tx,
+          outputs: recipientOutputs,
+          description: paymentData.description ?? "MessageBox recipient payment"
+        })).accepted) {
+          log("[MB CLIENT] Successfully internalized recipient payment");
+          return true;
+        } else {
+          warn("[MB CLIENT] Recipient payment internalization was not accepted");
+          return false;
+        }
+      } catch (paymentError) {
+        error2("[MB CLIENT ERROR] Failed to internalize recipient payment:", paymentError);
+        return false;
+      }
+    return false;
+  }
+  async acknowledgeMessage({ messageIds, host }) {
+    if (!Array.isArray(messageIds) || messageIds.length === 0)
+      throw new Error("Message IDs array cannot be empty");
+    log(`[MB CLIENT] Acknowledging messages ${stringifyBRC100(messageIds)}…`);
+    let hosts = host != null ? [normalizeMessageBoxHost(host)] : [];
+    if (hosts.length === 0) {
+      const identityKey = await this.getIdentityKey();
+      const advertisedHosts = await this.queryAdvertisements(identityKey);
+      hosts = Array.from(/* @__PURE__ */ new Set([this.host, ...advertisedHosts.map((h) => h.host)]));
+    }
+    const ackFromHost = async (host) => {
+      try {
+        const res = await this.authFetch.fetch(messageBoxEndpoint(host, "/acknowledgeMessage"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: stringifyBRC100({ messageIds })
+        });
+        if (!res.ok)
+          throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status === "error")
+          throw new Error(data.description);
+        log(`[MB CLIENT] Acknowledged on ${host}`);
+        return data.status;
+      } catch (err) {
+        warn(`[MB CLIENT WARN] acknowledgeMessage failed for ${host}:`, err);
+        return null;
+      }
+    };
+    const settled = await Promise.allSettled(hosts.map(ackFromHost));
+    const firstSuccess = settled.filter((r) => r.status === "fulfilled").find((s) => s.value != null)?.value;
+    if (firstSuccess != null)
+      return firstSuccess;
+    const errs = [];
+    for (const r of settled)
+      if (r.status === "rejected")
+        errs.push(r.reason);
+    throw new Error(`Failed to acknowledge messages on all hosts: ${errs.map(String).join("; ")}`);
+  }
+  async setMessageBoxPermission(params, overrideHost) {
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
+    log("[MB CLIENT] Setting messageBox permission...");
+    const response = await this.authFetch.fetch(messageBoxEndpoint(finalHost, "/permissions/set"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: stringifyBRC100({
+        messageBox: params.messageBox,
+        recipientFee: params.recipientFee,
+        ...params.sender != null && { sender: params.sender }
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to set permission: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
+    }
+    const { status, description } = await response.json();
+    if (status === "error")
+      throw new Error(description ?? "Failed to set permission");
+  }
+  async getMessageBoxPermission(params, overrideHost) {
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(params.recipient));
+    const queryParams = new URLSearchParams({
+      messageBox: params.messageBox,
+      ...params.sender != null && { sender: params.sender }
+    });
+    log("[MB CLIENT] Getting messageBox permission...");
+    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/permissions/get")}?${queryParams.toString()}`, { method: "GET" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to get permission: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
+    }
+    const data = await response.json();
+    if (data.status === "error")
+      throw new Error(data.description ?? "Failed to get permission");
+    return data.permission ?? null;
+  }
+  async getMessageBoxQuote(params, overrideHost) {
+    if (Array.isArray(params.recipient))
+      return this.getMultiMessageBoxQuote(params.recipient, params.messageBox, overrideHost);
+    return this.getSingleMessageBoxQuote(params.recipient, params.messageBox, overrideHost);
+  }
+  async getSingleMessageBoxQuote(recipient, messageBox, overrideHost) {
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(recipient));
+    const queryParams = new URLSearchParams({
+      recipient,
+      messageBox
+    });
+    log("[MB CLIENT] Getting messageBox quote (single)...");
+    const quoteUrl = `${messageBoxEndpoint(finalHost, "/permissions/quote")}?${queryParams.toString()}`;
+    log("[MB CLIENT] Quote request:", quoteUrl);
+    const response = await this.authFetch.fetch(quoteUrl, { method: "GET" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to get quote: HTTP ${response.status} - ${typeof errorData.description === "string" ? errorData.description : response.statusText}`);
+    }
+    const { status, description, quote } = await response.json();
+    if (status === "error")
+      throw new Error(description ?? "Failed to get quote");
+    const deliveryAgentIdentityKey = response.headers.get("x-bsv-auth-identity-key");
+    if (deliveryAgentIdentityKey == null)
+      throw new Error("Failed to get quote: Delivery agent did not provide their identity key");
+    return {
+      recipientFee: quote.recipientFee,
+      deliveryFee: quote.deliveryFee,
+      deliveryAgentIdentityKey
+    };
+  }
+  async getMultiMessageBoxQuote(recipients, messageBox, overrideHost) {
+    if (recipients.length === 0)
+      throw new Error("At least one recipient is required.");
+    log("[MB CLIENT] Getting messageBox quotes (multi)...");
+    const hostGroups = await this.groupQuoteRecipientsByHost(recipients, overrideHost);
+    const accumulator = this.createMultiQuoteAccumulator();
+    await Promise.all(Array.from(hostGroups.entries()).map(async ([host, group]) => {
+      const payload = await this.fetchQuotePayloadForHost(host, group, messageBox, accumulator);
+      this.mergeQuotePayload(payload, host, group, messageBox, accumulator);
+    }));
+    const { deliveryFees, recipientFees } = accumulator;
+    return {
+      quotesByRecipient: accumulator.quotesByRecipient,
+      totals: {
+        deliveryFees,
+        recipientFees,
+        totalForPayableRecipients: deliveryFees + recipientFees
+      },
+      blockedRecipients: Array.from(accumulator.blockedRecipients),
+      deliveryAgentIdentityKeyByHost: accumulator.deliveryAgentIdentityKeyByHost
+    };
+  }
+  createMultiQuoteAccumulator() {
+    return {
+      quotesByRecipient: [],
+      blockedRecipients: /* @__PURE__ */ new Set,
+      deliveryAgentIdentityKeyByHost: {},
+      deliveryFees: 0,
+      recipientFees: 0
+    };
+  }
+  async groupQuoteRecipientsByHost(recipients, overrideHost) {
+    const resolvedHosts = overrideHost != null ? recipients.map(() => normalizeMessageBoxHost(overrideHost)) : await this.mapWithConcurrency(recipients, 8, (recipient) => this.resolveHostForRecipient(recipient));
+    const hostGroups = /* @__PURE__ */ new Map;
+    for (let i = 0;i < recipients.length; i++) {
+      const host = resolvedHosts[i];
+      const list = hostGroups.get(host) ?? [];
+      list.push(recipients[i]);
+      hostGroups.set(host, list);
+    }
+    return hostGroups;
+  }
+  async fetchQuotePayloadForHost(host, groupRecipients, messageBox, accumulator) {
+    const qp = new URLSearchParams;
+    for (const recipient of groupRecipients)
+      qp.append("recipient", recipient);
+    qp.set("messageBox", messageBox);
+    const url = `${messageBoxEndpoint(host, "/permissions/quote")}?${qp.toString()}`;
+    log("[MB CLIENT] Multi-quote GET:", url);
+    const response = await this.authFetch.fetch(url, { method: "GET" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to get quote (host ${host}): HTTP ${response.status} - ${typeof errorData.description === "string" ? errorData.description : response.statusText}`);
+    }
+    const deliveryAgentKey = response.headers.get("x-bsv-auth-identity-key");
+    if (deliveryAgentKey == null)
+      throw new Error(`Failed to get quote (host ${host}): missing delivery agent identity key`);
+    accumulator.deliveryAgentIdentityKeyByHost[host] = deliveryAgentKey;
+    return response.json();
+  }
+  mergeQuotePayload(payload, host, groupRecipients, messageBox, accumulator) {
+    if (this.isMultiQuotePayload(payload)) {
+      this.mergeRecipientQuotes(payload, accumulator);
+      return;
+    }
+    if (this.isSingleQuotePayload(payload)) {
+      this.mergeSingleQuotePayload(payload, groupRecipients, messageBox, accumulator);
+      return;
+    }
+    throw new Error(`Unexpected quote response shape from host ${host}`);
+  }
+  isMultiQuotePayload(payload) {
+    return typeof payload === "object" && payload != null && Array.isArray(payload.quotesByRecipient);
+  }
+  isSingleQuotePayload(payload) {
+    return typeof payload === "object" && payload != null && payload.quote != null;
+  }
+  mergeRecipientQuotes(payload, accumulator) {
+    for (const quote of payload.quotesByRecipient) {
+      accumulator.quotesByRecipient.push({
+        recipient: quote.recipient,
+        messageBox: quote.messageBox,
+        deliveryFee: quote.deliveryFee,
+        recipientFee: quote.recipientFee,
+        status: quote.status
+      });
+      accumulator.deliveryFees += quote.deliveryFee;
+      this.addRecipientFee(quote.recipient, quote.recipientFee, accumulator);
+    }
+    for (const recipient of payload.blockedRecipients ?? [])
+      accumulator.blockedRecipients.add(recipient);
+  }
+  mergeSingleQuotePayload(payload, groupRecipients, messageBox, accumulator) {
+    const { deliveryFee, recipientFee } = payload.quote;
+    const status = this.statusForRecipientFee(recipientFee);
+    for (const recipient of groupRecipients) {
+      accumulator.quotesByRecipient.push({
+        recipient,
+        messageBox,
+        deliveryFee,
+        recipientFee,
+        status
+      });
+      accumulator.deliveryFees += deliveryFee;
+      this.addRecipientFee(recipient, recipientFee, accumulator);
+    }
+  }
+  addRecipientFee(recipient, recipientFee, accumulator) {
+    if (recipientFee === -1) {
+      accumulator.blockedRecipients.add(recipient);
+      return;
+    }
+    accumulator.recipientFees += recipientFee;
+  }
+  statusForRecipientFee(recipientFee) {
+    if (recipientFee === -1)
+      return "blocked";
+    return recipientFee === 0 ? "always_allow" : "payment_required";
+  }
+  async listMessageBoxPermissions(params, overrideHost) {
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
+    const queryParams = new URLSearchParams;
+    if (params?.messageBox != null)
+      queryParams.set("messageBox", params.messageBox);
+    if (params?.limit !== undefined)
+      queryParams.set("limit", params.limit.toString());
+    if (params?.offset !== undefined)
+      queryParams.set("offset", params.offset.toString());
+    log("[MB CLIENT] Listing messageBox permissions with params:", queryParams.toString());
+    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/permissions/list")}?${queryParams.toString()}`, { method: "GET" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Failed to list permissions: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
+    }
+    const data = await response.json();
+    if (data.status === "error")
+      throw new Error(data.description ?? "Failed to list permissions");
+    if (!Array.isArray(data.permissions))
+      throw new TypeError("Failed to list permissions: server returned an invalid permissions payload");
+    return data.permissions.map((permission) => {
+      if (typeof permission !== "object" || permission == null)
+        throw new Error("Failed to list permissions: server returned an invalid permission record");
+      const record = permission;
+      const sender = record.sender;
+      const messageBox = record.messageBox ?? record.message_box;
+      const recipientFee = record.recipientFee ?? record.recipient_fee;
+      const createdAt = record.createdAt ?? record.created_at;
+      const updatedAt = record.updatedAt ?? record.updated_at;
+      if (sender !== null && typeof sender !== "string" || typeof messageBox !== "string" || !Number.isSafeInteger(recipientFee) || typeof createdAt !== "string" || typeof updatedAt !== "string")
+        throw new Error("Failed to list permissions: server returned an invalid permission record");
+      return {
+        sender,
+        messageBox,
+        recipientFee,
+        status: MessageBoxClient.getStatusFromFee(recipientFee),
+        createdAt,
+        updatedAt
+      };
+    });
+  }
+  async allowNotificationsFromPeer(identityKey, recipientFee = 0, overrideHost) {
+    await this.setMessageBoxPermission({
+      messageBox: "notifications",
+      sender: identityKey,
+      recipientFee
+    }, overrideHost);
+  }
+  async denyNotificationsFromPeer(identityKey, overrideHost) {
+    await this.setMessageBoxPermission({
+      messageBox: "notifications",
+      sender: identityKey,
+      recipientFee: -1
+    }, overrideHost);
+  }
+  async checkPeerNotificationStatus(identityKey, overrideHost) {
+    const myIdentityKey = await this.getIdentityKey();
+    return await this.getMessageBoxPermission({
+      recipient: myIdentityKey,
+      messageBox: "notifications",
+      sender: identityKey
+    }, overrideHost);
+  }
+  async listPeerNotifications(overrideHost) {
+    return await this.listMessageBoxPermissions({ messageBox: "notifications" }, overrideHost);
+  }
+  async sendNotification(recipient, body, overrideHost) {
+    await this.assertInitialized();
+    if (!Array.isArray(recipient))
+      return await this.sendMessage({
+        recipient,
+        messageBox: "notifications",
+        body,
+        checkPermissions: true
+      }, overrideHost);
+    const outcomes = await this.mapWithConcurrency(recipient, 8, async (target) => {
+      try {
+        return {
+          recipient: target,
+          messageId: (await this.sendMessage({
+            recipient: target,
+            messageBox: "notifications",
+            body,
+            checkPermissions: true
+          }, overrideHost)).messageId
+        };
+      } catch (error) {
+        return {
+          recipient: target,
+          error: error instanceof Error ? error.message : "Unknown error"
+        };
+      }
+    });
+    const sent = outcomes.filter((outcome) => ("messageId" in outcome));
+    const failed = outcomes.filter((outcome) => ("error" in outcome));
+    let status = "error";
+    if (sent.length === recipient.length)
+      status = "success";
+    else if (sent.length > 0)
+      status = "partial";
+    return {
+      status,
+      description: `Sent ${sent.length} of ${recipient.length} encrypted notifications.`,
+      sent,
+      blocked: [],
+      failed
+    };
+  }
+  async registerDevice(params, overrideHost) {
+    if (params.fcmToken == null || params.fcmToken.trim() === "")
+      throw new Error("fcmToken is required and must be a non-empty string");
+    if (params.fcmToken.trim().length > 500)
+      throw new Error("fcmToken must not exceed 500 characters");
+    if (params.deviceId != null && params.deviceId.trim().length > 255)
+      throw new Error("deviceId must not exceed 255 characters");
+    if (params.platform != null && ![
+      "ios",
+      "android",
+      "web"
+    ].includes(params.platform))
+      throw new Error("platform must be one of: ios, android, web");
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
+    log("[MB CLIENT] Registering device for FCM notifications...");
+    const response = await this.authFetch.fetch(messageBoxEndpoint(finalHost, "/registerDevice"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: stringifyBRC100({
+        fcmToken: params.fcmToken.trim(),
+        deviceId: params.deviceId?.trim() ?? undefined,
+        platform: params.platform ?? undefined
+      })
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const description = typeof errorData.description === "string" ? errorData.description : response.statusText;
+      throw new Error(`Failed to register device: HTTP ${response.status} - ${description}`);
+    }
+    const data = await response.json();
+    if (data.status === "error")
+      throw new Error(data.description ?? "Failed to register device");
+    log("[MB CLIENT] Device registered successfully");
+    return {
+      status: data.status,
+      message: data.message,
+      deviceId: data.deviceId
+    };
+  }
+  async listRegisteredDevices(overrideHost, pagination = {}) {
+    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
+    const query = new URLSearchParams;
+    if (pagination.limit != null)
+      query.set("limit", String(pagination.limit));
+    if (pagination.offset != null)
+      query.set("offset", String(pagination.offset));
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    log("[MB CLIENT] Listing registered devices...");
+    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/devices")}${suffix}`, { method: "GET" });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const description = typeof errorData.description === "string" ? errorData.description : response.statusText;
+      throw new Error(`Failed to list devices: HTTP ${response.status} - ${description}`);
+    }
+    const data = await response.json();
+    if (data.status === "error")
+      throw new Error(data.description ?? "Failed to list devices");
+    log(`[MB CLIENT] Found ${data.devices.length} registered devices`);
+    return data.devices;
+  }
+  static getStatusFromFee(fee) {
+    if (fee === -1)
+      return "blocked";
+    if (fee === 0)
+      return "always_allow";
+    return "payment_required";
+  }
+  async createMessagePayment(recipient, quote, description = "MessageBox delivery payment") {
+    if (quote.recipientFee <= 0 && quote.deliveryFee <= 0)
+      throw new Error("No payment required");
+    log(`[MB CLIENT] Creating payment transaction for ${quote.recipientFee} sats (delivery: ${quote.deliveryFee}, recipient: ${quote.recipientFee})`);
+    const outputs = [];
+    const createActionOutputs = [];
+    const senderIdentityKey = await this.getIdentityKey();
+    let outputIndex = 0;
+    if (quote.deliveryFee > 0) {
+      const derivationPrefix = toBase64(Random_default(32));
+      const derivationSuffix = toBase64(Random_default(32));
+      log("[MB CLIENT] Delivery agent:", quote.deliveryAgentIdentityKey);
+      const { publicKey: derivedKeyResult } = await this.walletClient.getPublicKey({
+        protocolID: [2, "3241645161d8"],
+        keyID: `${derivationPrefix} ${derivationSuffix}`,
+        counterparty: quote.deliveryAgentIdentityKey
+      }, this.originator);
+      const lockingScript = new P2PKH().lock(PublicKey.fromString(derivedKeyResult).toAddress()).toHex();
+      createActionOutputs.push({
+        satoshis: quote.deliveryFee,
+        lockingScript,
+        outputDescription: "MessageBox server delivery fee",
+        customInstructions: stringifyBRC100({
+          derivationPrefix,
+          derivationSuffix,
+          recipientIdentityKey: quote.deliveryAgentIdentityKey
+        })
+      });
+      outputs.push({
+        outputIndex: outputIndex++,
+        protocol: "wallet payment",
+        paymentRemittance: {
+          derivationPrefix,
+          derivationSuffix,
+          senderIdentityKey
+        }
+      });
+    }
+    if (quote.recipientFee > 0) {
+      const derivationPrefix = toBase64(Random_default(32));
+      const derivationSuffix = toBase64(Random_default(32));
+      const anyoneWallet = new ProtoWallet_default("anyone");
+      const { publicKey: derivedKeyResult } = await anyoneWallet.getPublicKey({
+        protocolID: [2, "3241645161d8"],
+        keyID: `${derivationPrefix} ${derivationSuffix}`,
+        counterparty: recipient
+      });
+      if (derivedKeyResult == null || derivedKeyResult.trim() === "")
+        throw new Error("Failed to derive recipient's public key");
+      const lockingScript = new P2PKH().lock(PublicKey.fromString(derivedKeyResult).toAddress()).toHex();
+      createActionOutputs.push({
+        satoshis: quote.recipientFee,
+        lockingScript,
+        outputDescription: "Recipient message fee",
+        customInstructions: stringifyBRC100({
+          derivationPrefix,
+          derivationSuffix,
+          recipientIdentityKey: recipient
+        })
+      });
+      outputs.push({
+        outputIndex: outputIndex++,
+        protocol: "wallet payment",
+        paymentRemittance: {
+          derivationPrefix,
+          derivationSuffix,
+          senderIdentityKey: (await anyoneWallet.getPublicKey({ identityKey: true })).publicKey
+        }
+      });
+    }
+    const { tx } = await this.walletClient.createAction({
+      description,
+      outputs: createActionOutputs,
+      options: {
+        randomizeOutputs: false,
+        acceptDelayedBroadcast: false
+      }
+    }, this.originator);
+    const portableTx = toBRC100PortableByteArray(tx);
+    if (portableTx == null || portableTx.length === 0)
+      throw new Error("Failed to create payment transaction");
+    return {
+      tx: portableTx,
+      outputs,
+      description
+    };
+  }
+  async createMessagePaymentBatch(recipients, perRecipientQuotes, serverIdentityKey, description = "MessageBox delivery payment (batch)") {
+    const outputs = [];
+    const createActionOutputs = [];
+    const deliveryFeeOnce = recipients.reduce((acc, r) => {
+      const q = perRecipientQuotes.get(r);
+      return q != null ? acc ?? q.deliveryFee : acc;
+    }, undefined) ?? 0;
+    const senderIdentityKey = await this.getIdentityKey();
+    let outputIndex = 0;
+    if (deliveryFeeOnce > 0) {
+      const derivationPrefix = toBase64(Random_default(32));
+      const derivationSuffix = toBase64(Random_default(32));
+      const { publicKey: agentDerived } = await this.walletClient.getPublicKey({
+        protocolID: [2, "3241645161d8"],
+        keyID: `${derivationPrefix} ${derivationSuffix}`,
+        counterparty: serverIdentityKey
+      }, this.originator);
+      const lockingScript = new P2PKH().lock(PublicKey.fromString(agentDerived).toAddress()).toHex();
+      createActionOutputs.push({
+        satoshis: deliveryFeeOnce,
+        lockingScript,
+        outputDescription: "MessageBox server delivery fee (batch)",
+        customInstructions: stringifyBRC100({
+          derivationPrefix,
+          derivationSuffix,
+          recipientIdentityKey: serverIdentityKey
+        })
+      });
+      outputs.push({
+        outputIndex: outputIndex++,
+        protocol: "wallet payment",
+        paymentRemittance: {
+          derivationPrefix,
+          derivationSuffix,
+          senderIdentityKey
+        }
+      });
+    }
+    const anyoneWallet = new ProtoWallet_default("anyone");
+    const anyoneIdKey = (await anyoneWallet.getPublicKey({ identityKey: true })).publicKey;
+    for (const r of recipients) {
+      const q = perRecipientQuotes.get(r);
+      if (q == null || q.recipientFee <= 0)
+        continue;
+      const derivationPrefix = toBase64(Random_default(32));
+      const derivationSuffix = toBase64(Random_default(32));
+      const { publicKey: recipientDerived } = await anyoneWallet.getPublicKey({
+        protocolID: [2, "3241645161d8"],
+        keyID: `${derivationPrefix} ${derivationSuffix}`,
+        counterparty: r
+      });
+      const lockingScript = new P2PKH().lock(PublicKey.fromString(recipientDerived).toAddress()).toHex();
+      createActionOutputs.push({
+        satoshis: q.recipientFee,
+        lockingScript,
+        outputDescription: `Recipient message fee (${r.slice(0, 8)}…)`,
+        customInstructions: stringifyBRC100({
+          derivationPrefix,
+          derivationSuffix,
+          recipientIdentityKey: r
+        })
+      });
+      outputs.push({
+        outputIndex: outputIndex++,
+        protocol: "wallet payment",
+        paymentRemittance: {
+          derivationPrefix,
+          derivationSuffix,
+          senderIdentityKey: anyoneIdKey
+        }
+      });
+    }
+    const { tx } = await this.walletClient.createAction({
+      description,
+      outputs: createActionOutputs,
+      options: {
+        randomizeOutputs: false,
+        acceptDelayedBroadcast: false
+      }
+    }, this.originator);
+    const portableTx = toBRC100PortableByteArray(tx);
+    if (portableTx == null || portableTx.length === 0)
+      throw new Error("Failed to create payment transaction");
+    return {
+      tx: portableTx,
+      outputs,
+      description
+    };
+  }
+};
+var init_MessageBoxClient = __esm(() => {
+  init_logger();
+  init_host();
+  init_mod();
+  init_mod2();
+  DEFAULT_TESTNET_HOST = DEFAULT_MAINNET_HOST;
+});
+
+// node_modules/@bsv/message-box-client/dist/src/PeerPayClient.js
+function hexToBytes(hex) {
+  return (hex.match(/.{1,2}/g) ?? []).map((byte) => Number.parseInt(byte, 16));
+}
+function safeParse4(input) {
+  try {
+    return typeof input === "string" ? JSON.parse(input) : input;
+  } catch {
+    error2("[PP CLIENT] Failed to parse input in safeParse:", input);
+    return;
+  }
+}
+function isValidPaymentRequestMessage(obj) {
+  if (typeof obj !== "object" || obj === null)
+    return false;
+  if (typeof obj.requestId !== "string")
+    return false;
+  if (typeof obj.senderIdentityKey !== "string")
+    return false;
+  if (typeof obj.requestProof !== "string")
+    return false;
+  if (obj.cancelled === true)
+    return true;
+  return typeof obj.amount === "number" && typeof obj.description === "string" && typeof obj.expiresAt === "number";
+}
+var PAYMENT_REQUESTS_MESSAGEBOX = "payment_requests", PAYMENT_REQUEST_RESPONSES_MESSAGEBOX = "payment_request_responses", STANDARD_PAYMENT_OUTPUT_INDEX = 0, PeerPayClient;
+var init_PeerPayClient = __esm(() => {
+  init_logger();
+  init_MessageBoxClient();
+  init_mod();
+  PeerPayClient = class extends MessageBoxClient {
+    peerPayWalletClient;
+    _authFetchInstance;
+    messageBox;
+    settlementModule;
+    constructor(config) {
+      const { messageBoxHost = "https://message-box-us-1.bsvb.tech", walletClient, enableLogging = false, originator } = config;
+      super({
+        host: messageBoxHost,
+        walletClient,
+        enableLogging,
+        originator
+      });
+      this.messageBox = config.messageBox ?? "payment_inbox";
+      this.peerPayWalletClient = walletClient;
+      this.originator = originator;
+      this.settlementModule = new Brc29RemittanceModule({
+        protocolID: [2, "3241645161d8"],
+        labels: ["peerpay"],
+        description: "PeerPay payment",
+        outputDescription: "Payment for PeerPay transaction",
+        internalizeProtocol: "wallet payment",
+        refundFeeSatoshis: 1000,
+        minRefundSatoshis: 1000
+      });
+    }
+    get authFetchInstance() {
+      this._authFetchInstance ??= new AuthFetch(this.peerPayWalletClient, undefined, undefined, this.originator);
+      return this._authFetchInstance;
+    }
+    async allowPaymentRequestsFrom({ identityKey }) {
+      await this.setMessageBoxPermission({
+        messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+        sender: identityKey,
+        recipientFee: 0
+      });
+    }
+    async blockPaymentRequestsFrom({ identityKey }) {
+      await this.setMessageBoxPermission({
+        messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+        sender: identityKey,
+        recipientFee: -1
+      });
+    }
+    async listPaymentRequestPermissions() {
+      return (await this.listMessageBoxPermissions({ messageBox: PAYMENT_REQUESTS_MESSAGEBOX })).filter((p) => p.sender != null && p.sender !== "").map((p) => ({
+        identityKey: p.sender ?? "",
+        allowed: p.status !== "blocked"
+      }));
+    }
+    async createPaymentToken(payment) {
+      if (payment.amount <= 0)
+        throw new Error("Invalid payment details: recipient and valid amount are required");
+      const result = await this.settlementModule.buildSettlement({
+        threadId: "peerpay",
+        option: {
+          amountSatoshis: payment.amount,
+          payee: payment.recipient,
+          labels: ["peerpay"],
+          description: "PeerPay payment"
+        }
+      }, {
+        wallet: this.peerPayWalletClient,
+        originator: this.originator,
+        now: () => Date.now(),
+        logger: logger_exports
+      });
+      if (result.action === "terminate") {
+        if (result.termination.code === "brc29.public_key_missing")
+          throw new Error("Failed to derive recipient’s public key");
+        throw new Error(result.termination.message);
+      }
+      log("[PP CLIENT] Payment Action Settlement Artifact:", result.artifact);
+      return {
+        customInstructions: {
+          derivationPrefix: result.artifact.customInstructions.derivationPrefix,
+          derivationSuffix: result.artifact.customInstructions.derivationSuffix
+        },
+        transaction: result.artifact.transaction,
+        amount: result.artifact.amountSatoshis
+      };
+    }
+    async sendPayment(payment, hostOverride) {
+      if (payment.recipient == null || payment.recipient.trim() === "" || payment.amount <= 0)
+        throw new Error("Invalid payment details: recipient and valid amount are required");
+      const paymentToken = await this.createPaymentToken(payment);
+      await this.sendMessage({
+        recipient: payment.recipient,
+        messageBox: this.messageBox,
+        body: stringifyBRC100(paymentToken)
+      }, hostOverride);
+    }
+    async sendLivePayment(payment, overrideHost) {
+      const paymentToken = await this.createPaymentToken(payment);
+      try {
+        await this.sendLiveMessage({
+          recipient: payment.recipient,
+          messageBox: this.messageBox,
+          body: stringifyBRC100(paymentToken)
+        }, overrideHost);
+      } catch (err) {
+        warn("[PP CLIENT] sendLiveMessage failed, falling back to HTTP:", err);
+        await this.sendMessage({
+          recipient: payment.recipient,
+          messageBox: this.messageBox,
+          body: stringifyBRC100(paymentToken)
+        }, overrideHost);
+      }
+    }
+    async listenForLivePayments({ onPayment, overrideHost }) {
+      await this.listenForLiveMessages({
+        messageBox: this.messageBox,
+        overrideHost,
+        onMessage: (message) => {
+          log("[MB CLIENT] Received Live Payment:", message);
+          const token = safeParse4(message.body);
+          if (token == null)
+            return;
+          const incomingPayment = {
+            messageId: message.messageId,
+            sender: message.sender,
+            token
+          };
+          log("[PP CLIENT] Converted PeerMessage to IncomingPayment:", incomingPayment);
+          onPayment(incomingPayment);
+        }
+      });
+    }
+    async acceptPayment(payment) {
+      try {
+        log(`[PP CLIENT] Processing payment: ${stringifyBRC100(payment, 2)}`);
+        const transaction = toBRC100PortableByteArray(payment.token.transaction);
+        if (transaction == null || transaction.length === 0)
+          throw new Error("Payment transaction must be a non-empty BRC-100 byte array");
+        const acceptResult = await this.settlementModule.acceptSettlement({
+          threadId: "peerpay",
+          sender: payment.sender,
+          settlement: {
+            customInstructions: {
+              derivationPrefix: payment.token.customInstructions.derivationPrefix,
+              derivationSuffix: payment.token.customInstructions.derivationSuffix
+            },
+            transaction,
+            amountSatoshis: payment.token.amount,
+            outputIndex: payment.token.outputIndex ?? STANDARD_PAYMENT_OUTPUT_INDEX
+          }
+        }, {
+          wallet: this.peerPayWalletClient,
+          originator: this.originator,
+          now: () => Date.now(),
+          logger: logger_exports
+        });
+        if (acceptResult.action === "terminate")
+          throw new Error(acceptResult.termination.message);
+        const paymentResult = acceptResult.receiptData?.internalizeResult;
+        log(`[PP CLIENT] Payment internalized successfully: ${stringifyBRC100(paymentResult, 2)}`);
+        log(`[PP CLIENT] Acknowledging payment with messageId: ${payment.messageId}`);
+        await this.acknowledgeMessage({ messageIds: [payment.messageId] });
+        return {
+          payment,
+          paymentResult
+        };
+      } catch (error$2) {
+        error2(`[PP CLIENT] Error accepting payment: ${String(error$2)}`);
+        return "Unable to receive payment!";
+      }
+    }
+    async rejectPayment(payment) {
+      log(`[PP CLIENT] Rejecting payment: ${stringifyBRC100(payment, 2)}`);
+      if (payment.token.amount - 1000 < 1000) {
+        log("[PP CLIENT] Payment amount too small after fee, just acknowledging.");
+        try {
+          log(`[PP CLIENT] Attempting to acknowledge message ${payment.messageId}...`);
+          if (this.authFetch === null || this.authFetch === undefined)
+            warn("[PP CLIENT] Warning: authFetch is undefined! Ensure PeerPayClient is initialized correctly.");
+          log("[PP CLIENT] authFetch instance:", this.authFetch);
+          log(`[PP CLIENT] Acknowledgment response: ${await this.acknowledgeMessage({ messageIds: [payment.messageId] })}`);
+        } catch (error$3) {
+          if (error$3 != null && typeof error$3 === "object" && "message" in error$3 && typeof error$3.message === "string" && error$3.message.includes("401"))
+            warn(`[PP CLIENT] Authentication issue while acknowledging: ${error$3.message}`);
+          else {
+            error2(`[PP CLIENT] Error acknowledging message: ${error$3.message}`);
+            throw error$3;
+          }
+        }
+        return;
+      }
+      log("[PP CLIENT] Accepting payment before refunding...");
+      await this.acceptPayment(payment);
+      log(`[PP CLIENT] Sending refund of ${payment.token.amount - 1000} to ${payment.sender}...`);
+      await this.sendPayment({
+        recipient: payment.sender,
+        amount: payment.token.amount - 1000
+      });
+      log("[PP CLIENT] Payment successfully rejected and refunded.");
+      try {
+        log(`[PP CLIENT] Acknowledging message ${payment.messageId} after refunding...`);
+        await this.acknowledgeMessage({ messageIds: [payment.messageId] });
+        log("[PP CLIENT] Acknowledgment after refund successful.");
+      } catch (error$1) {
+        error2(`[PP CLIENT] Error acknowledging message after refund: ${error$1.message}`);
+      }
+    }
+    async listIncomingPayments(overrideHost) {
+      return (await this.listMessages({
+        messageBox: this.messageBox,
+        host: overrideHost
+      })).map((msg) => {
+        const parsedToken = safeParse4(msg.body);
+        if (parsedToken == null)
+          return null;
+        return {
+          messageId: msg.messageId,
+          sender: msg.sender,
+          token: parsedToken
+        };
+      }).filter((p) => p != null);
+    }
+    async listPaymentRequestResponses(hostOverride) {
+      return (await this.listMessages({
+        messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
+        host: hostOverride
+      })).map((msg) => safeParse4(msg.body)).filter((r) => r != null);
+    }
+    async listenForLivePaymentRequests({ onRequest, overrideHost }) {
+      await this.listenForLiveMessages({
+        messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+        overrideHost,
+        onMessage: (message) => {
+          const body = safeParse4(message.body);
+          if (body == null || body.cancelled === true)
+            return;
+          onRequest({
+            messageId: message.messageId,
+            sender: message.sender,
+            requestId: body.requestId,
+            amount: body.amount,
+            description: body.description,
+            expiresAt: body.expiresAt
+          });
+        }
+      });
+    }
+    async listenForLivePaymentRequestResponses({ onResponse, overrideHost }) {
+      await this.listenForLiveMessages({
+        messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
+        overrideHost,
+        onMessage: (message) => {
+          const response = safeParse4(message.body);
+          if (response == null)
+            return;
+          onResponse(response);
+        }
+      });
+    }
+    async fulfillPaymentRequest(params, hostOverride) {
+      const { request, note } = params;
+      await this.sendPayment({
+        recipient: request.sender,
+        amount: request.amount
+      }, hostOverride);
+      const response = {
+        requestId: request.requestId,
+        status: "paid",
+        amountPaid: request.amount,
+        ...note != null && { note }
+      };
+      await this.sendMessage({
+        recipient: request.sender,
+        messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
+        body: stringifyBRC100(response)
+      }, hostOverride);
+      await this.acknowledgeMessage({
+        messageIds: [request.messageId],
+        host: hostOverride
+      });
+    }
+    async declinePaymentRequest(params, hostOverride) {
+      const { request, note } = params;
+      const response = {
+        requestId: request.requestId,
+        status: "declined",
+        ...note != null && { note }
+      };
+      await this.sendMessage({
+        recipient: request.sender,
+        messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
+        body: stringifyBRC100(response)
+      }, hostOverride);
+      await this.acknowledgeMessage({
+        messageIds: [request.messageId],
+        host: hostOverride
+      });
+    }
+    async requestPayment(params, hostOverride) {
+      if (params.amount <= 0)
+        throw new Error("Invalid payment request: amount must be greater than 0");
+      const requestId = await createNonce(this.peerPayWalletClient, "self", this.originator);
+      const senderIdentityKey = await this.getIdentityKey();
+      const proofData = Array.from(new TextEncoder().encode(requestId + params.recipient));
+      const { hmac } = await this.peerPayWalletClient.createHmac({
+        data: proofData,
+        protocolID: [2, "payment request auth"],
+        keyID: requestId,
+        counterparty: params.recipient
+      }, this.originator);
+      const requestProof = Array.from(hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const body = {
+        requestId,
+        amount: params.amount,
+        description: params.description,
+        expiresAt: params.expiresAt,
+        senderIdentityKey,
+        requestProof
+      };
+      try {
+        await this.sendMessage({
+          recipient: params.recipient,
+          messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+          body: stringifyBRC100(body)
+        }, hostOverride);
+      } catch (err) {
+        if (typeof err?.message === "string" && err.message.includes("403"))
+          throw new Error("Payment request blocked — you are not on the recipient's whitelist.");
+        throw err;
+      }
+      return {
+        requestId,
+        requestProof
+      };
+    }
+    async listIncomingPaymentRequests(hostOverride, limits) {
+      const messages = await this.listMessages({
+        messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+        host: hostOverride
+      });
+      const myIdentityKey = await this.getIdentityKey();
+      const now = Date.now();
+      const parsedRequests = this.parsePaymentRequestMessages(messages);
+      const cancellations = await this.collectPaymentRequestCancellations(parsedRequests.parsed, myIdentityKey);
+      const classified = await this.classifyPaymentRequests(parsedRequests.parsed, cancellations.cancelledRequests, myIdentityKey, now, limits);
+      const malformedMessageIds = [
+        ...parsedRequests.malformedMessageIds,
+        ...cancellations.malformedMessageIds,
+        ...classified.malformedMessageIds
+      ];
+      await this.acknowledgePaymentRequestMessages(classified.expiredMessageIds, hostOverride);
+      await this.acknowledgePaymentRequestMessages([...classified.cancelledOriginalMessageIds, ...cancellations.cancelMessageIds], hostOverride);
+      await this.acknowledgePaymentRequestMessages(classified.outOfRangeMessageIds, hostOverride);
+      await this.acknowledgePaymentRequestMessages(malformedMessageIds, hostOverride);
+      return classified.active;
+    }
+    parsePaymentRequestMessages(messages) {
+      const parsed = [];
+      const malformedMessageIds = [];
+      for (const message of messages) {
+        const body = safeParse4(message.body);
+        if (body != null && isValidPaymentRequestMessage(body))
+          parsed.push({
+            messageId: message.messageId,
+            sender: message.sender,
+            body
+          });
+        else
+          malformedMessageIds.push(message.messageId);
+      }
+      return {
+        parsed,
+        malformedMessageIds
+      };
+    }
+    async verifyPaymentRequestProof(item, myIdentityKey) {
+      const proofData = Array.from(new TextEncoder().encode(item.body.requestId + myIdentityKey));
+      await this.peerPayWalletClient.verifyHmac({
+        data: proofData,
+        hmac: hexToBytes(item.body.requestProof),
+        protocolID: [2, "payment request auth"],
+        keyID: item.body.requestId,
+        counterparty: item.sender
+      }, this.originator);
+    }
+    async collectPaymentRequestCancellations(parsed, myIdentityKey) {
+      const cancelledRequests = /* @__PURE__ */ new Map;
+      const cancelMessageIds = [];
+      const malformedMessageIds = [];
+      for (const item of parsed) {
+        if (item.body.cancelled !== true)
+          continue;
+        try {
+          await this.verifyPaymentRequestProof(item, myIdentityKey);
+          cancelledRequests.set(item.body.requestId, item.sender);
+          cancelMessageIds.push(item.messageId);
+        } catch {
+          warn(`[PP CLIENT] Invalid cancellation proof for requestId=${item.body.requestId}, discarding`);
+          malformedMessageIds.push(item.messageId);
+        }
+      }
+      return {
+        cancelledRequests,
+        cancelMessageIds,
+        malformedMessageIds
+      };
+    }
+    async classifyPaymentRequests(parsed, cancelledRequests, myIdentityKey, now, limits) {
+      const classification = {
+        active: [],
+        expiredMessageIds: [],
+        outOfRangeMessageIds: [],
+        cancelledOriginalMessageIds: [],
+        malformedMessageIds: []
+      };
+      const effectiveMin = limits?.minAmount ?? 1000;
+      const effectiveMax = limits?.maxAmount ?? 1e7;
+      for (const item of parsed) {
+        if (item.body.cancelled === true)
+          continue;
+        const { requestId, amount, description, expiresAt } = item.body;
+        if (expiresAt < now) {
+          classification.expiredMessageIds.push(item.messageId);
+          continue;
+        }
+        if (cancelledRequests.has(requestId) && cancelledRequests.get(requestId) === item.sender) {
+          classification.cancelledOriginalMessageIds.push(item.messageId);
+          continue;
+        }
+        if (amount < effectiveMin || amount > effectiveMax) {
+          classification.outOfRangeMessageIds.push(item.messageId);
+          continue;
+        }
+        try {
+          await this.verifyPaymentRequestProof(item, myIdentityKey);
+        } catch {
+          warn(`[PP CLIENT] Invalid requestProof for requestId=${requestId}, discarding`);
+          classification.malformedMessageIds.push(item.messageId);
+          continue;
+        }
+        classification.active.push({
+          messageId: item.messageId,
+          sender: item.sender,
+          requestId,
+          amount,
+          description,
+          expiresAt
+        });
+      }
+      return classification;
+    }
+    async acknowledgePaymentRequestMessages(messageIds, host) {
+      if (messageIds.length > 0)
+        await this.acknowledgeMessage({
+          messageIds,
+          host
+        });
+    }
+    async cancelPaymentRequest(params, hostOverride) {
+      const senderIdentityKey = await this.getIdentityKey();
+      const body = {
+        requestId: params.requestId,
+        senderIdentityKey,
+        requestProof: params.requestProof,
+        cancelled: true
+      };
+      await this.sendMessage({
+        recipient: params.recipient,
+        messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
+        body: stringifyBRC100(body)
+      }, hostOverride);
+    }
+  };
+});
+
+// node_modules/@bsv/message-box-client/dist/mod.js
+var init_mod3 = __esm(() => {
+  init_MessageBoxClient();
+  init_PeerPayClient();
+});
+
+// utils/peerPaymentReceive.ts
+function peerPaymentServicePaymentDenied() {
+  return Promise.reject(new Error(PEER_PAYMENT_SERVICE_PAYMENT_REQUIRED));
+}
+function createPeerPayServicePaymentDeniedWallet(wallet) {
+  return new Proxy(wallet, {
+    get(target, property, receiver) {
+      if (property === "createAction" || property === "signAction") {
+        return peerPaymentServicePaymentDenied;
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+function isPaymentToken(value) {
+  if (value == null || typeof value !== "object")
+    return false;
+  const token = value;
+  const instructions = token.customInstructions;
+  const amount = token.amount;
+  const prefix = instructions != null && typeof instructions === "object" ? instructions.derivationPrefix : undefined;
+  const suffix = instructions != null && typeof instructions === "object" ? instructions.derivationSuffix : undefined;
+  return Number.isSafeInteger(token.amount) && typeof amount === "number" && amount > 0 && Array.isArray(token.transaction) && token.transaction.length > 0 && token.transaction.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255) && instructions != null && typeof instructions === "object" && typeof prefix === "string" && prefix.trim() !== "" && typeof suffix === "string" && suffix.trim() !== "";
+}
+function toIncomingPayment(message) {
+  if (typeof message.messageId !== "string" || typeof message.sender !== "string")
+    return;
+  return isPaymentToken(message.body) ? {
+    messageId: message.messageId,
+    sender: message.sender,
+    token: message.body
+  } : undefined;
+}
+async function listPendingPeerPayments(client, host, messageBox = PAYMENT_MESSAGEBOX) {
+  const messages = await client.listMessagesLite({ messageBox, host });
+  return messages.map(toIncomingPayment).filter((payment) => payment !== undefined);
+}
+async function finalizePeerPaymentReceive(result, messageId, acknowledge) {
+  if (result === "Unable to receive payment!") {
+    throw new Error(`PeerPay payment outcome is uncertain for ${messageId}; do not re-internalize or retry blindly`);
+  }
+  const paymentResult = result != null && typeof result === "object" && "paymentResult" in result ? result.paymentResult : undefined;
+  if (paymentResult != null && typeof paymentResult === "object" && paymentResult.accepted === false) {
+    throw new Error("PeerPay wallet explicitly rejected the payment; no acknowledgment was sent");
+  }
+  if (paymentResult == null || typeof paymentResult !== "object" || paymentResult.accepted !== true) {
+    throw new Error(`PeerPay payment result is ambiguous for ${messageId}; do not re-internalize or retry blindly`);
+  }
+  try {
+    await acknowledge();
+  } catch (error) {
+    throw new Error(`PeerPay payment ${messageId} was internalized, but acknowledgment is uncertain; do not re-internalize`, { cause: error });
+  }
+  return result;
+}
+function createPeerPaymentReceiver(wallet, options = {}) {
+  const host = options.host ?? PEER_PAYMENT_MESSAGEBOX_HOST;
+  const messageBox = options.messageBox ?? PAYMENT_MESSAGEBOX;
+  const servicePaymentDeniedWallet = createPeerPayServicePaymentDeniedWallet(wallet);
+  const client = new StrictPeerPayClient({
+    walletClient: servicePaymentDeniedWallet,
+    messageBoxHost: host,
+    messageBox,
+    ...options.originator === undefined ? {} : { originator: options.originator }
+  });
+  return {
+    listPendingPayments: () => listPendingPeerPayments(client, host, messageBox),
+    receivePayment: (payment) => client.acceptPaymentStrict(payment, host)
+  };
+}
+var PEER_PAYMENT_MESSAGEBOX_HOST = "https://messagebox.1sat.app", PAYMENT_MESSAGEBOX = "payment_inbox", PEER_PAYMENT_SERVICE_PAYMENT_REQUIRED = "service-payment-required: PeerPay message-box service payments are disabled; list/receive must not buy service credits", StrictPeerPayClient;
+var init_peerPaymentReceive = __esm(() => {
+  init_mod3();
+  StrictPeerPayClient = class StrictPeerPayClient extends PeerPayClient {
+    async acknowledgeMessage(params) {
+      return "deferred";
+    }
+    async acceptPaymentStrict(payment, host) {
+      const result = await super.acceptPayment(payment);
+      return finalizePeerPaymentReceive(result, payment.messageId, () => super.acknowledgeMessage({
+        messageIds: [payment.messageId],
+        host
+      }));
+    }
+  };
+});
+
 // tools/bsv/decodeTransaction.ts
 async function fetchJungleBusData(txid) {
   try {
@@ -76055,7 +83974,7 @@ function createResponse(result) {
 }
 
 // tools/utils/logger.ts
-var init_logger = () => {};
+var init_logger2 = () => {};
 // utils/buffer.ts
 function arrayBufferToUint8Array(buffer) {
   const uint8Array = new Uint8Array(buffer);
@@ -76338,7 +84257,7 @@ var init_utils3 = __esm(() => {
   init_findSkills();
   init_installAgentMaster();
   init_aip();
-  init_logger();
+  init_logger2();
   init_transactionBuilder();
   encodingSchema2 = _enum(["utf8", "hex", "base64", "binary"]);
 });
@@ -76395,11 +84314,82 @@ var init_onboarding = __esm(() => {
   };
 });
 
+// tools/wallet/peerPayments.ts
+function registerPeerPaymentsTool(server, ctx, host = PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet = false) {
+  if (externalWallet)
+    return;
+  server.registerTool("wallet_peerPayments", {
+    description: "Lists pending PeerPay payments or receives one selected payment into the embedded BRC-100 wallet. Receiving requires an explicit messageId and internalizes funds before acknowledging the MessageBox item.",
+    inputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true
+    }
+  }, async (input) => {
+    try {
+      const args = inputSchema.parse(input);
+      const receiver = createPeerPaymentReceiver(ctx.wallet, { host });
+      const pending = await receiver.listPendingPayments();
+      if (args.operation === "list") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                count: pending.length,
+                payments: pending.map((payment) => ({
+                  messageId: payment.messageId,
+                  sender: payment.sender,
+                  amount: payment.token.amount
+                }))
+              }, null, 2)
+            }
+          ]
+        };
+      }
+      if (args.messageId === undefined)
+        throw new Error("messageId is required for receive");
+      const payment = pending.find(({ messageId }) => messageId === args.messageId);
+      if (payment === undefined)
+        throw new Error("Selected payment is no longer pending; refresh and retry");
+      await receiver.receivePayment(payment);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "received",
+              messageId: payment.messageId,
+              sender: payment.sender,
+              amount: payment.token.amount
+            })
+          }
+        ]
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { content: [{ type: "text", text: message }], isError: true };
+    }
+  });
+}
+var inputSchema;
+var init_peerPayments = __esm(() => {
+  init_zod();
+  init_peerPaymentReceive();
+  inputSchema = object2({
+    operation: _enum(["list", "receive"]),
+    messageId: string2().trim().min(1).max(256).optional()
+  });
+});
+
 // tools/wallet/brc100.ts
 function result(data) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
 }
-function error2(err) {
+function error3(err) {
   return {
     content: [
       { type: "text", text: err instanceof Error ? err.message : String(err) }
@@ -76463,7 +84453,7 @@ function registerBrc100Tools(server, ctx) {
         options: parseJSON("optionsJSON", optionsJSON)
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_signAction", {
@@ -76483,7 +84473,7 @@ function registerBrc100Tools(server, ctx) {
         options: parseJSON("optionsJSON", optionsJSON)
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_abortAction", {
@@ -76497,7 +84487,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.abortAction({ reference }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_internalizeAction", {
@@ -76527,7 +84517,7 @@ function registerBrc100Tools(server, ctx) {
         labels: parseJSON("labelsJSON", labelsJSON)
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_listActions", {
@@ -76554,7 +84544,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_listOutputs", {
@@ -76580,7 +84570,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_relinquishOutput", {
@@ -76595,7 +84585,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.relinquishOutput(args));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_getPublicKey", {
@@ -76620,7 +84610,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_encrypt", {
@@ -76643,7 +84633,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_decrypt", {
@@ -76666,7 +84656,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_createHmac", {
@@ -76689,7 +84679,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_verifyHmac", {
@@ -76713,7 +84703,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_createSignature", {
@@ -76737,7 +84727,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_verifySignature", {
@@ -76763,7 +84753,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_revealCounterpartyKeyLinkage", {
@@ -76780,7 +84770,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.revealCounterpartyKeyLinkage(args));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_revealSpecificKeyLinkage", {
@@ -76802,7 +84792,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_acquireCertificate", {
@@ -76831,7 +84821,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_listCertificates", {
@@ -76854,7 +84844,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_proveCertificate", {
@@ -76876,7 +84866,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_relinquishCertificate", {
@@ -76892,7 +84882,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.relinquishCertificate(args));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_discoverByIdentityKey", {
@@ -76909,7 +84899,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.discoverByIdentityKey(args));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_discoverByAttributes", {
@@ -76929,7 +84919,7 @@ function registerBrc100Tools(server, ctx) {
         ...rest
       }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_isAuthenticated", {
@@ -76941,7 +84931,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.isAuthenticated({}));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_waitForAuthentication", {
@@ -76953,7 +84943,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.waitForAuthentication({}));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_getHeight", {
@@ -76965,7 +84955,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.getHeight({}));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_getHeaderForHeight", {
@@ -76979,7 +84969,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.getHeaderForHeight({ height }));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_getNetwork", {
@@ -76991,7 +84981,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.getNetwork({}));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
   server.registerTool("wallet_getVersion", {
@@ -77003,7 +84993,7 @@ function registerBrc100Tools(server, ctx) {
     try {
       return result(await ctx.wallet.getVersion({}));
     } catch (e) {
-      return error2(e);
+      return error3(e);
     }
   });
 }
@@ -77488,7 +85478,7 @@ class BitCom {
     return null;
   }
 }
-var init_bitcom2 = __esm(() => {
+var init_bitcom = __esm(() => {
   init_mod();
 });
 
@@ -77644,7 +85634,7 @@ var MAPCommand;
 var init_map2 = __esm(() => {
   init_dist2();
   init_mod();
-  init_bitcom2();
+  init_bitcom();
   (function(MAPCommand) {
     MAPCommand["SET"] = "SET";
     MAPCommand["REMOVE"] = "REMOVE";
@@ -80808,7 +88798,7 @@ class AIP {
 var AIP_PREFIX2 = "15PciHG22SNLQJXMoSUaWVi7WSqc7hCfva";
 var init_aip2 = __esm(() => {
   init_mod();
-  init_bitcom2();
+  init_bitcom();
 });
 
 // node_modules/@1sat/templates/dist/bitcom/b.js
@@ -80916,7 +88906,7 @@ class B3 {
 var B_PREFIX2 = "19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut", MediaType, Encoding;
 var init_b = __esm(() => {
   init_mod();
-  init_bitcom2();
+  init_bitcom();
   (function(MediaType) {
     MediaType["TextPlain"] = "text/plain";
     MediaType["TextMarkdown"] = "text/markdown";
@@ -81148,7 +89138,7 @@ class BAP {
 var BAPAttestationType, BAP_PROTOCOL_PREFIX = "1BAPSuaPnfGnSBM3GLV9yhxUdYe4vGbdMT";
 var init_bap = __esm(() => {
   init_mod();
-  init_bitcom2();
+  init_bitcom();
   (function(BAPAttestationType) {
     BAPAttestationType["ID"] = "ID";
     BAPAttestationType["ATTEST"] = "ATTEST";
@@ -81417,7 +89407,7 @@ var init_bsocial = __esm(() => {
   init_mod();
   init_aip2();
   init_b();
-  init_bitcom2();
+  init_bitcom();
   init_map2();
   (function(BSocialActionType) {
     BSocialActionType["POST"] = "post";
@@ -81484,14 +89474,14 @@ class Sigma {
   static computeInputHash(txidOrTx, voutOrVin, sourceOutputIndex) {
     if (typeof txidOrTx === "string") {
       return sha256([
-        ...hexToBytes(txidOrTx),
+        ...hexToBytes2(txidOrTx),
         ...writeUint32LE(sourceOutputIndex ?? 0)
       ]);
     }
     const txIn = txidOrTx.inputs[voutOrVin];
     if (txIn?.sourceTXID) {
       return sha256([
-        ...hexToBytes(txIn.sourceTXID),
+        ...hexToBytes2(txIn.sourceTXID),
         ...writeUint32LE(txIn.sourceOutputIndex)
       ]);
     }
@@ -81770,7 +89760,7 @@ class Sigma {
     throw new Error("SIGMA signatures cannot be unlocked");
   }
 }
-var magicHash2, toHex3, toArray4, toUTF82, toBase642, SIGMA_PREFIX = "SIGMA", sigmaHex = "5349474d41", SigmaAlgorithm, EMPTY_OUTPOINT, hexToBytes = (hex) => {
+var magicHash2, toHex3, toArray4, toUTF82, toBase642, SIGMA_PREFIX = "SIGMA", sigmaHex = "5349474d41", SigmaAlgorithm, EMPTY_OUTPOINT, hexToBytes2 = (hex) => {
   const bytes = [];
   for (let i = 0;i < hex.length; i += 2) {
     bytes.push(Number.parseInt(hex.substring(i, i + 2), 16));
@@ -81784,7 +89774,7 @@ var magicHash2, toHex3, toArray4, toUTF82, toBase642, SIGMA_PREFIX = "SIGMA", si
 ];
 var init_sigma = __esm(() => {
   init_mod();
-  init_bitcom2();
+  init_bitcom();
   ({ magicHash: magicHash2 } = exports_BSM);
   ({ toHex: toHex3, toArray: toArray4, toUTF8: toUTF82, toBase64: toBase642 } = exports_utils);
   (function(SigmaAlgorithm) {
@@ -81808,7 +89798,7 @@ var init_dist4 = __esm(() => {
   init_lock();
   init_cosign();
   init_multisig();
-  init_bitcom2();
+  init_bitcom();
   init_aip2();
   init_b();
   init_bap();
@@ -84588,7 +92578,7 @@ var init_MultiSigPubkeyHash = () => {};
 var init_Signer = () => {};
 
 // node_modules/@bopen-io/templates/dist/esm/mod.js
-var init_mod2 = __esm(() => {
+var init_mod4 = __esm(() => {
   init_OpReturn();
   init_Metanet();
   init_MultiPushDrop();
@@ -84612,7 +92602,7 @@ var init_mod2 = __esm(() => {
 var CosignIndexer;
 var init_CosignIndexer = __esm(() => {
   init_dist2();
-  init_mod2();
+  init_mod4();
   CosignIndexer = class CosignIndexer extends Indexer {
     owners;
     network;
@@ -85305,7 +93295,7 @@ var init_in_memory_store = __esm(() => {
 });
 
 // node_modules/@1sat/wallet/dist/permissions/manager.js
-var init_manager = __esm(() => {
+var init_manager2 = __esm(() => {
   init_key();
 });
 
@@ -85313,7 +93303,7 @@ var init_manager = __esm(() => {
 var init_permissions = __esm(() => {
   init_in_memory_store();
   init_key();
-  init_manager();
+  init_manager2();
 });
 
 // node_modules/@1sat/wallet/dist/index.js
@@ -92177,8810 +100167,11 @@ class ProcessedTxStoreSqlite {
   }
 }
 
-// node_modules/@bsv/message-box-client/dist/src/Utils/logger.js
-function enable() {
-  isEnabled = true;
-}
-function log(...args) {
-  if (isEnabled)
-    console.log(...args);
-}
-function warn(...args) {
-  if (isEnabled)
-    console.warn(...args);
-}
-function error3(...args) {
-  console.error(...args);
-}
-var isEnabled = false;
-var init_logger2 = () => {};
-
-// node_modules/@bsv/message-box-client/dist/src/host.js
-function isPrivateIpv4(hostname) {
-  const octets = hostname.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255))
-    return false;
-  const [first, second] = octets;
-  return first === 0 || first === 10 || first === 127 || first === 100 && second >= 64 && second <= 127 || first === 169 && second === 254 || first === 172 && second >= 16 && second <= 31 || first === 192 && second === 0 && (octets[2] === 0 || octets[2] === 2) || first === 192 && second === 168 || first === 198 && (second === 18 || second === 19 || second === 51 && octets[2] === 100) || first === 203 && second === 0 && octets[2] === 113 || first >= 224;
-}
-function isPrivateIpv6(hostname) {
-  const normalized = hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!normalized.includes(":"))
-    return false;
-  return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") || normalized.startsWith("2001:db8:") || normalized.startsWith("::ffff:");
-}
-function isLocalHostname(hostname) {
-  const normalized = hostname.toLowerCase().replace(/\.$/, "");
-  return normalized === "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local") || normalized.endsWith(".lan") || normalized.endsWith(".home") || normalized.endsWith(".internal") || normalized.endsWith(".test") || normalized.endsWith(".invalid") || normalized === "example.com" || normalized.endsWith(".example.com") || isPrivateIpv4(normalized) || isPrivateIpv6(normalized);
-}
-function normalizeMessageBoxHost(host) {
-  if (typeof host !== "string")
-    throw new TypeError("Message Box host must be a string");
-  const candidate = host.trim();
-  if (candidate === "" || candidate.length > MAX_HOST_LENGTH)
-    throw new TypeError("Message Box host must be a non-empty URL of at most 2048 characters");
-  let url;
-  try {
-    url = new URL(candidate);
-  } catch {
-    throw new TypeError("Message Box host must be an absolute HTTP(S) URL");
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:")
-    throw new TypeError("Message Box host must use HTTP or HTTPS");
-  if (url.username !== "" || url.password !== "")
-    throw new TypeError("Message Box host must not contain credentials");
-  if (url.search !== "" || url.hash !== "")
-    throw new TypeError("Message Box host must not contain a query or fragment");
-  let pathname = url.pathname;
-  while (pathname.endsWith("/"))
-    pathname = pathname.slice(0, -1);
-  return pathname === "" ? url.origin : `${url.origin}${pathname}`;
-}
-function normalizeOverlayMessageBoxHost(host) {
-  try {
-    const normalized = normalizeMessageBoxHost(host);
-    const url = new URL(normalized);
-    if (url.protocol !== "https:" || isLocalHostname(url.hostname))
-      return;
-    return normalized;
-  } catch {
-    return;
-  }
-}
-function messageBoxEndpoint(host, path) {
-  const normalizedHost = normalizeMessageBoxHost(host);
-  const normalizedPath = path.replace(/^\/+/, "");
-  if (normalizedPath === "")
-    throw new TypeError("Message Box endpoint path must not be empty");
-  return `${normalizedHost}/${normalizedPath}`;
-}
-var MAX_HOST_LENGTH = 2048;
-var init_host = () => {};
-
-// node_modules/@bsv/authsocket-client/dist/src/SocketClientTransport.js
-var DEFAULT_MAX_PENDING_MESSAGES = 32, SocketClientTransport = class {
-  socket;
-  onDataCallback;
-  maxPendingMessages;
-  onError;
-  pendingMessages = 0;
-  failed = false;
-  constructor(socket, options = {}) {
-    this.socket = socket;
-    const maxPendingMessages = options.maxPendingMessages ?? DEFAULT_MAX_PENDING_MESSAGES;
-    if (!Number.isSafeInteger(maxPendingMessages) || maxPendingMessages < 1)
-      throw new RangeError("maxPendingMessages must be a positive safe integer");
-    this.maxPendingMessages = maxPendingMessages;
-    this.onError = options.onError;
-    this.socket.on("authMessage", (msg) => {
-      return this.processMessage(msg);
-    });
-  }
-  async send(message) {
-    this.socket.emit("authMessage", message);
-  }
-  async onData(callback) {
-    this.onDataCallback = callback;
-  }
-  async processMessage(message) {
-    if (this.failed || this.onDataCallback === undefined)
-      return;
-    if (this.pendingMessages >= this.maxPendingMessages) {
-      this.fail(/* @__PURE__ */ new Error("Authentication message concurrency limit exceeded"));
-      return;
-    }
-    this.pendingMessages += 1;
-    try {
-      await this.onDataCallback(message);
-    } catch (error) {
-      this.fail(error);
-    } finally {
-      this.pendingMessages -= 1;
-    }
-  }
-  fail(error) {
-    if (this.failed)
-      return;
-    this.failed = true;
-    Promise.resolve().then(async () => await this.onError?.(error)).catch(() => {});
-    try {
-      this.socket.disconnect();
-    } catch {}
-  }
-};
-var init_SocketClientTransport = () => {};
-
-// node_modules/xmlhttprequest-ssl/lib/XMLHttpRequest.js
-var require_XMLHttpRequest = __commonJS(function(exports, module) {
-  var fs = __require("fs");
-  var Url = __require("url");
-  var spawn = __require("child_process").spawn;
-  module.exports = XMLHttpRequest2;
-  XMLHttpRequest2.XMLHttpRequest = XMLHttpRequest2;
-  function XMLHttpRequest2(opts) {
-    opts = opts || {};
-    var self2 = this;
-    var http = __require("http");
-    var https = __require("https");
-    var request;
-    var response;
-    var settings = {};
-    var disableHeaderCheck = false;
-    var defaultHeaders = {
-      "User-Agent": "node-XMLHttpRequest",
-      Accept: "*/*"
-    };
-    var headers = Object.assign({}, defaultHeaders);
-    var forbiddenRequestHeaders = [
-      "accept-charset",
-      "accept-encoding",
-      "access-control-request-headers",
-      "access-control-request-method",
-      "connection",
-      "content-length",
-      "content-transfer-encoding",
-      "cookie",
-      "cookie2",
-      "date",
-      "expect",
-      "host",
-      "keep-alive",
-      "origin",
-      "referer",
-      "te",
-      "trailer",
-      "transfer-encoding",
-      "upgrade",
-      "via"
-    ];
-    var forbiddenRequestMethods = [
-      "TRACE",
-      "TRACK",
-      "CONNECT"
-    ];
-    var sendFlag = false;
-    var errorFlag = false;
-    var abortedFlag = false;
-    var listeners = {};
-    this.UNSENT = 0;
-    this.OPENED = 1;
-    this.HEADERS_RECEIVED = 2;
-    this.LOADING = 3;
-    this.DONE = 4;
-    this.readyState = this.UNSENT;
-    this.onreadystatechange = null;
-    this.responseText = "";
-    this.responseXML = "";
-    this.response = Buffer.alloc(0);
-    this.status = null;
-    this.statusText = null;
-    var isAllowedHttpHeader = function(header) {
-      return disableHeaderCheck || header && forbiddenRequestHeaders.indexOf(header.toLowerCase()) === -1;
-    };
-    var isAllowedHttpMethod = function(method) {
-      return method && forbiddenRequestMethods.indexOf(method) === -1;
-    };
-    this.open = function(method, url, async, user, password) {
-      this.abort();
-      errorFlag = false;
-      abortedFlag = false;
-      if (!isAllowedHttpMethod(method)) {
-        throw new Error("SecurityError: Request method not allowed");
-      }
-      settings = {
-        method,
-        url: url.toString(),
-        async: typeof async !== "boolean" ? true : async,
-        user: user || null,
-        password: password || null
-      };
-      setState(this.OPENED);
-    };
-    this.setDisableHeaderCheck = function(state) {
-      disableHeaderCheck = state;
-    };
-    this.setRequestHeader = function(header, value) {
-      if (this.readyState != this.OPENED) {
-        throw new Error("INVALID_STATE_ERR: setRequestHeader can only be called when state is OPEN");
-      }
-      if (!isAllowedHttpHeader(header)) {
-        console.warn('Refused to set unsafe header "' + header + '"');
-        return false;
-      }
-      if (sendFlag) {
-        throw new Error("INVALID_STATE_ERR: send flag is true");
-      }
-      headers[header] = value;
-      return true;
-    };
-    this.getResponseHeader = function(header) {
-      if (typeof header === "string" && this.readyState > this.OPENED && response.headers[header.toLowerCase()] && !errorFlag) {
-        return response.headers[header.toLowerCase()];
-      }
-      return null;
-    };
-    this.getAllResponseHeaders = function() {
-      if (this.readyState < this.HEADERS_RECEIVED || errorFlag) {
-        return "";
-      }
-      var result = "";
-      for (var i in response.headers) {
-        if (i !== "set-cookie" && i !== "set-cookie2") {
-          result += i + ": " + response.headers[i] + `\r
-`;
-        }
-      }
-      return result.substr(0, result.length - 2);
-    };
-    this.getRequestHeader = function(name) {
-      if (typeof name === "string" && headers[name]) {
-        return headers[name];
-      }
-      return "";
-    };
-    this.send = function(data) {
-      if (this.readyState != this.OPENED) {
-        throw new Error("INVALID_STATE_ERR: connection must be opened before send() is called");
-      }
-      if (sendFlag) {
-        throw new Error("INVALID_STATE_ERR: send has already been called");
-      }
-      var ssl = false, local = false;
-      var url = Url.parse(settings.url);
-      var host;
-      switch (url.protocol) {
-        case "https:":
-          ssl = true;
-        case "http:":
-          host = url.hostname;
-          break;
-        case "file:":
-          local = true;
-          break;
-        case undefined:
-        case "":
-          host = "localhost";
-          break;
-        default:
-          throw new Error("Protocol not supported.");
-      }
-      if (local) {
-        if (settings.method !== "GET") {
-          throw new Error("XMLHttpRequest: Only GET method is supported");
-        }
-        if (settings.async) {
-          fs.readFile(unescape(url.pathname), function(error, data) {
-            if (error) {
-              self2.handleError(error, error.errno || -1);
-            } else {
-              self2.status = 200;
-              self2.responseText = data.toString("utf8");
-              self2.response = data;
-              setState(self2.DONE);
-            }
-          });
-        } else {
-          try {
-            this.response = fs.readFileSync(unescape(url.pathname));
-            this.responseText = this.response.toString("utf8");
-            this.status = 200;
-            setState(self2.DONE);
-          } catch (e) {
-            this.handleError(e, e.errno || -1);
-          }
-        }
-        return;
-      }
-      var port = url.port || (ssl ? 443 : 80);
-      var uri = url.pathname + (url.search ? url.search : "");
-      headers["Host"] = host;
-      if (!(ssl && port === 443 || port === 80)) {
-        headers["Host"] += ":" + url.port;
-      }
-      if (settings.user) {
-        if (typeof settings.password == "undefined") {
-          settings.password = "";
-        }
-        var authBuf = new Buffer(settings.user + ":" + settings.password);
-        headers["Authorization"] = "Basic " + authBuf.toString("base64");
-      }
-      if (settings.method === "GET" || settings.method === "HEAD") {
-        data = null;
-      } else if (data) {
-        headers["Content-Length"] = Buffer.isBuffer(data) ? data.length : Buffer.byteLength(data);
-        var headersKeys = Object.keys(headers);
-        if (!headersKeys.some(function(h) {
-          return h.toLowerCase() === "content-type";
-        })) {
-          headers["Content-Type"] = "text/plain;charset=UTF-8";
-        }
-      } else if (settings.method === "POST") {
-        headers["Content-Length"] = 0;
-      }
-      var agent = opts.agent || false;
-      var options = {
-        host,
-        port,
-        path: uri,
-        method: settings.method,
-        headers,
-        agent
-      };
-      if (ssl) {
-        options.pfx = opts.pfx;
-        options.key = opts.key;
-        options.passphrase = opts.passphrase;
-        options.cert = opts.cert;
-        options.ca = opts.ca;
-        options.ciphers = opts.ciphers;
-        options.rejectUnauthorized = opts.rejectUnauthorized === false ? false : true;
-      }
-      errorFlag = false;
-      if (settings.async) {
-        var doRequest = ssl ? https.request : http.request;
-        sendFlag = true;
-        self2.dispatchEvent("readystatechange");
-        var responseHandler = function(resp) {
-          response = resp;
-          if (response.statusCode === 302 || response.statusCode === 303 || response.statusCode === 307) {
-            settings.url = response.headers.location;
-            var url = Url.parse(settings.url);
-            host = url.hostname;
-            var newOptions = {
-              hostname: url.hostname,
-              port: url.port,
-              path: url.path,
-              method: response.statusCode === 303 ? "GET" : settings.method,
-              headers
-            };
-            if (ssl) {
-              newOptions.pfx = opts.pfx;
-              newOptions.key = opts.key;
-              newOptions.passphrase = opts.passphrase;
-              newOptions.cert = opts.cert;
-              newOptions.ca = opts.ca;
-              newOptions.ciphers = opts.ciphers;
-              newOptions.rejectUnauthorized = opts.rejectUnauthorized === false ? false : true;
-            }
-            request = doRequest(newOptions, responseHandler).on("error", errorHandler);
-            request.end();
-            return;
-          }
-          setState(self2.HEADERS_RECEIVED);
-          self2.status = response.statusCode;
-          response.on("data", function(chunk) {
-            if (chunk) {
-              var data = Buffer.from(chunk);
-              self2.response = Buffer.concat([self2.response, data]);
-            }
-            if (sendFlag) {
-              setState(self2.LOADING);
-            }
-          });
-          response.on("end", function() {
-            if (sendFlag) {
-              sendFlag = false;
-              setState(self2.DONE);
-              self2.responseText = self2.response.toString("utf8");
-            }
-          });
-          response.on("error", function(error) {
-            self2.handleError(error);
-          });
-        };
-        var errorHandler = function(error) {
-          if (request.reusedSocket && error.code === "ECONNRESET")
-            return doRequest(options, responseHandler).on("error", errorHandler);
-          self2.handleError(error);
-        };
-        request = doRequest(options, responseHandler).on("error", errorHandler);
-        if (opts.autoUnref) {
-          request.on("socket", (socket) => {
-            socket.unref();
-          });
-        }
-        if (data) {
-          request.write(data);
-        }
-        request.end();
-        self2.dispatchEvent("loadstart");
-      } else {
-        var contentFile = ".node-xmlhttprequest-content-" + process.pid;
-        var syncFile = ".node-xmlhttprequest-sync-" + process.pid;
-        fs.writeFileSync(syncFile, "", "utf8");
-        var execString = "var http = require('http'), https = require('https'), fs = require('fs');" + "var doRequest = http" + (ssl ? "s" : "") + ".request;" + "var options = " + JSON.stringify(options) + ";" + "var responseText = '';" + "var responseData = Buffer.alloc(0);" + "var req = doRequest(options, function(response) {" + "response.on('data', function(chunk) {" + "  var data = Buffer.from(chunk);" + "  responseText += data.toString('utf8');" + "  responseData = Buffer.concat([responseData, data]);" + "});" + "response.on('end', function() {" + "fs.writeFileSync('" + contentFile + "', JSON.stringify({err: null, data: {statusCode: response.statusCode, headers: response.headers, text: responseText, data: responseData.toString('base64')}}), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + "response.on('error', function(error) {" + "fs.writeFileSync('" + contentFile + "', 'NODE-XMLHTTPREQUEST-ERROR:' + JSON.stringify(error), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + "}).on('error', function(error) {" + "fs.writeFileSync('" + contentFile + "', 'NODE-XMLHTTPREQUEST-ERROR:' + JSON.stringify(error), 'utf8');" + "fs.unlinkSync('" + syncFile + "');" + "});" + (data ? "req.write('" + JSON.stringify(data).slice(1, -1).replace(/'/g, "\\'") + "');" : "") + "req.end();";
-        var syncProc = spawn(process.argv[0], ["-e", execString]);
-        var statusText;
-        while (fs.existsSync(syncFile)) {}
-        self2.responseText = fs.readFileSync(contentFile, "utf8");
-        syncProc.stdin.end();
-        fs.unlinkSync(contentFile);
-        if (self2.responseText.match(/^NODE-XMLHTTPREQUEST-ERROR:/)) {
-          var errorObj = JSON.parse(self2.responseText.replace(/^NODE-XMLHTTPREQUEST-ERROR:/, ""));
-          self2.handleError(errorObj, 503);
-        } else {
-          self2.status = self2.responseText.replace(/^NODE-XMLHTTPREQUEST-STATUS:([0-9]*),.*/, "$1");
-          var resp = JSON.parse(self2.responseText.replace(/^NODE-XMLHTTPREQUEST-STATUS:[0-9]*,(.*)/, "$1"));
-          response = {
-            statusCode: self2.status,
-            headers: resp.data.headers
-          };
-          self2.responseText = resp.data.text;
-          self2.response = Buffer.from(resp.data.data, "base64");
-          setState(self2.DONE, true);
-        }
-      }
-    };
-    this.handleError = function(error, status) {
-      this.status = status || 0;
-      this.statusText = error;
-      this.responseText = error.stack;
-      errorFlag = true;
-      setState(this.DONE);
-    };
-    this.abort = function() {
-      if (request) {
-        request.abort();
-        request = null;
-      }
-      headers = Object.assign({}, defaultHeaders);
-      this.responseText = "";
-      this.responseXML = "";
-      this.response = Buffer.alloc(0);
-      errorFlag = abortedFlag = true;
-      if (this.readyState !== this.UNSENT && (this.readyState !== this.OPENED || sendFlag) && this.readyState !== this.DONE) {
-        sendFlag = false;
-        setState(this.DONE);
-      }
-      this.readyState = this.UNSENT;
-    };
-    this.addEventListener = function(event, callback) {
-      if (!(event in listeners)) {
-        listeners[event] = [];
-      }
-      listeners[event].push(callback);
-    };
-    this.removeEventListener = function(event, callback) {
-      if (event in listeners) {
-        listeners[event] = listeners[event].filter(function(ev) {
-          return ev !== callback;
-        });
-      }
-    };
-    this.dispatchEvent = function(event) {
-      if (typeof self2["on" + event] === "function") {
-        if (this.readyState === this.DONE && settings.async)
-          setTimeout(function() {
-            self2["on" + event]();
-          }, 0);
-        else
-          self2["on" + event]();
-      }
-      if (event in listeners) {
-        for (let i = 0, len = listeners[event].length;i < len; i++) {
-          if (this.readyState === this.DONE)
-            setTimeout(function() {
-              listeners[event][i].call(self2);
-            }, 0);
-          else
-            listeners[event][i].call(self2);
-        }
-      }
-    };
-    var setState = function(state) {
-      if (self2.readyState === state || self2.readyState === self2.UNSENT && abortedFlag)
-        return;
-      self2.readyState = state;
-      if (settings.async || self2.readyState < self2.OPENED || self2.readyState === self2.DONE) {
-        self2.dispatchEvent("readystatechange");
-      }
-      if (self2.readyState === self2.DONE) {
-        let fire;
-        if (abortedFlag)
-          fire = "abort";
-        else if (errorFlag)
-          fire = "error";
-        else
-          fire = "load";
-        self2.dispatchEvent(fire);
-        self2.dispatchEvent("loadend");
-      }
-    };
-  }
-});
-
-// node_modules/engine.io-parser/build/esm/commons.js
-var PACKET_TYPES, PACKET_TYPES_REVERSE, ERROR_PACKET;
-var init_commons = __esm(() => {
-  PACKET_TYPES = Object.create(null);
-  PACKET_TYPES["open"] = "0";
-  PACKET_TYPES["close"] = "1";
-  PACKET_TYPES["ping"] = "2";
-  PACKET_TYPES["pong"] = "3";
-  PACKET_TYPES["message"] = "4";
-  PACKET_TYPES["upgrade"] = "5";
-  PACKET_TYPES["noop"] = "6";
-  PACKET_TYPES_REVERSE = Object.create(null);
-  Object.keys(PACKET_TYPES).forEach((key) => {
-    PACKET_TYPES_REVERSE[PACKET_TYPES[key]] = key;
-  });
-  ERROR_PACKET = { type: "error", data: "parser error" };
-});
-
-// node_modules/engine.io-parser/build/esm/encodePacket.js
-function encodePacketToBinary(packet, callback) {
-  if (packet.data instanceof ArrayBuffer || ArrayBuffer.isView(packet.data)) {
-    return callback(toBuffer(packet.data, false));
-  }
-  encodePacket(packet, true, (encoded) => {
-    if (!TEXT_ENCODER) {
-      TEXT_ENCODER = new TextEncoder;
-    }
-    callback(TEXT_ENCODER.encode(encoded));
-  });
-}
-var encodePacket = ({ type, data }, supportsBinary, callback) => {
-  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-    return callback(supportsBinary ? data : "b" + toBuffer(data, true).toString("base64"));
-  }
-  return callback(PACKET_TYPES[type] + (data || ""));
-}, toBuffer = (data, forceBufferConversion) => {
-  if (Buffer.isBuffer(data) || data instanceof Uint8Array && !forceBufferConversion) {
-    return data;
-  } else if (data instanceof ArrayBuffer) {
-    return Buffer.from(data);
-  } else {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  }
-}, TEXT_ENCODER;
-var init_encodePacket = __esm(() => {
-  init_commons();
-});
-
-// node_modules/engine.io-parser/build/esm/decodePacket.js
-var decodePacket = (encodedPacket, binaryType) => {
-  if (typeof encodedPacket !== "string") {
-    return {
-      type: "message",
-      data: mapBinary(encodedPacket, binaryType)
-    };
-  }
-  const type = encodedPacket.charAt(0);
-  if (type === "b") {
-    const buffer = Buffer.from(encodedPacket.substring(1), "base64");
-    return {
-      type: "message",
-      data: mapBinary(buffer, binaryType)
-    };
-  }
-  if (!PACKET_TYPES_REVERSE[type]) {
-    return ERROR_PACKET;
-  }
-  return encodedPacket.length > 1 ? {
-    type: PACKET_TYPES_REVERSE[type],
-    data: encodedPacket.substring(1)
-  } : {
-    type: PACKET_TYPES_REVERSE[type]
-  };
-}, mapBinary = (data, binaryType) => {
-  switch (binaryType) {
-    case "arraybuffer":
-      if (data instanceof ArrayBuffer) {
-        return data;
-      } else if (Buffer.isBuffer(data)) {
-        return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-      } else {
-        return data.buffer;
-      }
-    case "nodebuffer":
-    default:
-      if (Buffer.isBuffer(data)) {
-        return data;
-      } else {
-        return Buffer.from(data);
-      }
-  }
-};
-var init_decodePacket = __esm(() => {
-  init_commons();
-});
-
-// node_modules/engine.io-parser/build/esm/index.js
-function createPacketEncoderStream() {
-  return new TransformStream({
-    transform(packet, controller) {
-      encodePacketToBinary(packet, (encodedPacket) => {
-        const payloadLength = encodedPacket.length;
-        let header;
-        if (payloadLength < 126) {
-          header = new Uint8Array(1);
-          new DataView(header.buffer).setUint8(0, payloadLength);
-        } else if (payloadLength < 65536) {
-          header = new Uint8Array(3);
-          const view = new DataView(header.buffer);
-          view.setUint8(0, 126);
-          view.setUint16(1, payloadLength);
-        } else {
-          header = new Uint8Array(9);
-          const view = new DataView(header.buffer);
-          view.setUint8(0, 127);
-          view.setBigUint64(1, BigInt(payloadLength));
-        }
-        if (packet.data && typeof packet.data !== "string") {
-          header[0] |= 128;
-        }
-        controller.enqueue(header);
-        controller.enqueue(encodedPacket);
-      });
-    }
-  });
-}
-function totalLength(chunks) {
-  return chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-}
-function concatChunks(chunks, size) {
-  if (chunks[0].length === size) {
-    return chunks.shift();
-  }
-  const buffer = new Uint8Array(size);
-  let j = 0;
-  for (let i = 0;i < size; i++) {
-    buffer[i] = chunks[0][j++];
-    if (j === chunks[0].length) {
-      chunks.shift();
-      j = 0;
-    }
-  }
-  if (chunks.length && j < chunks[0].length) {
-    chunks[0] = chunks[0].slice(j);
-  }
-  return buffer;
-}
-function createPacketDecoderStream(maxPayload, binaryType) {
-  if (!TEXT_DECODER) {
-    TEXT_DECODER = new TextDecoder;
-  }
-  const chunks = [];
-  let state = 0;
-  let expectedLength = -1;
-  let isBinary = false;
-  return new TransformStream({
-    transform(chunk, controller) {
-      chunks.push(chunk);
-      while (true) {
-        if (state === 0) {
-          if (totalLength(chunks) < 1) {
-            break;
-          }
-          const header = concatChunks(chunks, 1);
-          isBinary = (header[0] & 128) === 128;
-          expectedLength = header[0] & 127;
-          if (expectedLength < 126) {
-            state = 3;
-          } else if (expectedLength === 126) {
-            state = 1;
-          } else {
-            state = 2;
-          }
-        } else if (state === 1) {
-          if (totalLength(chunks) < 2) {
-            break;
-          }
-          const headerArray = concatChunks(chunks, 2);
-          expectedLength = new DataView(headerArray.buffer, headerArray.byteOffset, headerArray.length).getUint16(0);
-          state = 3;
-        } else if (state === 2) {
-          if (totalLength(chunks) < 8) {
-            break;
-          }
-          const headerArray = concatChunks(chunks, 8);
-          const view = new DataView(headerArray.buffer, headerArray.byteOffset, headerArray.length);
-          const n = view.getUint32(0);
-          if (n > Math.pow(2, 53 - 32) - 1) {
-            controller.enqueue(ERROR_PACKET);
-            break;
-          }
-          expectedLength = n * Math.pow(2, 32) + view.getUint32(4);
-          state = 3;
-        } else {
-          if (totalLength(chunks) < expectedLength) {
-            break;
-          }
-          const data = concatChunks(chunks, expectedLength);
-          controller.enqueue(decodePacket(isBinary ? data : TEXT_DECODER.decode(data), binaryType));
-          state = 0;
-        }
-        if (expectedLength === 0 || expectedLength > maxPayload) {
-          controller.enqueue(ERROR_PACKET);
-          break;
-        }
-      }
-    }
-  });
-}
-var SEPARATOR, encodePayload = (packets, callback) => {
-  const length = packets.length;
-  const encodedPackets = new Array(length);
-  let count = 0;
-  packets.forEach((packet, i) => {
-    encodePacket(packet, false, (encodedPacket) => {
-      encodedPackets[i] = encodedPacket;
-      if (++count === length) {
-        callback(encodedPackets.join(SEPARATOR));
-      }
-    });
-  });
-}, decodePayload = (encodedPayload, binaryType) => {
-  const encodedPackets = encodedPayload.split(SEPARATOR);
-  const packets = [];
-  for (let i = 0;i < encodedPackets.length; i++) {
-    const decodedPacket = decodePacket(encodedPackets[i], binaryType);
-    packets.push(decodedPacket);
-    if (decodedPacket.type === "error") {
-      break;
-    }
-  }
-  return packets;
-}, TEXT_DECODER, protocol = 4;
-var init_esm2 = __esm(() => {
-  init_encodePacket();
-  init_decodePacket();
-  init_commons();
-  SEPARATOR = String.fromCharCode(30);
-});
-
-// node_modules/@socket.io/component-emitter/lib/cjs/index.js
-function Emitter(obj) {
-  if (obj)
-    return mixin(obj);
-}
-function mixin(obj) {
-  for (var key in Emitter.prototype) {
-    obj[key] = Emitter.prototype[key];
-  }
-  return obj;
-}
-var $Emitter;
-var init_cjs = __esm(() => {
-  $Emitter = Emitter;
-  Emitter.prototype.on = Emitter.prototype.addEventListener = function(event, fn) {
-    this._callbacks = this._callbacks || {};
-    (this._callbacks["$" + event] = this._callbacks["$" + event] || []).push(fn);
-    return this;
-  };
-  Emitter.prototype.once = function(event, fn) {
-    function on() {
-      this.off(event, on);
-      fn.apply(this, arguments);
-    }
-    on.fn = fn;
-    this.on(event, on);
-    return this;
-  };
-  Emitter.prototype.off = Emitter.prototype.removeListener = Emitter.prototype.removeAllListeners = Emitter.prototype.removeEventListener = function(event, fn) {
-    this._callbacks = this._callbacks || {};
-    if (arguments.length == 0) {
-      this._callbacks = {};
-      return this;
-    }
-    var callbacks = this._callbacks["$" + event];
-    if (!callbacks)
-      return this;
-    if (arguments.length == 1) {
-      delete this._callbacks["$" + event];
-      return this;
-    }
-    var cb;
-    for (var i = 0;i < callbacks.length; i++) {
-      cb = callbacks[i];
-      if (cb === fn || cb.fn === fn) {
-        callbacks.splice(i, 1);
-        break;
-      }
-    }
-    if (callbacks.length === 0) {
-      delete this._callbacks["$" + event];
-    }
-    return this;
-  };
-  Emitter.prototype.emit = function(event) {
-    this._callbacks = this._callbacks || {};
-    var args = new Array(arguments.length - 1), callbacks = this._callbacks["$" + event];
-    for (var i = 1;i < arguments.length; i++) {
-      args[i - 1] = arguments[i];
-    }
-    if (callbacks) {
-      callbacks = callbacks.slice(0);
-      for (var i = 0, len = callbacks.length;i < len; ++i) {
-        callbacks[i].apply(this, args);
-      }
-    }
-    return this;
-  };
-  Emitter.prototype.emitReserved = Emitter.prototype.emit;
-  Emitter.prototype.listeners = function(event) {
-    this._callbacks = this._callbacks || {};
-    return this._callbacks["$" + event] || [];
-  };
-  Emitter.prototype.hasListeners = function(event) {
-    return !!this.listeners(event).length;
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/globals.node.js
-function createCookieJar() {
-  return new CookieJar;
-}
-function parse6(setCookieString) {
-  const parts = setCookieString.split("; ");
-  const i = parts[0].indexOf("=");
-  if (i === -1) {
-    return;
-  }
-  const name = parts[0].substring(0, i).trim();
-  if (!name.length) {
-    return;
-  }
-  let value = parts[0].substring(i + 1).trim();
-  if (value.charCodeAt(0) === 34) {
-    value = value.slice(1, -1);
-  }
-  const cookie = {
-    name,
-    value
-  };
-  for (let j = 1;j < parts.length; j++) {
-    const subParts = parts[j].split("=");
-    if (subParts.length !== 2) {
-      continue;
-    }
-    const key = subParts[0].trim();
-    const value = subParts[1].trim();
-    switch (key) {
-      case "Expires":
-        cookie.expires = new Date(value);
-        break;
-      case "Max-Age":
-        const expiration = new Date;
-        expiration.setUTCSeconds(expiration.getUTCSeconds() + parseInt(value, 10));
-        cookie.expires = expiration;
-        break;
-      default:
-    }
-  }
-  return cookie;
-}
-
-class CookieJar {
-  constructor() {
-    this._cookies = new Map;
-  }
-  parseCookies(values) {
-    if (!values) {
-      return;
-    }
-    values.forEach((value) => {
-      const parsed = parse6(value);
-      if (parsed) {
-        this._cookies.set(parsed.name, parsed);
-      }
-    });
-  }
-  get cookies() {
-    const now = Date.now();
-    this._cookies.forEach((cookie, name) => {
-      var _a;
-      if (((_a = cookie.expires) === null || _a === undefined ? undefined : _a.getTime()) < now) {
-        this._cookies.delete(name);
-      }
-    });
-    return this._cookies.entries();
-  }
-  addCookies(xhr) {
-    const cookies = [];
-    for (const [name, cookie] of this.cookies) {
-      cookies.push(`${name}=${cookie.value}`);
-    }
-    if (cookies.length) {
-      xhr.setDisableHeaderCheck(true);
-      xhr.setRequestHeader("cookie", cookies.join("; "));
-    }
-  }
-  appendCookies(headers) {
-    for (const [name, cookie] of this.cookies) {
-      headers.append("cookie", `${name}=${cookie.value}`);
-    }
-  }
-}
-var nextTick, globalThisShim, defaultBinaryType = "nodebuffer";
-var init_globals_node = __esm(() => {
-  nextTick = process.nextTick;
-  globalThisShim = global;
-});
-
-// node_modules/engine.io-client/build/esm-debug/util.js
-function pick2(obj, ...attr) {
-  return attr.reduce((acc, k) => {
-    if (obj.hasOwnProperty(k)) {
-      acc[k] = obj[k];
-    }
-    return acc;
-  }, {});
-}
-function installTimerFunctions(obj, opts) {
-  if (opts.useNativeTimers) {
-    obj.setTimeoutFn = NATIVE_SET_TIMEOUT.bind(globalThisShim);
-    obj.clearTimeoutFn = NATIVE_CLEAR_TIMEOUT.bind(globalThisShim);
-  } else {
-    obj.setTimeoutFn = globalThisShim.setTimeout.bind(globalThisShim);
-    obj.clearTimeoutFn = globalThisShim.clearTimeout.bind(globalThisShim);
-  }
-}
-function byteLength(obj) {
-  if (typeof obj === "string") {
-    return utf8Length(obj);
-  }
-  return Math.ceil((obj.byteLength || obj.size) * BASE64_OVERHEAD);
-}
-function utf8Length(str) {
-  let c = 0, length = 0;
-  for (let i = 0, l = str.length;i < l; i++) {
-    c = str.charCodeAt(i);
-    if (c < 128) {
-      length += 1;
-    } else if (c < 2048) {
-      length += 2;
-    } else if (c < 55296 || c >= 57344) {
-      length += 3;
-    } else {
-      i++;
-      length += 4;
-    }
-  }
-  return length;
-}
-function randomString() {
-  return Date.now().toString(36).substring(3) + Math.random().toString(36).substring(2, 5);
-}
-var NATIVE_SET_TIMEOUT, NATIVE_CLEAR_TIMEOUT, BASE64_OVERHEAD = 1.33;
-var init_util2 = __esm(() => {
-  init_globals_node();
-  NATIVE_SET_TIMEOUT = globalThisShim.setTimeout;
-  NATIVE_CLEAR_TIMEOUT = globalThisShim.clearTimeout;
-});
-
-// node_modules/engine.io-client/build/esm-debug/contrib/parseqs.js
-function encode4(obj) {
-  let str = "";
-  for (let i in obj) {
-    if (obj.hasOwnProperty(i)) {
-      if (str.length)
-        str += "&";
-      str += encodeURIComponent(i) + "=" + encodeURIComponent(obj[i]);
-    }
-  }
-  return str;
-}
-function decode3(qs) {
-  let qry = {};
-  let pairs = qs.split("&");
-  for (let i = 0, l = pairs.length;i < l; i++) {
-    let pair = pairs[i].split("=");
-    qry[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
-  }
-  return qry;
-}
-
-// node_modules/ms/index.js
-var require_ms = __commonJS(function(exports, module) {
-  var s = 1000;
-  var m = s * 60;
-  var h = m * 60;
-  var d = h * 24;
-  var w = d * 7;
-  var y = d * 365.25;
-  module.exports = function(val, options) {
-    options = options || {};
-    var type = typeof val;
-    if (type === "string" && val.length > 0) {
-      return parse(val);
-    } else if (type === "number" && isFinite(val)) {
-      return options.long ? fmtLong(val) : fmtShort(val);
-    }
-    throw new Error("val is not a non-empty string or a valid number. val=" + JSON.stringify(val));
-  };
-  function parse(str) {
-    str = String(str);
-    if (str.length > 100) {
-      return;
-    }
-    var match = /^(-?(?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)?$/i.exec(str);
-    if (!match) {
-      return;
-    }
-    var n = parseFloat(match[1]);
-    var type = (match[2] || "ms").toLowerCase();
-    switch (type) {
-      case "years":
-      case "year":
-      case "yrs":
-      case "yr":
-      case "y":
-        return n * y;
-      case "weeks":
-      case "week":
-      case "w":
-        return n * w;
-      case "days":
-      case "day":
-      case "d":
-        return n * d;
-      case "hours":
-      case "hour":
-      case "hrs":
-      case "hr":
-      case "h":
-        return n * h;
-      case "minutes":
-      case "minute":
-      case "mins":
-      case "min":
-      case "m":
-        return n * m;
-      case "seconds":
-      case "second":
-      case "secs":
-      case "sec":
-      case "s":
-        return n * s;
-      case "milliseconds":
-      case "millisecond":
-      case "msecs":
-      case "msec":
-      case "ms":
-        return n;
-      default:
-        return;
-    }
-  }
-  function fmtShort(ms) {
-    var msAbs = Math.abs(ms);
-    if (msAbs >= d) {
-      return Math.round(ms / d) + "d";
-    }
-    if (msAbs >= h) {
-      return Math.round(ms / h) + "h";
-    }
-    if (msAbs >= m) {
-      return Math.round(ms / m) + "m";
-    }
-    if (msAbs >= s) {
-      return Math.round(ms / s) + "s";
-    }
-    return ms + "ms";
-  }
-  function fmtLong(ms) {
-    var msAbs = Math.abs(ms);
-    if (msAbs >= d) {
-      return plural(ms, msAbs, d, "day");
-    }
-    if (msAbs >= h) {
-      return plural(ms, msAbs, h, "hour");
-    }
-    if (msAbs >= m) {
-      return plural(ms, msAbs, m, "minute");
-    }
-    if (msAbs >= s) {
-      return plural(ms, msAbs, s, "second");
-    }
-    return ms + " ms";
-  }
-  function plural(ms, msAbs, n, name) {
-    var isPlural = msAbs >= n * 1.5;
-    return Math.round(ms / n) + " " + name + (isPlural ? "s" : "");
-  }
-});
-
-// node_modules/debug/src/common.js
-var require_common = __commonJS(function(exports, module) {
-  function setup(env) {
-    createDebug.debug = createDebug;
-    createDebug.default = createDebug;
-    createDebug.coerce = coerce;
-    createDebug.disable = disable;
-    createDebug.enable = enable;
-    createDebug.enabled = enabled;
-    createDebug.humanize = require_ms();
-    createDebug.destroy = destroy;
-    Object.keys(env).forEach((key) => {
-      createDebug[key] = env[key];
-    });
-    createDebug.names = [];
-    createDebug.skips = [];
-    createDebug.formatters = {};
-    function selectColor(namespace) {
-      let hash = 0;
-      for (let i = 0;i < namespace.length; i++) {
-        hash = (hash << 5) - hash + namespace.charCodeAt(i);
-        hash |= 0;
-      }
-      return createDebug.colors[Math.abs(hash) % createDebug.colors.length];
-    }
-    createDebug.selectColor = selectColor;
-    function createDebug(namespace) {
-      let prevTime;
-      let enableOverride = null;
-      let namespacesCache;
-      let enabledCache;
-      function debug(...args) {
-        if (!debug.enabled) {
-          return;
-        }
-        const self2 = debug;
-        const curr = Number(new Date);
-        const ms = curr - (prevTime || curr);
-        self2.diff = ms;
-        self2.prev = prevTime;
-        self2.curr = curr;
-        prevTime = curr;
-        args[0] = createDebug.coerce(args[0]);
-        if (typeof args[0] !== "string") {
-          args.unshift("%O");
-        }
-        let index = 0;
-        args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format) => {
-          if (match === "%%") {
-            return "%";
-          }
-          index++;
-          const formatter = createDebug.formatters[format];
-          if (typeof formatter === "function") {
-            const val = args[index];
-            match = formatter.call(self2, val);
-            args.splice(index, 1);
-            index--;
-          }
-          return match;
-        });
-        createDebug.formatArgs.call(self2, args);
-        const logFn = self2.log || createDebug.log;
-        logFn.apply(self2, args);
-      }
-      debug.namespace = namespace;
-      debug.useColors = createDebug.useColors();
-      debug.color = createDebug.selectColor(namespace);
-      debug.extend = extend;
-      debug.destroy = createDebug.destroy;
-      Object.defineProperty(debug, "enabled", {
-        enumerable: true,
-        configurable: false,
-        get: () => {
-          if (enableOverride !== null) {
-            return enableOverride;
-          }
-          if (namespacesCache !== createDebug.namespaces) {
-            namespacesCache = createDebug.namespaces;
-            enabledCache = createDebug.enabled(namespace);
-          }
-          return enabledCache;
-        },
-        set: (v) => {
-          enableOverride = v;
-        }
-      });
-      if (typeof createDebug.init === "function") {
-        createDebug.init(debug);
-      }
-      return debug;
-    }
-    function extend(namespace, delimiter) {
-      const newDebug = createDebug(this.namespace + (typeof delimiter === "undefined" ? ":" : delimiter) + namespace);
-      newDebug.log = this.log;
-      return newDebug;
-    }
-    function enable(namespaces) {
-      createDebug.save(namespaces);
-      createDebug.namespaces = namespaces;
-      createDebug.names = [];
-      createDebug.skips = [];
-      const split = (typeof namespaces === "string" ? namespaces : "").trim().replace(/\s+/g, ",").split(",").filter(Boolean);
-      for (const ns of split) {
-        if (ns[0] === "-") {
-          createDebug.skips.push(ns.slice(1));
-        } else {
-          createDebug.names.push(ns);
-        }
-      }
-    }
-    function matchesTemplate(search, template) {
-      let searchIndex = 0;
-      let templateIndex = 0;
-      let starIndex = -1;
-      let matchIndex = 0;
-      while (searchIndex < search.length) {
-        if (templateIndex < template.length && (template[templateIndex] === search[searchIndex] || template[templateIndex] === "*")) {
-          if (template[templateIndex] === "*") {
-            starIndex = templateIndex;
-            matchIndex = searchIndex;
-            templateIndex++;
-          } else {
-            searchIndex++;
-            templateIndex++;
-          }
-        } else if (starIndex !== -1) {
-          templateIndex = starIndex + 1;
-          matchIndex++;
-          searchIndex = matchIndex;
-        } else {
-          return false;
-        }
-      }
-      while (templateIndex < template.length && template[templateIndex] === "*") {
-        templateIndex++;
-      }
-      return templateIndex === template.length;
-    }
-    function disable() {
-      const namespaces = [
-        ...createDebug.names,
-        ...createDebug.skips.map((namespace) => "-" + namespace)
-      ].join(",");
-      createDebug.enable("");
-      return namespaces;
-    }
-    function enabled(name) {
-      for (const skip of createDebug.skips) {
-        if (matchesTemplate(name, skip)) {
-          return false;
-        }
-      }
-      for (const ns of createDebug.names) {
-        if (matchesTemplate(name, ns)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    function coerce(val) {
-      if (val instanceof Error) {
-        return val.stack || val.message;
-      }
-      return val;
-    }
-    function destroy() {
-      console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
-    }
-    createDebug.enable(createDebug.load());
-    return createDebug;
-  }
-  module.exports = setup;
-});
-
-// node_modules/debug/src/browser.js
-var require_browser = __commonJS(function(exports, module) {
-  exports.formatArgs = formatArgs;
-  exports.save = save;
-  exports.load = load;
-  exports.useColors = useColors;
-  exports.storage = localstorage();
-  exports.destroy = (() => {
-    let warned = false;
-    return () => {
-      if (!warned) {
-        warned = true;
-        console.warn("Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
-      }
-    };
-  })();
-  exports.colors = [
-    "#0000CC",
-    "#0000FF",
-    "#0033CC",
-    "#0033FF",
-    "#0066CC",
-    "#0066FF",
-    "#0099CC",
-    "#0099FF",
-    "#00CC00",
-    "#00CC33",
-    "#00CC66",
-    "#00CC99",
-    "#00CCCC",
-    "#00CCFF",
-    "#3300CC",
-    "#3300FF",
-    "#3333CC",
-    "#3333FF",
-    "#3366CC",
-    "#3366FF",
-    "#3399CC",
-    "#3399FF",
-    "#33CC00",
-    "#33CC33",
-    "#33CC66",
-    "#33CC99",
-    "#33CCCC",
-    "#33CCFF",
-    "#6600CC",
-    "#6600FF",
-    "#6633CC",
-    "#6633FF",
-    "#66CC00",
-    "#66CC33",
-    "#9900CC",
-    "#9900FF",
-    "#9933CC",
-    "#9933FF",
-    "#99CC00",
-    "#99CC33",
-    "#CC0000",
-    "#CC0033",
-    "#CC0066",
-    "#CC0099",
-    "#CC00CC",
-    "#CC00FF",
-    "#CC3300",
-    "#CC3333",
-    "#CC3366",
-    "#CC3399",
-    "#CC33CC",
-    "#CC33FF",
-    "#CC6600",
-    "#CC6633",
-    "#CC9900",
-    "#CC9933",
-    "#CCCC00",
-    "#CCCC33",
-    "#FF0000",
-    "#FF0033",
-    "#FF0066",
-    "#FF0099",
-    "#FF00CC",
-    "#FF00FF",
-    "#FF3300",
-    "#FF3333",
-    "#FF3366",
-    "#FF3399",
-    "#FF33CC",
-    "#FF33FF",
-    "#FF6600",
-    "#FF6633",
-    "#FF9900",
-    "#FF9933",
-    "#FFCC00",
-    "#FFCC33"
-  ];
-  function useColors() {
-    if (typeof window !== "undefined" && window.process && (window.process.type === "renderer" || window.process.__nwjs)) {
-      return true;
-    }
-    if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
-      return false;
-    }
-    let m;
-    return typeof document !== "undefined" && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance || typeof window !== "undefined" && window.console && (window.console.firebug || window.console.exception && window.console.table) || typeof navigator !== "undefined" && navigator.userAgent && (m = navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/)) && parseInt(m[1], 10) >= 31 || typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/);
-  }
-  function formatArgs(args) {
-    args[0] = (this.useColors ? "%c" : "") + this.namespace + (this.useColors ? " %c" : " ") + args[0] + (this.useColors ? "%c " : " ") + "+" + module.exports.humanize(this.diff);
-    if (!this.useColors) {
-      return;
-    }
-    const c = "color: " + this.color;
-    args.splice(1, 0, c, "color: inherit");
-    let index = 0;
-    let lastC = 0;
-    args[0].replace(/%[a-zA-Z%]/g, (match) => {
-      if (match === "%%") {
-        return;
-      }
-      index++;
-      if (match === "%c") {
-        lastC = index;
-      }
-    });
-    args.splice(lastC, 0, c);
-  }
-  exports.log = console.debug || console.log || (() => {});
-  function save(namespaces) {
-    try {
-      if (namespaces) {
-        exports.storage.setItem("debug", namespaces);
-      } else {
-        exports.storage.removeItem("debug");
-      }
-    } catch (error) {}
-  }
-  function load() {
-    let r;
-    try {
-      r = exports.storage.getItem("debug") || exports.storage.getItem("DEBUG");
-    } catch (error) {}
-    if (!r && typeof process !== "undefined" && "env" in process) {
-      r = process.env.DEBUG;
-    }
-    return r;
-  }
-  function localstorage() {
-    try {
-      return localStorage;
-    } catch (error) {}
-  }
-  module.exports = require_common()(exports);
-  var { formatters } = module.exports;
-  formatters.j = function(v) {
-    try {
-      return JSON.stringify(v);
-    } catch (error) {
-      return "[UnexpectedJSONParseError]: " + error.message;
-    }
-  };
-});
-
-// node_modules/debug/src/node.js
-var require_node = __commonJS(function(exports, module) {
-  var tty = __require("tty");
-  var util = __require("util");
-  exports.init = init;
-  exports.log = log;
-  exports.formatArgs = formatArgs;
-  exports.save = save;
-  exports.load = load;
-  exports.useColors = useColors;
-  exports.destroy = util.deprecate(() => {}, "Instance method `debug.destroy()` is deprecated and no longer does anything. It will be removed in the next major version of `debug`.");
-  exports.colors = [6, 2, 3, 4, 5, 1];
-  try {
-    const supportsColor = (()=>{throw new Error("Cannot require module "+"supports-color");})();
-    if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
-      exports.colors = [
-        20,
-        21,
-        26,
-        27,
-        32,
-        33,
-        38,
-        39,
-        40,
-        41,
-        42,
-        43,
-        44,
-        45,
-        56,
-        57,
-        62,
-        63,
-        68,
-        69,
-        74,
-        75,
-        76,
-        77,
-        78,
-        79,
-        80,
-        81,
-        92,
-        93,
-        98,
-        99,
-        112,
-        113,
-        128,
-        129,
-        134,
-        135,
-        148,
-        149,
-        160,
-        161,
-        162,
-        163,
-        164,
-        165,
-        166,
-        167,
-        168,
-        169,
-        170,
-        171,
-        172,
-        173,
-        178,
-        179,
-        184,
-        185,
-        196,
-        197,
-        198,
-        199,
-        200,
-        201,
-        202,
-        203,
-        204,
-        205,
-        206,
-        207,
-        208,
-        209,
-        214,
-        215,
-        220,
-        221
-      ];
-    }
-  } catch (error) {}
-  exports.inspectOpts = Object.keys(process.env).filter((key) => {
-    return /^debug_/i.test(key);
-  }).reduce((obj, key) => {
-    const prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, (_, k) => {
-      return k.toUpperCase();
-    });
-    let val = process.env[key];
-    if (/^(yes|on|true|enabled)$/i.test(val)) {
-      val = true;
-    } else if (/^(no|off|false|disabled)$/i.test(val)) {
-      val = false;
-    } else if (val === "null") {
-      val = null;
-    } else {
-      val = Number(val);
-    }
-    obj[prop] = val;
-    return obj;
-  }, {});
-  function useColors() {
-    return "colors" in exports.inspectOpts ? Boolean(exports.inspectOpts.colors) : tty.isatty(process.stderr.fd);
-  }
-  function formatArgs(args) {
-    const { namespace: name, useColors } = this;
-    if (useColors) {
-      const c = this.color;
-      const colorCode = "\x1B[3" + (c < 8 ? c : "8;5;" + c);
-      const prefix = `  ${colorCode};1m${name} \x1B[0m`;
-      args[0] = prefix + args[0].split(`
-`).join(`
-` + prefix);
-      args.push(colorCode + "m+" + module.exports.humanize(this.diff) + "\x1B[0m");
-    } else {
-      args[0] = getDate() + name + " " + args[0];
-    }
-  }
-  function getDate() {
-    if (exports.inspectOpts.hideDate) {
-      return "";
-    }
-    return new Date().toISOString() + " ";
-  }
-  function log(...args) {
-    return process.stderr.write(util.formatWithOptions(exports.inspectOpts, ...args) + `
-`);
-  }
-  function save(namespaces) {
-    if (namespaces) {
-      process.env.DEBUG = namespaces;
-    } else {
-      delete process.env.DEBUG;
-    }
-  }
-  function load() {
-    return process.env.DEBUG;
-  }
-  function init(debug) {
-    debug.inspectOpts = {};
-    const keys = Object.keys(exports.inspectOpts);
-    for (let i = 0;i < keys.length; i++) {
-      debug.inspectOpts[keys[i]] = exports.inspectOpts[keys[i]];
-    }
-  }
-  module.exports = require_common()(exports);
-  var { formatters } = module.exports;
-  formatters.o = function(v) {
-    this.inspectOpts.colors = this.useColors;
-    return util.inspect(v, this.inspectOpts).split(`
-`).map((str) => str.trim()).join(" ");
-  };
-  formatters.O = function(v) {
-    this.inspectOpts.colors = this.useColors;
-    return util.inspect(v, this.inspectOpts);
-  };
-});
-
-// node_modules/debug/src/index.js
-var require_src = __commonJS(function(exports, module) {
-  if (typeof process === "undefined" || process.type === "renderer" || false || process.__nwjs) {
-    module.exports = require_browser();
-  } else {
-    module.exports = require_node();
-  }
-});
-
-// node_modules/engine.io-client/build/esm-debug/transport.js
-var import_debug, debug, TransportError, Transport;
-var init_transport = __esm(() => {
-  init_esm2();
-  init_cjs();
-  init_util2();
-  import_debug = __toESM(require_src(), 1);
-  debug = import_debug.default("engine.io-client:transport");
-  TransportError = class TransportError extends Error {
-    constructor(reason, description, context) {
-      super(reason);
-      this.description = description;
-      this.context = context;
-      this.type = "TransportError";
-    }
-  };
-  Transport = class Transport extends $Emitter {
-    constructor(opts) {
-      super();
-      this.writable = false;
-      installTimerFunctions(this, opts);
-      this.opts = opts;
-      this.query = opts.query;
-      this.socket = opts.socket;
-      this.supportsBinary = !opts.forceBase64;
-    }
-    onError(reason, description, context) {
-      super.emitReserved("error", new TransportError(reason, description, context));
-      return this;
-    }
-    open() {
-      this.readyState = "opening";
-      this.doOpen();
-      return this;
-    }
-    close() {
-      if (this.readyState === "opening" || this.readyState === "open") {
-        this.doClose();
-        this.onClose();
-      }
-      return this;
-    }
-    send(packets) {
-      if (this.readyState === "open") {
-        this.write(packets);
-      } else {
-        debug("transport is not open, discarding packets");
-      }
-    }
-    onOpen() {
-      this.readyState = "open";
-      this.writable = true;
-      super.emitReserved("open");
-    }
-    onData(data) {
-      const packet = decodePacket(data, this.socket.binaryType);
-      this.onPacket(packet);
-    }
-    onPacket(packet) {
-      super.emitReserved("packet", packet);
-    }
-    onClose(details) {
-      this.readyState = "closed";
-      super.emitReserved("close", details);
-    }
-    pause(onPause) {}
-    createUri(schema, query = {}) {
-      return schema + "://" + this._hostname() + this._port() + this.opts.path + this._query(query);
-    }
-    _hostname() {
-      const hostname = this.opts.hostname;
-      return hostname.indexOf(":") === -1 ? hostname : "[" + hostname + "]";
-    }
-    _port() {
-      if (this.opts.port && (this.opts.secure && Number(this.opts.port) !== 443 || !this.opts.secure && Number(this.opts.port) !== 80)) {
-        return ":" + this.opts.port;
-      } else {
-        return "";
-      }
-    }
-    _query(query) {
-      const encodedQuery = encode4(query);
-      return encodedQuery.length ? "?" + encodedQuery : "";
-    }
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/polling.js
-var import_debug2, debug2, Polling;
-var init_polling = __esm(() => {
-  init_transport();
-  init_util2();
-  init_esm2();
-  import_debug2 = __toESM(require_src(), 1);
-  debug2 = import_debug2.default("engine.io-client:polling");
-  Polling = class Polling extends Transport {
-    constructor() {
-      super(...arguments);
-      this._polling = false;
-    }
-    get name() {
-      return "polling";
-    }
-    doOpen() {
-      this._poll();
-    }
-    pause(onPause) {
-      this.readyState = "pausing";
-      const pause = () => {
-        debug2("paused");
-        this.readyState = "paused";
-        onPause();
-      };
-      if (this._polling || !this.writable) {
-        let total = 0;
-        if (this._polling) {
-          debug2("we are currently polling - waiting to pause");
-          total++;
-          this.once("pollComplete", function() {
-            debug2("pre-pause polling complete");
-            --total || pause();
-          });
-        }
-        if (!this.writable) {
-          debug2("we are currently writing - waiting to pause");
-          total++;
-          this.once("drain", function() {
-            debug2("pre-pause writing complete");
-            --total || pause();
-          });
-        }
-      } else {
-        pause();
-      }
-    }
-    _poll() {
-      debug2("polling");
-      this._polling = true;
-      this.doPoll();
-      this.emitReserved("poll");
-    }
-    onData(data) {
-      debug2("polling got data %s", data);
-      const callback = (packet) => {
-        if (this.readyState === "opening" && packet.type === "open") {
-          this.onOpen();
-        }
-        if (packet.type === "close") {
-          this.onClose({ description: "transport closed by the server" });
-          return false;
-        }
-        this.onPacket(packet);
-      };
-      decodePayload(data, this.socket.binaryType).forEach(callback);
-      if (this.readyState !== "closed") {
-        this._polling = false;
-        this.emitReserved("pollComplete");
-        if (this.readyState === "open") {
-          this._poll();
-        } else {
-          debug2('ignoring poll - transport state "%s"', this.readyState);
-        }
-      }
-    }
-    doClose() {
-      const close = () => {
-        debug2("writing close packet");
-        this.write([{ type: "close" }]);
-      };
-      if (this.readyState === "open") {
-        debug2("transport open - closing");
-        close();
-      } else {
-        debug2("transport not open - deferring close");
-        this.once("open", close);
-      }
-    }
-    write(packets) {
-      this.writable = false;
-      encodePayload(packets, (data) => {
-        this.doWrite(data, () => {
-          this.writable = true;
-          this.emitReserved("drain");
-        });
-      });
-    }
-    uri() {
-      const schema = this.opts.secure ? "https" : "http";
-      const query = this.query || {};
-      if (this.opts.timestampRequests !== false) {
-        query[this.opts.timestampParam] = randomString();
-      }
-      if (!this.supportsBinary && !query.sid) {
-        query.b64 = 1;
-      }
-      return this.createUri(schema, query);
-    }
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/contrib/has-cors.js
-var value = false, hasCORS;
-var init_has_cors = __esm(() => {
-  try {
-    value = typeof XMLHttpRequest !== "undefined" && "withCredentials" in new XMLHttpRequest;
-  } catch (err) {}
-  hasCORS = value;
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.js
-function empty() {}
-function unloadHandler() {
-  for (let i in Request.requests) {
-    if (Request.requests.hasOwnProperty(i)) {
-      Request.requests[i].abort();
-    }
-  }
-}
-function newRequest(opts) {
-  const xdomain = opts.xdomain;
-  try {
-    if (typeof XMLHttpRequest !== "undefined" && (!xdomain || hasCORS)) {
-      return new XMLHttpRequest;
-    }
-  } catch (e) {}
-  if (!xdomain) {
-    try {
-      return new globalThisShim[["Active"].concat("Object").join("X")]("Microsoft.XMLHTTP");
-    } catch (e) {}
-  }
-}
-var import_debug3, debug3, BaseXHR, Request, hasXHR2;
-var init_polling_xhr = __esm(() => {
-  init_polling();
-  init_cjs();
-  init_util2();
-  init_globals_node();
-  init_has_cors();
-  import_debug3 = __toESM(require_src(), 1);
-  debug3 = import_debug3.default("engine.io-client:polling");
-  BaseXHR = class BaseXHR extends Polling {
-    constructor(opts) {
-      super(opts);
-      if (typeof location !== "undefined") {
-        const isSSL = location.protocol === "https:";
-        let port = location.port;
-        if (!port) {
-          port = isSSL ? "443" : "80";
-        }
-        this.xd = typeof location !== "undefined" && opts.hostname !== location.hostname || port !== opts.port;
-      }
-    }
-    doWrite(data, fn) {
-      const req = this.request({
-        method: "POST",
-        data
-      });
-      req.on("success", fn);
-      req.on("error", (xhrStatus, context) => {
-        this.onError("xhr post error", xhrStatus, context);
-      });
-    }
-    doPoll() {
-      debug3("xhr poll");
-      const req = this.request();
-      req.on("data", this.onData.bind(this));
-      req.on("error", (xhrStatus, context) => {
-        this.onError("xhr poll error", xhrStatus, context);
-      });
-      this.pollXhr = req;
-    }
-  };
-  Request = class Request extends $Emitter {
-    constructor(createRequest, uri, opts) {
-      super();
-      this.createRequest = createRequest;
-      installTimerFunctions(this, opts);
-      this._opts = opts;
-      this._method = opts.method || "GET";
-      this._uri = uri;
-      this._data = opts.data !== undefined ? opts.data : null;
-      this._create();
-    }
-    _create() {
-      var _a;
-      const opts = pick2(this._opts, "agent", "pfx", "key", "passphrase", "cert", "ca", "ciphers", "rejectUnauthorized", "autoUnref");
-      opts.xdomain = !!this._opts.xd;
-      const xhr = this._xhr = this.createRequest(opts);
-      try {
-        debug3("xhr open %s: %s", this._method, this._uri);
-        xhr.open(this._method, this._uri, true);
-        try {
-          if (this._opts.extraHeaders) {
-            xhr.setDisableHeaderCheck && xhr.setDisableHeaderCheck(true);
-            for (let i in this._opts.extraHeaders) {
-              if (this._opts.extraHeaders.hasOwnProperty(i)) {
-                xhr.setRequestHeader(i, this._opts.extraHeaders[i]);
-              }
-            }
-          }
-        } catch (e) {}
-        if (this._method === "POST") {
-          try {
-            xhr.setRequestHeader("Content-type", "text/plain;charset=UTF-8");
-          } catch (e) {}
-        }
-        try {
-          xhr.setRequestHeader("Accept", "*/*");
-        } catch (e) {}
-        (_a = this._opts.cookieJar) === null || _a === undefined || _a.addCookies(xhr);
-        if ("withCredentials" in xhr) {
-          xhr.withCredentials = this._opts.withCredentials;
-        }
-        if (this._opts.requestTimeout) {
-          xhr.timeout = this._opts.requestTimeout;
-        }
-        xhr.onreadystatechange = () => {
-          var _a;
-          if (xhr.readyState === 3) {
-            (_a = this._opts.cookieJar) === null || _a === undefined || _a.parseCookies(xhr.getResponseHeader("set-cookie"));
-          }
-          if (xhr.readyState !== 4)
-            return;
-          if (xhr.status === 200 || xhr.status === 1223) {
-            this._onLoad();
-          } else {
-            this.setTimeoutFn(() => {
-              this._onError(typeof xhr.status === "number" ? xhr.status : 0);
-            }, 0);
-          }
-        };
-        debug3("xhr data %s", this._data);
-        xhr.send(this._data);
-      } catch (e) {
-        this.setTimeoutFn(() => {
-          this._onError(e);
-        }, 0);
-        return;
-      }
-      if (typeof document !== "undefined") {
-        this._index = Request.requestsCount++;
-        Request.requests[this._index] = this;
-      }
-    }
-    _onError(err) {
-      this.emitReserved("error", err, this._xhr);
-      this._cleanup(true);
-    }
-    _cleanup(fromError) {
-      if (typeof this._xhr === "undefined" || this._xhr === null) {
-        return;
-      }
-      this._xhr.onreadystatechange = empty;
-      if (fromError) {
-        try {
-          this._xhr.abort();
-        } catch (e) {}
-      }
-      if (typeof document !== "undefined") {
-        delete Request.requests[this._index];
-      }
-      this._xhr = null;
-    }
-    _onLoad() {
-      const data = this._xhr.responseText;
-      if (data !== null) {
-        this.emitReserved("data", data);
-        this.emitReserved("success");
-        this._cleanup();
-      }
-    }
-    abort() {
-      this._cleanup();
-    }
-  };
-  Request.requestsCount = 0;
-  Request.requests = {};
-  if (typeof document !== "undefined") {
-    if (typeof attachEvent === "function") {
-      attachEvent("onunload", unloadHandler);
-    } else if (typeof addEventListener === "function") {
-      const terminationEvent = "onpagehide" in globalThisShim ? "pagehide" : "unload";
-      addEventListener(terminationEvent, unloadHandler, false);
-    }
-  }
-  hasXHR2 = function() {
-    const xhr = newRequest({
-      xdomain: false
-    });
-    return xhr && xhr.responseType !== null;
-  }();
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/polling-xhr.node.js
-var XMLHttpRequestModule, XMLHttpRequest2, XHR;
-var init_polling_xhr_node = __esm(() => {
-  init_polling_xhr();
-  XMLHttpRequestModule = __toESM(require_XMLHttpRequest(), 1);
-  XMLHttpRequest2 = XMLHttpRequestModule.default || XMLHttpRequestModule;
-  XHR = class XHR extends BaseXHR {
-    request(opts = {}) {
-      var _a;
-      Object.assign(opts, { xd: this.xd, cookieJar: (_a = this.socket) === null || _a === undefined ? undefined : _a._cookieJar }, this.opts);
-      return new Request((opts) => new XMLHttpRequest2(opts), this.uri(), opts);
-    }
-  };
-});
-
-// node_modules/ws/lib/constants.js
-var require_constants = __commonJS(function(exports, module) {
-  var BINARY_TYPES = ["nodebuffer", "arraybuffer", "fragments"];
-  var hasBlob = typeof Blob !== "undefined";
-  if (hasBlob)
-    BINARY_TYPES.push("blob");
-  module.exports = {
-    BINARY_TYPES,
-    CLOSE_TIMEOUT: 30000,
-    EMPTY_BUFFER: Buffer.alloc(0),
-    GUID: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11",
-    hasBlob,
-    kForOnEventAttribute: Symbol("kIsForOnEventAttribute"),
-    kListener: Symbol("kListener"),
-    kStatusCode: Symbol("status-code"),
-    kWebSocket: Symbol("websocket"),
-    NOOP: () => {}
-  };
-});
-
-// node_modules/ws/lib/buffer-util.js
-var require_buffer_util = __commonJS(function(exports, module) {
-  var { EMPTY_BUFFER } = require_constants();
-  var FastBuffer = Buffer[Symbol.species];
-  function concat(list, totalLength) {
-    if (list.length === 0)
-      return EMPTY_BUFFER;
-    if (list.length === 1)
-      return list[0];
-    const target = Buffer.allocUnsafe(totalLength);
-    let offset = 0;
-    for (let i = 0;i < list.length; i++) {
-      const buf = list[i];
-      target.set(buf, offset);
-      offset += buf.length;
-    }
-    if (offset < totalLength) {
-      return new FastBuffer(target.buffer, target.byteOffset, offset);
-    }
-    return target;
-  }
-  function _mask(source, mask, output, offset, length) {
-    for (let i = 0;i < length; i++) {
-      output[offset + i] = source[i] ^ mask[i & 3];
-    }
-  }
-  function _unmask(buffer, mask) {
-    for (let i = 0;i < buffer.length; i++) {
-      buffer[i] ^= mask[i & 3];
-    }
-  }
-  function toArrayBuffer(buf) {
-    if (buf.length === buf.buffer.byteLength) {
-      return buf.buffer;
-    }
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
-  }
-  function toBuffer(data) {
-    toBuffer.readOnly = true;
-    if (Buffer.isBuffer(data))
-      return data;
-    let buf;
-    if (data instanceof ArrayBuffer) {
-      buf = new FastBuffer(data);
-    } else if (ArrayBuffer.isView(data)) {
-      buf = new FastBuffer(data.buffer, data.byteOffset, data.byteLength);
-    } else {
-      buf = Buffer.from(data);
-      toBuffer.readOnly = false;
-    }
-    return buf;
-  }
-  module.exports = {
-    concat,
-    mask: _mask,
-    toArrayBuffer,
-    toBuffer,
-    unmask: _unmask
-  };
-  if (!process.env.WS_NO_BUFFER_UTIL) {
-    try {
-      const bufferUtil = (()=>{throw new Error("Cannot require module "+"bufferutil");})();
-      module.exports.mask = function(source, mask2, output, offset, length) {
-        if (length < 48)
-          _mask(source, mask2, output, offset, length);
-        else
-          bufferUtil.mask(source, mask2, output, offset, length);
-      };
-      module.exports.unmask = function(buffer, mask) {
-        if (buffer.length < 32)
-          _unmask(buffer, mask);
-        else
-          bufferUtil.unmask(buffer, mask);
-      };
-    } catch (e) {}
-  }
-});
-
-// node_modules/ws/lib/limiter.js
-var require_limiter = __commonJS(function(exports, module) {
-  var kDone = Symbol("kDone");
-  var kRun = Symbol("kRun");
-
-  class Limiter {
-    constructor(concurrency) {
-      this[kDone] = () => {
-        this.pending--;
-        this[kRun]();
-      };
-      this.concurrency = concurrency || Infinity;
-      this.jobs = [];
-      this.pending = 0;
-    }
-    add(job) {
-      this.jobs.push(job);
-      this[kRun]();
-    }
-    [kRun]() {
-      if (this.pending === this.concurrency)
-        return;
-      if (this.jobs.length) {
-        const job = this.jobs.shift();
-        this.pending++;
-        job(this[kDone]);
-      }
-    }
-  }
-  module.exports = Limiter;
-});
-
-// node_modules/ws/lib/permessage-deflate.js
-var require_permessage_deflate = __commonJS(function(exports, module) {
-  var zlib = __require("zlib");
-  var bufferUtil = require_buffer_util();
-  var Limiter = require_limiter();
-  var { kStatusCode } = require_constants();
-  var FastBuffer = Buffer[Symbol.species];
-  var TRAILER = Buffer.from([0, 0, 255, 255]);
-  var kPerMessageDeflate = Symbol("permessage-deflate");
-  var kTotalLength = Symbol("total-length");
-  var kCallback = Symbol("callback");
-  var kBuffers = Symbol("buffers");
-  var kError = Symbol("error");
-  var zlibLimiter;
-
-  class PerMessageDeflate {
-    constructor(options) {
-      this._options = options || {};
-      this._threshold = this._options.threshold !== undefined ? this._options.threshold : 1024;
-      this._maxPayload = this._options.maxPayload | 0;
-      this._isServer = !!this._options.isServer;
-      this._deflate = null;
-      this._inflate = null;
-      this.params = null;
-      if (!zlibLimiter) {
-        const concurrency = this._options.concurrencyLimit !== undefined ? this._options.concurrencyLimit : 10;
-        zlibLimiter = new Limiter(concurrency);
-      }
-    }
-    static get extensionName() {
-      return "permessage-deflate";
-    }
-    offer() {
-      const params = {};
-      if (this._options.serverNoContextTakeover) {
-        params.server_no_context_takeover = true;
-      }
-      if (this._options.clientNoContextTakeover) {
-        params.client_no_context_takeover = true;
-      }
-      if (this._options.serverMaxWindowBits) {
-        params.server_max_window_bits = this._options.serverMaxWindowBits;
-      }
-      if (this._options.clientMaxWindowBits) {
-        params.client_max_window_bits = this._options.clientMaxWindowBits;
-      } else if (this._options.clientMaxWindowBits == null) {
-        params.client_max_window_bits = true;
-      }
-      return params;
-    }
-    accept(configurations) {
-      configurations = this.normalizeParams(configurations);
-      this.params = this._isServer ? this.acceptAsServer(configurations) : this.acceptAsClient(configurations);
-      return this.params;
-    }
-    cleanup() {
-      if (this._inflate) {
-        this._inflate.close();
-        this._inflate = null;
-      }
-      if (this._deflate) {
-        const callback = this._deflate[kCallback];
-        this._deflate.close();
-        this._deflate = null;
-        if (callback) {
-          callback(new Error("The deflate stream was closed while data was being processed"));
-        }
-      }
-    }
-    acceptAsServer(offers) {
-      const opts = this._options;
-      const accepted = offers.find((params) => {
-        if (opts.serverNoContextTakeover === false && params.server_no_context_takeover || params.server_max_window_bits && (opts.serverMaxWindowBits === false || typeof opts.serverMaxWindowBits === "number" && opts.serverMaxWindowBits > params.server_max_window_bits) || typeof opts.clientMaxWindowBits === "number" && (typeof params.client_max_window_bits === "number" ? opts.clientMaxWindowBits > params.client_max_window_bits : !params.client_max_window_bits)) {
-          return false;
-        }
-        return true;
-      });
-      if (!accepted) {
-        throw new Error("None of the extension offers can be accepted");
-      }
-      if (opts.serverNoContextTakeover) {
-        accepted.server_no_context_takeover = true;
-      }
-      if (opts.clientNoContextTakeover) {
-        accepted.client_no_context_takeover = true;
-      }
-      if (typeof opts.serverMaxWindowBits === "number") {
-        accepted.server_max_window_bits = opts.serverMaxWindowBits;
-      }
-      if (typeof opts.clientMaxWindowBits === "number") {
-        accepted.client_max_window_bits = opts.clientMaxWindowBits;
-      } else if (accepted.client_max_window_bits === true || opts.clientMaxWindowBits === false) {
-        delete accepted.client_max_window_bits;
-      }
-      return accepted;
-    }
-    acceptAsClient(response) {
-      const params = response[0];
-      if (this._options.clientNoContextTakeover === false && params.client_no_context_takeover) {
-        throw new Error('Unexpected parameter "client_no_context_takeover"');
-      }
-      if (!params.client_max_window_bits) {
-        if (typeof this._options.clientMaxWindowBits === "number") {
-          params.client_max_window_bits = this._options.clientMaxWindowBits;
-        }
-      } else if (this._options.clientMaxWindowBits === false || typeof this._options.clientMaxWindowBits === "number" && params.client_max_window_bits > this._options.clientMaxWindowBits) {
-        throw new Error('Unexpected or invalid parameter "client_max_window_bits"');
-      }
-      return params;
-    }
-    normalizeParams(configurations) {
-      configurations.forEach((params) => {
-        Object.keys(params).forEach((key) => {
-          let value = params[key];
-          if (value.length > 1) {
-            throw new Error(`Parameter "${key}" must have only a single value`);
-          }
-          value = value[0];
-          if (key === "client_max_window_bits") {
-            if (value !== true) {
-              const num = +value;
-              if (!Number.isInteger(num) || num < 8 || num > 15) {
-                throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-              }
-              value = num;
-            } else if (!this._isServer) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-          } else if (key === "server_max_window_bits") {
-            const num = +value;
-            if (!Number.isInteger(num) || num < 8 || num > 15) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-            value = num;
-          } else if (key === "client_no_context_takeover" || key === "server_no_context_takeover") {
-            if (value !== true) {
-              throw new TypeError(`Invalid value for parameter "${key}": ${value}`);
-            }
-          } else {
-            throw new Error(`Unknown parameter "${key}"`);
-          }
-          params[key] = value;
-        });
-      });
-      return configurations;
-    }
-    decompress(data, fin, callback) {
-      zlibLimiter.add((done) => {
-        this._decompress(data, fin, (err, result) => {
-          done();
-          callback(err, result);
-        });
-      });
-    }
-    compress(data, fin, callback) {
-      zlibLimiter.add((done) => {
-        this._compress(data, fin, (err, result) => {
-          done();
-          callback(err, result);
-        });
-      });
-    }
-    _decompress(data, fin, callback) {
-      const endpoint = this._isServer ? "client" : "server";
-      if (!this._inflate) {
-        const key = `${endpoint}_max_window_bits`;
-        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-        this._inflate = zlib.createInflateRaw({
-          ...this._options.zlibInflateOptions,
-          windowBits
-        });
-        this._inflate[kPerMessageDeflate] = this;
-        this._inflate[kTotalLength] = 0;
-        this._inflate[kBuffers] = [];
-        this._inflate.on("error", inflateOnError);
-        this._inflate.on("data", inflateOnData);
-      }
-      this._inflate[kCallback] = callback;
-      this._inflate.write(data);
-      if (fin)
-        this._inflate.write(TRAILER);
-      this._inflate.flush(() => {
-        const err = this._inflate[kError];
-        if (err) {
-          this._inflate.close();
-          this._inflate = null;
-          callback(err);
-          return;
-        }
-        const data = bufferUtil.concat(this._inflate[kBuffers], this._inflate[kTotalLength]);
-        if (this._inflate._readableState.endEmitted) {
-          this._inflate.close();
-          this._inflate = null;
-        } else {
-          this._inflate[kTotalLength] = 0;
-          this._inflate[kBuffers] = [];
-          if (fin && this.params[`${endpoint}_no_context_takeover`]) {
-            this._inflate.reset();
-          }
-        }
-        callback(null, data);
-      });
-    }
-    _compress(data, fin, callback) {
-      const endpoint = this._isServer ? "server" : "client";
-      if (!this._deflate) {
-        const key = `${endpoint}_max_window_bits`;
-        const windowBits = typeof this.params[key] !== "number" ? zlib.Z_DEFAULT_WINDOWBITS : this.params[key];
-        this._deflate = zlib.createDeflateRaw({
-          ...this._options.zlibDeflateOptions,
-          windowBits
-        });
-        this._deflate[kTotalLength] = 0;
-        this._deflate[kBuffers] = [];
-        this._deflate.on("data", deflateOnData);
-      }
-      this._deflate[kCallback] = callback;
-      this._deflate.write(data);
-      this._deflate.flush(zlib.Z_SYNC_FLUSH, () => {
-        if (!this._deflate) {
-          return;
-        }
-        let data = bufferUtil.concat(this._deflate[kBuffers], this._deflate[kTotalLength]);
-        if (fin) {
-          data = new FastBuffer(data.buffer, data.byteOffset, data.length - 4);
-        }
-        this._deflate[kCallback] = null;
-        this._deflate[kTotalLength] = 0;
-        this._deflate[kBuffers] = [];
-        if (fin && this.params[`${endpoint}_no_context_takeover`]) {
-          this._deflate.reset();
-        }
-        callback(null, data);
-      });
-    }
-  }
-  module.exports = PerMessageDeflate;
-  function deflateOnData(chunk) {
-    this[kBuffers].push(chunk);
-    this[kTotalLength] += chunk.length;
-  }
-  function inflateOnData(chunk) {
-    this[kTotalLength] += chunk.length;
-    if (this[kPerMessageDeflate]._maxPayload < 1 || this[kTotalLength] <= this[kPerMessageDeflate]._maxPayload) {
-      this[kBuffers].push(chunk);
-      return;
-    }
-    this[kError] = new RangeError("Max payload size exceeded");
-    this[kError].code = "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH";
-    this[kError][kStatusCode] = 1009;
-    this.removeListener("data", inflateOnData);
-    this.reset();
-  }
-  function inflateOnError(err) {
-    this[kPerMessageDeflate]._inflate = null;
-    if (this[kError]) {
-      this[kCallback](this[kError]);
-      return;
-    }
-    err[kStatusCode] = 1007;
-    this[kCallback](err);
-  }
-});
-
-// node_modules/ws/lib/validation.js
-var require_validation2 = __commonJS(function(exports, module) {
-  var { isUtf8 } = __require("buffer");
-  var { hasBlob } = require_constants();
-  var tokenChars = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    1,
-    1,
-    0,
-    1,
-    1,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    0,
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    0,
-    1,
-    0,
-    1,
-    0
-  ];
-  function isValidStatusCode(code) {
-    return code >= 1000 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006 || code >= 3000 && code <= 4999;
-  }
-  function _isValidUTF8(buf) {
-    const len = buf.length;
-    let i = 0;
-    while (i < len) {
-      if ((buf[i] & 128) === 0) {
-        i++;
-      } else if ((buf[i] & 224) === 192) {
-        if (i + 1 === len || (buf[i + 1] & 192) !== 128 || (buf[i] & 254) === 192) {
-          return false;
-        }
-        i += 2;
-      } else if ((buf[i] & 240) === 224) {
-        if (i + 2 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || buf[i] === 224 && (buf[i + 1] & 224) === 128 || buf[i] === 237 && (buf[i + 1] & 224) === 160) {
-          return false;
-        }
-        i += 3;
-      } else if ((buf[i] & 248) === 240) {
-        if (i + 3 >= len || (buf[i + 1] & 192) !== 128 || (buf[i + 2] & 192) !== 128 || (buf[i + 3] & 192) !== 128 || buf[i] === 240 && (buf[i + 1] & 240) === 128 || buf[i] === 244 && buf[i + 1] > 143 || buf[i] > 244) {
-          return false;
-        }
-        i += 4;
-      } else {
-        return false;
-      }
-    }
-    return true;
-  }
-  function isBlob(value) {
-    return hasBlob && typeof value === "object" && typeof value.arrayBuffer === "function" && typeof value.type === "string" && typeof value.stream === "function" && (value[Symbol.toStringTag] === "Blob" || value[Symbol.toStringTag] === "File");
-  }
-  module.exports = {
-    isBlob,
-    isValidStatusCode,
-    isValidUTF8: _isValidUTF8,
-    tokenChars
-  };
-  if (isUtf8) {
-    module.exports.isValidUTF8 = function(buf) {
-      return buf.length < 24 ? _isValidUTF8(buf) : isUtf8(buf);
-    };
-  } else if (!process.env.WS_NO_UTF_8_VALIDATE) {
-    try {
-      const isValidUTF8 = (()=>{throw new Error("Cannot require module "+"utf-8-validate");})();
-      module.exports.isValidUTF8 = function(buf) {
-        return buf.length < 32 ? _isValidUTF8(buf) : isValidUTF8(buf);
-      };
-    } catch (e) {}
-  }
-});
-
-// node_modules/ws/lib/receiver.js
-var require_receiver = __commonJS(function(exports, module) {
-  var { Writable } = __require("stream");
-  var PerMessageDeflate = require_permessage_deflate();
-  var {
-    BINARY_TYPES,
-    EMPTY_BUFFER,
-    kStatusCode,
-    kWebSocket
-  } = require_constants();
-  var { concat, toArrayBuffer, unmask } = require_buffer_util();
-  var { isValidStatusCode, isValidUTF8 } = require_validation2();
-  var FastBuffer = Buffer[Symbol.species];
-  var GET_INFO = 0;
-  var GET_PAYLOAD_LENGTH_16 = 1;
-  var GET_PAYLOAD_LENGTH_64 = 2;
-  var GET_MASK = 3;
-  var GET_DATA = 4;
-  var INFLATING = 5;
-  var DEFER_EVENT = 6;
-
-  class Receiver extends Writable {
-    constructor(options = {}) {
-      super();
-      this._allowSynchronousEvents = options.allowSynchronousEvents !== undefined ? options.allowSynchronousEvents : true;
-      this._binaryType = options.binaryType || BINARY_TYPES[0];
-      this._extensions = options.extensions || {};
-      this._isServer = !!options.isServer;
-      this._maxBufferedChunks = options.maxBufferedChunks | 0;
-      this._maxFragments = options.maxFragments | 0;
-      this._maxPayload = options.maxPayload | 0;
-      this._skipUTF8Validation = !!options.skipUTF8Validation;
-      this[kWebSocket] = undefined;
-      this._bufferedBytes = 0;
-      this._buffers = [];
-      this._compressed = false;
-      this._payloadLength = 0;
-      this._mask = undefined;
-      this._fragmented = 0;
-      this._masked = false;
-      this._fin = false;
-      this._opcode = 0;
-      this._totalPayloadLength = 0;
-      this._messageLength = 0;
-      this._numFragments = 0;
-      this._fragments = [];
-      this._errored = false;
-      this._loop = false;
-      this._state = GET_INFO;
-    }
-    _write(chunk, encoding, cb) {
-      if (this._opcode === 8 && this._state == GET_INFO)
-        return cb();
-      if (this._maxBufferedChunks > 0 && this._buffers.length >= this._maxBufferedChunks) {
-        cb(this.createError(RangeError, "Too many buffered chunks", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS"));
-        return;
-      }
-      this._bufferedBytes += chunk.length;
-      this._buffers.push(chunk);
-      this.startLoop(cb);
-    }
-    consume(n) {
-      this._bufferedBytes -= n;
-      if (n === this._buffers[0].length)
-        return this._buffers.shift();
-      if (n < this._buffers[0].length) {
-        const buf = this._buffers[0];
-        this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
-        return new FastBuffer(buf.buffer, buf.byteOffset, n);
-      }
-      const dst = Buffer.allocUnsafe(n);
-      do {
-        const buf = this._buffers[0];
-        const offset = dst.length - n;
-        if (n >= buf.length) {
-          dst.set(this._buffers.shift(), offset);
-        } else {
-          dst.set(new Uint8Array(buf.buffer, buf.byteOffset, n), offset);
-          this._buffers[0] = new FastBuffer(buf.buffer, buf.byteOffset + n, buf.length - n);
-        }
-        n -= buf.length;
-      } while (n > 0);
-      return dst;
-    }
-    startLoop(cb) {
-      this._loop = true;
-      do {
-        switch (this._state) {
-          case GET_INFO:
-            this.getInfo(cb);
-            break;
-          case GET_PAYLOAD_LENGTH_16:
-            this.getPayloadLength16(cb);
-            break;
-          case GET_PAYLOAD_LENGTH_64:
-            this.getPayloadLength64(cb);
-            break;
-          case GET_MASK:
-            this.getMask();
-            break;
-          case GET_DATA:
-            this.getData(cb);
-            break;
-          case INFLATING:
-          case DEFER_EVENT:
-            this._loop = false;
-            return;
-        }
-      } while (this._loop);
-      if (!this._errored)
-        cb();
-    }
-    getInfo(cb) {
-      if (this._bufferedBytes < 2) {
-        this._loop = false;
-        return;
-      }
-      const buf = this.consume(2);
-      if ((buf[0] & 48) !== 0) {
-        const error = this.createError(RangeError, "RSV2 and RSV3 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_2_3");
-        cb(error);
-        return;
-      }
-      const compressed = (buf[0] & 64) === 64;
-      if (compressed && !this._extensions[PerMessageDeflate.extensionName]) {
-        const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-        cb(error);
-        return;
-      }
-      this._fin = (buf[0] & 128) === 128;
-      this._opcode = buf[0] & 15;
-      this._payloadLength = buf[1] & 127;
-      if (this._opcode === 0) {
-        if (compressed) {
-          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-          cb(error);
-          return;
-        }
-        if (!this._fragmented) {
-          const error = this.createError(RangeError, "invalid opcode 0", true, 1002, "WS_ERR_INVALID_OPCODE");
-          cb(error);
-          return;
-        }
-        this._opcode = this._fragmented;
-      } else if (this._opcode === 1 || this._opcode === 2) {
-        if (this._fragmented) {
-          const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
-          cb(error);
-          return;
-        }
-        this._compressed = compressed;
-      } else if (this._opcode > 7 && this._opcode < 11) {
-        if (!this._fin) {
-          const error = this.createError(RangeError, "FIN must be set", true, 1002, "WS_ERR_EXPECTED_FIN");
-          cb(error);
-          return;
-        }
-        if (compressed) {
-          const error = this.createError(RangeError, "RSV1 must be clear", true, 1002, "WS_ERR_UNEXPECTED_RSV_1");
-          cb(error);
-          return;
-        }
-        if (this._payloadLength > 125 || this._opcode === 8 && this._payloadLength === 1) {
-          const error = this.createError(RangeError, `invalid payload length ${this._payloadLength}`, true, 1002, "WS_ERR_INVALID_CONTROL_PAYLOAD_LENGTH");
-          cb(error);
-          return;
-        }
-      } else {
-        const error = this.createError(RangeError, `invalid opcode ${this._opcode}`, true, 1002, "WS_ERR_INVALID_OPCODE");
-        cb(error);
-        return;
-      }
-      if (!this._fin && !this._fragmented)
-        this._fragmented = this._opcode;
-      this._masked = (buf[1] & 128) === 128;
-      if (this._isServer) {
-        if (!this._masked) {
-          const error = this.createError(RangeError, "MASK must be set", true, 1002, "WS_ERR_EXPECTED_MASK");
-          cb(error);
-          return;
-        }
-      } else if (this._masked) {
-        const error = this.createError(RangeError, "MASK must be clear", true, 1002, "WS_ERR_UNEXPECTED_MASK");
-        cb(error);
-        return;
-      }
-      if (this._payloadLength === 126)
-        this._state = GET_PAYLOAD_LENGTH_16;
-      else if (this._payloadLength === 127)
-        this._state = GET_PAYLOAD_LENGTH_64;
-      else
-        this.haveLength(cb);
-    }
-    getPayloadLength16(cb) {
-      if (this._bufferedBytes < 2) {
-        this._loop = false;
-        return;
-      }
-      this._payloadLength = this.consume(2).readUInt16BE(0);
-      this.haveLength(cb);
-    }
-    getPayloadLength64(cb) {
-      if (this._bufferedBytes < 8) {
-        this._loop = false;
-        return;
-      }
-      const buf = this.consume(8);
-      const num = buf.readUInt32BE(0);
-      if (num > Math.pow(2, 53 - 32) - 1) {
-        const error = this.createError(RangeError, "Unsupported WebSocket frame: payload length > 2^53 - 1", false, 1009, "WS_ERR_UNSUPPORTED_DATA_PAYLOAD_LENGTH");
-        cb(error);
-        return;
-      }
-      this._payloadLength = num * Math.pow(2, 32) + buf.readUInt32BE(4);
-      this.haveLength(cb);
-    }
-    haveLength(cb) {
-      if (this._payloadLength && this._opcode < 8) {
-        this._totalPayloadLength += this._payloadLength;
-        if (this._totalPayloadLength > this._maxPayload && this._maxPayload > 0) {
-          const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
-          cb(error);
-          return;
-        }
-      }
-      if (this._masked)
-        this._state = GET_MASK;
-      else
-        this._state = GET_DATA;
-    }
-    getMask() {
-      if (this._bufferedBytes < 4) {
-        this._loop = false;
-        return;
-      }
-      this._mask = this.consume(4);
-      this._state = GET_DATA;
-    }
-    getData(cb) {
-      let data = EMPTY_BUFFER;
-      if (this._payloadLength) {
-        if (this._bufferedBytes < this._payloadLength) {
-          this._loop = false;
-          return;
-        }
-        data = this.consume(this._payloadLength);
-        if (this._masked && (this._mask[0] | this._mask[1] | this._mask[2] | this._mask[3]) !== 0) {
-          unmask(data, this._mask);
-        }
-      }
-      if (this._opcode > 7) {
-        this.controlMessage(data, cb);
-        return;
-      }
-      if (this._maxFragments > 0 && ++this._numFragments > this._maxFragments) {
-        const error = this.createError(RangeError, "Too many message fragments", false, 1008, "WS_ERR_TOO_MANY_BUFFERED_PARTS");
-        cb(error);
-        return;
-      }
-      if (this._compressed) {
-        this._state = INFLATING;
-        this.decompress(data, cb);
-        return;
-      }
-      if (data.length) {
-        this._messageLength = this._totalPayloadLength;
-        this._fragments.push(data);
-      }
-      this.dataMessage(cb);
-    }
-    decompress(data, cb) {
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      perMessageDeflate.decompress(data, this._fin, (err, buf) => {
-        if (err)
-          return cb(err);
-        if (buf.length) {
-          this._messageLength += buf.length;
-          if (this._messageLength > this._maxPayload && this._maxPayload > 0) {
-            const error = this.createError(RangeError, "Max payload size exceeded", false, 1009, "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH");
-            cb(error);
-            return;
-          }
-          this._fragments.push(buf);
-        }
-        this.dataMessage(cb);
-        if (this._state === GET_INFO)
-          this.startLoop(cb);
-      });
-    }
-    dataMessage(cb) {
-      if (!this._fin) {
-        this._state = GET_INFO;
-        return;
-      }
-      const messageLength = this._messageLength;
-      const fragments = this._fragments;
-      this._totalPayloadLength = 0;
-      this._messageLength = 0;
-      this._fragmented = 0;
-      this._numFragments = 0;
-      this._fragments = [];
-      if (this._opcode === 2) {
-        let data;
-        if (this._binaryType === "nodebuffer") {
-          data = concat(fragments, messageLength);
-        } else if (this._binaryType === "arraybuffer") {
-          data = toArrayBuffer(concat(fragments, messageLength));
-        } else if (this._binaryType === "blob") {
-          data = new Blob(fragments);
-        } else {
-          data = fragments;
-        }
-        if (this._allowSynchronousEvents) {
-          this.emit("message", data, true);
-          this._state = GET_INFO;
-        } else {
-          this._state = DEFER_EVENT;
-          setImmediate(() => {
-            this.emit("message", data, true);
-            this._state = GET_INFO;
-            this.startLoop(cb);
-          });
-        }
-      } else {
-        const buf = concat(fragments, messageLength);
-        if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
-          const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
-          cb(error);
-          return;
-        }
-        if (this._state === INFLATING || this._allowSynchronousEvents) {
-          this.emit("message", buf, false);
-          this._state = GET_INFO;
-        } else {
-          this._state = DEFER_EVENT;
-          setImmediate(() => {
-            this.emit("message", buf, false);
-            this._state = GET_INFO;
-            this.startLoop(cb);
-          });
-        }
-      }
-    }
-    controlMessage(data, cb) {
-      if (this._opcode === 8) {
-        if (data.length === 0) {
-          this._loop = false;
-          this.emit("conclude", 1005, EMPTY_BUFFER);
-          this.end();
-        } else {
-          const code = data.readUInt16BE(0);
-          if (!isValidStatusCode(code)) {
-            const error = this.createError(RangeError, `invalid status code ${code}`, true, 1002, "WS_ERR_INVALID_CLOSE_CODE");
-            cb(error);
-            return;
-          }
-          const buf = new FastBuffer(data.buffer, data.byteOffset + 2, data.length - 2);
-          if (!this._skipUTF8Validation && !isValidUTF8(buf)) {
-            const error = this.createError(Error, "invalid UTF-8 sequence", true, 1007, "WS_ERR_INVALID_UTF8");
-            cb(error);
-            return;
-          }
-          this._loop = false;
-          this.emit("conclude", code, buf);
-          this.end();
-        }
-        this._state = GET_INFO;
-        return;
-      }
-      if (this._allowSynchronousEvents) {
-        this.emit(this._opcode === 9 ? "ping" : "pong", data);
-        this._state = GET_INFO;
-      } else {
-        this._state = DEFER_EVENT;
-        setImmediate(() => {
-          this.emit(this._opcode === 9 ? "ping" : "pong", data);
-          this._state = GET_INFO;
-          this.startLoop(cb);
-        });
-      }
-    }
-    createError(ErrorCtor, message, prefix, statusCode, errorCode) {
-      this._loop = false;
-      this._errored = true;
-      const err = new ErrorCtor(prefix ? `Invalid WebSocket frame: ${message}` : message);
-      Error.captureStackTrace(err, this.createError);
-      err.code = errorCode;
-      err[kStatusCode] = statusCode;
-      return err;
-    }
-  }
-  module.exports = Receiver;
-});
-
-// node_modules/ws/lib/sender.js
-var require_sender = __commonJS(function(exports, module) {
-  var { Duplex } = __require("stream");
-  var { randomFillSync } = __require("crypto");
-  var {
-    types: { isUint8Array }
-  } = __require("util");
-  var PerMessageDeflate = require_permessage_deflate();
-  var { EMPTY_BUFFER, kWebSocket, NOOP } = require_constants();
-  var { isBlob, isValidStatusCode } = require_validation2();
-  var { mask: applyMask, toBuffer } = require_buffer_util();
-  var kByteLength = Symbol("kByteLength");
-  var maskBuffer = Buffer.alloc(4);
-  var RANDOM_POOL_SIZE = 8 * 1024;
-  var randomPool;
-  var randomPoolPointer = RANDOM_POOL_SIZE;
-  var DEFAULT = 0;
-  var DEFLATING = 1;
-  var GET_BLOB_DATA = 2;
-
-  class Sender {
-    constructor(socket, extensions, generateMask) {
-      this._extensions = extensions || {};
-      if (generateMask) {
-        this._generateMask = generateMask;
-        this._maskBuffer = Buffer.alloc(4);
-      }
-      this._socket = socket;
-      this._firstFragment = true;
-      this._compress = false;
-      this._bufferedBytes = 0;
-      this._queue = [];
-      this._state = DEFAULT;
-      this.onerror = NOOP;
-      this[kWebSocket] = undefined;
-    }
-    static frame(data, options) {
-      let mask;
-      let merge = false;
-      let offset = 2;
-      let skipMasking = false;
-      if (options.mask) {
-        mask = options.maskBuffer || maskBuffer;
-        if (options.generateMask) {
-          options.generateMask(mask);
-        } else {
-          if (randomPoolPointer === RANDOM_POOL_SIZE) {
-            if (randomPool === undefined) {
-              randomPool = Buffer.alloc(RANDOM_POOL_SIZE);
-            }
-            randomFillSync(randomPool, 0, RANDOM_POOL_SIZE);
-            randomPoolPointer = 0;
-          }
-          mask[0] = randomPool[randomPoolPointer++];
-          mask[1] = randomPool[randomPoolPointer++];
-          mask[2] = randomPool[randomPoolPointer++];
-          mask[3] = randomPool[randomPoolPointer++];
-        }
-        skipMasking = (mask[0] | mask[1] | mask[2] | mask[3]) === 0;
-        offset = 6;
-      }
-      let dataLength;
-      if (typeof data === "string") {
-        if ((!options.mask || skipMasking) && options[kByteLength] !== undefined) {
-          dataLength = options[kByteLength];
-        } else {
-          data = Buffer.from(data);
-          dataLength = data.length;
-        }
-      } else {
-        dataLength = data.length;
-        merge = options.mask && options.readOnly && !skipMasking;
-      }
-      let payloadLength = dataLength;
-      if (dataLength >= 65536) {
-        offset += 8;
-        payloadLength = 127;
-      } else if (dataLength > 125) {
-        offset += 2;
-        payloadLength = 126;
-      }
-      const target = Buffer.allocUnsafe(merge ? dataLength + offset : offset);
-      target[0] = options.fin ? options.opcode | 128 : options.opcode;
-      if (options.rsv1)
-        target[0] |= 64;
-      target[1] = payloadLength;
-      if (payloadLength === 126) {
-        target.writeUInt16BE(dataLength, 2);
-      } else if (payloadLength === 127) {
-        target[2] = target[3] = 0;
-        target.writeUIntBE(dataLength, 4, 6);
-      }
-      if (!options.mask)
-        return [target, data];
-      target[1] |= 128;
-      target[offset - 4] = mask[0];
-      target[offset - 3] = mask[1];
-      target[offset - 2] = mask[2];
-      target[offset - 1] = mask[3];
-      if (skipMasking)
-        return [target, data];
-      if (merge) {
-        applyMask(data, mask, target, offset, dataLength);
-        return [target];
-      }
-      applyMask(data, mask, data, 0, dataLength);
-      return [target, data];
-    }
-    close(code, data, mask, cb) {
-      let buf;
-      if (code === undefined) {
-        buf = EMPTY_BUFFER;
-      } else if (typeof code !== "number" || !isValidStatusCode(code)) {
-        throw new TypeError("First argument must be a valid error code number");
-      } else if (data === undefined || !data.length) {
-        buf = Buffer.allocUnsafe(2);
-        buf.writeUInt16BE(code, 0);
-      } else {
-        const length = Buffer.byteLength(data);
-        if (length > 123) {
-          throw new RangeError("The message must not be greater than 123 bytes");
-        }
-        buf = Buffer.allocUnsafe(2 + length);
-        buf.writeUInt16BE(code, 0);
-        if (typeof data === "string") {
-          buf.write(data, 2);
-        } else if (isUint8Array(data)) {
-          buf.set(data, 2);
-        } else {
-          throw new TypeError("Second argument must be a string or a Uint8Array");
-        }
-      }
-      const options = {
-        [kByteLength]: buf.length,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 8,
-        readOnly: false,
-        rsv1: false
-      };
-      if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, buf, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(buf, options), cb);
-      }
-    }
-    ping(data, mask, cb) {
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (byteLength > 125) {
-        throw new RangeError("The data size must not be greater than 125 bytes");
-      }
-      const options = {
-        [kByteLength]: byteLength,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 9,
-        readOnly,
-        rsv1: false
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, false, options, cb]);
-        } else {
-          this.getBlobData(data, false, options, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(data, options), cb);
-      }
-    }
-    pong(data, mask, cb) {
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (byteLength > 125) {
-        throw new RangeError("The data size must not be greater than 125 bytes");
-      }
-      const options = {
-        [kByteLength]: byteLength,
-        fin: true,
-        generateMask: this._generateMask,
-        mask,
-        maskBuffer: this._maskBuffer,
-        opcode: 10,
-        readOnly,
-        rsv1: false
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, false, options, cb]);
-        } else {
-          this.getBlobData(data, false, options, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, false, options, cb]);
-      } else {
-        this.sendFrame(Sender.frame(data, options), cb);
-      }
-    }
-    send(data, options, cb) {
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      let opcode = options.binary ? 2 : 1;
-      let rsv1 = options.compress;
-      let byteLength;
-      let readOnly;
-      if (typeof data === "string") {
-        byteLength = Buffer.byteLength(data);
-        readOnly = false;
-      } else if (isBlob(data)) {
-        byteLength = data.size;
-        readOnly = false;
-      } else {
-        data = toBuffer(data);
-        byteLength = data.length;
-        readOnly = toBuffer.readOnly;
-      }
-      if (this._firstFragment) {
-        this._firstFragment = false;
-        if (rsv1 && perMessageDeflate && perMessageDeflate.params[perMessageDeflate._isServer ? "server_no_context_takeover" : "client_no_context_takeover"]) {
-          rsv1 = byteLength >= perMessageDeflate._threshold;
-        }
-        this._compress = rsv1;
-      } else {
-        rsv1 = false;
-        opcode = 0;
-      }
-      if (options.fin)
-        this._firstFragment = true;
-      const opts = {
-        [kByteLength]: byteLength,
-        fin: options.fin,
-        generateMask: this._generateMask,
-        mask: options.mask,
-        maskBuffer: this._maskBuffer,
-        opcode,
-        readOnly,
-        rsv1
-      };
-      if (isBlob(data)) {
-        if (this._state !== DEFAULT) {
-          this.enqueue([this.getBlobData, data, this._compress, opts, cb]);
-        } else {
-          this.getBlobData(data, this._compress, opts, cb);
-        }
-      } else if (this._state !== DEFAULT) {
-        this.enqueue([this.dispatch, data, this._compress, opts, cb]);
-      } else {
-        this.dispatch(data, this._compress, opts, cb);
-      }
-    }
-    getBlobData(blob, compress, options, cb) {
-      this._bufferedBytes += options[kByteLength];
-      this._state = GET_BLOB_DATA;
-      blob.arrayBuffer().then((arrayBuffer) => {
-        if (this._socket.destroyed) {
-          const err = new Error("The socket was closed while the blob was being read");
-          process.nextTick(callCallbacks, this, err, cb);
-          return;
-        }
-        this._bufferedBytes -= options[kByteLength];
-        const data = toBuffer(arrayBuffer);
-        if (!compress) {
-          this._state = DEFAULT;
-          this.sendFrame(Sender.frame(data, options), cb);
-          this.dequeue();
-        } else {
-          this.dispatch(data, compress, options, cb);
-        }
-      }).catch((err) => {
-        process.nextTick(onError, this, err, cb);
-      });
-    }
-    dispatch(data, compress, options, cb) {
-      if (!compress) {
-        this.sendFrame(Sender.frame(data, options), cb);
-        return;
-      }
-      const perMessageDeflate = this._extensions[PerMessageDeflate.extensionName];
-      this._bufferedBytes += options[kByteLength];
-      this._state = DEFLATING;
-      perMessageDeflate.compress(data, options.fin, (_, buf) => {
-        if (this._socket.destroyed) {
-          const err = new Error("The socket was closed while data was being compressed");
-          callCallbacks(this, err, cb);
-          return;
-        }
-        this._bufferedBytes -= options[kByteLength];
-        this._state = DEFAULT;
-        options.readOnly = false;
-        this.sendFrame(Sender.frame(buf, options), cb);
-        this.dequeue();
-      });
-    }
-    dequeue() {
-      while (this._state === DEFAULT && this._queue.length) {
-        const params = this._queue.shift();
-        this._bufferedBytes -= params[3][kByteLength];
-        Reflect.apply(params[0], this, params.slice(1));
-      }
-    }
-    enqueue(params) {
-      this._bufferedBytes += params[3][kByteLength];
-      this._queue.push(params);
-    }
-    sendFrame(list, cb) {
-      if (list.length === 2) {
-        this._socket.cork();
-        this._socket.write(list[0]);
-        this._socket.write(list[1], cb);
-        this._socket.uncork();
-      } else {
-        this._socket.write(list[0], cb);
-      }
-    }
-  }
-  module.exports = Sender;
-  function callCallbacks(sender, err, cb) {
-    if (typeof cb === "function")
-      cb(err);
-    for (let i = 0;i < sender._queue.length; i++) {
-      const params = sender._queue[i];
-      const callback = params[params.length - 1];
-      if (typeof callback === "function")
-        callback(err);
-    }
-  }
-  function onError(sender, err, cb) {
-    callCallbacks(sender, err, cb);
-    sender.onerror(err);
-  }
-});
-
-// node_modules/ws/lib/event-target.js
-var require_event_target = __commonJS(function(exports, module) {
-  var { kForOnEventAttribute, kListener } = require_constants();
-  var kCode = Symbol("kCode");
-  var kData = Symbol("kData");
-  var kError = Symbol("kError");
-  var kMessage = Symbol("kMessage");
-  var kReason = Symbol("kReason");
-  var kTarget = Symbol("kTarget");
-  var kType = Symbol("kType");
-  var kWasClean = Symbol("kWasClean");
-
-  class Event {
-    constructor(type) {
-      this[kTarget] = null;
-      this[kType] = type;
-    }
-    get target() {
-      return this[kTarget];
-    }
-    get type() {
-      return this[kType];
-    }
-  }
-  Object.defineProperty(Event.prototype, "target", { enumerable: true });
-  Object.defineProperty(Event.prototype, "type", { enumerable: true });
-
-  class CloseEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kCode] = options.code === undefined ? 0 : options.code;
-      this[kReason] = options.reason === undefined ? "" : options.reason;
-      this[kWasClean] = options.wasClean === undefined ? false : options.wasClean;
-    }
-    get code() {
-      return this[kCode];
-    }
-    get reason() {
-      return this[kReason];
-    }
-    get wasClean() {
-      return this[kWasClean];
-    }
-  }
-  Object.defineProperty(CloseEvent.prototype, "code", { enumerable: true });
-  Object.defineProperty(CloseEvent.prototype, "reason", { enumerable: true });
-  Object.defineProperty(CloseEvent.prototype, "wasClean", { enumerable: true });
-
-  class ErrorEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kError] = options.error === undefined ? null : options.error;
-      this[kMessage] = options.message === undefined ? "" : options.message;
-    }
-    get error() {
-      return this[kError];
-    }
-    get message() {
-      return this[kMessage];
-    }
-  }
-  Object.defineProperty(ErrorEvent.prototype, "error", { enumerable: true });
-  Object.defineProperty(ErrorEvent.prototype, "message", { enumerable: true });
-
-  class MessageEvent extends Event {
-    constructor(type, options = {}) {
-      super(type);
-      this[kData] = options.data === undefined ? null : options.data;
-    }
-    get data() {
-      return this[kData];
-    }
-  }
-  Object.defineProperty(MessageEvent.prototype, "data", { enumerable: true });
-  var EventTarget = {
-    addEventListener(type, handler, options = {}) {
-      for (const listener of this.listeners(type)) {
-        if (!options[kForOnEventAttribute] && listener[kListener] === handler && !listener[kForOnEventAttribute]) {
-          return;
-        }
-      }
-      let wrapper;
-      if (type === "message") {
-        wrapper = function onMessage(data, isBinary) {
-          const event = new MessageEvent("message", {
-            data: isBinary ? data : data.toString()
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "close") {
-        wrapper = function onClose(code, message) {
-          const event = new CloseEvent("close", {
-            code,
-            reason: message.toString(),
-            wasClean: this._closeFrameReceived && this._closeFrameSent
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "error") {
-        wrapper = function onError(error) {
-          const event = new ErrorEvent("error", {
-            error,
-            message: error.message
-          });
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else if (type === "open") {
-        wrapper = function onOpen() {
-          const event = new Event("open");
-          event[kTarget] = this;
-          callListener(handler, this, event);
-        };
-      } else {
-        return;
-      }
-      wrapper[kForOnEventAttribute] = !!options[kForOnEventAttribute];
-      wrapper[kListener] = handler;
-      if (options.once) {
-        this.once(type, wrapper);
-      } else {
-        this.on(type, wrapper);
-      }
-    },
-    removeEventListener(type, handler) {
-      for (const listener of this.listeners(type)) {
-        if (listener[kListener] === handler && !listener[kForOnEventAttribute]) {
-          this.removeListener(type, listener);
-          break;
-        }
-      }
-    }
-  };
-  module.exports = {
-    CloseEvent,
-    ErrorEvent,
-    Event,
-    EventTarget,
-    MessageEvent
-  };
-  function callListener(listener, thisArg, event) {
-    if (typeof listener === "object" && listener.handleEvent) {
-      listener.handleEvent.call(listener, event);
-    } else {
-      listener.call(thisArg, event);
-    }
-  }
-});
-
-// node_modules/ws/lib/extension.js
-var require_extension = __commonJS(function(exports, module) {
-  var { tokenChars } = require_validation2();
-  function push(dest, name, elem) {
-    if (dest[name] === undefined)
-      dest[name] = [elem];
-    else
-      dest[name].push(elem);
-  }
-  function parse(header) {
-    const offers = Object.create(null);
-    let params = Object.create(null);
-    let mustUnescape = false;
-    let isEscaping = false;
-    let inQuotes = false;
-    let extensionName;
-    let paramName;
-    let start = -1;
-    let code = -1;
-    let end = -1;
-    let i = 0;
-    for (;i < header.length; i++) {
-      code = header.charCodeAt(i);
-      if (extensionName === undefined) {
-        if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (i !== 0 && (code === 32 || code === 9)) {
-          if (end === -1 && start !== -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          const name = header.slice(start, end);
-          if (code === 44) {
-            push(offers, name, params);
-            params = Object.create(null);
-          } else {
-            extensionName = name;
-          }
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      } else if (paramName === undefined) {
-        if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (code === 32 || code === 9) {
-          if (end === -1 && start !== -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          push(params, header.slice(start, end), true);
-          if (code === 44) {
-            push(offers, extensionName, params);
-            params = Object.create(null);
-            extensionName = undefined;
-          }
-          start = end = -1;
-        } else if (code === 61 && start !== -1 && end === -1) {
-          paramName = header.slice(start, i);
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      } else {
-        if (isEscaping) {
-          if (tokenChars[code] !== 1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (start === -1)
-            start = i;
-          else if (!mustUnescape)
-            mustUnescape = true;
-          isEscaping = false;
-        } else if (inQuotes) {
-          if (tokenChars[code] === 1) {
-            if (start === -1)
-              start = i;
-          } else if (code === 34 && start !== -1) {
-            inQuotes = false;
-            end = i;
-          } else if (code === 92) {
-            isEscaping = true;
-          } else {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-        } else if (code === 34 && header.charCodeAt(i - 1) === 61) {
-          inQuotes = true;
-        } else if (end === -1 && tokenChars[code] === 1) {
-          if (start === -1)
-            start = i;
-        } else if (start !== -1 && (code === 32 || code === 9)) {
-          if (end === -1)
-            end = i;
-        } else if (code === 59 || code === 44) {
-          if (start === -1) {
-            throw new SyntaxError(`Unexpected character at index ${i}`);
-          }
-          if (end === -1)
-            end = i;
-          let value = header.slice(start, end);
-          if (mustUnescape) {
-            value = value.replace(/\\/g, "");
-            mustUnescape = false;
-          }
-          push(params, paramName, value);
-          if (code === 44) {
-            push(offers, extensionName, params);
-            params = Object.create(null);
-            extensionName = undefined;
-          }
-          paramName = undefined;
-          start = end = -1;
-        } else {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-      }
-    }
-    if (start === -1 || inQuotes || code === 32 || code === 9) {
-      throw new SyntaxError("Unexpected end of input");
-    }
-    if (end === -1)
-      end = i;
-    const token = header.slice(start, end);
-    if (extensionName === undefined) {
-      push(offers, token, params);
-    } else {
-      if (paramName === undefined) {
-        push(params, token, true);
-      } else if (mustUnescape) {
-        push(params, paramName, token.replace(/\\/g, ""));
-      } else {
-        push(params, paramName, token);
-      }
-      push(offers, extensionName, params);
-    }
-    return offers;
-  }
-  function format(extensions) {
-    return Object.keys(extensions).map((extension) => {
-      let configurations = extensions[extension];
-      if (!Array.isArray(configurations))
-        configurations = [configurations];
-      return configurations.map((params) => {
-        return [extension].concat(Object.keys(params).map((k) => {
-          let values = params[k];
-          if (!Array.isArray(values))
-            values = [values];
-          return values.map((v) => v === true ? k : `${k}=${v}`).join("; ");
-        })).join("; ");
-      }).join(", ");
-    }).join(", ");
-  }
-  module.exports = { format, parse };
-});
-
-// node_modules/ws/lib/websocket.js
-var require_websocket = __commonJS(function(exports, module) {
-  var EventEmitter = __require("events");
-  var https = __require("https");
-  var http = __require("http");
-  var net = __require("net");
-  var tls = __require("tls");
-  var { randomBytes, createHash } = __require("crypto");
-  var { Duplex, Readable } = __require("stream");
-  var { URL: URL2 } = __require("url");
-  var PerMessageDeflate = require_permessage_deflate();
-  var Receiver = require_receiver();
-  var Sender = require_sender();
-  var { isBlob } = require_validation2();
-  var {
-    BINARY_TYPES,
-    CLOSE_TIMEOUT,
-    EMPTY_BUFFER,
-    GUID,
-    kForOnEventAttribute,
-    kListener,
-    kStatusCode,
-    kWebSocket,
-    NOOP
-  } = require_constants();
-  var {
-    EventTarget: { addEventListener: addEventListener2, removeEventListener: removeEventListener2 }
-  } = require_event_target();
-  var { format, parse } = require_extension();
-  var { toBuffer } = require_buffer_util();
-  var kAborted = Symbol("kAborted");
-  var protocolVersions = [8, 13];
-  var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
-  var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
-
-  class WebSocket extends EventEmitter {
-    constructor(address, protocols, options) {
-      super();
-      this._binaryType = BINARY_TYPES[0];
-      this._closeCode = 1006;
-      this._closeFrameReceived = false;
-      this._closeFrameSent = false;
-      this._closeMessage = EMPTY_BUFFER;
-      this._closeTimer = null;
-      this._errorEmitted = false;
-      this._extensions = {};
-      this._paused = false;
-      this._protocol = "";
-      this._readyState = WebSocket.CONNECTING;
-      this._receiver = null;
-      this._sender = null;
-      this._socket = null;
-      if (address !== null) {
-        this._bufferedAmount = 0;
-        this._isServer = false;
-        this._redirects = 0;
-        if (protocols === undefined) {
-          protocols = [];
-        } else if (!Array.isArray(protocols)) {
-          if (typeof protocols === "object" && protocols !== null) {
-            options = protocols;
-            protocols = [];
-          } else {
-            protocols = [protocols];
-          }
-        }
-        initAsClient(this, address, protocols, options);
-      } else {
-        this._autoPong = options.autoPong;
-        this._closeTimeout = options.closeTimeout;
-        this._isServer = true;
-      }
-    }
-    get binaryType() {
-      return this._binaryType;
-    }
-    set binaryType(type) {
-      if (!BINARY_TYPES.includes(type))
-        return;
-      this._binaryType = type;
-      if (this._receiver)
-        this._receiver._binaryType = type;
-    }
-    get bufferedAmount() {
-      if (!this._socket)
-        return this._bufferedAmount;
-      return this._socket._writableState.length + this._sender._bufferedBytes;
-    }
-    get extensions() {
-      return Object.keys(this._extensions).join();
-    }
-    get isPaused() {
-      return this._paused;
-    }
-    get onclose() {
-      return null;
-    }
-    get onerror() {
-      return null;
-    }
-    get onopen() {
-      return null;
-    }
-    get onmessage() {
-      return null;
-    }
-    get protocol() {
-      return this._protocol;
-    }
-    get readyState() {
-      return this._readyState;
-    }
-    get url() {
-      return this._url;
-    }
-    setSocket(socket, head, options) {
-      const receiver = new Receiver({
-        allowSynchronousEvents: options.allowSynchronousEvents,
-        binaryType: this.binaryType,
-        extensions: this._extensions,
-        isServer: this._isServer,
-        maxBufferedChunks: options.maxBufferedChunks,
-        maxFragments: options.maxFragments,
-        maxPayload: options.maxPayload,
-        skipUTF8Validation: options.skipUTF8Validation
-      });
-      const sender = new Sender(socket, this._extensions, options.generateMask);
-      this._receiver = receiver;
-      this._sender = sender;
-      this._socket = socket;
-      receiver[kWebSocket] = this;
-      sender[kWebSocket] = this;
-      socket[kWebSocket] = this;
-      receiver.on("conclude", receiverOnConclude);
-      receiver.on("drain", receiverOnDrain);
-      receiver.on("error", receiverOnError);
-      receiver.on("message", receiverOnMessage);
-      receiver.on("ping", receiverOnPing);
-      receiver.on("pong", receiverOnPong);
-      sender.onerror = senderOnError;
-      if (socket.setTimeout)
-        socket.setTimeout(0);
-      if (socket.setNoDelay)
-        socket.setNoDelay();
-      if (head.length > 0)
-        socket.unshift(head);
-      socket.on("close", socketOnClose);
-      socket.on("data", socketOnData);
-      socket.on("end", socketOnEnd);
-      socket.on("error", socketOnError);
-      this._readyState = WebSocket.OPEN;
-      this.emit("open");
-    }
-    emitClose() {
-      if (!this._socket) {
-        this._readyState = WebSocket.CLOSED;
-        this.emit("close", this._closeCode, this._closeMessage);
-        return;
-      }
-      if (this._extensions[PerMessageDeflate.extensionName]) {
-        this._extensions[PerMessageDeflate.extensionName].cleanup();
-      }
-      this._receiver.removeAllListeners();
-      this._readyState = WebSocket.CLOSED;
-      this.emit("close", this._closeCode, this._closeMessage);
-    }
-    close(code, data) {
-      if (this.readyState === WebSocket.CLOSED)
-        return;
-      if (this.readyState === WebSocket.CONNECTING) {
-        const msg = "WebSocket was closed before the connection was established";
-        abortHandshake(this, this._req, msg);
-        return;
-      }
-      if (this.readyState === WebSocket.CLOSING) {
-        if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
-          this._socket.end();
-        }
-        return;
-      }
-      this._readyState = WebSocket.CLOSING;
-      this._sender.close(code, data, !this._isServer, (err) => {
-        if (err)
-          return;
-        this._closeFrameSent = true;
-        if (this._closeFrameReceived || this._receiver._writableState.errorEmitted) {
-          this._socket.end();
-        }
-      });
-      setCloseTimer(this);
-    }
-    pause() {
-      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
-        return;
-      }
-      this._paused = true;
-      this._socket.pause();
-    }
-    ping(data, mask, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof data === "function") {
-        cb = data;
-        data = mask = undefined;
-      } else if (typeof mask === "function") {
-        cb = mask;
-        mask = undefined;
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      if (mask === undefined)
-        mask = !this._isServer;
-      this._sender.ping(data || EMPTY_BUFFER, mask, cb);
-    }
-    pong(data, mask, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof data === "function") {
-        cb = data;
-        data = mask = undefined;
-      } else if (typeof mask === "function") {
-        cb = mask;
-        mask = undefined;
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      if (mask === undefined)
-        mask = !this._isServer;
-      this._sender.pong(data || EMPTY_BUFFER, mask, cb);
-    }
-    resume() {
-      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
-        return;
-      }
-      this._paused = false;
-      if (!this._receiver._writableState.needDrain)
-        this._socket.resume();
-    }
-    send(data, options, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
-        throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
-      }
-      if (typeof options === "function") {
-        cb = options;
-        options = {};
-      }
-      if (typeof data === "number")
-        data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
-        sendAfterClose(this, data, cb);
-        return;
-      }
-      const opts = {
-        binary: typeof data !== "string",
-        mask: !this._isServer,
-        compress: true,
-        fin: true,
-        ...options
-      };
-      if (!this._extensions[PerMessageDeflate.extensionName]) {
-        opts.compress = false;
-      }
-      this._sender.send(data || EMPTY_BUFFER, opts, cb);
-    }
-    terminate() {
-      if (this.readyState === WebSocket.CLOSED)
-        return;
-      if (this.readyState === WebSocket.CONNECTING) {
-        const msg = "WebSocket was closed before the connection was established";
-        abortHandshake(this, this._req, msg);
-        return;
-      }
-      if (this._socket) {
-        this._readyState = WebSocket.CLOSING;
-        this._socket.destroy();
-      }
-    }
-  }
-  Object.defineProperty(WebSocket, "CONNECTING", {
-    enumerable: true,
-    value: readyStates.indexOf("CONNECTING")
-  });
-  Object.defineProperty(WebSocket.prototype, "CONNECTING", {
-    enumerable: true,
-    value: readyStates.indexOf("CONNECTING")
-  });
-  Object.defineProperty(WebSocket, "OPEN", {
-    enumerable: true,
-    value: readyStates.indexOf("OPEN")
-  });
-  Object.defineProperty(WebSocket.prototype, "OPEN", {
-    enumerable: true,
-    value: readyStates.indexOf("OPEN")
-  });
-  Object.defineProperty(WebSocket, "CLOSING", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSING")
-  });
-  Object.defineProperty(WebSocket.prototype, "CLOSING", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSING")
-  });
-  Object.defineProperty(WebSocket, "CLOSED", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSED")
-  });
-  Object.defineProperty(WebSocket.prototype, "CLOSED", {
-    enumerable: true,
-    value: readyStates.indexOf("CLOSED")
-  });
-  [
-    "binaryType",
-    "bufferedAmount",
-    "extensions",
-    "isPaused",
-    "protocol",
-    "readyState",
-    "url"
-  ].forEach((property) => {
-    Object.defineProperty(WebSocket.prototype, property, { enumerable: true });
-  });
-  ["open", "error", "close", "message"].forEach((method) => {
-    Object.defineProperty(WebSocket.prototype, `on${method}`, {
-      enumerable: true,
-      get() {
-        for (const listener of this.listeners(method)) {
-          if (listener[kForOnEventAttribute])
-            return listener[kListener];
-        }
-        return null;
-      },
-      set(handler) {
-        for (const listener of this.listeners(method)) {
-          if (listener[kForOnEventAttribute]) {
-            this.removeListener(method, listener);
-            break;
-          }
-        }
-        if (typeof handler !== "function")
-          return;
-        this.addEventListener(method, handler, {
-          [kForOnEventAttribute]: true
-        });
-      }
-    });
-  });
-  WebSocket.prototype.addEventListener = addEventListener2;
-  WebSocket.prototype.removeEventListener = removeEventListener2;
-  module.exports = WebSocket;
-  function initAsClient(websocket, address, protocols, options) {
-    const opts = {
-      allowSynchronousEvents: true,
-      autoPong: true,
-      closeTimeout: CLOSE_TIMEOUT,
-      protocolVersion: protocolVersions[1],
-      maxBufferedChunks: 256 * 1024,
-      maxFragments: 16 * 1024,
-      maxPayload: 100 * 1024 * 1024,
-      skipUTF8Validation: false,
-      perMessageDeflate: true,
-      followRedirects: false,
-      maxRedirects: 10,
-      ...options,
-      socketPath: undefined,
-      hostname: undefined,
-      protocol: undefined,
-      timeout: undefined,
-      method: "GET",
-      host: undefined,
-      path: undefined,
-      port: undefined
-    };
-    websocket._autoPong = opts.autoPong;
-    websocket._closeTimeout = opts.closeTimeout;
-    if (!protocolVersions.includes(opts.protocolVersion)) {
-      throw new RangeError(`Unsupported protocol version: ${opts.protocolVersion} ` + `(supported versions: ${protocolVersions.join(", ")})`);
-    }
-    let parsedUrl;
-    if (address instanceof URL2) {
-      parsedUrl = address;
-    } else {
-      try {
-        parsedUrl = new URL2(address);
-      } catch {
-        throw new SyntaxError(`Invalid URL: ${address}`);
-      }
-    }
-    if (parsedUrl.protocol === "http:") {
-      parsedUrl.protocol = "ws:";
-    } else if (parsedUrl.protocol === "https:") {
-      parsedUrl.protocol = "wss:";
-    }
-    websocket._url = parsedUrl.href;
-    const isSecure = parsedUrl.protocol === "wss:";
-    const isIpcUrl = parsedUrl.protocol === "ws+unix:";
-    let invalidUrlMessage;
-    if (parsedUrl.protocol !== "ws:" && !isSecure && !isIpcUrl) {
-      invalidUrlMessage = `The URL's protocol must be one of "ws:", "wss:", ` + '"http:", "https:", or "ws+unix:"';
-    } else if (isIpcUrl && !parsedUrl.pathname) {
-      invalidUrlMessage = "The URL's pathname is empty";
-    } else if (parsedUrl.hash) {
-      invalidUrlMessage = "The URL contains a fragment identifier";
-    }
-    if (invalidUrlMessage) {
-      const err = new SyntaxError(invalidUrlMessage);
-      if (websocket._redirects === 0) {
-        throw err;
-      } else {
-        emitErrorAndClose(websocket, err);
-        return;
-      }
-    }
-    const defaultPort = isSecure ? 443 : 80;
-    const key = randomBytes(16).toString("base64");
-    const request3 = isSecure ? https.request : http.request;
-    const protocolSet = new Set;
-    let perMessageDeflate;
-    opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
-    opts.defaultPort = opts.defaultPort || defaultPort;
-    opts.port = parsedUrl.port || defaultPort;
-    opts.host = parsedUrl.hostname.startsWith("[") ? parsedUrl.hostname.slice(1, -1) : parsedUrl.hostname;
-    opts.headers = {
-      ...opts.headers,
-      "Sec-WebSocket-Version": opts.protocolVersion,
-      "Sec-WebSocket-Key": key,
-      Connection: "Upgrade",
-      Upgrade: "websocket"
-    };
-    opts.path = parsedUrl.pathname + parsedUrl.search;
-    opts.timeout = opts.handshakeTimeout;
-    if (opts.perMessageDeflate) {
-      perMessageDeflate = new PerMessageDeflate({
-        ...opts.perMessageDeflate,
-        isServer: false,
-        maxPayload: opts.maxPayload
-      });
-      opts.headers["Sec-WebSocket-Extensions"] = format({
-        [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
-      });
-    }
-    if (protocols.length) {
-      for (const protocol of protocols) {
-        if (typeof protocol !== "string" || !subprotocolRegex.test(protocol) || protocolSet.has(protocol)) {
-          throw new SyntaxError("An invalid or duplicated subprotocol was specified");
-        }
-        protocolSet.add(protocol);
-      }
-      opts.headers["Sec-WebSocket-Protocol"] = protocols.join(",");
-    }
-    if (opts.origin) {
-      if (opts.protocolVersion < 13) {
-        opts.headers["Sec-WebSocket-Origin"] = opts.origin;
-      } else {
-        opts.headers.Origin = opts.origin;
-      }
-    }
-    if (parsedUrl.username || parsedUrl.password) {
-      opts.auth = `${parsedUrl.username}:${parsedUrl.password}`;
-    }
-    if (isIpcUrl) {
-      const parts = opts.path.split(":");
-      opts.socketPath = parts[0];
-      opts.path = parts[1];
-    }
-    let req;
-    if (opts.followRedirects) {
-      if (websocket._redirects === 0) {
-        websocket._originalIpc = isIpcUrl;
-        websocket._originalSecure = isSecure;
-        websocket._originalHostOrSocketPath = isIpcUrl ? opts.socketPath : parsedUrl.host;
-        const headers = options && options.headers;
-        options = { ...options, headers: {} };
-        if (headers) {
-          for (const [key, value] of Object.entries(headers)) {
-            options.headers[key.toLowerCase()] = value;
-          }
-        }
-      } else if (websocket.listenerCount("redirect") === 0) {
-        const isSameHost = isIpcUrl ? websocket._originalIpc ? opts.socketPath === websocket._originalHostOrSocketPath : false : websocket._originalIpc ? false : parsedUrl.host === websocket._originalHostOrSocketPath;
-        if (!isSameHost || websocket._originalSecure && !isSecure) {
-          delete opts.headers.authorization;
-          delete opts.headers.cookie;
-          if (!isSameHost)
-            delete opts.headers.host;
-          opts.auth = undefined;
-        }
-      }
-      if (opts.auth && !options.headers.authorization) {
-        options.headers.authorization = "Basic " + Buffer.from(opts.auth).toString("base64");
-      }
-      req = websocket._req = request3(opts);
-      if (websocket._redirects) {
-        websocket.emit("redirect", websocket.url, req);
-      }
-    } else {
-      req = websocket._req = request3(opts);
-    }
-    if (opts.timeout) {
-      req.on("timeout", () => {
-        abortHandshake(websocket, req, "Opening handshake has timed out");
-      });
-    }
-    req.on("error", (err) => {
-      if (req === null || req[kAborted])
-        return;
-      req = websocket._req = null;
-      emitErrorAndClose(websocket, err);
-    });
-    req.on("response", (res) => {
-      const location2 = res.headers.location;
-      const statusCode = res.statusCode;
-      if (location2 && opts.followRedirects && statusCode >= 300 && statusCode < 400) {
-        if (++websocket._redirects > opts.maxRedirects) {
-          abortHandshake(websocket, req, "Maximum redirects exceeded");
-          return;
-        }
-        req.abort();
-        let addr;
-        try {
-          addr = new URL2(location2, address);
-        } catch (e) {
-          const err = new SyntaxError(`Invalid URL: ${location2}`);
-          emitErrorAndClose(websocket, err);
-          return;
-        }
-        initAsClient(websocket, addr, protocols, options);
-      } else if (!websocket.emit("unexpected-response", req, res)) {
-        abortHandshake(websocket, req, `Unexpected server response: ${res.statusCode}`);
-      }
-    });
-    req.on("upgrade", (res, socket, head) => {
-      websocket.emit("upgrade", res);
-      if (websocket.readyState !== WebSocket.CONNECTING)
-        return;
-      req = websocket._req = null;
-      const upgrade = res.headers.upgrade;
-      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
-        abortHandshake(websocket, socket, "Invalid Upgrade header");
-        return;
-      }
-      const digest = createHash("sha1").update(key + GUID).digest("base64");
-      if (res.headers["sec-websocket-accept"] !== digest) {
-        abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
-        return;
-      }
-      const serverProt = res.headers["sec-websocket-protocol"];
-      let protError;
-      if (serverProt !== undefined) {
-        if (!protocolSet.size) {
-          protError = "Server sent a subprotocol but none was requested";
-        } else if (!protocolSet.has(serverProt)) {
-          protError = "Server sent an invalid subprotocol";
-        }
-      } else if (protocolSet.size) {
-        protError = "Server sent no subprotocol";
-      }
-      if (protError) {
-        abortHandshake(websocket, socket, protError);
-        return;
-      }
-      if (serverProt)
-        websocket._protocol = serverProt;
-      const secWebSocketExtensions = res.headers["sec-websocket-extensions"];
-      if (secWebSocketExtensions !== undefined) {
-        if (!perMessageDeflate) {
-          const message = "Server sent a Sec-WebSocket-Extensions header but no extension " + "was requested";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        let extensions;
-        try {
-          extensions = parse(secWebSocketExtensions);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Extensions header";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        const extensionNames = Object.keys(extensions);
-        if (extensionNames.length !== 1 || extensionNames[0] !== PerMessageDeflate.extensionName) {
-          const message = "Server indicated an extension that was not requested";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        try {
-          perMessageDeflate.accept(extensions[PerMessageDeflate.extensionName]);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Extensions header";
-          abortHandshake(websocket, socket, message);
-          return;
-        }
-        websocket._extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
-      }
-      websocket.setSocket(socket, head, {
-        allowSynchronousEvents: opts.allowSynchronousEvents,
-        generateMask: opts.generateMask,
-        maxBufferedChunks: opts.maxBufferedChunks,
-        maxFragments: opts.maxFragments,
-        maxPayload: opts.maxPayload,
-        skipUTF8Validation: opts.skipUTF8Validation
-      });
-    });
-    if (opts.finishRequest) {
-      opts.finishRequest(req, websocket);
-    } else {
-      req.end();
-    }
-  }
-  function emitErrorAndClose(websocket, err) {
-    websocket._readyState = WebSocket.CLOSING;
-    websocket._errorEmitted = true;
-    websocket.emit("error", err);
-    websocket.emitClose();
-  }
-  function netConnect(options) {
-    options.path = options.socketPath;
-    return net.connect(options);
-  }
-  function tlsConnect(options) {
-    options.path = undefined;
-    if (!options.servername && options.servername !== "") {
-      options.servername = net.isIP(options.host) ? "" : options.host;
-    }
-    return tls.connect(options);
-  }
-  function abortHandshake(websocket, stream, message) {
-    websocket._readyState = WebSocket.CLOSING;
-    const err = new Error(message);
-    Error.captureStackTrace(err, abortHandshake);
-    if (stream.setHeader) {
-      stream[kAborted] = true;
-      stream.abort();
-      if (stream.socket && !stream.socket.destroyed) {
-        stream.socket.destroy();
-      }
-      process.nextTick(emitErrorAndClose, websocket, err);
-    } else {
-      stream.destroy(err);
-      stream.once("error", websocket.emit.bind(websocket, "error"));
-      stream.once("close", websocket.emitClose.bind(websocket));
-    }
-  }
-  function sendAfterClose(websocket, data, cb) {
-    if (data) {
-      const length = isBlob(data) ? data.size : toBuffer(data).length;
-      if (websocket._socket)
-        websocket._sender._bufferedBytes += length;
-      else
-        websocket._bufferedAmount += length;
-    }
-    if (cb) {
-      const err = new Error(`WebSocket is not open: readyState ${websocket.readyState} ` + `(${readyStates[websocket.readyState]})`);
-      process.nextTick(cb, err);
-    }
-  }
-  function receiverOnConclude(code, reason) {
-    const websocket = this[kWebSocket];
-    websocket._closeFrameReceived = true;
-    websocket._closeMessage = reason;
-    websocket._closeCode = code;
-    if (websocket._socket[kWebSocket] === undefined)
-      return;
-    websocket._socket.removeListener("data", socketOnData);
-    process.nextTick(resume, websocket._socket);
-    if (code === 1005)
-      websocket.close();
-    else
-      websocket.close(code, reason);
-  }
-  function receiverOnDrain() {
-    const websocket = this[kWebSocket];
-    if (!websocket.isPaused)
-      websocket._socket.resume();
-  }
-  function receiverOnError(err) {
-    const websocket = this[kWebSocket];
-    if (websocket._socket[kWebSocket] !== undefined) {
-      websocket._socket.removeListener("data", socketOnData);
-      process.nextTick(resume, websocket._socket);
-      websocket.close(err[kStatusCode]);
-    }
-    if (!websocket._errorEmitted) {
-      websocket._errorEmitted = true;
-      websocket.emit("error", err);
-    }
-  }
-  function receiverOnFinish() {
-    this[kWebSocket].emitClose();
-  }
-  function receiverOnMessage(data, isBinary) {
-    this[kWebSocket].emit("message", data, isBinary);
-  }
-  function receiverOnPing(data) {
-    const websocket = this[kWebSocket];
-    if (websocket._autoPong)
-      websocket.pong(data, !this._isServer, NOOP);
-    websocket.emit("ping", data);
-  }
-  function receiverOnPong(data) {
-    this[kWebSocket].emit("pong", data);
-  }
-  function resume(stream) {
-    stream.resume();
-  }
-  function senderOnError(err) {
-    const websocket = this[kWebSocket];
-    if (websocket.readyState === WebSocket.CLOSED)
-      return;
-    if (websocket.readyState === WebSocket.OPEN) {
-      websocket._readyState = WebSocket.CLOSING;
-      setCloseTimer(websocket);
-    }
-    this._socket.end();
-    if (!websocket._errorEmitted) {
-      websocket._errorEmitted = true;
-      websocket.emit("error", err);
-    }
-  }
-  function setCloseTimer(websocket) {
-    websocket._closeTimer = setTimeout(websocket._socket.destroy.bind(websocket._socket), websocket._closeTimeout);
-  }
-  function socketOnClose() {
-    const websocket = this[kWebSocket];
-    this.removeListener("close", socketOnClose);
-    this.removeListener("data", socketOnData);
-    this.removeListener("end", socketOnEnd);
-    websocket._readyState = WebSocket.CLOSING;
-    if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
-      const chunk = this.read(this._readableState.length);
-      websocket._receiver.write(chunk);
-    }
-    websocket._receiver.end();
-    this[kWebSocket] = undefined;
-    clearTimeout(websocket._closeTimer);
-    if (websocket._receiver._writableState.finished || websocket._receiver._writableState.errorEmitted) {
-      websocket.emitClose();
-    } else {
-      websocket._receiver.on("error", receiverOnFinish);
-      websocket._receiver.on("finish", receiverOnFinish);
-    }
-  }
-  function socketOnData(chunk) {
-    if (!this[kWebSocket]._receiver.write(chunk)) {
-      this.pause();
-    }
-  }
-  function socketOnEnd() {
-    const websocket = this[kWebSocket];
-    websocket._readyState = WebSocket.CLOSING;
-    websocket._receiver.end();
-    this.end();
-  }
-  function socketOnError() {
-    const websocket = this[kWebSocket];
-    this.removeListener("error", socketOnError);
-    this.on("error", NOOP);
-    if (websocket) {
-      websocket._readyState = WebSocket.CLOSING;
-      this.destroy();
-    }
-  }
-});
-
-// node_modules/ws/lib/stream.js
-var require_stream = __commonJS(function(exports, module) {
-  var WebSocket = require_websocket();
-  var { Duplex } = __require("stream");
-  function emitClose(stream) {
-    stream.emit("close");
-  }
-  function duplexOnEnd() {
-    if (!this.destroyed && this._writableState.finished) {
-      this.destroy();
-    }
-  }
-  function duplexOnError(err) {
-    this.removeListener("error", duplexOnError);
-    this.destroy();
-    if (this.listenerCount("error") === 0) {
-      this.emit("error", err);
-    }
-  }
-  function createWebSocketStream(ws, options) {
-    let terminateOnDestroy = true;
-    const duplex = new Duplex({
-      ...options,
-      autoDestroy: false,
-      emitClose: false,
-      objectMode: false,
-      writableObjectMode: false
-    });
-    ws.on("message", function message(msg, isBinary) {
-      const data = !isBinary && duplex._readableState.objectMode ? msg.toString() : msg;
-      if (!duplex.push(data))
-        ws.pause();
-    });
-    ws.once("error", function error(err) {
-      if (duplex.destroyed)
-        return;
-      terminateOnDestroy = false;
-      duplex.destroy(err);
-    });
-    ws.once("close", function close() {
-      if (duplex.destroyed)
-        return;
-      duplex.push(null);
-    });
-    duplex._destroy = function(err, callback) {
-      if (ws.readyState === ws.CLOSED) {
-        callback(err);
-        process.nextTick(emitClose, duplex);
-        return;
-      }
-      let called = false;
-      ws.once("error", function error(err) {
-        called = true;
-        callback(err);
-      });
-      ws.once("close", function close() {
-        if (!called)
-          callback(err);
-        process.nextTick(emitClose, duplex);
-      });
-      if (terminateOnDestroy)
-        ws.terminate();
-    };
-    duplex._final = function(callback) {
-      if (ws.readyState === ws.CONNECTING) {
-        ws.once("open", function open() {
-          duplex._final(callback);
-        });
-        return;
-      }
-      if (ws._socket === null)
-        return;
-      if (ws._socket._writableState.finished) {
-        callback();
-        if (duplex._readableState.endEmitted)
-          duplex.destroy();
-      } else {
-        ws._socket.once("finish", function finish() {
-          callback();
-        });
-        ws.close();
-      }
-    };
-    duplex._read = function() {
-      if (ws.isPaused)
-        ws.resume();
-    };
-    duplex._write = function(chunk, encoding, callback) {
-      if (ws.readyState === ws.CONNECTING) {
-        ws.once("open", function open() {
-          duplex._write(chunk, encoding, callback);
-        });
-        return;
-      }
-      ws.send(chunk, callback);
-    };
-    duplex.on("end", duplexOnEnd);
-    duplex.on("error", duplexOnError);
-    return duplex;
-  }
-  module.exports = createWebSocketStream;
-});
-
-// node_modules/ws/lib/subprotocol.js
-var require_subprotocol = __commonJS(function(exports, module) {
-  var { tokenChars } = require_validation2();
-  function parse(header) {
-    const protocols = new Set;
-    let start = -1;
-    let end = -1;
-    let i = 0;
-    for (i;i < header.length; i++) {
-      const code = header.charCodeAt(i);
-      if (end === -1 && tokenChars[code] === 1) {
-        if (start === -1)
-          start = i;
-      } else if (i !== 0 && (code === 32 || code === 9)) {
-        if (end === -1 && start !== -1)
-          end = i;
-      } else if (code === 44) {
-        if (start === -1) {
-          throw new SyntaxError(`Unexpected character at index ${i}`);
-        }
-        if (end === -1)
-          end = i;
-        const protocol = header.slice(start, end);
-        if (protocols.has(protocol)) {
-          throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
-        }
-        protocols.add(protocol);
-        start = end = -1;
-      } else {
-        throw new SyntaxError(`Unexpected character at index ${i}`);
-      }
-    }
-    if (start === -1 || end !== -1) {
-      throw new SyntaxError("Unexpected end of input");
-    }
-    const protocol = header.slice(start, i);
-    if (protocols.has(protocol)) {
-      throw new SyntaxError(`The "${protocol}" subprotocol is duplicated`);
-    }
-    protocols.add(protocol);
-    return protocols;
-  }
-  module.exports = { parse };
-});
-
-// node_modules/ws/lib/websocket-server.js
-var require_websocket_server = __commonJS(function(exports, module) {
-  var EventEmitter = __require("events");
-  var http = __require("http");
-  var { Duplex } = __require("stream");
-  var { createHash } = __require("crypto");
-  var extension = require_extension();
-  var PerMessageDeflate = require_permessage_deflate();
-  var subprotocol = require_subprotocol();
-  var WebSocket = require_websocket();
-  var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
-  var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
-  var RUNNING = 0;
-  var CLOSING = 1;
-  var CLOSED = 2;
-
-  class WebSocketServer extends EventEmitter {
-    constructor(options, callback) {
-      super();
-      options = {
-        allowSynchronousEvents: true,
-        autoPong: true,
-        maxBufferedChunks: 256 * 1024,
-        maxFragments: 16 * 1024,
-        maxPayload: 100 * 1024 * 1024,
-        skipUTF8Validation: false,
-        perMessageDeflate: false,
-        handleProtocols: null,
-        clientTracking: true,
-        closeTimeout: CLOSE_TIMEOUT,
-        verifyClient: null,
-        noServer: false,
-        backlog: null,
-        server: null,
-        host: null,
-        path: null,
-        port: null,
-        WebSocket,
-        ...options
-      };
-      if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
-        throw new TypeError('One and only one of the "port", "server", or "noServer" options ' + "must be specified");
-      }
-      if (options.port != null) {
-        this._server = http.createServer((req, res) => {
-          const body = http.STATUS_CODES[426];
-          res.writeHead(426, {
-            "Content-Length": body.length,
-            "Content-Type": "text/plain"
-          });
-          res.end(body);
-        });
-        this._server.listen(options.port, options.host, options.backlog, callback);
-      } else if (options.server) {
-        this._server = options.server;
-      }
-      if (this._server) {
-        const emitConnection = this.emit.bind(this, "connection");
-        this._removeListeners = addListeners(this._server, {
-          listening: this.emit.bind(this, "listening"),
-          error: this.emit.bind(this, "error"),
-          upgrade: (req, socket, head) => {
-            this.handleUpgrade(req, socket, head, emitConnection);
-          }
-        });
-      }
-      if (options.perMessageDeflate === true)
-        options.perMessageDeflate = {};
-      if (options.clientTracking) {
-        this.clients = new Set;
-        this._shouldEmitClose = false;
-      }
-      this.options = options;
-      this._state = RUNNING;
-    }
-    address() {
-      if (this.options.noServer) {
-        throw new Error('The server is operating in "noServer" mode');
-      }
-      if (!this._server)
-        return null;
-      return this._server.address();
-    }
-    close(cb) {
-      if (this._state === CLOSED) {
-        if (cb) {
-          this.once("close", () => {
-            cb(new Error("The server is not running"));
-          });
-        }
-        process.nextTick(emitClose, this);
-        return;
-      }
-      if (cb)
-        this.once("close", cb);
-      if (this._state === CLOSING)
-        return;
-      this._state = CLOSING;
-      if (this.options.noServer || this.options.server) {
-        if (this._server) {
-          this._removeListeners();
-          this._removeListeners = this._server = null;
-        }
-        if (this.clients) {
-          if (!this.clients.size) {
-            process.nextTick(emitClose, this);
-          } else {
-            this._shouldEmitClose = true;
-          }
-        } else {
-          process.nextTick(emitClose, this);
-        }
-      } else {
-        const server = this._server;
-        this._removeListeners();
-        this._removeListeners = this._server = null;
-        server.close(() => {
-          emitClose(this);
-        });
-      }
-    }
-    shouldHandle(req) {
-      if (this.options.path) {
-        const index = req.url.indexOf("?");
-        const pathname = index !== -1 ? req.url.slice(0, index) : req.url;
-        if (pathname !== this.options.path)
-          return false;
-      }
-      return true;
-    }
-    handleUpgrade(req, socket, head, cb) {
-      socket.on("error", socketOnError);
-      const key = req.headers["sec-websocket-key"];
-      const upgrade = req.headers.upgrade;
-      const version = +req.headers["sec-websocket-version"];
-      if (req.method !== "GET") {
-        const message = "Invalid HTTP method";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 405, message);
-        return;
-      }
-      if (upgrade === undefined || upgrade.toLowerCase() !== "websocket") {
-        const message = "Invalid Upgrade header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-        return;
-      }
-      if (key === undefined || !keyRegex.test(key)) {
-        const message = "Missing or invalid Sec-WebSocket-Key header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-        return;
-      }
-      if (version !== 13 && version !== 8) {
-        const message = "Missing or invalid Sec-WebSocket-Version header";
-        abortHandshakeOrEmitwsClientError(this, req, socket, 400, message, {
-          "Sec-WebSocket-Version": "13, 8"
-        });
-        return;
-      }
-      if (!this.shouldHandle(req)) {
-        abortHandshake(socket, 400);
-        return;
-      }
-      const secWebSocketProtocol = req.headers["sec-websocket-protocol"];
-      let protocols = new Set;
-      if (secWebSocketProtocol !== undefined) {
-        try {
-          protocols = subprotocol.parse(secWebSocketProtocol);
-        } catch (err) {
-          const message = "Invalid Sec-WebSocket-Protocol header";
-          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-          return;
-        }
-      }
-      const secWebSocketExtensions = req.headers["sec-websocket-extensions"];
-      const extensions = {};
-      if (this.options.perMessageDeflate && secWebSocketExtensions !== undefined) {
-        const perMessageDeflate = new PerMessageDeflate({
-          ...this.options.perMessageDeflate,
-          isServer: true,
-          maxPayload: this.options.maxPayload
-        });
-        try {
-          const offers = extension.parse(secWebSocketExtensions);
-          if (offers[PerMessageDeflate.extensionName]) {
-            perMessageDeflate.accept(offers[PerMessageDeflate.extensionName]);
-            extensions[PerMessageDeflate.extensionName] = perMessageDeflate;
-          }
-        } catch (err) {
-          const message = "Invalid or unacceptable Sec-WebSocket-Extensions header";
-          abortHandshakeOrEmitwsClientError(this, req, socket, 400, message);
-          return;
-        }
-      }
-      if (this.options.verifyClient) {
-        const info = {
-          origin: req.headers[`${version === 8 ? "sec-websocket-origin" : "origin"}`],
-          secure: !!(req.socket.authorized || req.socket.encrypted),
-          req
-        };
-        if (this.options.verifyClient.length === 2) {
-          this.options.verifyClient(info, (verified, code, message, headers) => {
-            if (!verified) {
-              return abortHandshake(socket, code || 401, message, headers);
-            }
-            this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
-          });
-          return;
-        }
-        if (!this.options.verifyClient(info))
-          return abortHandshake(socket, 401);
-      }
-      this.completeUpgrade(extensions, key, protocols, req, socket, head, cb);
-    }
-    completeUpgrade(extensions, key, protocols, req, socket, head, cb) {
-      if (!socket.readable || !socket.writable)
-        return socket.destroy();
-      if (socket[kWebSocket]) {
-        throw new Error("server.handleUpgrade() was called more than once with the same " + "socket, possibly due to a misconfiguration");
-      }
-      if (this._state > RUNNING)
-        return abortHandshake(socket, 503);
-      const digest = createHash("sha1").update(key + GUID).digest("base64");
-      const headers = [
-        "HTTP/1.1 101 Switching Protocols",
-        "Upgrade: websocket",
-        "Connection: Upgrade",
-        `Sec-WebSocket-Accept: ${digest}`
-      ];
-      const ws = new this.options.WebSocket(null, undefined, this.options);
-      if (protocols.size) {
-        const protocol = this.options.handleProtocols ? this.options.handleProtocols(protocols, req) : protocols.values().next().value;
-        if (protocol) {
-          headers.push(`Sec-WebSocket-Protocol: ${protocol}`);
-          ws._protocol = protocol;
-        }
-      }
-      if (extensions[PerMessageDeflate.extensionName]) {
-        const params = extensions[PerMessageDeflate.extensionName].params;
-        const value = extension.format({
-          [PerMessageDeflate.extensionName]: [params]
-        });
-        headers.push(`Sec-WebSocket-Extensions: ${value}`);
-        ws._extensions = extensions;
-      }
-      this.emit("headers", headers, req);
-      socket.write(headers.concat(`\r
-`).join(`\r
-`));
-      socket.removeListener("error", socketOnError);
-      ws.setSocket(socket, head, {
-        allowSynchronousEvents: this.options.allowSynchronousEvents,
-        maxBufferedChunks: this.options.maxBufferedChunks,
-        maxFragments: this.options.maxFragments,
-        maxPayload: this.options.maxPayload,
-        skipUTF8Validation: this.options.skipUTF8Validation
-      });
-      if (this.clients) {
-        this.clients.add(ws);
-        ws.on("close", () => {
-          this.clients.delete(ws);
-          if (this._shouldEmitClose && !this.clients.size) {
-            process.nextTick(emitClose, this);
-          }
-        });
-      }
-      cb(ws, req);
-    }
-  }
-  module.exports = WebSocketServer;
-  function addListeners(server, map) {
-    for (const event of Object.keys(map))
-      server.on(event, map[event]);
-    return function removeListeners() {
-      for (const event of Object.keys(map)) {
-        server.removeListener(event, map[event]);
-      }
-    };
-  }
-  function emitClose(server) {
-    server._state = CLOSED;
-    server.emit("close");
-  }
-  function socketOnError() {
-    this.destroy();
-  }
-  function abortHandshake(socket, code, message, headers) {
-    message = message || http.STATUS_CODES[code];
-    headers = {
-      Connection: "close",
-      "Content-Type": "text/html",
-      "Content-Length": Buffer.byteLength(message),
-      ...headers
-    };
-    socket.once("finish", socket.destroy);
-    socket.end(`HTTP/1.1 ${code} ${http.STATUS_CODES[code]}\r
-` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join(`\r
-`) + `\r
-\r
-` + message);
-  }
-  function abortHandshakeOrEmitwsClientError(server, req, socket, code, message, headers) {
-    if (server.listenerCount("wsClientError")) {
-      const err = new Error(message);
-      Error.captureStackTrace(err, abortHandshakeOrEmitwsClientError);
-      server.emit("wsClientError", err, socket, req);
-    } else {
-      abortHandshake(socket, code, message, headers);
-    }
-  }
-});
-
-// node_modules/ws/wrapper.mjs
-var import_stream2, import_extension, import_permessage_deflate, import_receiver, import_sender, import_subprotocol, import_websocket, import_websocket_server;
-var init_wrapper = __esm(() => {
-  import_stream2 = __toESM(require_stream(), 1);
-  import_extension = __toESM(require_extension(), 1);
-  import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
-  import_receiver = __toESM(require_receiver(), 1);
-  import_sender = __toESM(require_sender(), 1);
-  import_subprotocol = __toESM(require_subprotocol(), 1);
-  import_websocket = __toESM(require_websocket(), 1);
-  import_websocket_server = __toESM(require_websocket_server(), 1);
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/websocket.js
-var import_debug4, debug4, isReactNative, BaseWS, WebSocketCtor;
-var init_websocket = __esm(() => {
-  init_transport();
-  init_util2();
-  init_esm2();
-  init_globals_node();
-  import_debug4 = __toESM(require_src(), 1);
-  debug4 = import_debug4.default("engine.io-client:websocket");
-  isReactNative = typeof navigator !== "undefined" && typeof navigator.product === "string" && navigator.product.toLowerCase() === "reactnative";
-  BaseWS = class BaseWS extends Transport {
-    get name() {
-      return "websocket";
-    }
-    doOpen() {
-      const uri = this.uri();
-      const protocols = this.opts.protocols;
-      const opts = isReactNative ? {} : pick2(this.opts, "agent", "perMessageDeflate", "pfx", "key", "passphrase", "cert", "ca", "ciphers", "rejectUnauthorized", "localAddress", "protocolVersion", "origin", "maxPayload", "family", "checkServerIdentity");
-      if (this.opts.extraHeaders) {
-        opts.headers = this.opts.extraHeaders;
-      }
-      try {
-        this.ws = this.createSocket(uri, protocols, opts);
-      } catch (err) {
-        return this.emitReserved("error", err);
-      }
-      this.ws.binaryType = this.socket.binaryType;
-      this.addEventListeners();
-    }
-    addEventListeners() {
-      this.ws.onopen = () => {
-        if (this.opts.autoUnref) {
-          this.ws._socket.unref();
-        }
-        this.onOpen();
-      };
-      this.ws.onclose = (closeEvent) => this.onClose({
-        description: "websocket connection closed",
-        context: closeEvent
-      });
-      this.ws.onmessage = (ev) => this.onData(ev.data);
-      this.ws.onerror = (e) => this.onError("websocket error", e);
-    }
-    write(packets) {
-      this.writable = false;
-      for (let i = 0;i < packets.length; i++) {
-        const packet = packets[i];
-        const lastPacket = i === packets.length - 1;
-        encodePacket(packet, this.supportsBinary, (data) => {
-          try {
-            this.doWrite(packet, data);
-          } catch (e) {
-            debug4("websocket closed before onclose event");
-          }
-          if (lastPacket) {
-            nextTick(() => {
-              this.writable = true;
-              this.emitReserved("drain");
-            }, this.setTimeoutFn);
-          }
-        });
-      }
-    }
-    doClose() {
-      if (typeof this.ws !== "undefined") {
-        this.ws.onerror = () => {};
-        this.ws.close();
-        this.ws = null;
-      }
-    }
-    uri() {
-      const schema = this.opts.secure ? "wss" : "ws";
-      const query = this.query || {};
-      if (this.opts.timestampRequests) {
-        query[this.opts.timestampParam] = randomString();
-      }
-      if (!this.supportsBinary) {
-        query.b64 = 1;
-      }
-      return this.createUri(schema, query);
-    }
-  };
-  WebSocketCtor = globalThisShim.WebSocket || globalThisShim.MozWebSocket;
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/websocket.node.js
-var WS;
-var init_websocket_node = __esm(() => {
-  init_wrapper();
-  init_websocket();
-  WS = class WS extends BaseWS {
-    createSocket(uri, protocols, opts) {
-      var _a;
-      if ((_a = this.socket) === null || _a === undefined ? undefined : _a._cookieJar) {
-        opts.headers = opts.headers || {};
-        opts.headers.cookie = typeof opts.headers.cookie === "string" ? [opts.headers.cookie] : opts.headers.cookie || [];
-        for (const [name, cookie] of this.socket._cookieJar.cookies) {
-          opts.headers.cookie.push(`${name}=${cookie.value}`);
-        }
-      }
-      return new import_websocket.default(uri, protocols, opts);
-    }
-    doWrite(packet, data) {
-      const opts = {};
-      if (packet.options) {
-        opts.compress = packet.options.compress;
-      }
-      if (this.opts.perMessageDeflate) {
-        const len = typeof data === "string" ? Buffer.byteLength(data) : data.length;
-        if (len < this.opts.perMessageDeflate.threshold) {
-          opts.compress = false;
-        }
-      }
-      this.ws.send(data, opts);
-    }
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/webtransport.js
-var import_debug5, debug5, WT;
-var init_webtransport = __esm(() => {
-  init_transport();
-  init_globals_node();
-  init_esm2();
-  import_debug5 = __toESM(require_src(), 1);
-  debug5 = import_debug5.default("engine.io-client:webtransport");
-  WT = class WT extends Transport {
-    get name() {
-      return "webtransport";
-    }
-    doOpen() {
-      try {
-        this._transport = new WebTransport(this.createUri("https"), this.opts.transportOptions[this.name]);
-      } catch (err) {
-        return this.emitReserved("error", err);
-      }
-      this._transport.closed.then(() => {
-        debug5("transport closed gracefully");
-        this.onClose();
-      }).catch((err) => {
-        debug5("transport closed due to %s", err);
-        this.onError("webtransport error", err);
-      });
-      this._transport.ready.then(() => {
-        this._transport.createBidirectionalStream().then((stream) => {
-          const decoderStream = createPacketDecoderStream(Number.MAX_SAFE_INTEGER, this.socket.binaryType);
-          const reader = stream.readable.pipeThrough(decoderStream).getReader();
-          const encoderStream = createPacketEncoderStream();
-          encoderStream.readable.pipeTo(stream.writable);
-          this._writer = encoderStream.writable.getWriter();
-          const read = () => {
-            reader.read().then(({ done, value }) => {
-              if (done) {
-                debug5("session is closed");
-                return;
-              }
-              debug5("received chunk: %o", value);
-              this.onPacket(value);
-              read();
-            }).catch((err) => {
-              debug5("an error occurred while reading: %s", err);
-            });
-          };
-          read();
-          const packet = { type: "open" };
-          if (this.query.sid) {
-            packet.data = `{"sid":"${this.query.sid}"}`;
-          }
-          this._writer.write(packet).then(() => this.onOpen());
-        });
-      });
-    }
-    write(packets) {
-      this.writable = false;
-      for (let i = 0;i < packets.length; i++) {
-        const packet = packets[i];
-        const lastPacket = i === packets.length - 1;
-        this._writer.write(packet).then(() => {
-          if (lastPacket) {
-            nextTick(() => {
-              this.writable = true;
-              this.emitReserved("drain");
-            }, this.setTimeoutFn);
-          }
-        });
-      }
-    }
-    doClose() {
-      var _a;
-      (_a = this._transport) === null || _a === undefined || _a.close();
-    }
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/index.js
-var transports2;
-var init_transports2 = __esm(() => {
-  init_polling_xhr_node();
-  init_websocket_node();
-  init_webtransport();
-  transports2 = {
-    websocket: WS,
-    webtransport: WT,
-    polling: XHR
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/contrib/parseuri.js
-function parse7(str) {
-  if (str.length > 8000) {
-    throw "URI too long";
-  }
-  const src = str, b = str.indexOf("["), e = str.indexOf("]");
-  if (b != -1 && e != -1) {
-    str = str.substring(0, b) + str.substring(b, e).replace(/:/g, ";") + str.substring(e, str.length);
-  }
-  let m = re.exec(str || ""), uri = {}, i = 14;
-  while (i--) {
-    uri[parts[i]] = m[i] || "";
-  }
-  if (b != -1 && e != -1) {
-    uri.source = src;
-    uri.host = uri.host.substring(1, uri.host.length - 1).replace(/;/g, ":");
-    uri.authority = uri.authority.replace("[", "").replace("]", "").replace(/;/g, ":");
-    uri.ipv6uri = true;
-  }
-  uri.pathNames = pathNames(uri, uri["path"]);
-  uri.queryKey = queryKey(uri, uri["query"]);
-  return uri;
-}
-function pathNames(obj, path) {
-  const regx = /\/{2,9}/g, names = path.replace(regx, "/").split("/");
-  if (path.slice(0, 1) == "/" || path.length === 0) {
-    names.splice(0, 1);
-  }
-  if (path.slice(-1) == "/") {
-    names.splice(names.length - 1, 1);
-  }
-  return names;
-}
-function queryKey(uri, query) {
-  const data = {};
-  query.replace(/(?:^|&)([^&=]*)=?([^&]*)/g, function($0, $1, $2) {
-    if ($1) {
-      data[$1] = $2;
-    }
-  });
-  return data;
-}
-var re, parts;
-var init_parseuri = __esm(() => {
-  re = /^(?:(?![^:@\/?#]+:[^:@\/]*@)(http|https|ws|wss):\/\/)?((?:(([^:@\/?#]*)(?::([^:@\/?#]*))?)?@)?((?:[a-f0-9]{0,4}:){2,7}[a-f0-9]{0,4}|[^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/;
-  parts = [
-    "source",
-    "protocol",
-    "authority",
-    "userInfo",
-    "user",
-    "password",
-    "host",
-    "port",
-    "relative",
-    "path",
-    "directory",
-    "file",
-    "query",
-    "anchor"
-  ];
-});
-
-// node_modules/engine.io-client/build/esm-debug/socket.js
-var import_debug6, debug6, withEventListeners, OFFLINE_EVENT_LISTENERS, SocketWithoutUpgrade, SocketWithUpgrade, Socket;
-var init_socket = __esm(() => {
-  init_transports2();
-  init_util2();
-  init_parseuri();
-  init_cjs();
-  init_esm2();
-  init_globals_node();
-  import_debug6 = __toESM(require_src(), 1);
-  debug6 = import_debug6.default("engine.io-client:socket");
-  withEventListeners = typeof addEventListener === "function" && typeof removeEventListener === "function";
-  OFFLINE_EVENT_LISTENERS = [];
-  if (withEventListeners) {
-    addEventListener("offline", () => {
-      debug6("closing %d connection(s) because the network was lost", OFFLINE_EVENT_LISTENERS.length);
-      OFFLINE_EVENT_LISTENERS.forEach((listener) => listener());
-    }, false);
-  }
-  SocketWithoutUpgrade = class SocketWithoutUpgrade extends $Emitter {
-    constructor(uri, opts) {
-      super();
-      this.binaryType = defaultBinaryType;
-      this.writeBuffer = [];
-      this._prevBufferLen = 0;
-      this._pingInterval = -1;
-      this._pingTimeout = -1;
-      this._maxPayload = -1;
-      this._pingTimeoutTime = Infinity;
-      if (uri && typeof uri === "object") {
-        opts = uri;
-        uri = null;
-      }
-      if (uri) {
-        const parsedUri = parse7(uri);
-        opts.hostname = parsedUri.host;
-        opts.secure = parsedUri.protocol === "https" || parsedUri.protocol === "wss";
-        opts.port = parsedUri.port;
-        if (parsedUri.query)
-          opts.query = parsedUri.query;
-      } else if (opts.host) {
-        opts.hostname = parse7(opts.host).host;
-      }
-      installTimerFunctions(this, opts);
-      this.secure = opts.secure != null ? opts.secure : typeof location !== "undefined" && location.protocol === "https:";
-      if (opts.hostname && !opts.port) {
-        opts.port = this.secure ? "443" : "80";
-      }
-      this.hostname = opts.hostname || (typeof location !== "undefined" ? location.hostname : "localhost");
-      this.port = opts.port || (typeof location !== "undefined" && location.port ? location.port : this.secure ? "443" : "80");
-      this.transports = [];
-      this._transportsByName = {};
-      opts.transports.forEach((t) => {
-        const transportName = t.prototype.name;
-        this.transports.push(transportName);
-        this._transportsByName[transportName] = t;
-      });
-      this.opts = Object.assign({
-        path: "/engine.io",
-        agent: false,
-        withCredentials: false,
-        upgrade: true,
-        timestampParam: "t",
-        rememberUpgrade: false,
-        addTrailingSlash: true,
-        rejectUnauthorized: true,
-        perMessageDeflate: {
-          threshold: 1024
-        },
-        transportOptions: {},
-        closeOnBeforeunload: false
-      }, opts);
-      this.opts.path = this.opts.path.replace(/\/$/, "") + (this.opts.addTrailingSlash ? "/" : "");
-      if (typeof this.opts.query === "string") {
-        this.opts.query = decode3(this.opts.query);
-      }
-      if (withEventListeners) {
-        if (this.opts.closeOnBeforeunload) {
-          this._beforeunloadEventListener = () => {
-            if (this.transport) {
-              this.transport.removeAllListeners();
-              this.transport.close();
-            }
-          };
-          addEventListener("beforeunload", this._beforeunloadEventListener, false);
-        }
-        if (this.hostname !== "localhost") {
-          debug6("adding listener for the 'offline' event");
-          this._offlineEventListener = () => {
-            this._onClose("transport close", {
-              description: "network connection lost"
-            });
-          };
-          OFFLINE_EVENT_LISTENERS.push(this._offlineEventListener);
-        }
-      }
-      if (this.opts.withCredentials) {
-        this._cookieJar = createCookieJar();
-      }
-      this._open();
-    }
-    createTransport(name) {
-      debug6('creating transport "%s"', name);
-      const query = Object.assign({}, this.opts.query);
-      query.EIO = protocol;
-      query.transport = name;
-      if (this.id)
-        query.sid = this.id;
-      const opts = Object.assign({}, this.opts, {
-        query,
-        socket: this,
-        hostname: this.hostname,
-        secure: this.secure,
-        port: this.port
-      }, this.opts.transportOptions[name]);
-      debug6("options: %j", opts);
-      return new this._transportsByName[name](opts);
-    }
-    _open() {
-      if (this.transports.length === 0) {
-        this.setTimeoutFn(() => {
-          this.emitReserved("error", "No transports available");
-        }, 0);
-        return;
-      }
-      const transportName = this.opts.rememberUpgrade && SocketWithoutUpgrade.priorWebsocketSuccess && this.transports.indexOf("websocket") !== -1 ? "websocket" : this.transports[0];
-      this.readyState = "opening";
-      const transport = this.createTransport(transportName);
-      transport.open();
-      this.setTransport(transport);
-    }
-    setTransport(transport) {
-      debug6("setting transport %s", transport.name);
-      if (this.transport) {
-        debug6("clearing existing transport %s", this.transport.name);
-        this.transport.removeAllListeners();
-      }
-      this.transport = transport;
-      transport.on("drain", this._onDrain.bind(this)).on("packet", this._onPacket.bind(this)).on("error", this._onError.bind(this)).on("close", (reason) => this._onClose("transport close", reason));
-    }
-    onOpen() {
-      debug6("socket open");
-      this.readyState = "open";
-      SocketWithoutUpgrade.priorWebsocketSuccess = this.transport.name === "websocket";
-      this.emitReserved("open");
-      this.flush();
-    }
-    _onPacket(packet) {
-      if (this.readyState === "opening" || this.readyState === "open" || this.readyState === "closing") {
-        debug6('socket receive: type "%s", data "%s"', packet.type, packet.data);
-        this.emitReserved("packet", packet);
-        this.emitReserved("heartbeat");
-        switch (packet.type) {
-          case "open":
-            this.onHandshake(JSON.parse(packet.data));
-            break;
-          case "ping":
-            this._sendPacket("pong");
-            this.emitReserved("ping");
-            this.emitReserved("pong");
-            this._resetPingTimeout();
-            break;
-          case "error":
-            const err = new Error("server error");
-            err.code = packet.data;
-            this._onError(err);
-            break;
-          case "message":
-            this.emitReserved("data", packet.data);
-            this.emitReserved("message", packet.data);
-            break;
-        }
-      } else {
-        debug6('packet received with socket readyState "%s"', this.readyState);
-      }
-    }
-    onHandshake(data) {
-      this.emitReserved("handshake", data);
-      this.id = data.sid;
-      this.transport.query.sid = data.sid;
-      this._pingInterval = data.pingInterval;
-      this._pingTimeout = data.pingTimeout;
-      this._maxPayload = data.maxPayload;
-      this.onOpen();
-      if (this.readyState === "closed")
-        return;
-      this._resetPingTimeout();
-    }
-    _resetPingTimeout() {
-      this.clearTimeoutFn(this._pingTimeoutTimer);
-      const delay = this._pingInterval + this._pingTimeout;
-      this._pingTimeoutTime = Date.now() + delay;
-      this._pingTimeoutTimer = this.setTimeoutFn(() => {
-        this._onClose("ping timeout");
-      }, delay);
-      if (this.opts.autoUnref) {
-        this._pingTimeoutTimer.unref();
-      }
-    }
-    _onDrain() {
-      this.writeBuffer.splice(0, this._prevBufferLen);
-      this._prevBufferLen = 0;
-      if (this.writeBuffer.length === 0) {
-        this.emitReserved("drain");
-      } else {
-        this.flush();
-      }
-    }
-    flush() {
-      if (this.readyState !== "closed" && this.transport.writable && !this.upgrading && this.writeBuffer.length) {
-        const packets = this._getWritablePackets();
-        debug6("flushing %d packets in socket", packets.length);
-        this.transport.send(packets);
-        this._prevBufferLen = packets.length;
-        this.emitReserved("flush");
-      }
-    }
-    _getWritablePackets() {
-      const shouldCheckPayloadSize = this._maxPayload && this.transport.name === "polling" && this.writeBuffer.length > 1;
-      if (!shouldCheckPayloadSize) {
-        return this.writeBuffer;
-      }
-      let payloadSize = 1;
-      for (let i = 0;i < this.writeBuffer.length; i++) {
-        const data = this.writeBuffer[i].data;
-        if (data) {
-          payloadSize += byteLength(data);
-        }
-        if (i > 0 && payloadSize > this._maxPayload) {
-          debug6("only send %d out of %d packets", i, this.writeBuffer.length);
-          return this.writeBuffer.slice(0, i);
-        }
-        payloadSize += 2;
-      }
-      debug6("payload size is %d (max: %d)", payloadSize, this._maxPayload);
-      return this.writeBuffer;
-    }
-    _hasPingExpired() {
-      if (!this._pingTimeoutTime)
-        return true;
-      const hasExpired = Date.now() > this._pingTimeoutTime;
-      if (hasExpired) {
-        debug6("throttled timer detected, scheduling connection close");
-        this._pingTimeoutTime = 0;
-        nextTick(() => {
-          this._onClose("ping timeout");
-        }, this.setTimeoutFn);
-      }
-      return hasExpired;
-    }
-    write(msg, options, fn) {
-      this._sendPacket("message", msg, options, fn);
-      return this;
-    }
-    send(msg, options, fn) {
-      this._sendPacket("message", msg, options, fn);
-      return this;
-    }
-    _sendPacket(type, data, options, fn) {
-      if (typeof data === "function") {
-        fn = data;
-        data = undefined;
-      }
-      if (typeof options === "function") {
-        fn = options;
-        options = null;
-      }
-      if (this.readyState === "closing" || this.readyState === "closed") {
-        return;
-      }
-      options = options || {};
-      options.compress = options.compress !== false;
-      const packet = {
-        type,
-        data,
-        options
-      };
-      this.emitReserved("packetCreate", packet);
-      this.writeBuffer.push(packet);
-      if (fn)
-        this.once("flush", fn);
-      this.flush();
-    }
-    close() {
-      const close = () => {
-        this._onClose("forced close");
-        debug6("socket closing - telling transport to close");
-        this.transport.close();
-      };
-      const cleanupAndClose = () => {
-        this.off("upgrade", cleanupAndClose);
-        this.off("upgradeError", cleanupAndClose);
-        close();
-      };
-      const waitForUpgrade = () => {
-        this.once("upgrade", cleanupAndClose);
-        this.once("upgradeError", cleanupAndClose);
-      };
-      if (this.readyState === "opening" || this.readyState === "open") {
-        this.readyState = "closing";
-        if (this.writeBuffer.length) {
-          this.once("drain", () => {
-            if (this.upgrading) {
-              waitForUpgrade();
-            } else {
-              close();
-            }
-          });
-        } else if (this.upgrading) {
-          waitForUpgrade();
-        } else {
-          close();
-        }
-      }
-      return this;
-    }
-    _onError(err) {
-      debug6("socket error %j", err);
-      SocketWithoutUpgrade.priorWebsocketSuccess = false;
-      if (this.opts.tryAllTransports && this.transports.length > 1 && this.readyState === "opening") {
-        debug6("trying next transport");
-        this.transports.shift();
-        return this._open();
-      }
-      this.emitReserved("error", err);
-      this._onClose("transport error", err);
-    }
-    _onClose(reason, description) {
-      if (this.readyState === "opening" || this.readyState === "open" || this.readyState === "closing") {
-        debug6('socket close with reason: "%s"', reason);
-        this.clearTimeoutFn(this._pingTimeoutTimer);
-        this.transport.removeAllListeners("close");
-        this.transport.close();
-        this.transport.removeAllListeners();
-        if (withEventListeners) {
-          if (this._beforeunloadEventListener) {
-            removeEventListener("beforeunload", this._beforeunloadEventListener, false);
-          }
-          if (this._offlineEventListener) {
-            const i = OFFLINE_EVENT_LISTENERS.indexOf(this._offlineEventListener);
-            if (i !== -1) {
-              debug6("removing listener for the 'offline' event");
-              OFFLINE_EVENT_LISTENERS.splice(i, 1);
-            }
-          }
-        }
-        this.readyState = "closed";
-        this.id = null;
-        this.emitReserved("close", reason, description);
-        this.writeBuffer = [];
-        this._prevBufferLen = 0;
-      }
-    }
-  };
-  SocketWithoutUpgrade.protocol = protocol;
-  SocketWithUpgrade = class SocketWithUpgrade extends SocketWithoutUpgrade {
-    constructor() {
-      super(...arguments);
-      this._upgrades = [];
-    }
-    onOpen() {
-      super.onOpen();
-      if (this.readyState === "open" && this.opts.upgrade) {
-        debug6("starting upgrade probes");
-        for (let i = 0;i < this._upgrades.length; i++) {
-          this._probe(this._upgrades[i]);
-        }
-      }
-    }
-    _probe(name) {
-      debug6('probing transport "%s"', name);
-      let transport = this.createTransport(name);
-      let failed = false;
-      SocketWithoutUpgrade.priorWebsocketSuccess = false;
-      const onTransportOpen = () => {
-        if (failed)
-          return;
-        debug6('probe transport "%s" opened', name);
-        transport.send([{ type: "ping", data: "probe" }]);
-        transport.once("packet", (msg) => {
-          if (failed)
-            return;
-          if (msg.type === "pong" && msg.data === "probe") {
-            debug6('probe transport "%s" pong', name);
-            this.upgrading = true;
-            this.emitReserved("upgrading", transport);
-            if (!transport)
-              return;
-            SocketWithoutUpgrade.priorWebsocketSuccess = transport.name === "websocket";
-            debug6('pausing current transport "%s"', this.transport.name);
-            this.transport.pause(() => {
-              if (failed)
-                return;
-              if (this.readyState === "closed")
-                return;
-              debug6("changing transport and sending upgrade packet");
-              cleanup();
-              this.setTransport(transport);
-              transport.send([{ type: "upgrade" }]);
-              this.emitReserved("upgrade", transport);
-              transport = null;
-              this.upgrading = false;
-              this.flush();
-            });
-          } else {
-            debug6('probe transport "%s" failed', name);
-            const err = new Error("probe error");
-            err.transport = transport.name;
-            this.emitReserved("upgradeError", err);
-          }
-        });
-      };
-      function freezeTransport() {
-        if (failed)
-          return;
-        failed = true;
-        cleanup();
-        transport.close();
-        transport = null;
-      }
-      const onerror = (err) => {
-        const error = new Error("probe error: " + err);
-        error.transport = transport.name;
-        freezeTransport();
-        debug6('probe transport "%s" failed because of error: %s', name, err);
-        this.emitReserved("upgradeError", error);
-      };
-      function onTransportClose() {
-        onerror("transport closed");
-      }
-      function onclose() {
-        onerror("socket closed");
-      }
-      function onupgrade(to) {
-        if (transport && to.name !== transport.name) {
-          debug6('"%s" works - aborting "%s"', to.name, transport.name);
-          freezeTransport();
-        }
-      }
-      const cleanup = () => {
-        transport.removeListener("open", onTransportOpen);
-        transport.removeListener("error", onerror);
-        transport.removeListener("close", onTransportClose);
-        this.off("close", onclose);
-        this.off("upgrading", onupgrade);
-      };
-      transport.once("open", onTransportOpen);
-      transport.once("error", onerror);
-      transport.once("close", onTransportClose);
-      this.once("close", onclose);
-      this.once("upgrading", onupgrade);
-      if (this._upgrades.indexOf("webtransport") !== -1 && name !== "webtransport") {
-        this.setTimeoutFn(() => {
-          if (!failed) {
-            transport.open();
-          }
-        }, 200);
-      } else {
-        transport.open();
-      }
-    }
-    onHandshake(data) {
-      this._upgrades = this._filterUpgrades(data.upgrades);
-      super.onHandshake(data);
-    }
-    _filterUpgrades(upgrades) {
-      const filteredUpgrades = [];
-      for (let i = 0;i < upgrades.length; i++) {
-        if (~this.transports.indexOf(upgrades[i]))
-          filteredUpgrades.push(upgrades[i]);
-      }
-      return filteredUpgrades;
-    }
-  };
-  Socket = class Socket extends SocketWithUpgrade {
-    constructor(uri, opts = {}) {
-      const isOptionsOnly = typeof uri === "object";
-      const o = isOptionsOnly ? { ...uri } : { ...opts };
-      if (!o.transports || o.transports && typeof o.transports[0] === "string") {
-        o.transports = (o.transports || ["polling", "websocket", "webtransport"]).map((transportName) => transports2[transportName]).filter((t) => !!t);
-      }
-      super(isOptionsOnly ? o : uri, o);
-    }
-  };
-});
-
-// node_modules/engine.io-client/build/esm-debug/transports/polling-fetch.js
-var init_polling_fetch = __esm(() => {
-  init_polling();
-});
-
-// node_modules/engine.io-client/build/esm-debug/index.js
-var protocol2;
-var init_esm_debug = __esm(() => {
-  init_socket();
-  init_socket();
-  init_transport();
-  init_transports2();
-  init_util2();
-  init_parseuri();
-  init_globals_node();
-  init_polling_fetch();
-  init_polling_xhr_node();
-  init_polling_xhr();
-  init_websocket_node();
-  init_websocket();
-  init_webtransport();
-  protocol2 = Socket.protocol;
-});
-
-// node_modules/socket.io-client/build/esm-debug/url.js
-function url2(uri, path = "", loc) {
-  let obj = uri;
-  loc = loc || typeof location !== "undefined" && location;
-  if (uri == null)
-    uri = loc.protocol + "//" + loc.host;
-  if (typeof uri === "string") {
-    if (uri.charAt(0) === "/") {
-      if (uri.charAt(1) === "/") {
-        uri = loc.protocol + uri;
-      } else {
-        uri = loc.host + uri;
-      }
-    }
-    if (!/^(https?|wss?):\/\//.test(uri)) {
-      debug7("protocol-less url %s", uri);
-      if (typeof loc !== "undefined") {
-        uri = loc.protocol + "//" + uri;
-      } else {
-        uri = "https://" + uri;
-      }
-    }
-    debug7("parse %s", uri);
-    obj = parse7(uri);
-  }
-  if (!obj.port) {
-    if (/^(http|ws)$/.test(obj.protocol)) {
-      obj.port = "80";
-    } else if (/^(http|ws)s$/.test(obj.protocol)) {
-      obj.port = "443";
-    }
-  }
-  obj.path = obj.path || "/";
-  const ipv6 = obj.host.indexOf(":") !== -1;
-  const host = ipv6 ? "[" + obj.host + "]" : obj.host;
-  obj.id = obj.protocol + "://" + host + ":" + obj.port + path;
-  obj.href = obj.protocol + "://" + host + (loc && loc.port === obj.port ? "" : ":" + obj.port);
-  return obj;
-}
-var import_debug7, debug7;
-var init_url = __esm(() => {
-  init_esm_debug();
-  import_debug7 = __toESM(require_src(), 1);
-  debug7 = import_debug7.default("socket.io-client:url");
-});
-
-// node_modules/socket.io-parser/build/esm-debug/is-binary.js
-function isBinary(obj) {
-  return withNativeArrayBuffer && (obj instanceof ArrayBuffer || isView(obj)) || withNativeBlob && obj instanceof Blob || withNativeFile && obj instanceof File;
-}
-function hasBinary(obj, toJSON) {
-  if (!obj || typeof obj !== "object") {
-    return false;
-  }
-  if (Array.isArray(obj)) {
-    for (let i = 0, l = obj.length;i < l; i++) {
-      if (hasBinary(obj[i])) {
-        return true;
-      }
-    }
-    return false;
-  }
-  if (isBinary(obj)) {
-    return true;
-  }
-  if (obj.toJSON && typeof obj.toJSON === "function" && arguments.length === 1) {
-    return hasBinary(obj.toJSON(), true);
-  }
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key) && hasBinary(obj[key])) {
-      return true;
-    }
-  }
-  return false;
-}
-var withNativeArrayBuffer, isView = (obj) => {
-  return typeof ArrayBuffer.isView === "function" ? ArrayBuffer.isView(obj) : obj.buffer instanceof ArrayBuffer;
-}, toString, withNativeBlob, withNativeFile;
-var init_is_binary = __esm(() => {
-  withNativeArrayBuffer = typeof ArrayBuffer === "function";
-  toString = Object.prototype.toString;
-  withNativeBlob = typeof Blob === "function" || typeof Blob !== "undefined" && toString.call(Blob) === "[object BlobConstructor]";
-  withNativeFile = typeof File === "function" || typeof File !== "undefined" && toString.call(File) === "[object FileConstructor]";
-});
-
-// node_modules/socket.io-parser/build/esm-debug/binary.js
-function deconstructPacket(packet) {
-  const buffers = [];
-  const packetData = packet.data;
-  const pack = packet;
-  pack.data = _deconstructPacket(packetData, buffers);
-  pack.attachments = buffers.length;
-  return { packet: pack, buffers };
-}
-function _deconstructPacket(data, buffers, toJSON) {
-  if (!data)
-    return data;
-  if (isBinary(data)) {
-    const placeholder = { _placeholder: true, num: buffers.length };
-    buffers.push(data);
-    return placeholder;
-  } else if (Array.isArray(data)) {
-    const newData = new Array(data.length);
-    for (let i = 0;i < data.length; i++) {
-      newData[i] = _deconstructPacket(data[i], buffers);
-    }
-    return newData;
-  } else if (typeof data === "object" && !(data instanceof Date)) {
-    if (data.toJSON && typeof data.toJSON === "function" && !toJSON) {
-      return _deconstructPacket(data.toJSON(), buffers, true);
-    }
-    const newData = {};
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        newData[key] = _deconstructPacket(data[key], buffers);
-      }
-    }
-    return newData;
-  }
-  return data;
-}
-function reconstructPacket(packet, buffers) {
-  packet.data = _reconstructPacket(packet.data, buffers);
-  delete packet.attachments;
-  return packet;
-}
-function _reconstructPacket(data, buffers) {
-  if (!data)
-    return data;
-  if (data && data._placeholder === true) {
-    const isIndexValid = typeof data.num === "number" && data.num >= 0 && data.num < buffers.length;
-    if (isIndexValid) {
-      return buffers[data.num];
-    } else {
-      throw new Error("illegal attachments");
-    }
-  } else if (Array.isArray(data)) {
-    for (let i = 0;i < data.length; i++) {
-      data[i] = _reconstructPacket(data[i], buffers);
-    }
-  } else if (typeof data === "object") {
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        data[key] = _reconstructPacket(data[key], buffers);
-      }
-    }
-  }
-  return data;
-}
-var init_binary = __esm(() => {
-  init_is_binary();
-});
-
-// node_modules/socket.io-parser/build/esm-debug/index.js
-var exports_esm_debug = {};
-__export(exports_esm_debug, {
-  Decoder: () => Decoder,
-  Encoder: () => Encoder,
-  PacketType: () => PacketType,
-  isPacketValid: () => isPacketValid,
-  protocol: () => protocol3
-});
-
-class Encoder {
-  constructor(replacer) {
-    this.replacer = replacer;
-  }
-  encode(obj) {
-    debug8("encoding packet %j", obj);
-    if (obj.type === PacketType.EVENT || obj.type === PacketType.ACK) {
-      if (hasBinary(obj)) {
-        return this.encodeAsBinary({
-          type: obj.type === PacketType.EVENT ? PacketType.BINARY_EVENT : PacketType.BINARY_ACK,
-          nsp: obj.nsp,
-          data: obj.data,
-          id: obj.id
-        });
-      }
-    }
-    return [this.encodeAsString(obj)];
-  }
-  encodeAsString(obj) {
-    let str = "" + obj.type;
-    if (obj.type === PacketType.BINARY_EVENT || obj.type === PacketType.BINARY_ACK) {
-      str += obj.attachments + "-";
-    }
-    if (obj.nsp && obj.nsp !== "/") {
-      str += obj.nsp + ",";
-    }
-    if (obj.id != null) {
-      str += obj.id;
-    }
-    if (obj.data != null) {
-      str += JSON.stringify(obj.data, this.replacer);
-    }
-    debug8("encoded %j as %s", obj, str);
-    return str;
-  }
-  encodeAsBinary(obj) {
-    const deconstruction = deconstructPacket(obj);
-    const pack = this.encodeAsString(deconstruction.packet);
-    const buffers = deconstruction.buffers;
-    buffers.unshift(pack);
-    return buffers;
-  }
-}
-
-class BinaryReconstructor {
-  constructor(packet) {
-    this.packet = packet;
-    this.buffers = [];
-    this.reconPack = packet;
-  }
-  takeBinaryData(binData) {
-    this.buffers.push(binData);
-    if (this.buffers.length === this.reconPack.attachments) {
-      const packet = reconstructPacket(this.reconPack, this.buffers);
-      this.finishedReconstruction();
-      return packet;
-    }
-    return null;
-  }
-  finishedReconstruction() {
-    this.reconPack = null;
-    this.buffers = [];
-  }
-}
-function isNamespaceValid(nsp) {
-  return typeof nsp === "string";
-}
-function isAckIdValid(id) {
-  return id === undefined || isInteger(id);
-}
-function isObject3(value) {
-  return Object.prototype.toString.call(value) === "[object Object]";
-}
-function isDataValid(type, payload) {
-  switch (type) {
-    case PacketType.CONNECT:
-      return payload === undefined || isObject3(payload);
-    case PacketType.DISCONNECT:
-      return payload === undefined;
-    case PacketType.EVENT:
-      return Array.isArray(payload) && (typeof payload[0] === "number" || typeof payload[0] === "string" && RESERVED_EVENTS.indexOf(payload[0]) === -1);
-    case PacketType.ACK:
-      return Array.isArray(payload);
-    case PacketType.CONNECT_ERROR:
-      return typeof payload === "string" || isObject3(payload);
-    default:
-      return false;
-  }
-}
-function isPacketValid(packet) {
-  return isNamespaceValid(packet.nsp) && isAckIdValid(packet.id) && isDataValid(packet.type, packet.data);
-}
-var import_debug8, debug8, RESERVED_EVENTS, protocol3 = 5, PacketType, Decoder, isInteger;
-var init_esm_debug2 = __esm(() => {
-  init_cjs();
-  init_binary();
-  init_is_binary();
-  import_debug8 = __toESM(require_src(), 1);
-  debug8 = import_debug8.default("socket.io-parser");
-  RESERVED_EVENTS = [
-    "connect",
-    "connect_error",
-    "disconnect",
-    "disconnecting",
-    "newListener",
-    "removeListener"
-  ];
-  (function(PacketType2) {
-    PacketType2[PacketType2["CONNECT"] = 0] = "CONNECT";
-    PacketType2[PacketType2["DISCONNECT"] = 1] = "DISCONNECT";
-    PacketType2[PacketType2["EVENT"] = 2] = "EVENT";
-    PacketType2[PacketType2["ACK"] = 3] = "ACK";
-    PacketType2[PacketType2["CONNECT_ERROR"] = 4] = "CONNECT_ERROR";
-    PacketType2[PacketType2["BINARY_EVENT"] = 5] = "BINARY_EVENT";
-    PacketType2[PacketType2["BINARY_ACK"] = 6] = "BINARY_ACK";
-  })(PacketType || (PacketType = {}));
-  Decoder = class Decoder extends $Emitter {
-    constructor(opts) {
-      super();
-      this.opts = Object.assign({
-        reviver: undefined,
-        maxAttachments: 10
-      }, typeof opts === "function" ? { reviver: opts } : opts);
-    }
-    add(obj) {
-      let packet;
-      if (typeof obj === "string") {
-        if (this.reconstructor) {
-          throw new Error("got plaintext data when reconstructing a packet");
-        }
-        packet = this.decodeString(obj);
-        const isBinaryEvent = packet.type === PacketType.BINARY_EVENT;
-        if (isBinaryEvent || packet.type === PacketType.BINARY_ACK) {
-          packet.type = isBinaryEvent ? PacketType.EVENT : PacketType.ACK;
-          this.reconstructor = new BinaryReconstructor(packet);
-        } else {
-          super.emitReserved("decoded", packet);
-        }
-      } else if (isBinary(obj) || obj.base64) {
-        if (!this.reconstructor) {
-          throw new Error("got binary data when not reconstructing a packet");
-        } else {
-          packet = this.reconstructor.takeBinaryData(obj);
-          if (packet) {
-            this.reconstructor = null;
-            super.emitReserved("decoded", packet);
-          }
-        }
-      } else {
-        throw new Error("Unknown type: " + obj);
-      }
-    }
-    decodeString(str) {
-      let i = 0;
-      const p = {
-        type: Number(str.charAt(0))
-      };
-      if (PacketType[p.type] === undefined) {
-        throw new Error("unknown packet type " + p.type);
-      }
-      if (p.type === PacketType.BINARY_EVENT || p.type === PacketType.BINARY_ACK) {
-        const start = i + 1;
-        while (str.charAt(++i) !== "-" && i != str.length) {}
-        const buf = str.substring(start, i);
-        if (buf != Number(buf) || str.charAt(i) !== "-") {
-          throw new Error("Illegal attachments");
-        }
-        const n = Number(buf);
-        if (!isInteger(n) || n < 1) {
-          throw new Error("Illegal attachments");
-        } else if (n > this.opts.maxAttachments) {
-          throw new Error("too many attachments");
-        }
-        p.attachments = n;
-      }
-      if (str.charAt(i + 1) === "/") {
-        const start = i + 1;
-        while (++i) {
-          const c = str.charAt(i);
-          if (c === ",")
-            break;
-          if (i === str.length)
-            break;
-        }
-        p.nsp = str.substring(start, i);
-      } else {
-        p.nsp = "/";
-      }
-      const next = str.charAt(i + 1);
-      if (next !== "" && Number(next) == next) {
-        const start = i + 1;
-        while (++i) {
-          const c = str.charAt(i);
-          if (c == null || Number(c) != c) {
-            --i;
-            break;
-          }
-          if (i === str.length)
-            break;
-        }
-        p.id = Number(str.substring(start, i + 1));
-      }
-      if (str.charAt(++i)) {
-        const payload = this.tryParse(str.substr(i));
-        if (Decoder.isPayloadValid(p.type, payload)) {
-          p.data = payload;
-        } else {
-          throw new Error("invalid payload");
-        }
-      }
-      debug8("decoded %s as %j", str, p);
-      return p;
-    }
-    tryParse(str) {
-      try {
-        return JSON.parse(str, this.opts.reviver);
-      } catch (e) {
-        return false;
-      }
-    }
-    static isPayloadValid(type, payload) {
-      switch (type) {
-        case PacketType.CONNECT:
-          return isObject3(payload);
-        case PacketType.DISCONNECT:
-          return payload === undefined;
-        case PacketType.CONNECT_ERROR:
-          return typeof payload === "string" || isObject3(payload);
-        case PacketType.EVENT:
-        case PacketType.BINARY_EVENT:
-          return Array.isArray(payload) && (typeof payload[0] === "number" || typeof payload[0] === "string" && RESERVED_EVENTS.indexOf(payload[0]) === -1);
-        case PacketType.ACK:
-        case PacketType.BINARY_ACK:
-          return Array.isArray(payload);
-      }
-    }
-    destroy() {
-      if (this.reconstructor) {
-        this.reconstructor.finishedReconstruction();
-        this.reconstructor = null;
-      }
-    }
-  };
-  isInteger = Number.isInteger || function(value) {
-    return typeof value === "number" && isFinite(value) && Math.floor(value) === value;
-  };
-});
-
-// node_modules/socket.io-client/build/esm-debug/on.js
-function on(obj, ev, fn) {
-  obj.on(ev, fn);
-  return function subDestroy() {
-    obj.off(ev, fn);
-  };
-}
-
-// node_modules/socket.io-client/build/esm-debug/socket.js
-var import_debug9, debug9, RESERVED_EVENTS2, Socket2;
-var init_socket2 = __esm(() => {
-  init_esm_debug2();
-  init_cjs();
-  import_debug9 = __toESM(require_src(), 1);
-  debug9 = import_debug9.default("socket.io-client:socket");
-  RESERVED_EVENTS2 = Object.freeze({
-    connect: 1,
-    connect_error: 1,
-    disconnect: 1,
-    disconnecting: 1,
-    newListener: 1,
-    removeListener: 1
-  });
-  Socket2 = class Socket2 extends $Emitter {
-    constructor(io, nsp, opts) {
-      super();
-      this.connected = false;
-      this.recovered = false;
-      this.receiveBuffer = [];
-      this.sendBuffer = [];
-      this._queue = [];
-      this._queueSeq = 0;
-      this.ids = 0;
-      this.acks = {};
-      this.flags = {};
-      this.io = io;
-      this.nsp = nsp;
-      if (opts && opts.auth) {
-        this.auth = opts.auth;
-      }
-      this._opts = Object.assign({}, opts);
-      if (this.io._autoConnect)
-        this.open();
-    }
-    get disconnected() {
-      return !this.connected;
-    }
-    subEvents() {
-      if (this.subs)
-        return;
-      const io = this.io;
-      this.subs = [
-        on(io, "open", this.onopen.bind(this)),
-        on(io, "packet", this.onpacket.bind(this)),
-        on(io, "error", this.onerror.bind(this)),
-        on(io, "close", this.onclose.bind(this))
-      ];
-    }
-    get active() {
-      return !!this.subs;
-    }
-    connect() {
-      if (this.connected)
-        return this;
-      this.subEvents();
-      if (!this.io["_reconnecting"])
-        this.io.open();
-      if (this.io._readyState === "open")
-        this.onopen();
-      return this;
-    }
-    open() {
-      return this.connect();
-    }
-    send(...args) {
-      args.unshift("message");
-      this.emit.apply(this, args);
-      return this;
-    }
-    emit(ev, ...args) {
-      var _a, _b, _c;
-      if (RESERVED_EVENTS2.hasOwnProperty(ev)) {
-        throw new Error('"' + ev.toString() + '" is a reserved event name');
-      }
-      args.unshift(ev);
-      if (this._opts.retries && !this.flags.fromQueue && !this.flags.volatile) {
-        this._addToQueue(args);
-        return this;
-      }
-      const packet = {
-        type: PacketType.EVENT,
-        data: args
-      };
-      packet.options = {};
-      packet.options.compress = this.flags.compress !== false;
-      if (typeof args[args.length - 1] === "function") {
-        const id = this.ids++;
-        debug9("emitting packet with ack id %d", id);
-        const ack = args.pop();
-        this._registerAckCallback(id, ack);
-        packet.id = id;
-      }
-      const isTransportWritable = (_b = (_a = this.io.engine) === null || _a === undefined ? undefined : _a.transport) === null || _b === undefined ? undefined : _b.writable;
-      const isConnected = this.connected && !((_c = this.io.engine) === null || _c === undefined ? undefined : _c._hasPingExpired());
-      const discardPacket = this.flags.volatile && !isTransportWritable;
-      if (discardPacket) {
-        debug9("discard packet as the transport is not currently writable");
-      } else if (isConnected) {
-        this.notifyOutgoingListeners(packet);
-        this.packet(packet);
-      } else {
-        this.sendBuffer.push(packet);
-      }
-      this.flags = {};
-      return this;
-    }
-    _registerAckCallback(id, ack) {
-      var _a;
-      const timeout = (_a = this.flags.timeout) !== null && _a !== undefined ? _a : this._opts.ackTimeout;
-      if (timeout === undefined) {
-        this.acks[id] = ack;
-        return;
-      }
-      const timer = this.io.setTimeoutFn(() => {
-        delete this.acks[id];
-        for (let i = 0;i < this.sendBuffer.length; i++) {
-          if (this.sendBuffer[i].id === id) {
-            debug9("removing packet with ack id %d from the buffer", id);
-            this.sendBuffer.splice(i, 1);
-          }
-        }
-        debug9("event with ack id %d has timed out after %d ms", id, timeout);
-        ack.call(this, new Error("operation has timed out"));
-      }, timeout);
-      const fn = (...args) => {
-        this.io.clearTimeoutFn(timer);
-        ack.apply(this, args);
-      };
-      fn.withError = true;
-      this.acks[id] = fn;
-    }
-    emitWithAck(ev, ...args) {
-      return new Promise((resolve, reject) => {
-        const fn = (arg1, arg2) => {
-          return arg1 ? reject(arg1) : resolve(arg2);
-        };
-        fn.withError = true;
-        args.push(fn);
-        this.emit(ev, ...args);
-      });
-    }
-    _addToQueue(args) {
-      let ack;
-      if (typeof args[args.length - 1] === "function") {
-        ack = args.pop();
-      }
-      const packet = {
-        id: this._queueSeq++,
-        tryCount: 0,
-        pending: false,
-        args,
-        flags: Object.assign({ fromQueue: true }, this.flags)
-      };
-      args.push((err, ...responseArgs) => {
-        if (packet !== this._queue[0]) {
-          return debug9("packet [%d] already acknowledged", packet.id);
-        }
-        const hasError = err !== null;
-        if (hasError) {
-          if (packet.tryCount > this._opts.retries) {
-            debug9("packet [%d] is discarded after %d tries", packet.id, packet.tryCount);
-            this._queue.shift();
-            if (ack) {
-              ack(err);
-            }
-          }
-        } else {
-          debug9("packet [%d] was successfully sent", packet.id);
-          this._queue.shift();
-          if (ack) {
-            ack(null, ...responseArgs);
-          }
-        }
-        packet.pending = false;
-        return this._drainQueue();
-      });
-      this._queue.push(packet);
-      this._drainQueue();
-    }
-    _drainQueue(force = false) {
-      debug9("draining queue");
-      if (!this.connected || this._queue.length === 0) {
-        return;
-      }
-      const packet = this._queue[0];
-      if (packet.pending && !force) {
-        debug9("packet [%d] has already been sent and is waiting for an ack", packet.id);
-        return;
-      }
-      packet.pending = true;
-      packet.tryCount++;
-      debug9("sending packet [%d] (try n°%d)", packet.id, packet.tryCount);
-      this.flags = packet.flags;
-      this.emit.apply(this, packet.args);
-    }
-    packet(packet) {
-      packet.nsp = this.nsp;
-      this.io._packet(packet);
-    }
-    onopen() {
-      debug9("transport is open - connecting");
-      if (typeof this.auth == "function") {
-        this.auth((data) => {
-          this._sendConnectPacket(data);
-        });
-      } else {
-        this._sendConnectPacket(this.auth);
-      }
-    }
-    _sendConnectPacket(data) {
-      this.packet({
-        type: PacketType.CONNECT,
-        data: this._pid ? Object.assign({ pid: this._pid, offset: this._lastOffset }, data) : data
-      });
-    }
-    onerror(err) {
-      if (!this.connected) {
-        this.emitReserved("connect_error", err);
-      }
-    }
-    onclose(reason, description) {
-      debug9("close (%s)", reason);
-      this.connected = false;
-      delete this.id;
-      this.emitReserved("disconnect", reason, description);
-      this._clearAcks();
-    }
-    _clearAcks() {
-      Object.keys(this.acks).forEach((id) => {
-        const isBuffered = this.sendBuffer.some((packet) => String(packet.id) === id);
-        if (!isBuffered) {
-          const ack = this.acks[id];
-          delete this.acks[id];
-          if (ack.withError) {
-            ack.call(this, new Error("socket has been disconnected"));
-          }
-        }
-      });
-    }
-    onpacket(packet) {
-      const sameNamespace = packet.nsp === this.nsp;
-      if (!sameNamespace)
-        return;
-      switch (packet.type) {
-        case PacketType.CONNECT:
-          if (packet.data && packet.data.sid) {
-            this.onconnect(packet.data.sid, packet.data.pid);
-          } else {
-            this.emitReserved("connect_error", new Error("It seems you are trying to reach a Socket.IO server in v2.x with a v3.x client, but they are not compatible (more information here: https://socket.io/docs/v3/migrating-from-2-x-to-3-0/)"));
-          }
-          break;
-        case PacketType.EVENT:
-        case PacketType.BINARY_EVENT:
-          this.onevent(packet);
-          break;
-        case PacketType.ACK:
-        case PacketType.BINARY_ACK:
-          this.onack(packet);
-          break;
-        case PacketType.DISCONNECT:
-          this.ondisconnect();
-          break;
-        case PacketType.CONNECT_ERROR:
-          this.destroy();
-          const err = new Error(packet.data.message);
-          err.data = packet.data.data;
-          this.emitReserved("connect_error", err);
-          break;
-      }
-    }
-    onevent(packet) {
-      const args = packet.data || [];
-      debug9("emitting event %j", args);
-      if (packet.id != null) {
-        debug9("attaching ack callback to event");
-        args.push(this.ack(packet.id));
-      }
-      if (this.connected) {
-        this.emitEvent(args);
-      } else {
-        this.receiveBuffer.push(Object.freeze(args));
-      }
-    }
-    emitEvent(args) {
-      if (this._anyListeners && this._anyListeners.length) {
-        const listeners = this._anyListeners.slice();
-        for (const listener of listeners) {
-          listener.apply(this, args);
-        }
-      }
-      super.emit.apply(this, args);
-      if (this._pid && args.length && typeof args[args.length - 1] === "string") {
-        this._lastOffset = args[args.length - 1];
-      }
-    }
-    ack(id) {
-      const self2 = this;
-      let sent = false;
-      return function(...args) {
-        if (sent)
-          return;
-        sent = true;
-        debug9("sending ack %j", args);
-        self2.packet({
-          type: PacketType.ACK,
-          id,
-          data: args
-        });
-      };
-    }
-    onack(packet) {
-      const ack = this.acks[packet.id];
-      if (typeof ack !== "function") {
-        debug9("bad ack %s", packet.id);
-        return;
-      }
-      delete this.acks[packet.id];
-      debug9("calling ack %s with %j", packet.id, packet.data);
-      if (ack.withError) {
-        packet.data.unshift(null);
-      }
-      ack.apply(this, packet.data);
-    }
-    onconnect(id, pid2) {
-      debug9("socket connected with id %s", id);
-      this.id = id;
-      this.recovered = pid2 && this._pid === pid2;
-      this._pid = pid2;
-      this.connected = true;
-      this.emitBuffered();
-      this._drainQueue(true);
-      this.emitReserved("connect");
-    }
-    emitBuffered() {
-      this.receiveBuffer.forEach((args) => this.emitEvent(args));
-      this.receiveBuffer = [];
-      this.sendBuffer.forEach((packet) => {
-        this.notifyOutgoingListeners(packet);
-        this.packet(packet);
-      });
-      this.sendBuffer = [];
-    }
-    ondisconnect() {
-      debug9("server disconnect (%s)", this.nsp);
-      this.destroy();
-      this.onclose("io server disconnect");
-    }
-    destroy() {
-      if (this.subs) {
-        this.subs.forEach((subDestroy) => subDestroy());
-        this.subs = undefined;
-      }
-      this.io["_destroy"](this);
-    }
-    disconnect() {
-      if (this.connected) {
-        debug9("performing disconnect (%s)", this.nsp);
-        this.packet({ type: PacketType.DISCONNECT });
-      }
-      this.destroy();
-      if (this.connected) {
-        this.onclose("io client disconnect");
-      }
-      return this;
-    }
-    close() {
-      return this.disconnect();
-    }
-    compress(compress) {
-      this.flags.compress = compress;
-      return this;
-    }
-    get volatile() {
-      this.flags.volatile = true;
-      return this;
-    }
-    timeout(timeout) {
-      this.flags.timeout = timeout;
-      return this;
-    }
-    onAny(listener) {
-      this._anyListeners = this._anyListeners || [];
-      this._anyListeners.push(listener);
-      return this;
-    }
-    prependAny(listener) {
-      this._anyListeners = this._anyListeners || [];
-      this._anyListeners.unshift(listener);
-      return this;
-    }
-    offAny(listener) {
-      if (!this._anyListeners) {
-        return this;
-      }
-      if (listener) {
-        const listeners = this._anyListeners;
-        for (let i = 0;i < listeners.length; i++) {
-          if (listener === listeners[i]) {
-            listeners.splice(i, 1);
-            return this;
-          }
-        }
-      } else {
-        this._anyListeners = [];
-      }
-      return this;
-    }
-    listenersAny() {
-      return this._anyListeners || [];
-    }
-    onAnyOutgoing(listener) {
-      this._anyOutgoingListeners = this._anyOutgoingListeners || [];
-      this._anyOutgoingListeners.push(listener);
-      return this;
-    }
-    prependAnyOutgoing(listener) {
-      this._anyOutgoingListeners = this._anyOutgoingListeners || [];
-      this._anyOutgoingListeners.unshift(listener);
-      return this;
-    }
-    offAnyOutgoing(listener) {
-      if (!this._anyOutgoingListeners) {
-        return this;
-      }
-      if (listener) {
-        const listeners = this._anyOutgoingListeners;
-        for (let i = 0;i < listeners.length; i++) {
-          if (listener === listeners[i]) {
-            listeners.splice(i, 1);
-            return this;
-          }
-        }
-      } else {
-        this._anyOutgoingListeners = [];
-      }
-      return this;
-    }
-    listenersAnyOutgoing() {
-      return this._anyOutgoingListeners || [];
-    }
-    notifyOutgoingListeners(packet) {
-      if (this._anyOutgoingListeners && this._anyOutgoingListeners.length) {
-        const listeners = this._anyOutgoingListeners.slice();
-        for (const listener of listeners) {
-          listener.apply(this, packet.data);
-        }
-      }
-    }
-  };
-});
-
-// node_modules/socket.io-client/build/esm-debug/contrib/backo2.js
-function Backoff(opts) {
-  opts = opts || {};
-  this.ms = opts.min || 100;
-  this.max = opts.max || 1e4;
-  this.factor = opts.factor || 2;
-  this.jitter = opts.jitter > 0 && opts.jitter <= 1 ? opts.jitter : 0;
-  this.attempts = 0;
-}
-var init_backo2 = __esm(() => {
-  Backoff.prototype.duration = function() {
-    var ms = this.ms * Math.pow(this.factor, this.attempts++);
-    if (this.jitter) {
-      var rand = Math.random();
-      var deviation = Math.floor(rand * this.jitter * ms);
-      ms = (Math.floor(rand * 10) & 1) == 0 ? ms - deviation : ms + deviation;
-    }
-    return Math.min(ms, this.max) | 0;
-  };
-  Backoff.prototype.reset = function() {
-    this.attempts = 0;
-  };
-  Backoff.prototype.setMin = function(min) {
-    this.ms = min;
-  };
-  Backoff.prototype.setMax = function(max) {
-    this.max = max;
-  };
-  Backoff.prototype.setJitter = function(jitter) {
-    this.jitter = jitter;
-  };
-});
-
-// node_modules/socket.io-client/build/esm-debug/manager.js
-var import_debug10, debug10, Manager;
-var init_manager2 = __esm(() => {
-  init_esm_debug();
-  init_socket2();
-  init_esm_debug2();
-  init_backo2();
-  init_cjs();
-  import_debug10 = __toESM(require_src(), 1);
-  debug10 = import_debug10.default("socket.io-client:manager");
-  Manager = class Manager extends $Emitter {
-    constructor(uri, opts) {
-      var _a;
-      super();
-      this.nsps = {};
-      this.subs = [];
-      if (uri && typeof uri === "object") {
-        opts = uri;
-        uri = undefined;
-      }
-      opts = opts || {};
-      opts.path = opts.path || "/socket.io";
-      this.opts = opts;
-      installTimerFunctions(this, opts);
-      this.reconnection(opts.reconnection !== false);
-      this.reconnectionAttempts(opts.reconnectionAttempts || Infinity);
-      this.reconnectionDelay(opts.reconnectionDelay || 1000);
-      this.reconnectionDelayMax(opts.reconnectionDelayMax || 5000);
-      this.randomizationFactor((_a = opts.randomizationFactor) !== null && _a !== undefined ? _a : 0.5);
-      this.backoff = new Backoff({
-        min: this.reconnectionDelay(),
-        max: this.reconnectionDelayMax(),
-        jitter: this.randomizationFactor()
-      });
-      this.timeout(opts.timeout == null ? 20000 : opts.timeout);
-      this._readyState = "closed";
-      this.uri = uri;
-      const _parser = opts.parser || exports_esm_debug;
-      this.encoder = new _parser.Encoder;
-      this.decoder = new _parser.Decoder;
-      this._autoConnect = opts.autoConnect !== false;
-      if (this._autoConnect)
-        this.open();
-    }
-    reconnection(v) {
-      if (!arguments.length)
-        return this._reconnection;
-      this._reconnection = !!v;
-      if (!v) {
-        this.skipReconnect = true;
-      }
-      return this;
-    }
-    reconnectionAttempts(v) {
-      if (v === undefined)
-        return this._reconnectionAttempts;
-      this._reconnectionAttempts = v;
-      return this;
-    }
-    reconnectionDelay(v) {
-      var _a;
-      if (v === undefined)
-        return this._reconnectionDelay;
-      this._reconnectionDelay = v;
-      (_a = this.backoff) === null || _a === undefined || _a.setMin(v);
-      return this;
-    }
-    randomizationFactor(v) {
-      var _a;
-      if (v === undefined)
-        return this._randomizationFactor;
-      this._randomizationFactor = v;
-      (_a = this.backoff) === null || _a === undefined || _a.setJitter(v);
-      return this;
-    }
-    reconnectionDelayMax(v) {
-      var _a;
-      if (v === undefined)
-        return this._reconnectionDelayMax;
-      this._reconnectionDelayMax = v;
-      (_a = this.backoff) === null || _a === undefined || _a.setMax(v);
-      return this;
-    }
-    timeout(v) {
-      if (!arguments.length)
-        return this._timeout;
-      this._timeout = v;
-      return this;
-    }
-    maybeReconnectOnOpen() {
-      if (!this._reconnecting && this._reconnection && this.backoff.attempts === 0) {
-        this.reconnect();
-      }
-    }
-    open(fn) {
-      debug10("readyState %s", this._readyState);
-      if (~this._readyState.indexOf("open"))
-        return this;
-      debug10("opening %s", this.uri);
-      this.engine = new Socket(this.uri, this.opts);
-      const socket = this.engine;
-      const self2 = this;
-      this._readyState = "opening";
-      this.skipReconnect = false;
-      const openSubDestroy = on(socket, "open", function() {
-        self2.onopen();
-        fn && fn();
-      });
-      const onError = (err) => {
-        debug10("error");
-        this.cleanup();
-        this._readyState = "closed";
-        this.emitReserved("error", err);
-        if (fn) {
-          fn(err);
-        } else {
-          this.maybeReconnectOnOpen();
-        }
-      };
-      const errorSub = on(socket, "error", onError);
-      if (this._timeout !== false) {
-        const timeout = this._timeout;
-        debug10("connect attempt will timeout after %d", timeout);
-        const timer = this.setTimeoutFn(() => {
-          debug10("connect attempt timed out after %d", timeout);
-          openSubDestroy();
-          onError(new Error("timeout"));
-          socket.close();
-        }, timeout);
-        if (this.opts.autoUnref) {
-          timer.unref();
-        }
-        this.subs.push(() => {
-          this.clearTimeoutFn(timer);
-        });
-      }
-      this.subs.push(openSubDestroy);
-      this.subs.push(errorSub);
-      return this;
-    }
-    connect(fn) {
-      return this.open(fn);
-    }
-    onopen() {
-      debug10("open");
-      this.cleanup();
-      this._readyState = "open";
-      this.emitReserved("open");
-      const socket = this.engine;
-      this.subs.push(on(socket, "ping", this.onping.bind(this)), on(socket, "data", this.ondata.bind(this)), on(socket, "error", this.onerror.bind(this)), on(socket, "close", this.onclose.bind(this)), on(this.decoder, "decoded", this.ondecoded.bind(this)));
-    }
-    onping() {
-      this.emitReserved("ping");
-    }
-    ondata(data) {
-      try {
-        this.decoder.add(data);
-      } catch (e) {
-        this.onclose("parse error", e);
-      }
-    }
-    ondecoded(packet) {
-      nextTick(() => {
-        this.emitReserved("packet", packet);
-      }, this.setTimeoutFn);
-    }
-    onerror(err) {
-      debug10("error", err);
-      this.emitReserved("error", err);
-    }
-    socket(nsp, opts) {
-      let socket = this.nsps[nsp];
-      if (!socket) {
-        socket = new Socket2(this, nsp, opts);
-        this.nsps[nsp] = socket;
-      } else if (this._autoConnect && !socket.active) {
-        socket.connect();
-      }
-      return socket;
-    }
-    _destroy(socket) {
-      const nsps = Object.keys(this.nsps);
-      for (const nsp of nsps) {
-        const socket = this.nsps[nsp];
-        if (socket.active) {
-          debug10("socket %s is still active, skipping close", nsp);
-          return;
-        }
-      }
-      this._close();
-    }
-    _packet(packet) {
-      debug10("writing packet %j", packet);
-      const encodedPackets = this.encoder.encode(packet);
-      for (let i = 0;i < encodedPackets.length; i++) {
-        this.engine.write(encodedPackets[i], packet.options);
-      }
-    }
-    cleanup() {
-      debug10("cleanup");
-      this.subs.forEach((subDestroy) => subDestroy());
-      this.subs.length = 0;
-      this.decoder.destroy();
-    }
-    _close() {
-      debug10("disconnect");
-      this.skipReconnect = true;
-      this._reconnecting = false;
-      this.onclose("forced close");
-    }
-    disconnect() {
-      return this._close();
-    }
-    onclose(reason, description) {
-      var _a;
-      debug10("closed due to %s", reason);
-      this.cleanup();
-      (_a = this.engine) === null || _a === undefined || _a.close();
-      this.backoff.reset();
-      this._readyState = "closed";
-      this.emitReserved("close", reason, description);
-      if (this._reconnection && !this.skipReconnect) {
-        this.reconnect();
-      }
-    }
-    reconnect() {
-      if (this._reconnecting || this.skipReconnect)
-        return this;
-      const self2 = this;
-      if (this.backoff.attempts >= this._reconnectionAttempts) {
-        debug10("reconnect failed");
-        this.backoff.reset();
-        this.emitReserved("reconnect_failed");
-        this._reconnecting = false;
-      } else {
-        const delay = this.backoff.duration();
-        debug10("will wait %dms before reconnect attempt", delay);
-        this._reconnecting = true;
-        const timer = this.setTimeoutFn(() => {
-          if (self2.skipReconnect)
-            return;
-          debug10("attempting reconnect");
-          this.emitReserved("reconnect_attempt", self2.backoff.attempts);
-          if (self2.skipReconnect)
-            return;
-          self2.open((err) => {
-            if (err) {
-              debug10("reconnect attempt error");
-              self2._reconnecting = false;
-              self2.reconnect();
-              this.emitReserved("reconnect_error", err);
-            } else {
-              debug10("reconnect success");
-              self2.onreconnect();
-            }
-          });
-        }, delay);
-        if (this.opts.autoUnref) {
-          timer.unref();
-        }
-        this.subs.push(() => {
-          this.clearTimeoutFn(timer);
-        });
-      }
-    }
-    onreconnect() {
-      const attempt = this.backoff.attempts;
-      this._reconnecting = false;
-      this.backoff.reset();
-      this.emitReserved("reconnect", attempt);
-    }
-  };
-});
-
-// node_modules/socket.io-client/build/esm-debug/index.js
-function lookup(uri, opts) {
-  if (typeof uri === "object") {
-    opts = uri;
-    uri = undefined;
-  }
-  opts = opts || {};
-  const parsed = url2(uri, opts.path || "/socket.io");
-  const source = parsed.source;
-  const id = parsed.id;
-  const path = parsed.path;
-  const sameNamespace = cache[id] && path in cache[id]["nsps"];
-  const newConnection = opts.forceNew || opts["force new connection"] || opts.multiplex === false || sameNamespace;
-  let io;
-  if (newConnection) {
-    debug11("ignoring socket cache for %s", source);
-    io = new Manager(source, opts);
-  } else {
-    if (!cache[id]) {
-      debug11("new io instance for %s", source);
-      cache[id] = new Manager(source, opts);
-    }
-    io = cache[id];
-  }
-  if (parsed.query && !opts.query) {
-    opts.query = parsed.queryKey;
-  }
-  return io.socket(parsed.path, opts);
-}
-var import_debug11, debug11, cache;
-var init_esm_debug3 = __esm(() => {
-  init_url();
-  init_manager2();
-  init_socket2();
-  init_esm_debug2();
-  init_esm_debug();
-  import_debug11 = __toESM(require_src(), 1);
-  debug11 = import_debug11.default("socket.io-client");
-  cache = {};
-  Object.assign(lookup, {
-    Manager,
-    Socket: Socket2,
-    io: lookup,
-    connect: lookup
-  });
-});
-
-// node_modules/@bsv/authsocket-client/dist/src/AuthSocketClient.js
-function decodeAuthSocketEventPayload(payload) {
-  try {
-    const str = toUTF8(payload);
-    const decoded = JSON.parse(str);
-    if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded) || typeof decoded.eventName !== "string")
-      return {
-        eventName: "_unknown",
-        data: undefined
-      };
-    return {
-      eventName: decoded.eventName,
-      data: decoded.data
-    };
-  } catch {
-    return {
-      eventName: "_unknown",
-      data: undefined
-    };
-  }
-}
-function AuthSocketClient(url, opts) {
-  const socket = lookup(url, opts.managerOptions);
-  const transport = new SocketClientTransport(socket, {
-    maxPendingMessages: opts.maxPendingAuthMessages,
-    onError: (error) => {
-      reportErrorSafely(opts.onError, error, {
-        phase: "authentication",
-        socketId: socket.id
-      });
-    }
-  });
-  return new AuthSocketClientImpl(socket, new Peer(opts.wallet, transport, opts.requestedCertificates, opts.sessionManager, undefined, opts.originator), (error, context) => {
-    reportErrorSafely(opts.onError, error, context);
-  });
-}
-function reportErrorSafely(handler, error, context) {
-  Promise.resolve().then(async () => await handler?.(error, context)).catch(() => {});
-}
-var AuthSocketClientImpl = class {
-  ioSocket;
-  peer;
-  onError;
-  connected = false;
-  id = "";
-  serverIdentityKey;
-  eventCallbacks = /* @__PURE__ */ new Map;
-  constructor(ioSocket, peer, onError = () => {}) {
-    this.ioSocket = ioSocket;
-    this.peer = peer;
-    this.onError = onError;
-    this.ioSocket.on("connect", () => {
-      this.connected = true;
-      this.id = this.ioSocket.id ?? "";
-      this.fireEventCallbacks("connect");
-    });
-    this.ioSocket.on("disconnect", (reason) => {
-      this.connected = false;
-      this.fireEventCallbacks("disconnect", reason);
-    });
-    this.peer.listenForGeneralMessages(async (senderKey, payload) => {
-      this.serverIdentityKey = senderKey;
-      const { eventName, data } = this.decodeEventPayload(payload);
-      await this.fireEventCallbacks(eventName, data);
-    });
-  }
-  on(eventName, callback) {
-    let arr = this.eventCallbacks.get(eventName);
-    if (arr === undefined) {
-      arr = [];
-      this.eventCallbacks.set(eventName, arr);
-    }
-    arr.push(callback);
-    return this;
-  }
-  emit(eventName, data) {
-    let encoded;
-    try {
-      encoded = this.encodeEventPayload(eventName, data);
-    } catch (error) {
-      this.reportError(error, {
-        phase: "send",
-        socketId: this.ioSocket.id ?? this.id,
-        eventName
-      });
-      return this;
-    }
-    this.peer.toPeer(encoded, this.serverIdentityKey).catch((err) => {
-      this.reportError(err, {
-        phase: "send",
-        socketId: this.ioSocket.id ?? this.id,
-        eventName
-      });
-    });
-    return this;
-  }
-  disconnect() {
-    this.serverIdentityKey = undefined;
-    this.ioSocket.disconnect();
-  }
-  async fireEventCallbacks(eventName, data) {
-    const cbs = this.eventCallbacks.get(eventName);
-    if (cbs === undefined)
-      return;
-    try {
-      for (const cb of cbs) {
-        const result = cb(data);
-        if (result != null && typeof result.then === "function")
-          await result;
-      }
-    } catch (error) {
-      this.reportError(error, {
-        phase: "application",
-        socketId: this.ioSocket.id ?? this.id,
-        eventName
-      });
-      if (eventName !== "disconnect")
-        this.disconnectSafely();
-    }
-  }
-  encodeEventPayload(eventName, data) {
-    const obj = {
-      eventName,
-      data
-    };
-    return toArray2(stringifyBRC100(obj), "utf8");
-  }
-  decodeEventPayload(payload) {
-    return decodeAuthSocketEventPayload(payload);
-  }
-  reportError(error, context) {
-    Promise.resolve().then(async () => await this.onError(error, context)).catch(() => {});
-  }
-  disconnectSafely() {
-    try {
-      this.ioSocket.disconnect();
-    } catch {}
-  }
-};
-var init_AuthSocketClient = __esm(() => {
-  init_SocketClientTransport();
-  init_esm_debug3();
-  init_mod();
-});
-
-// node_modules/@bsv/authsocket-client/dist/mod.js
-var init_mod3 = __esm(() => {
-  init_AuthSocketClient();
-});
-
-// node_modules/@bsv/message-box-client/dist/src/MessageBoxClient.js
-function buildBatchSendResult(sentCount, allowedCount, blockedCount) {
-  if (sentCount === allowedCount)
-    return {
-      status: "success",
-      description: `Sent to ${sentCount} recipients.`
-    };
-  if (sentCount > 0)
-    return {
-      status: "partial",
-      description: `Sent to ${sentCount} recipients; ${allowedCount - sentCount} failed; ${blockedCount} blocked.`
-    };
-  return {
-    status: "error",
-    description: `Failed to send to ${allowedCount} allowed recipients. ${blockedCount} blocked.`
-  };
-}
-function assertBatchSendParams(params) {
-  if (!Array.isArray(params.recipients) || params.recipients.length === 0)
-    throw new Error("You must provide at least one recipient!");
-  if (params.recipients.length > 100)
-    throw new Error("A batch may include at most 100 recipients.");
-  if (!params.messageBox || params.messageBox.trim() === "")
-    throw new Error("You must provide a messageBox to send this message into!");
-  if (params.body == null || typeof params.body === "string" && params.body.trim().length === 0)
-    throw new Error("Every message must have a body!");
-  if (params.skipEncryption !== true)
-    throw new Error("A shared multi-recipient batch cannot be encrypted per recipient. Set skipEncryption: true explicitly or send encrypted messages individually.");
-}
-function buildRecipientQuoteMap(quotes) {
-  return new Map(quotes.map((quote) => [quote.recipient, {
-    recipientFee: quote.recipientFee,
-    deliveryFee: quote.deliveryFee
-  }]));
-}
-function selectDeliveryAgentIdentityKey(identityKeysByHost, finalHost, hasOverrideHost) {
-  const entries = Object.entries(identityKeysByHost ?? {});
-  if (entries.length === 0)
-    throw new Error("Missing delivery agent identity keys in quote response.");
-  if (entries.length > 1 && !hasOverrideHost)
-    throw new Error("Recipients resolve to multiple hosts. Use overrideHost to force a single server or split by host.");
-  const identityKey = identityKeysByHost?.[finalHost] ?? entries[0][1];
-  if (!identityKey)
-    throw new Error("Could not determine server delivery agent identity key.");
-  return identityKey;
-}
-var DEFAULT_MAINNET_HOST = "https://message-box-us-1.bsvb.tech", DEFAULT_TESTNET_HOST, MessageBoxClient = class MessageBoxClient {
-  host;
-  authFetch;
-  walletClient;
-  socket;
-  myIdentityKey;
-  joinedRooms = /* @__PURE__ */ new Set;
-  lookupResolver;
-  networkPreset;
-  initialized = false;
-  socketAuthenticated = false;
-  connectionInitPromise;
-  originator;
-  constructor(options = {}) {
-    const { host, walletClient, enableLogging = false, networkPreset = "mainnet", originator = undefined } = options;
-    if (networkPreset === "teratestnet" && host == null)
-      throw new Error("MessageBoxClient requires an explicit host for TerraTestNet until a dedicated TTN Message Box deployment is available.");
-    let defaultHost = DEFAULT_MAINNET_HOST;
-    if (networkPreset === "testnet")
-      defaultHost = DEFAULT_TESTNET_HOST;
-    this.host = normalizeMessageBoxHost(host ?? defaultHost);
-    this.originator = originator;
-    this.walletClient = walletClient ?? new WalletClient("auto", originator);
-    this.authFetch = new AuthFetch(this.walletClient, undefined, undefined, originator);
-    this.networkPreset = networkPreset;
-    this.lookupResolver = new LookupResolver({ networkPreset });
-    if (enableLogging)
-      enable();
-  }
-  async init(targetHost = this.host) {
-    let normalizedHost;
-    try {
-      normalizedHost = normalizeMessageBoxHost(targetHost);
-    } catch (error) {
-      throw new Error(`Cannot initialize: ${error instanceof Error ? error.message : "No valid host provided"}`);
-    }
-    if (normalizedHost !== this.host) {
-      this.initialized = false;
-      this.host = normalizedHost;
-    }
-    if (this.initialized)
-      return;
-    await this.getIdentityKey();
-    this.initialized = true;
-  }
-  async assertInitialized() {
-    if (!this.initialized || this.host == null || this.host.trim() === "")
-      await this.init();
-  }
-  getJoinedRooms() {
-    return this.joinedRooms;
-  }
-  async getIdentityKey() {
-    if (this.myIdentityKey != null && this.myIdentityKey.trim() !== "")
-      return this.myIdentityKey;
-    log("[MB CLIENT] Fetching identity key...");
-    try {
-      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
-      this.myIdentityKey = keyResult.publicKey;
-      log(`[MB CLIENT] Identity key fetched: ${this.myIdentityKey}`);
-      return this.myIdentityKey;
-    } catch (error$1) {
-      error3("[MB CLIENT ERROR] Failed to fetch identity key:", error$1);
-      throw new Error("Identity key retrieval failed");
-    }
-  }
-  get testSocket() {
-    return this.socket;
-  }
-  async initializeConnection(overrideHost) {
-    log("[MB CLIENT] initializeConnection() STARTED");
-    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
-      await this.getIdentityKey();
-    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "") {
-      error3("[MB CLIENT ERROR] Identity key is still missing after retrieval!");
-      throw new Error("Identity key is missing");
-    }
-    log("[MB CLIENT] Setting up WebSocket connection...");
-    if (this.socketAuthenticated && this.socket != null)
-      return;
-    if (this.connectionInitPromise != null) {
-      await this.connectionInitPromise;
-      return;
-    }
-    if (this.socket == null) {
-      const targetHost = normalizeMessageBoxHost(overrideHost ?? this.host);
-      this.socket = AuthSocketClient(targetHost, {
-        wallet: this.walletClient,
-        originator: this.originator
-      });
-      this.socket.on("connect", () => {
-        log("[MB CLIENT] Connected to WebSocket.");
-        log("[MB CLIENT] Sending authentication data:", this.myIdentityKey);
-        if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
-          error3("[MB CLIENT ERROR] Cannot send authentication: Identity key is missing!");
-        else
-          this.socket?.emit("authenticated", { identityKey: this.myIdentityKey });
-      });
-      this.socket.on("authenticationSuccess", (data) => {
-        log(`[MB CLIENT] WebSocket authentication successful: ${stringifyBRC100(data)}`);
-        this.socketAuthenticated = true;
-      });
-      this.socket.on("authenticationFailed", (data) => {
-        error3(`[MB CLIENT ERROR] WebSocket authentication failed: ${stringifyBRC100(data)}`);
-        this.socketAuthenticated = false;
-      });
-      this.socket.on("disconnect", () => {
-        log("[MB CLIENT] Disconnected from MessageBox server");
-        this.socket = undefined;
-        this.socketAuthenticated = false;
-      });
-      this.socket.on("error", (error$4) => {
-        error3("[MB CLIENT ERROR] WebSocket error:", error$4);
-      });
-    }
-    if (this.socket?.connected && !this.socketAuthenticated)
-      this.socket.emit("authenticated", { identityKey: this.myIdentityKey });
-    this.connectionInitPromise = new Promise((resolve, reject) => {
-      const socketAny = this.socket;
-      let settled = false;
-      let timeoutId;
-      const finalizeResolve = () => {
-        if (settled)
-          return;
-        settled = true;
-        if (timeoutId != null) {
-          clearTimeout(timeoutId);
-          timeoutId = undefined;
-        }
-        if (typeof socketAny?.off === "function") {
-          socketAny.off("authenticationSuccess", onSuccess);
-          socketAny.off("authenticationFailed", onFailed);
-          socketAny.off("disconnect", onDisconnectBeforeAuth);
-        }
-        this.connectionInitPromise = undefined;
-        log("[MB CLIENT] WebSocket fully authenticated and ready!");
-        resolve();
-      };
-      const finalizeReject = (error) => {
-        if (settled)
-          return;
-        settled = true;
-        if (timeoutId != null) {
-          clearTimeout(timeoutId);
-          timeoutId = undefined;
-        }
-        if (typeof socketAny?.off === "function") {
-          socketAny.off("authenticationSuccess", onSuccess);
-          socketAny.off("authenticationFailed", onFailed);
-          socketAny.off("disconnect", onDisconnectBeforeAuth);
-        }
-        this.connectionInitPromise = undefined;
-        reject(error);
-      };
-      const onSuccess = () => {
-        this.socketAuthenticated = true;
-        finalizeResolve();
-      };
-      const onFailed = () => {
-        this.socketAuthenticated = false;
-        finalizeReject(/* @__PURE__ */ new Error("[MB CLIENT ERROR] WebSocket authentication failed!"));
-      };
-      const onDisconnectBeforeAuth = () => {
-        this.socketAuthenticated = false;
-      };
-      if (this.socketAuthenticated) {
-        finalizeResolve();
-        return;
-      }
-      socketAny?.on("authenticationSuccess", onSuccess);
-      socketAny?.on("authenticationFailed", onFailed);
-      socketAny?.on("disconnect", onDisconnectBeforeAuth);
-      timeoutId = setTimeout(() => {
-        if (this.socketAuthenticated)
-          finalizeResolve();
-        else
-          finalizeReject(/* @__PURE__ */ new Error("[MB CLIENT ERROR] WebSocket authentication timed out!"));
-      }, 5000);
-    });
-    await this.connectionInitPromise;
-  }
-  async resolveHostForRecipient(identityKey) {
-    const advertisementTokens = await this.queryAdvertisements(identityKey);
-    if (advertisementTokens.length === 0) {
-      warn(`[MB CLIENT] No advertisements for ${identityKey}, using default host ${this.host}`);
-      return this.host;
-    }
-    return advertisementTokens[0].host;
-  }
-  async queryAdvertisements(identityKey, host) {
-    const hosts = [];
-    try {
-      const query = { identityKey: identityKey ?? await this.getIdentityKey() };
-      if (host != null && host.trim() !== "")
-        query.host = host;
-      const result = await this.lookupResolver.query({
-        service: "ls_messagebox",
-        query
-      });
-      if (result.type !== "output-list")
-        throw new Error(`Unexpected result type: ${String(result.type)}`);
-      for (const output of result.outputs)
-        try {
-          const tx = Transaction.fromBEEF(output.beef);
-          const script = tx.outputs[output.outputIndex].lockingScript;
-          const [, hostBuf] = PushDrop.decode(script).fields;
-          if (hostBuf == null || hostBuf.length === 0)
-            throw new Error("Empty host field");
-          hosts.push({
-            host: toUTF8(hostBuf),
-            txid: tx.id("hex"),
-            outputIndex: output.outputIndex,
-            lockingScript: script,
-            beef: output.beef
-          });
-        } catch {}
-    } catch (err) {
-      error3("[MB CLIENT ERROR] _queryAdvertisements failed:", err);
-    }
-    return hosts.flatMap((item) => {
-      const normalizedHost = normalizeOverlayMessageBoxHost(item.host);
-      return normalizedHost == null ? [] : [{
-        ...item,
-        host: normalizedHost
-      }];
-    });
-  }
-  async joinRoom(messageBox, overrideHost) {
-    log(`[MB CLIENT] Attempting to join WebSocket room: ${messageBox}`);
-    if (this.socket == null) {
-      log("[MB CLIENT] No WebSocket connection. Initializing...");
-      await this.initializeConnection(overrideHost);
-    }
-    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
-      throw new Error("[MB CLIENT ERROR] Identity key is not defined");
-    const roomId = `${this.myIdentityKey ?? ""}-${messageBox}`;
-    if (this.joinedRooms.has(roomId)) {
-      log(`[MB CLIENT] Already joined WebSocket room: ${roomId}`);
-      return;
-    }
-    try {
-      log(`[MB CLIENT] Joining WebSocket room: ${roomId}`);
-      this.socket?.emit("joinRoom", roomId);
-      this.joinedRooms.add(roomId);
-      log(`[MB CLIENT] Successfully joined room: ${roomId}`);
-    } catch (error$2) {
-      error3(`[MB CLIENT ERROR] Failed to join WebSocket room: ${roomId}`, error$2);
-    }
-  }
-  async listenForLiveMessages({ onMessage, messageBox, overrideHost }) {
-    log(`[MB CLIENT] Setting up listener for WebSocket room: ${messageBox}`);
-    if (this.socket == null) {
-      log("[MB CLIENT] No WebSocket connection. Initializing...");
-      await this.initializeConnection(overrideHost);
-    }
-    await this.joinRoom(messageBox, overrideHost);
-    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
-      throw new Error("[MB CLIENT ERROR] Identity key is missing. Cannot construct room ID.");
-    const roomId = `${this.myIdentityKey}-${messageBox}`;
-    log(`[MB CLIENT] Listening for messages in room: ${roomId}`);
-    this.socket?.on(`sendMessage-${roomId}`, (message) => {
-      (async () => {
-        log(`[MB CLIENT] Received message in room ${roomId}:`, message);
-        try {
-          let parsedBody = message.body;
-          if (typeof parsedBody === "string")
-            try {
-              parsedBody = JSON.parse(parsedBody);
-            } catch {}
-          if (parsedBody != null && typeof parsedBody === "object" && typeof parsedBody.encryptedMessage === "string") {
-            log(`[MB CLIENT] Decrypting message from ${String(message.sender)}...`);
-            const decrypted = await this.walletClient.decrypt({
-              protocolID: [1, "messagebox"],
-              keyID: "1",
-              counterparty: message.sender,
-              ciphertext: toArray2(parsedBody.encryptedMessage, "base64")
-            }, this.originator);
-            message.body = toUTF8(decrypted.plaintext);
-          } else {
-            log("[MB CLIENT] Message is not encrypted.");
-            message.body = typeof parsedBody === "string" ? parsedBody : (() => {
-              try {
-                return stringifyBRC100(parsedBody);
-              } catch {
-                return "[Error: Unstringifiable message]";
-              }
-            })();
-          }
-        } catch (err) {
-          error3("[MB CLIENT ERROR] Failed to parse or decrypt live message:", err);
-          message.body = "[Error: Failed to decrypt or parse message]";
-        }
-        onMessage(message);
-      })();
-    });
-  }
-  async sendLiveMessage({ recipient, messageBox, body, messageId, skipEncryption, checkPermissions }, overrideHost) {
-    if (recipient == null || recipient.trim() === "")
-      throw new Error("[MB CLIENT ERROR] Recipient identity key is required");
-    if (messageBox == null || messageBox.trim() === "")
-      throw new Error("[MB CLIENT ERROR] MessageBox is required");
-    if (body == null || typeof body === "string" && body.trim() === "")
-      throw new Error("[MB CLIENT ERROR] Message body cannot be empty");
-    await this.joinRoom(messageBox, overrideHost);
-    if (!this.socket?.connected) {
-      warn("[MB CLIENT WARNING] WebSocket not connected, falling back to HTTP");
-      return await this.sendMessage({
-        recipient,
-        messageBox,
-        body,
-        messageId,
-        skipEncryption,
-        checkPermissions
-      }, overrideHost);
-    }
-    let finalMessageId;
-    try {
-      const hmac = await this.walletClient.createHmac({
-        data: Array.from(new TextEncoder().encode(stringifyBRC100(body))),
-        protocolID: [1, "messagebox"],
-        keyID: "1",
-        counterparty: recipient
-      }, this.originator);
-      finalMessageId = messageId ?? Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
-    } catch (error$7) {
-      error3("[MB CLIENT ERROR] Failed to generate HMAC:", error$7);
-      throw new Error("Failed to generate message identifier.");
-    }
-    const roomId = `${recipient}-${messageBox}`;
-    log(`[MB CLIENT] Sending WebSocket message to room: ${roomId}`);
-    let outgoingBody;
-    if (skipEncryption === true)
-      outgoingBody = typeof body === "string" ? body : stringifyBRC100(body);
-    else {
-      const encryptedMessage = await this.walletClient.encrypt({
-        protocolID: [1, "messagebox"],
-        keyID: "1",
-        counterparty: recipient,
-        plaintext: toArray2(typeof body === "string" ? body : stringifyBRC100(body), "utf8")
-      }, this.originator);
-      outgoingBody = stringifyBRC100({ encryptedMessage: toBase64(encryptedMessage.ciphertext) });
-    }
-    return await new Promise((resolve, reject) => {
-      const ackEvent = `sendMessageAck-${roomId}`;
-      let handled = false;
-      let timeoutId;
-      const ackHandler = (response) => {
-        if (handled)
-          return;
-        handled = true;
-        if (timeoutId != null) {
-          clearTimeout(timeoutId);
-          timeoutId = undefined;
-        }
-        const socketAny = this.socket;
-        if (typeof socketAny?.off === "function")
-          socketAny.off(ackEvent, ackHandler);
-        log("[MB CLIENT] Received WebSocket acknowledgment:", response);
-        if (response?.status !== "success") {
-          warn("[MB CLIENT] WebSocket message failed or returned unexpected response. Falling back to HTTP.");
-          const fallbackMessage = {
-            recipient,
-            messageBox,
-            body,
-            messageId: finalMessageId,
-            skipEncryption,
-            checkPermissions
-          };
-          this.sendMessage(fallbackMessage, overrideHost).then(resolve).catch(reject);
-        } else {
-          log("[MB CLIENT] Message sent successfully via WebSocket:", response);
-          resolve(response);
-        }
-      };
-      this.socket?.on(ackEvent, ackHandler);
-      this.socket?.emit("sendMessage", {
-        roomId,
-        message: {
-          messageId: finalMessageId,
-          recipient,
-          body: outgoingBody
-        }
-      });
-      timeoutId = setTimeout(() => {
-        if (!handled) {
-          handled = true;
-          timeoutId = undefined;
-          const socketAny = this.socket;
-          if (typeof socketAny?.off === "function")
-            socketAny.off(ackEvent, ackHandler);
-          warn("[CLIENT] WebSocket acknowledgment timed out, falling back to HTTP");
-          const fallbackMessage = {
-            recipient,
-            messageBox,
-            body,
-            messageId: finalMessageId,
-            skipEncryption,
-            checkPermissions
-          };
-          this.sendMessage(fallbackMessage, overrideHost).then(resolve).catch(reject);
-        }
-      }, 1e4);
-    });
-  }
-  async leaveRoom(messageBox) {
-    await this.assertInitialized();
-    if (this.socket == null) {
-      warn("[MB CLIENT] Attempted to leave a room but WebSocket is not connected.");
-      return;
-    }
-    if (this.myIdentityKey == null || this.myIdentityKey.trim() === "")
-      throw new Error("[MB CLIENT ERROR] Identity key is not defined");
-    const roomId = `${this.myIdentityKey}-${messageBox}`;
-    log(`[MB CLIENT] Leaving WebSocket room: ${roomId}`);
-    this.socket.emit("leaveRoom", roomId);
-    this.joinedRooms.delete(roomId);
-  }
-  async disconnectWebSocket() {
-    await this.assertInitialized();
-    if (this.socket == null)
-      log("[MB CLIENT] No active WebSocket connection to close.");
-    else {
-      log("[MB CLIENT] Closing WebSocket connection...");
-      this.socket.disconnect();
-      this.socket = undefined;
-    }
-  }
-  async sendMessage(message, overrideHost) {
-    await this.assertInitialized();
-    this.validateSendMessageParams(message);
-    const paymentData = await this.resolveMessagePayment(message, overrideHost);
-    const messageId = await this.generateMessageId(message);
-    const finalBody = await this.encodeMessageBody(message);
-    const requestBody = {
-      message: {
-        ...message,
-        messageId,
-        body: finalBody
-      },
-      ...paymentData != null && { payment: paymentData }
-    };
-    try {
-      const sendUrl = messageBoxEndpoint(normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(message.recipient)), "/sendMessage");
-      log("[MB CLIENT] Sending HTTP request to:", sendUrl);
-      log("[MB CLIENT] Request Body:", stringifyBRC100(requestBody, 2));
-      await this.ensureIdentityKey();
-      const response = await this.authFetch.fetch(sendUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: stringifyBRC100(requestBody)
-      });
-      if (response.bodyUsed)
-        throw new Error("[MB CLIENT ERROR] Response body has already been used!");
-      const parsedResponse = await response.json();
-      log("[MB CLIENT] Raw Response Body:", parsedResponse);
-      if (!response.ok) {
-        error3(`[MB CLIENT ERROR] Failed to send message. HTTP ${response.status}: ${response.statusText}`);
-        throw new Error(`Message sending failed: HTTP ${response.status} - ${response.statusText}`);
-      }
-      if (parsedResponse.status !== "success") {
-        error3(`[MB CLIENT ERROR] Server returned an error: ${String(parsedResponse.description)}`);
-        throw new Error(parsedResponse.description ?? "Unknown error from server.");
-      }
-      log("[MB CLIENT] Message successfully sent.");
-      return {
-        ...parsedResponse,
-        messageId
-      };
-    } catch (error$6) {
-      error3("[MB CLIENT ERROR] Network or timeout error:", error$6);
-      const errorMessage = error$6 instanceof Error ? error$6.message : "Unknown error";
-      throw new Error(`Failed to send message: ${errorMessage}`);
-    }
-  }
-  validateSendMessageParams(message) {
-    if (message.recipient == null || message.recipient.trim() === "")
-      throw new Error("You must provide a message recipient!");
-    if (message.messageBox == null || message.messageBox.trim() === "")
-      throw new Error("You must provide a messageBox to send this message into!");
-    if (message.body == null || typeof message.body === "string" && message.body.trim().length === 0)
-      throw new Error("Every message must have a body!");
-  }
-  async resolveMessagePayment(message, overrideHost) {
-    if (message.checkPermissions !== true)
-      return;
-    try {
-      log("[MB CLIENT] Checking permissions and fees for message...");
-      const quote = await this.getMessageBoxQuote({
-        recipient: message.recipient,
-        messageBox: message.messageBox
-      }, overrideHost);
-      if (quote.recipientFee === -1)
-        throw new Error("You have been blocked from sending messages to this recipient.");
-      if (quote.recipientFee <= 0 && quote.deliveryFee <= 0)
-        return;
-      const requiredPayment = quote.recipientFee + quote.deliveryFee;
-      if (requiredPayment <= 0)
-        return;
-      log(`[MB CLIENT] Creating payment of ${requiredPayment} sats for message...`);
-      const paymentData = await this.createMessagePayment(message.recipient, quote, overrideHost);
-      log("[MB CLIENT] Payment data prepared:", paymentData);
-      return paymentData;
-    } catch (error) {
-      throw new Error(`Permission check failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }
-  async generateMessageId(message) {
-    try {
-      const hmac = await this.walletClient.createHmac({
-        data: Array.from(new TextEncoder().encode(stringifyBRC100(message.body))),
-        protocolID: [1, "messagebox"],
-        keyID: "1",
-        counterparty: message.recipient
-      }, this.originator);
-      return message.messageId ?? Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
-    } catch (error$3) {
-      error3("[MB CLIENT ERROR] Failed to generate HMAC:", error$3);
-      throw new Error("Failed to generate message identifier.");
-    }
-  }
-  async encodeMessageBody(message) {
-    const bodyStr = typeof message.body === "string" ? message.body : stringifyBRC100(message.body);
-    if (message.skipEncryption === true)
-      return bodyStr;
-    const encryptedMessage = await this.walletClient.encrypt({
-      protocolID: [1, "messagebox"],
-      keyID: "1",
-      counterparty: message.recipient,
-      plaintext: toArray2(bodyStr, "utf8")
-    }, this.originator);
-    return stringifyBRC100({ encryptedMessage: toBase64(encryptedMessage.ciphertext) });
-  }
-  async ensureIdentityKey() {
-    if (this.myIdentityKey != null && this.myIdentityKey !== "")
-      return;
-    try {
-      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
-      this.myIdentityKey = keyResult.publicKey;
-      log(`[MB CLIENT] Fetched identity key before sending request: ${this.myIdentityKey}`);
-    } catch (error$5) {
-      error3("[MB CLIENT ERROR] Failed to fetch identity key:", error$5);
-      throw new Error("Identity key retrieval failed");
-    }
-  }
-  parseMessageEnvelope(message) {
-    const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
-    let messageContent = parsedBody;
-    let paymentData;
-    if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody) {
-      const wrappedMessage = parsedBody.message;
-      messageContent = typeof wrappedMessage === "string" ? this.tryParse(wrappedMessage) : wrappedMessage;
-      paymentData = parsedBody.payment;
-    }
-    return {
-      message,
-      parsedBody,
-      messageContent,
-      paymentData
-    };
-  }
-  async internalizeRecipientPayment(p) {
-    try {
-      log(`[MB CLIENT] Processing recipient payment in message from ${String(p.message.sender)}…`);
-      const recipientOutputs = p.paymentData.outputs.filter((output) => output.protocol === "wallet payment");
-      if (recipientOutputs.length === 0) {
-        log("[MB CLIENT] No wallet payment outputs found in payment data");
-        return;
-      }
-      log(`[MB CLIENT] Internalizing ${recipientOutputs.length} recipient payment output(s)…`);
-      const tx = normalizeBRC100ByteArray(p.paymentData.tx);
-      if (tx == null || tx.length === 0)
-        throw new Error("Message payment transaction must be a non-empty BRC-100 byte array");
-      if ((await this.walletClient.internalizeAction({
-        tx,
-        outputs: recipientOutputs,
-        description: p.paymentData.description ?? "MessageBox recipient payment"
-      }, this.originator)).accepted)
-        log("[MB CLIENT] Successfully internalized recipient payment");
-      else
-        warn("[MB CLIENT] Recipient payment internalization was not accepted");
-    } catch (paymentError) {
-      error3("[MB CLIENT ERROR] Failed to internalize recipient payment:", paymentError);
-    }
-  }
-  async decryptMessageBody(p) {
-    try {
-      if (p.messageContent != null && typeof p.messageContent === "object" && typeof p.messageContent.encryptedMessage === "string") {
-        log(`[MB CLIENT] Decrypting message from ${String(p.message.sender)}…`);
-        const decrypted = await this.walletClient.decrypt({
-          protocolID: [1, "messagebox"],
-          keyID: "1",
-          counterparty: p.message.sender,
-          ciphertext: toArray2(p.messageContent.encryptedMessage, "base64")
-        }, this.originator);
-        p.message.body = this.tryParse(toUTF8(decrypted.plaintext));
-      } else
-        p.message.body = p.messageContent ?? p.parsedBody;
-    } catch (err) {
-      error3("[MB CLIENT ERROR] Failed to parse or decrypt message in list:", err);
-      p.message.body = "[Error: Failed to decrypt or parse message]";
-    }
-  }
-  async sendMesagetoRecepients(params, overrideHost) {
-    return this.sendMessageToRecipients(params, overrideHost);
-  }
-  async sendMessageToRecipients(params, overrideHost) {
-    await this.assertInitialized();
-    assertBatchSendParams(params);
-    const { recipients, messageBox, body } = params;
-    const quoteResponse = await this.getMessageBoxQuote({
-      recipient: recipients,
-      messageBox
-    }, overrideHost);
-    const quotesByRecipient = Array.isArray(quoteResponse?.quotesByRecipient) ? quoteResponse.quotesByRecipient : [];
-    const blocked = quoteResponse?.blockedRecipients ?? [];
-    const totals = quoteResponse?.totals;
-    const allowedRecipients = recipients.filter((r) => !blocked.includes(r));
-    if (allowedRecipients.length === 0)
-      return {
-        status: "error",
-        description: `All ${recipients.length} recipients are blocked.`,
-        sent: [],
-        blocked,
-        failed: recipients.map((r) => ({
-          recipient: r,
-          error: "blocked"
-        })),
-        totals
-      };
-    const perRecipientQuotes = buildRecipientQuoteMap(quotesByRecipient);
-    const { deliveryAgentIdentityKeyByHost } = quoteResponse;
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(allowedRecipients[0]));
-    const singleDeliveryKey = selectDeliveryAgentIdentityKey(deliveryAgentIdentityKeyByHost, finalHost, overrideHost != null);
-    if (!this.myIdentityKey) {
-      const keyResult = await this.walletClient.getPublicKey({ identityKey: true }, this.originator);
-      this.myIdentityKey = keyResult.publicKey;
-    }
-    const bodyBytes = Array.from(new TextEncoder().encode(stringifyBRC100(body)));
-    const messageIds = await this.mapWithConcurrency(allowedRecipients, 8, async (r) => {
-      const hmac = await this.walletClient.createHmac({
-        data: bodyBytes,
-        protocolID: [1, "messagebox"],
-        keyID: "1",
-        counterparty: r
-      }, this.originator);
-      return Array.from(hmac.hmac).map((b) => b.toString(16).padStart(2, "0")).join("");
-    });
-    const finalBody = typeof body === "string" ? body : stringifyBRC100(body);
-    const paymentData = await this.createMessagePaymentBatch(allowedRecipients, perRecipientQuotes, singleDeliveryKey);
-    const requestBody = {
-      message: {
-        recipients: allowedRecipients,
-        messageBox,
-        messageId: messageIds,
-        body: finalBody
-      },
-      payment: paymentData
-    };
-    const sendUrl = messageBoxEndpoint(finalHost, "/sendMessage");
-    log("[MB CLIENT] Sending HTTP request to:", sendUrl);
-    log("[MB CLIENT] Request Body (batch):", stringifyBRC100({
-      ...requestBody,
-      payment: {
-        ...paymentData,
-        tx: "<omitted>"
-      }
-    }, 2));
-    try {
-      const response = await this.authFetch.fetch(sendUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: stringifyBRC100(requestBody)
-      });
-      const parsed = await response.json().catch(() => ({}));
-      if (!response.ok || parsed.status !== "success") {
-        const msg = response.ok ? parsed.description ?? "Unknown server error" : `HTTP ${response.status} - ${response.statusText}`;
-        throw new Error(msg);
-      }
-      const sent = Array.isArray(parsed.results) ? parsed.results : [];
-      const failed = [];
-      const { status, description } = buildBatchSendResult(sent.length, allowedRecipients.length, blocked.length);
-      return {
-        status,
-        description,
-        sent,
-        blocked,
-        failed,
-        totals
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      return {
-        status: "error",
-        description: `Batch send failed: ${msg}`,
-        sent: [],
-        blocked,
-        failed: allowedRecipients.map((r) => ({
-          recipient: r,
-          error: msg
-        })),
-        totals
-      };
-    }
-  }
-  async anointHost(host) {
-    log("[MB CLIENT] Starting anointHost...");
-    host = normalizeMessageBoxHost(host);
-    const identityKey = await this.getIdentityKey();
-    const overlayTokens = await this.queryAdvertisements(identityKey);
-    log(`[MB CLIENT] Found ${overlayTokens.length} existing advertisement(s) on overlay`);
-    const basketResult = await this.walletClient.listOutputs({
-      basket: "overlay advertisements",
-      limit: 1e4
-    }, this.originator);
-    const spendableOutpoints = new Set(basketResult.outputs.filter((o) => o.spendable).map((o) => o.outpoint));
-    const tokensToSpend = overlayTokens.filter((t) => spendableOutpoints.has(`${t.txid}.${t.outputIndex}`));
-    const skipped = overlayTokens.length - tokensToSpend.length;
-    if (skipped > 0)
-      log(`[MB CLIENT] Skipping ${skipped} overlay token(s) not in spendable wallet basket`);
-    log(`[MB CLIENT] Revoking ${tokensToSpend.length} spendable token(s) in combined tx`);
-    const fields = [toArray2(identityKey, "hex"), toArray2(host, "utf8")];
-    const pushdrop = new PushDrop(this.walletClient, this.originator);
-    const script = await pushdrop.lock(fields, [1, "messagebox advertisement"], "1", "anyone", true);
-    log("[MB CLIENT] PushDrop script:", script.toASM());
-    try {
-      let inputBEEF;
-      if (tokensToSpend.length > 0) {
-        const mergedBeef = Beef.fromBinary(tokensToSpend[0].beef);
-        for (let i = 1;i < tokensToSpend.length; i++)
-          mergedBeef.mergeBeef(Beef.fromBinary(tokensToSpend[i].beef));
-        inputBEEF = mergedBeef.toBinary();
-      }
-      const { signableTransaction, tx: directTx, txid: directTxid } = await this.walletClient.createAction({
-        description: "Anoint host for overlay routing",
-        ...inputBEEF !== undefined && {
-          inputBEEF,
-          inputs: tokensToSpend.map((token) => ({
-            outpoint: `${token.txid}.${token.outputIndex}`,
-            unlockingScriptLength: 73,
-            inputDescription: `Revoking advertisement for ${token.host}`
-          }))
-        },
-        outputs: [{
-          basket: "overlay advertisements",
-          lockingScript: script.toHex(),
-          satoshis: 1,
-          outputDescription: "Overlay advertisement output"
-        }],
-        options: {
-          randomizeOutputs: false,
-          acceptDelayedBroadcast: false
-        }
-      }, this.originator);
-      if (signableTransaction === undefined) {
-        if (directTx === undefined)
-          throw new Error("Anoint failed: no transaction returned");
-        log("[MB CLIENT] Transaction created (no inputs to sign):", directTxid);
-        const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(directTx));
-        log("[MB CLIENT] Advertisement broadcast succeeded. TXID:", result.txid);
-        if (typeof result.txid !== "string")
-          throw new Error("Anoint failed: broadcast did not return a txid");
-        return { txid: result.txid };
-      }
-      const partialTx = Transaction.fromAtomicBEEF(signableTransaction.tx);
-      const spends = {};
-      for (let i = 0;i < tokensToSpend.length; i++) {
-        const token = tokensToSpend[i];
-        const sourceSatoshis = Transaction.fromBEEF(token.beef).outputs[token.outputIndex]?.satoshis ?? 1;
-        spends[i] = { unlockingScript: (await pushdrop.unlock([1, "messagebox advertisement"], "1", "anyone", "all", false, sourceSatoshis, token.lockingScript).sign(partialTx, i)).toHex() };
-      }
-      const { tx: signedTx, txid: signedTxid } = await this.walletClient.signAction({
-        reference: signableTransaction.reference,
-        spends,
-        options: { acceptDelayedBroadcast: false }
-      }, this.originator);
-      if (signedTx === undefined)
-        throw new Error("Anoint failed: signing did not return a transaction");
-      log("[MB CLIENT] Transaction created:", signedTxid);
-      const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(signedTx));
-      log("[MB CLIENT] Advertisement broadcast succeeded. TXID:", result.txid);
-      if (typeof result.txid !== "string")
-        throw new Error("Anoint failed: broadcast did not return a txid");
-      return { txid: result.txid };
-    } catch (err) {
-      error3("[MB CLIENT ERROR] anointHost threw:", err);
-      throw err;
-    }
-  }
-  async revokeHostAdvertisement(advertisementToken) {
-    log("[MB CLIENT] Starting revokeHost...");
-    const outpoint = `${advertisementToken.txid}.${advertisementToken.outputIndex}`;
-    try {
-      const { signableTransaction } = await this.walletClient.createAction({
-        description: "Revoke MessageBox host advertisement",
-        inputBEEF: advertisementToken.beef,
-        inputs: [{
-          outpoint,
-          unlockingScriptLength: 73,
-          inputDescription: "Revoking host advertisement token"
-        }]
-      }, this.originator);
-      if (signableTransaction === undefined)
-        throw new Error("Failed to create signable transaction.");
-      const partialTx = Transaction.fromAtomicBEEF(signableTransaction.tx);
-      const sourceSatoshis = Transaction.fromBEEF(advertisementToken.beef).outputs[advertisementToken.outputIndex]?.satoshis ?? 1;
-      const finalUnlockScript = await new PushDrop(this.walletClient, this.originator).unlock([1, "messagebox advertisement"], "1", "anyone", "all", false, sourceSatoshis, advertisementToken.lockingScript).sign(partialTx, 0);
-      const { tx: signedTx } = await this.walletClient.signAction({
-        reference: signableTransaction.reference,
-        spends: { 0: { unlockingScript: finalUnlockScript.toHex() } },
-        options: { acceptDelayedBroadcast: false }
-      }, this.originator);
-      if (signedTx === undefined)
-        throw new Error("Failed to finalize the transaction signature.");
-      const result = await new TopicBroadcaster(["tm_messagebox"], { networkPreset: this.networkPreset }).broadcast(Transaction.fromAtomicBEEF(signedTx));
-      log("[MB CLIENT] Revocation broadcast succeeded. TXID:", result.txid);
-      if (typeof result.txid !== "string")
-        throw new TypeError("Revoke failed: broadcast did not return a txid");
-      return { txid: result.txid };
-    } catch (err) {
-      error3("[MB CLIENT ERROR] revokeHost threw:", err);
-      throw err;
-    }
-  }
-  async listMessages({ messageBox, host, acceptPayments, offset, skip, limit, pageSize, maxPages }) {
-    const shouldAcceptPayments = acceptPayments !== false;
-    if (typeof messageBox !== "string" || messageBox.trim() === "")
-      throw new Error("MessageBox cannot be empty");
-    const hosts = await this.resolveMessageHosts(host);
-    const fetchFromHost = async (host) => {
-      try {
-        log(`[MB CLIENT] Listing messages from ${host}…`);
-        return await this.fetchMessagePages(host, messageBox, {
-          offset,
-          skip,
-          limit,
-          pageSize,
-          maxPages
-        });
-      } catch (err) {
-        log(`[MB CLIENT DEBUG] listMessages failed for ${host}:`, err);
-        throw err;
-      }
-    };
-    const settled = await Promise.allSettled(hosts.map(fetchFromHost));
-    const messagesByHost = [];
-    for (const r of settled)
-      if (r.status === "fulfilled")
-        messagesByHost.push(r.value);
-    if (messagesByHost.length === 0)
-      throw new Error("Failed to retrieve messages from any host");
-    const dedupMap = /* @__PURE__ */ new Map;
-    for (const messageList of messagesByHost)
-      for (const m of messageList)
-        if (!dedupMap.has(m.messageId))
-          dedupMap.set(m.messageId, m);
-    if (dedupMap.size === 0)
-      return [];
-    const deduplicated = Array.from(dedupMap.values());
-    const messages = limit == null ? deduplicated : deduplicated.slice(0, limit);
-    const parsed = messages.map((message) => this.parseMessageEnvelope(message));
-    if (shouldAcceptPayments) {
-      const paymentJobs = parsed.filter((p) => p.paymentData?.tx != null && p.paymentData.outputs != null);
-      await this.mapWithConcurrency(paymentJobs, 2, async (p) => {
-        await this.internalizeRecipientPayment(p);
-        return null;
-      });
-    }
-    await this.mapWithConcurrency(parsed, 4, async (p) => {
-      await this.decryptMessageBody(p);
-      return null;
-    });
-    messages.sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0));
-    return messages;
-  }
-  async resolveMessageHosts(host) {
-    if (host != null)
-      return [normalizeMessageBoxHost(host)];
-    const advertisedHosts = await this.queryAdvertisements(await this.getIdentityKey());
-    return Array.from(/* @__PURE__ */ new Set([this.host, ...advertisedHosts.map((advertisement) => advertisement.host)]));
-  }
-  async listMessagesLite({ messageBox, host, offset, skip, limit, pageSize, maxPages }) {
-    if (typeof messageBox !== "string" || messageBox.trim() === "")
-      throw new Error("MessageBox cannot be empty");
-    const finalHost = normalizeMessageBoxHost(host ?? this.host);
-    const messages = await this.fetchMessagePages(finalHost, messageBox, {
-      offset,
-      skip,
-      limit,
-      pageSize,
-      maxPages
-    });
-    await this.mapWithConcurrency(messages, 4, async (message) => {
-      try {
-        const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
-        let messageContent = parsedBody;
-        if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody) {
-          const wrappedMessage = parsedBody.message;
-          messageContent = typeof wrappedMessage === "string" ? this.tryParse(wrappedMessage) : wrappedMessage;
-        }
-        if (messageContent != null && typeof messageContent === "object" && typeof messageContent.encryptedMessage === "string") {
-          const decrypted = await this.walletClient.decrypt({
-            protocolID: [1, "messagebox"],
-            keyID: "1",
-            counterparty: message.sender,
-            ciphertext: toArray2(messageContent.encryptedMessage, "base64")
-          });
-          const decryptedText = toUTF8(decrypted.plaintext);
-          message.body = this.tryParse(decryptedText);
-        } else
-          message.body = messageContent ?? parsedBody;
-      } catch (err) {
-        error3("[MB CLIENT ERROR] Failed to parse or decrypt message in list:", err);
-        message.body = "[Error: Failed to decrypt or parse message]";
-      }
-      return null;
-    });
-    return messages;
-  }
-  async fetchMessagePages(host, messageBox, options = {}) {
-    const { startingOffset, totalLimit, requestedPageSize, maximumPages } = this.normalizeMessagePageOptions(options);
-    const messages = [];
-    let offset = startingOffset;
-    let page = 0;
-    while (maximumPages === -1 || page < maximumPages) {
-      const remaining = totalLimit == null ? undefined : totalLimit - messages.length;
-      if (remaining != null && remaining <= 0)
-        return messages;
-      const pageLimit = this.messagePageLimit(requestedPageSize, remaining);
-      const { data, pageMessages } = await this.fetchMessagePage(host, messageBox, offset, pageLimit);
-      const accepted = remaining == null ? pageMessages : pageMessages.slice(0, remaining);
-      messages.push(...accepted);
-      if (data.hasMore !== true)
-        return messages;
-      offset = this.nextMessagePageOffset(data, pageMessages.length, offset, requestedPageSize);
-      page += 1;
-    }
-    throw new Error(`Message Box pagination exceeded ${maximumPages} pages; acknowledge messages, raise maxPages, or set an application-level limit.`);
-  }
-  normalizeMessagePageOptions(options) {
-    if (options.offset != null && options.skip != null && options.offset !== options.skip)
-      throw new RangeError("offset and skip must match when both are provided");
-    const startingOffset = options.offset ?? options.skip ?? 0;
-    const maximumPages = options.maxPages ?? -1;
-    this.assertMessagePageOption("offset", startingOffset, 0);
-    this.assertMessagePageOption("limit", options.limit, 1);
-    this.assertMessagePageOption("pageSize", options.pageSize, 1);
-    this.assertMessagePageOption("maxPages", maximumPages, 1, true);
-    return {
-      startingOffset,
-      totalLimit: options.limit,
-      requestedPageSize: options.pageSize,
-      maximumPages
-    };
-  }
-  assertMessagePageOption(name, value, minimum, allowUnlimited = false) {
-    if (value == null)
-      return;
-    const unlimited = allowUnlimited && value === -1;
-    if (Number.isSafeInteger(value) && (unlimited || value >= minimum))
-      return;
-    throw new RangeError(`${name} must be ${allowUnlimited ? "-1 or " : ""}a ${minimum === 0 ? "non-negative" : "positive"} safe integer`);
-  }
-  messagePageLimit(requestedPageSize, remaining) {
-    if (requestedPageSize == null)
-      return remaining;
-    if (remaining == null)
-      return requestedPageSize;
-    return Math.min(requestedPageSize, remaining);
-  }
-  async fetchMessagePage(host, messageBox, offset, limit) {
-    const body = {
-      messageBox,
-      offset
-    };
-    if (limit != null)
-      body.limit = limit;
-    const response = await this.authFetch.fetch(messageBoxEndpoint(host, "/listMessages"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: stringifyBRC100(body)
-    });
-    if (!response.ok)
-      throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    const data = await response.json();
-    if (data.status === "error")
-      throw new Error(data.description ?? "Unknown server error");
-    if (!Array.isArray(data.messages))
-      throw new TypeError("Message Box server returned an invalid messages payload");
-    return {
-      data,
-      pageMessages: data.messages
-    };
-  }
-  nextMessagePageOffset(data, pageMessageCount, currentOffset, requestedPageSize) {
-    const nextOffset = Number(data.nextOffset);
-    if (Number.isSafeInteger(nextOffset) && nextOffset > currentOffset)
-      return nextOffset;
-    if (pageMessageCount > 0)
-      return currentOffset + pageMessageCount;
-    const serverLimit = Number(data.limit);
-    if (Number.isSafeInteger(serverLimit) && serverLimit > 0)
-      return currentOffset + serverLimit;
-    return currentOffset + (requestedPageSize ?? 1000);
-  }
-  tryParse(raw) {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return raw;
-    }
-  }
-  async mapWithConcurrency(items, limit, fn) {
-    if (items.length === 0)
-      return [];
-    if (!Number.isFinite(limit) || limit >= items.length)
-      return await Promise.all(items.map((item, index) => fn(item, index)));
-    const workerCount = Math.max(1, Math.min(limit, items.length));
-    const results = [];
-    let nextIndex = 0;
-    const workers = Array.from({ length: workerCount }, async () => {
-      while (true) {
-        const currentIndex = nextIndex;
-        nextIndex++;
-        if (currentIndex >= items.length)
-          return;
-        results[currentIndex] = await fn(items[currentIndex], currentIndex);
-      }
-    });
-    await Promise.all(workers);
-    return results;
-  }
-  async acknowledgeNotification(message) {
-    await this.acknowledgeMessage({ messageIds: [message.messageId] });
-    const parsedBody = typeof message.body === "string" ? this.tryParse(message.body) : message.body;
-    let paymentData;
-    if (parsedBody != null && typeof parsedBody === "object" && "message" in parsedBody)
-      paymentData = parsedBody.payment;
-    if (paymentData?.tx != null && paymentData.outputs != null)
-      try {
-        log(`[MB CLIENT] Processing recipient payment in message from ${String(message.sender)}…`);
-        const recipientOutputs = paymentData.outputs.filter((output) => output.protocol === "wallet payment");
-        if (recipientOutputs.length < 1) {
-          log("[MB CLIENT] No wallet payment outputs found in payment data");
-          return false;
-        }
-        log(`[MB CLIENT] Internalizing ${recipientOutputs.length} recipient payment output(s)…`);
-        const tx = normalizeBRC100ByteArray(paymentData.tx);
-        if (tx == null || tx.length === 0)
-          throw new Error("Message payment transaction must be a non-empty BRC-100 byte array");
-        if ((await this.walletClient.internalizeAction({
-          tx,
-          outputs: recipientOutputs,
-          description: paymentData.description ?? "MessageBox recipient payment"
-        })).accepted) {
-          log("[MB CLIENT] Successfully internalized recipient payment");
-          return true;
-        } else {
-          warn("[MB CLIENT] Recipient payment internalization was not accepted");
-          return false;
-        }
-      } catch (paymentError) {
-        error3("[MB CLIENT ERROR] Failed to internalize recipient payment:", paymentError);
-        return false;
-      }
-    return false;
-  }
-  async acknowledgeMessage({ messageIds, host }) {
-    if (!Array.isArray(messageIds) || messageIds.length === 0)
-      throw new Error("Message IDs array cannot be empty");
-    log(`[MB CLIENT] Acknowledging messages ${stringifyBRC100(messageIds)}…`);
-    let hosts = host != null ? [normalizeMessageBoxHost(host)] : [];
-    if (hosts.length === 0) {
-      const identityKey = await this.getIdentityKey();
-      const advertisedHosts = await this.queryAdvertisements(identityKey);
-      hosts = Array.from(/* @__PURE__ */ new Set([this.host, ...advertisedHosts.map((h) => h.host)]));
-    }
-    const ackFromHost = async (host) => {
-      try {
-        const res = await this.authFetch.fetch(messageBoxEndpoint(host, "/acknowledgeMessage"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: stringifyBRC100({ messageIds })
-        });
-        if (!res.ok)
-          throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.status === "error")
-          throw new Error(data.description);
-        log(`[MB CLIENT] Acknowledged on ${host}`);
-        return data.status;
-      } catch (err) {
-        warn(`[MB CLIENT WARN] acknowledgeMessage failed for ${host}:`, err);
-        return null;
-      }
-    };
-    const settled = await Promise.allSettled(hosts.map(ackFromHost));
-    const firstSuccess = settled.filter((r) => r.status === "fulfilled").find((s) => s.value != null)?.value;
-    if (firstSuccess != null)
-      return firstSuccess;
-    const errs = [];
-    for (const r of settled)
-      if (r.status === "rejected")
-        errs.push(r.reason);
-    throw new Error(`Failed to acknowledge messages on all hosts: ${errs.map(String).join("; ")}`);
-  }
-  async setMessageBoxPermission(params, overrideHost) {
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
-    log("[MB CLIENT] Setting messageBox permission...");
-    const response = await this.authFetch.fetch(messageBoxEndpoint(finalHost, "/permissions/set"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: stringifyBRC100({
-        messageBox: params.messageBox,
-        recipientFee: params.recipientFee,
-        ...params.sender != null && { sender: params.sender }
-      })
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Failed to set permission: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
-    }
-    const { status, description } = await response.json();
-    if (status === "error")
-      throw new Error(description ?? "Failed to set permission");
-  }
-  async getMessageBoxPermission(params, overrideHost) {
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(params.recipient));
-    const queryParams = new URLSearchParams({
-      messageBox: params.messageBox,
-      ...params.sender != null && { sender: params.sender }
-    });
-    log("[MB CLIENT] Getting messageBox permission...");
-    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/permissions/get")}?${queryParams.toString()}`, { method: "GET" });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Failed to get permission: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
-    }
-    const data = await response.json();
-    if (data.status === "error")
-      throw new Error(data.description ?? "Failed to get permission");
-    return data.permission ?? null;
-  }
-  async getMessageBoxQuote(params, overrideHost) {
-    if (Array.isArray(params.recipient))
-      return this.getMultiMessageBoxQuote(params.recipient, params.messageBox, overrideHost);
-    return this.getSingleMessageBoxQuote(params.recipient, params.messageBox, overrideHost);
-  }
-  async getSingleMessageBoxQuote(recipient, messageBox, overrideHost) {
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? await this.resolveHostForRecipient(recipient));
-    const queryParams = new URLSearchParams({
-      recipient,
-      messageBox
-    });
-    log("[MB CLIENT] Getting messageBox quote (single)...");
-    const quoteUrl = `${messageBoxEndpoint(finalHost, "/permissions/quote")}?${queryParams.toString()}`;
-    log("[MB CLIENT] Quote request:", quoteUrl);
-    const response = await this.authFetch.fetch(quoteUrl, { method: "GET" });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Failed to get quote: HTTP ${response.status} - ${typeof errorData.description === "string" ? errorData.description : response.statusText}`);
-    }
-    const { status, description, quote } = await response.json();
-    if (status === "error")
-      throw new Error(description ?? "Failed to get quote");
-    const deliveryAgentIdentityKey = response.headers.get("x-bsv-auth-identity-key");
-    if (deliveryAgentIdentityKey == null)
-      throw new Error("Failed to get quote: Delivery agent did not provide their identity key");
-    return {
-      recipientFee: quote.recipientFee,
-      deliveryFee: quote.deliveryFee,
-      deliveryAgentIdentityKey
-    };
-  }
-  async getMultiMessageBoxQuote(recipients, messageBox, overrideHost) {
-    if (recipients.length === 0)
-      throw new Error("At least one recipient is required.");
-    log("[MB CLIENT] Getting messageBox quotes (multi)...");
-    const hostGroups = await this.groupQuoteRecipientsByHost(recipients, overrideHost);
-    const accumulator = this.createMultiQuoteAccumulator();
-    await Promise.all(Array.from(hostGroups.entries()).map(async ([host, group]) => {
-      const payload = await this.fetchQuotePayloadForHost(host, group, messageBox, accumulator);
-      this.mergeQuotePayload(payload, host, group, messageBox, accumulator);
-    }));
-    const { deliveryFees, recipientFees } = accumulator;
-    return {
-      quotesByRecipient: accumulator.quotesByRecipient,
-      totals: {
-        deliveryFees,
-        recipientFees,
-        totalForPayableRecipients: deliveryFees + recipientFees
-      },
-      blockedRecipients: Array.from(accumulator.blockedRecipients),
-      deliveryAgentIdentityKeyByHost: accumulator.deliveryAgentIdentityKeyByHost
-    };
-  }
-  createMultiQuoteAccumulator() {
-    return {
-      quotesByRecipient: [],
-      blockedRecipients: /* @__PURE__ */ new Set,
-      deliveryAgentIdentityKeyByHost: {},
-      deliveryFees: 0,
-      recipientFees: 0
-    };
-  }
-  async groupQuoteRecipientsByHost(recipients, overrideHost) {
-    const resolvedHosts = overrideHost != null ? recipients.map(() => normalizeMessageBoxHost(overrideHost)) : await this.mapWithConcurrency(recipients, 8, (recipient) => this.resolveHostForRecipient(recipient));
-    const hostGroups = /* @__PURE__ */ new Map;
-    for (let i = 0;i < recipients.length; i++) {
-      const host = resolvedHosts[i];
-      const list = hostGroups.get(host) ?? [];
-      list.push(recipients[i]);
-      hostGroups.set(host, list);
-    }
-    return hostGroups;
-  }
-  async fetchQuotePayloadForHost(host, groupRecipients, messageBox, accumulator) {
-    const qp = new URLSearchParams;
-    for (const recipient of groupRecipients)
-      qp.append("recipient", recipient);
-    qp.set("messageBox", messageBox);
-    const url = `${messageBoxEndpoint(host, "/permissions/quote")}?${qp.toString()}`;
-    log("[MB CLIENT] Multi-quote GET:", url);
-    const response = await this.authFetch.fetch(url, { method: "GET" });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Failed to get quote (host ${host}): HTTP ${response.status} - ${typeof errorData.description === "string" ? errorData.description : response.statusText}`);
-    }
-    const deliveryAgentKey = response.headers.get("x-bsv-auth-identity-key");
-    if (deliveryAgentKey == null)
-      throw new Error(`Failed to get quote (host ${host}): missing delivery agent identity key`);
-    accumulator.deliveryAgentIdentityKeyByHost[host] = deliveryAgentKey;
-    return response.json();
-  }
-  mergeQuotePayload(payload, host, groupRecipients, messageBox, accumulator) {
-    if (this.isMultiQuotePayload(payload)) {
-      this.mergeRecipientQuotes(payload, accumulator);
-      return;
-    }
-    if (this.isSingleQuotePayload(payload)) {
-      this.mergeSingleQuotePayload(payload, groupRecipients, messageBox, accumulator);
-      return;
-    }
-    throw new Error(`Unexpected quote response shape from host ${host}`);
-  }
-  isMultiQuotePayload(payload) {
-    return typeof payload === "object" && payload != null && Array.isArray(payload.quotesByRecipient);
-  }
-  isSingleQuotePayload(payload) {
-    return typeof payload === "object" && payload != null && payload.quote != null;
-  }
-  mergeRecipientQuotes(payload, accumulator) {
-    for (const quote of payload.quotesByRecipient) {
-      accumulator.quotesByRecipient.push({
-        recipient: quote.recipient,
-        messageBox: quote.messageBox,
-        deliveryFee: quote.deliveryFee,
-        recipientFee: quote.recipientFee,
-        status: quote.status
-      });
-      accumulator.deliveryFees += quote.deliveryFee;
-      this.addRecipientFee(quote.recipient, quote.recipientFee, accumulator);
-    }
-    for (const recipient of payload.blockedRecipients ?? [])
-      accumulator.blockedRecipients.add(recipient);
-  }
-  mergeSingleQuotePayload(payload, groupRecipients, messageBox, accumulator) {
-    const { deliveryFee, recipientFee } = payload.quote;
-    const status = this.statusForRecipientFee(recipientFee);
-    for (const recipient of groupRecipients) {
-      accumulator.quotesByRecipient.push({
-        recipient,
-        messageBox,
-        deliveryFee,
-        recipientFee,
-        status
-      });
-      accumulator.deliveryFees += deliveryFee;
-      this.addRecipientFee(recipient, recipientFee, accumulator);
-    }
-  }
-  addRecipientFee(recipient, recipientFee, accumulator) {
-    if (recipientFee === -1) {
-      accumulator.blockedRecipients.add(recipient);
-      return;
-    }
-    accumulator.recipientFees += recipientFee;
-  }
-  statusForRecipientFee(recipientFee) {
-    if (recipientFee === -1)
-      return "blocked";
-    return recipientFee === 0 ? "always_allow" : "payment_required";
-  }
-  async listMessageBoxPermissions(params, overrideHost) {
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
-    const queryParams = new URLSearchParams;
-    if (params?.messageBox != null)
-      queryParams.set("messageBox", params.messageBox);
-    if (params?.limit !== undefined)
-      queryParams.set("limit", params.limit.toString());
-    if (params?.offset !== undefined)
-      queryParams.set("offset", params.offset.toString());
-    log("[MB CLIENT] Listing messageBox permissions with params:", queryParams.toString());
-    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/permissions/list")}?${queryParams.toString()}`, { method: "GET" });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Failed to list permissions: HTTP ${response.status} - ${String(errorData.description) !== "" ? String(errorData.description) : response.statusText}`);
-    }
-    const data = await response.json();
-    if (data.status === "error")
-      throw new Error(data.description ?? "Failed to list permissions");
-    if (!Array.isArray(data.permissions))
-      throw new TypeError("Failed to list permissions: server returned an invalid permissions payload");
-    return data.permissions.map((permission) => {
-      if (typeof permission !== "object" || permission == null)
-        throw new Error("Failed to list permissions: server returned an invalid permission record");
-      const record = permission;
-      const sender = record.sender;
-      const messageBox = record.messageBox ?? record.message_box;
-      const recipientFee = record.recipientFee ?? record.recipient_fee;
-      const createdAt = record.createdAt ?? record.created_at;
-      const updatedAt = record.updatedAt ?? record.updated_at;
-      if (sender !== null && typeof sender !== "string" || typeof messageBox !== "string" || !Number.isSafeInteger(recipientFee) || typeof createdAt !== "string" || typeof updatedAt !== "string")
-        throw new Error("Failed to list permissions: server returned an invalid permission record");
-      return {
-        sender,
-        messageBox,
-        recipientFee,
-        status: MessageBoxClient.getStatusFromFee(recipientFee),
-        createdAt,
-        updatedAt
-      };
-    });
-  }
-  async allowNotificationsFromPeer(identityKey, recipientFee = 0, overrideHost) {
-    await this.setMessageBoxPermission({
-      messageBox: "notifications",
-      sender: identityKey,
-      recipientFee
-    }, overrideHost);
-  }
-  async denyNotificationsFromPeer(identityKey, overrideHost) {
-    await this.setMessageBoxPermission({
-      messageBox: "notifications",
-      sender: identityKey,
-      recipientFee: -1
-    }, overrideHost);
-  }
-  async checkPeerNotificationStatus(identityKey, overrideHost) {
-    const myIdentityKey = await this.getIdentityKey();
-    return await this.getMessageBoxPermission({
-      recipient: myIdentityKey,
-      messageBox: "notifications",
-      sender: identityKey
-    }, overrideHost);
-  }
-  async listPeerNotifications(overrideHost) {
-    return await this.listMessageBoxPermissions({ messageBox: "notifications" }, overrideHost);
-  }
-  async sendNotification(recipient, body, overrideHost) {
-    await this.assertInitialized();
-    if (!Array.isArray(recipient))
-      return await this.sendMessage({
-        recipient,
-        messageBox: "notifications",
-        body,
-        checkPermissions: true
-      }, overrideHost);
-    const outcomes = await this.mapWithConcurrency(recipient, 8, async (target) => {
-      try {
-        return {
-          recipient: target,
-          messageId: (await this.sendMessage({
-            recipient: target,
-            messageBox: "notifications",
-            body,
-            checkPermissions: true
-          }, overrideHost)).messageId
-        };
-      } catch (error) {
-        return {
-          recipient: target,
-          error: error instanceof Error ? error.message : "Unknown error"
-        };
-      }
-    });
-    const sent = outcomes.filter((outcome) => ("messageId" in outcome));
-    const failed = outcomes.filter((outcome) => ("error" in outcome));
-    let status = "error";
-    if (sent.length === recipient.length)
-      status = "success";
-    else if (sent.length > 0)
-      status = "partial";
-    return {
-      status,
-      description: `Sent ${sent.length} of ${recipient.length} encrypted notifications.`,
-      sent,
-      blocked: [],
-      failed
-    };
-  }
-  async registerDevice(params, overrideHost) {
-    if (params.fcmToken == null || params.fcmToken.trim() === "")
-      throw new Error("fcmToken is required and must be a non-empty string");
-    if (params.fcmToken.trim().length > 500)
-      throw new Error("fcmToken must not exceed 500 characters");
-    if (params.deviceId != null && params.deviceId.trim().length > 255)
-      throw new Error("deviceId must not exceed 255 characters");
-    if (params.platform != null && ![
-      "ios",
-      "android",
-      "web"
-    ].includes(params.platform))
-      throw new Error("platform must be one of: ios, android, web");
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
-    log("[MB CLIENT] Registering device for FCM notifications...");
-    const response = await this.authFetch.fetch(messageBoxEndpoint(finalHost, "/registerDevice"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: stringifyBRC100({
-        fcmToken: params.fcmToken.trim(),
-        deviceId: params.deviceId?.trim() ?? undefined,
-        platform: params.platform ?? undefined
-      })
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const description = typeof errorData.description === "string" ? errorData.description : response.statusText;
-      throw new Error(`Failed to register device: HTTP ${response.status} - ${description}`);
-    }
-    const data = await response.json();
-    if (data.status === "error")
-      throw new Error(data.description ?? "Failed to register device");
-    log("[MB CLIENT] Device registered successfully");
-    return {
-      status: data.status,
-      message: data.message,
-      deviceId: data.deviceId
-    };
-  }
-  async listRegisteredDevices(overrideHost, pagination = {}) {
-    const finalHost = normalizeMessageBoxHost(overrideHost ?? this.host);
-    const query = new URLSearchParams;
-    if (pagination.limit != null)
-      query.set("limit", String(pagination.limit));
-    if (pagination.offset != null)
-      query.set("offset", String(pagination.offset));
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    log("[MB CLIENT] Listing registered devices...");
-    const response = await this.authFetch.fetch(`${messageBoxEndpoint(finalHost, "/devices")}${suffix}`, { method: "GET" });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const description = typeof errorData.description === "string" ? errorData.description : response.statusText;
-      throw new Error(`Failed to list devices: HTTP ${response.status} - ${description}`);
-    }
-    const data = await response.json();
-    if (data.status === "error")
-      throw new Error(data.description ?? "Failed to list devices");
-    log(`[MB CLIENT] Found ${data.devices.length} registered devices`);
-    return data.devices;
-  }
-  static getStatusFromFee(fee) {
-    if (fee === -1)
-      return "blocked";
-    if (fee === 0)
-      return "always_allow";
-    return "payment_required";
-  }
-  async createMessagePayment(recipient, quote, description = "MessageBox delivery payment") {
-    if (quote.recipientFee <= 0 && quote.deliveryFee <= 0)
-      throw new Error("No payment required");
-    log(`[MB CLIENT] Creating payment transaction for ${quote.recipientFee} sats (delivery: ${quote.deliveryFee}, recipient: ${quote.recipientFee})`);
-    const outputs = [];
-    const createActionOutputs = [];
-    const senderIdentityKey = await this.getIdentityKey();
-    let outputIndex = 0;
-    if (quote.deliveryFee > 0) {
-      const derivationPrefix = toBase64(Random_default(32));
-      const derivationSuffix = toBase64(Random_default(32));
-      log("[MB CLIENT] Delivery agent:", quote.deliveryAgentIdentityKey);
-      const { publicKey: derivedKeyResult } = await this.walletClient.getPublicKey({
-        protocolID: [2, "3241645161d8"],
-        keyID: `${derivationPrefix} ${derivationSuffix}`,
-        counterparty: quote.deliveryAgentIdentityKey
-      }, this.originator);
-      const lockingScript = new P2PKH().lock(PublicKey.fromString(derivedKeyResult).toAddress()).toHex();
-      createActionOutputs.push({
-        satoshis: quote.deliveryFee,
-        lockingScript,
-        outputDescription: "MessageBox server delivery fee",
-        customInstructions: stringifyBRC100({
-          derivationPrefix,
-          derivationSuffix,
-          recipientIdentityKey: quote.deliveryAgentIdentityKey
-        })
-      });
-      outputs.push({
-        outputIndex: outputIndex++,
-        protocol: "wallet payment",
-        paymentRemittance: {
-          derivationPrefix,
-          derivationSuffix,
-          senderIdentityKey
-        }
-      });
-    }
-    if (quote.recipientFee > 0) {
-      const derivationPrefix = toBase64(Random_default(32));
-      const derivationSuffix = toBase64(Random_default(32));
-      const anyoneWallet = new ProtoWallet_default("anyone");
-      const { publicKey: derivedKeyResult } = await anyoneWallet.getPublicKey({
-        protocolID: [2, "3241645161d8"],
-        keyID: `${derivationPrefix} ${derivationSuffix}`,
-        counterparty: recipient
-      });
-      if (derivedKeyResult == null || derivedKeyResult.trim() === "")
-        throw new Error("Failed to derive recipient's public key");
-      const lockingScript = new P2PKH().lock(PublicKey.fromString(derivedKeyResult).toAddress()).toHex();
-      createActionOutputs.push({
-        satoshis: quote.recipientFee,
-        lockingScript,
-        outputDescription: "Recipient message fee",
-        customInstructions: stringifyBRC100({
-          derivationPrefix,
-          derivationSuffix,
-          recipientIdentityKey: recipient
-        })
-      });
-      outputs.push({
-        outputIndex: outputIndex++,
-        protocol: "wallet payment",
-        paymentRemittance: {
-          derivationPrefix,
-          derivationSuffix,
-          senderIdentityKey: (await anyoneWallet.getPublicKey({ identityKey: true })).publicKey
-        }
-      });
-    }
-    const { tx } = await this.walletClient.createAction({
-      description,
-      outputs: createActionOutputs,
-      options: {
-        randomizeOutputs: false,
-        acceptDelayedBroadcast: false
-      }
-    }, this.originator);
-    const portableTx = toBRC100PortableByteArray(tx);
-    if (portableTx == null || portableTx.length === 0)
-      throw new Error("Failed to create payment transaction");
-    return {
-      tx: portableTx,
-      outputs,
-      description
-    };
-  }
-  async createMessagePaymentBatch(recipients, perRecipientQuotes, serverIdentityKey, description = "MessageBox delivery payment (batch)") {
-    const outputs = [];
-    const createActionOutputs = [];
-    const deliveryFeeOnce = recipients.reduce((acc, r) => {
-      const q = perRecipientQuotes.get(r);
-      return q != null ? acc ?? q.deliveryFee : acc;
-    }, undefined) ?? 0;
-    const senderIdentityKey = await this.getIdentityKey();
-    let outputIndex = 0;
-    if (deliveryFeeOnce > 0) {
-      const derivationPrefix = toBase64(Random_default(32));
-      const derivationSuffix = toBase64(Random_default(32));
-      const { publicKey: agentDerived } = await this.walletClient.getPublicKey({
-        protocolID: [2, "3241645161d8"],
-        keyID: `${derivationPrefix} ${derivationSuffix}`,
-        counterparty: serverIdentityKey
-      }, this.originator);
-      const lockingScript = new P2PKH().lock(PublicKey.fromString(agentDerived).toAddress()).toHex();
-      createActionOutputs.push({
-        satoshis: deliveryFeeOnce,
-        lockingScript,
-        outputDescription: "MessageBox server delivery fee (batch)",
-        customInstructions: stringifyBRC100({
-          derivationPrefix,
-          derivationSuffix,
-          recipientIdentityKey: serverIdentityKey
-        })
-      });
-      outputs.push({
-        outputIndex: outputIndex++,
-        protocol: "wallet payment",
-        paymentRemittance: {
-          derivationPrefix,
-          derivationSuffix,
-          senderIdentityKey
-        }
-      });
-    }
-    const anyoneWallet = new ProtoWallet_default("anyone");
-    const anyoneIdKey = (await anyoneWallet.getPublicKey({ identityKey: true })).publicKey;
-    for (const r of recipients) {
-      const q = perRecipientQuotes.get(r);
-      if (q == null || q.recipientFee <= 0)
-        continue;
-      const derivationPrefix = toBase64(Random_default(32));
-      const derivationSuffix = toBase64(Random_default(32));
-      const { publicKey: recipientDerived } = await anyoneWallet.getPublicKey({
-        protocolID: [2, "3241645161d8"],
-        keyID: `${derivationPrefix} ${derivationSuffix}`,
-        counterparty: r
-      });
-      const lockingScript = new P2PKH().lock(PublicKey.fromString(recipientDerived).toAddress()).toHex();
-      createActionOutputs.push({
-        satoshis: q.recipientFee,
-        lockingScript,
-        outputDescription: `Recipient message fee (${r.slice(0, 8)}…)`,
-        customInstructions: stringifyBRC100({
-          derivationPrefix,
-          derivationSuffix,
-          recipientIdentityKey: r
-        })
-      });
-      outputs.push({
-        outputIndex: outputIndex++,
-        protocol: "wallet payment",
-        paymentRemittance: {
-          derivationPrefix,
-          derivationSuffix,
-          senderIdentityKey: anyoneIdKey
-        }
-      });
-    }
-    const { tx } = await this.walletClient.createAction({
-      description,
-      outputs: createActionOutputs,
-      options: {
-        randomizeOutputs: false,
-        acceptDelayedBroadcast: false
-      }
-    }, this.originator);
-    const portableTx = toBRC100PortableByteArray(tx);
-    if (portableTx == null || portableTx.length === 0)
-      throw new Error("Failed to create payment transaction");
-    return {
-      tx: portableTx,
-      outputs,
-      description
-    };
-  }
-};
-var init_MessageBoxClient = __esm(() => {
-  init_logger2();
-  init_host();
-  init_mod();
-  init_mod3();
-  DEFAULT_TESTNET_HOST = DEFAULT_MAINNET_HOST;
-});
-
-// node_modules/@bsv/message-box-client/dist/mod.js
-var init_mod4 = __esm(() => {
-  init_MessageBoxClient();
-});
-
 // node_modules/@1sat/actions/dist/sync/syncCosignDeliveries.js
 var syncCosignDeliveries;
 var init_syncCosignDeliveries = __esm(() => {
   init_dist2();
-  init_mod4();
+  init_mod3();
   init_mod();
   init_bsv21Remittance();
   init_walletMetadataCi();
@@ -101098,7 +100289,7 @@ var init_syncCosignDeliveries = __esm(() => {
 // node_modules/@1sat/actions/dist/sync/syncMessages.js
 var syncMessages;
 var init_syncMessages = __esm(() => {
-  init_mod4();
+  init_mod3();
   init_mod();
   syncMessages = {
     meta: {
@@ -113107,6 +112298,8 @@ function categoryEnabled(config, category) {
       return isEnabled2(config.enableUtilsTools, "DISABLE_UTILS_TOOLS");
     case "wallet_read":
       return isEnabled2(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
+    case "wallet_payments":
+      return isEnabled2(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
     case "wallet_setup":
       return true;
   }
@@ -113126,13 +112319,43 @@ function captureConfig(config) {
     allowWholeWalletBalance: !externalWallet,
     scope: config.walletScope
   })) : new Map;
-  return { bsv, ordinals, utility, wallet };
+  const peerPaymentsCtx = config.ctx;
+  const peerPayments = categoryEnabled(config, "wallet_payments") && peerPaymentsCtx && !externalWallet && !config.integratedWallet?.isDroplitMode && config.walletScope !== "payments" ? captureRegistrations((server) => registerPeerPaymentsTool(server, peerPaymentsCtx, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet)) : new Map;
+  return { bsv, ordinals, utility, wallet, peerPayments };
 }
 function walletAvailability({ config }) {
   return config.ctx ? { available: true } : {
     available: false,
     reason: "BRC-100 wallet context not available"
   };
+}
+function peerPaymentsAvailability({ config }) {
+  if (!config.ctx) {
+    return {
+      available: false,
+      reason: "BRC-100 wallet context not available"
+    };
+  }
+  const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
+  if (externalWallet) {
+    return {
+      available: false,
+      reason: "PeerPay receive is unavailable in external signer mode"
+    };
+  }
+  if (config.integratedWallet?.isDroplitMode) {
+    return {
+      available: false,
+      reason: "PeerPay receive is unavailable in Droplit mode"
+    };
+  }
+  if (config.walletScope === "payments") {
+    return {
+      available: false,
+      reason: "PeerPay receive is unavailable in project payments scope"
+    };
+  }
+  return { available: true };
 }
 function buildWalletSetupFamily(config) {
   if (!isWalletOnboardingAvailable(config) || !config.openWalletSetup)
@@ -113183,6 +112406,29 @@ function buildCompactFamilies(config) {
   const walletSetupFamily = buildWalletSetupFamily(config);
   if (walletSetupFamily)
     families.push(walletSetupFamily);
+  if (categoryEnabled(config, "wallet_payments")) {
+    const registration = captured.peerPayments.get(PEER_PAYMENTS_LEGACY_NAME);
+    if (registration) {
+      const operations = new Map([
+        [
+          registration.name,
+          {
+            id: registration.name,
+            schema: registration.schema,
+            handler: async (args, ctx) => registration.handler(args, ctx),
+            annotations: { ...PEER_PAYMENTS_ANNOTATIONS },
+            availability: peerPaymentsAvailability
+          }
+        ]
+      ]);
+      families.push({
+        name: "wallet_payments",
+        description: "PeerPay payment operations. Select operation and pass that operation's arguments in args. Receiving internalizes funds into the embedded wallet and acknowledges the MessageBox item.",
+        operations,
+        annotations: PEER_PAYMENTS_ANNOTATIONS
+      });
+    }
+  }
   return families.filter((family) => family.operations.size > 0);
 }
 function familySchema(operations) {
@@ -113237,15 +112483,17 @@ function resolveToolCatalogFromEnvironment(value = process.env.MCP_TOOL_CATALOG)
     return value;
   throw new Error(`MCP_TOOL_CATALOG must be "full" or "compact"; received "${value}"`);
 }
-var COMPACT_OPERATION_LEGACY_NAMES, READ_ONLY_ANNOTATIONS, CORE_WALLET_READS, PAYMENTS_WALLET_READS, BRC100_WALLET_READS, BSV_READS, ORDINALS_READS;
+var COMPACT_OPERATION_LEGACY_NAMES, READ_ONLY_ANNOTATIONS, PEER_PAYMENTS_ANNOTATIONS, PEER_PAYMENTS_LEGACY_NAME = "wallet_peerPayments", CORE_WALLET_READS, PAYMENTS_WALLET_READS, BRC100_WALLET_READS, BSV_READS, ORDINALS_READS;
 var init_compactCatalog = __esm(() => {
   init_zod();
   init_externalWalletConfig();
+  init_peerPaymentReceive();
   init_bsv();
   init_status();
   init_ordinals();
   init_utils3();
   init_onboarding();
+  init_peerPayments();
   init_tools();
   COMPACT_OPERATION_LEGACY_NAMES = {
     bsv_read: [
@@ -113277,12 +112525,19 @@ var init_compactCatalog = __esm(() => {
       "wallet_waitForAuthentication"
     ],
     utility: ["utils_convertData", "utils_find_skills"],
-    wallet_setup: ["wallet_onboarding"]
+    wallet_setup: ["wallet_onboarding"],
+    wallet_payments: ["wallet_peerPayments"]
   };
   READ_ONLY_ANNOTATIONS = {
     readOnlyHint: true,
     idempotentHint: true,
     destructiveHint: false,
+    openWorldHint: true
+  };
+  PEER_PAYMENTS_ANNOTATIONS = {
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
     openWorldHint: true
   };
   CORE_WALLET_READS = [
@@ -114159,7 +113414,7 @@ async function decryptData(encryptedBackup, passphrase, attemptIterations) {
   }
   throw lastError || new Error("Decryption failed: Invalid passphrase or corrupted data across all attempted iteration counts.");
 }
-function hexToBytes2(hex) {
+function hexToBytes3(hex) {
   return Uint8Array.from(toArray22(hex, "hex"));
 }
 function bytesToBase64Url(bytes) {
@@ -114176,7 +113431,7 @@ function validateUncompressedHex(publicKeyHex, label) {
   if (publicKeyHex.length !== 130) {
     throw new Error(`${label}: public key must be 65-byte X9.63 uncompressed hex (130 hex chars).`);
   }
-  const bytes = hexToBytes2(publicKeyHex);
+  const bytes = hexToBytes3(publicKeyHex);
   if (bytes.length !== 65 || bytes[0] !== 4) {
     throw new Error(`${label}: public key must be 65-byte X9.63 uncompressed (0x04 || X || Y).`);
   }
@@ -114853,7 +114108,7 @@ async function decryptBackup(encryptedString, passphrase, attemptIterations) {
   }
   return decryptData(encryptedString, passphrase, attemptIterations);
 }
-var __create3, __getProtoOf3, __defProp4, __getOwnPropNames3, __hasOwnProp3, __toESMCache_node2, __toESMCache_esm2, __toESM3 = (mod, isNodeMode, target) => {
+var __create3, __getProtoOf3, __defProp5, __getOwnPropNames3, __hasOwnProp3, __toESMCache_node2, __toESMCache_esm2, __toESM3 = (mod, isNodeMode, target) => {
   var canCache = mod != null && typeof mod === "object";
   if (canCache) {
     var cache = isNodeMode ? __toESMCache_node2 ??= new WeakMap : __toESMCache_esm2 ??= new WeakMap;
@@ -114862,11 +114117,11 @@ var __create3, __getProtoOf3, __defProp4, __getOwnPropNames3, __hasOwnProp3, __t
       return cached;
   }
   target = mod != null ? __create3(__getProtoOf3(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule ? __defProp4(target, "default", { value: mod, enumerable: true }) : target;
+  const to = isNodeMode || !mod || !mod.__esModule ? __defProp5(target, "default", { value: mod, enumerable: true }) : target;
   if (mod && typeof mod === "object" || typeof mod === "function") {
     for (let key of __getOwnPropNames3(mod))
       if (!__hasOwnProp3.call(to, key))
-        __defProp4(to, key, {
+        __defProp5(to, key, {
           get: __accessProp2.bind(mod, key),
           enumerable: true
         });
@@ -114881,7 +114136,7 @@ var init_dist9 = __esm(() => {
   init_mod();
   __create3 = Object.create;
   __getProtoOf3 = Object.getPrototypeOf;
-  __defProp4 = Object.defineProperty;
+  __defProp5 = Object.defineProperty;
   __getOwnPropNames3 = Object.getOwnPropertyNames;
   __hasOwnProp3 = Object.prototype.hasOwnProperty;
   require_utf8 = __commonJS2(function(exports) {
@@ -157804,6 +157059,9 @@ function registerAllTools(server, config = {}) {
       };
       registerWalletTools(server, config.wallet, walletToolOptions);
     }
+    if (config.ctx && !externalWallet && config.integratedWallet?.isDroplitMode !== true && config.walletScope !== "payments") {
+      registerPeerPaymentsTool(server, config.ctx, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet);
+    }
   }
   if (enableMneeTools && (!config.ctx || config.wallet)) {
     registerMneeTools(server);
@@ -157814,6 +157072,7 @@ function registerAllTools(server, config = {}) {
 }
 var init_tools2 = __esm(() => {
   init_externalWalletConfig();
+  init_peerPaymentReceive();
   init_bap3();
   init_getId();
   init_bsocial2();
@@ -157829,6 +157088,7 @@ var init_tools2 = __esm(() => {
   init_droplitDiscovery();
   init_getBalanceDroplit();
   init_onboarding();
+  init_peerPayments();
   init_setupDroplit();
   init_tools();
 });
@@ -292914,7 +292174,7 @@ __export(exports_dist, {
   exportEncrypted: () => exportEncrypted,
   exportSealed: () => exportSealed,
   fromHexString: () => fromHexString,
-  hexToBytes: () => hexToBytes3,
+  hexToBytes: () => hexToBytes4,
   importEncrypted: () => importEncrypted,
   importSealed: () => importSealed,
   inspectVault: () => inspectVault,
@@ -292976,7 +292236,7 @@ function randomBytes3(length) {
   crypto.getRandomValues(out);
   return out;
 }
-function hexToBytes3(hex) {
+function hexToBytes4(hex) {
   if (typeof hex !== "string")
     throw new Error("invalid entropy hex");
   return Array.from(fromHexString(hex));
@@ -292990,7 +292250,7 @@ function checkScalarRange(bytes) {
     throw new Error("entropy out of range");
 }
 function entropyToMnemonic(entropyHex) {
-  const bytes = hexToBytes3(entropyHex);
+  const bytes = hexToBytes4(entropyHex);
   checkScalarRange(bytes);
   return Mnemonic.fromEntropy(bytes).toString();
 }
@@ -293004,7 +292264,7 @@ function mnemonicToEntropy(words) {
   return bytesToHex3(entropy);
 }
 function seedFromEntropy(entropyHex) {
-  const bytes = hexToBytes3(entropyHex);
+  const bytes = hexToBytes4(entropyHex);
   checkScalarRange(bytes);
   return Mnemonic.fromEntropy(bytes).toSeed();
 }
@@ -293403,7 +292663,7 @@ function splitEntropy(entropyHex, threshold, total) {
   }
   if (threshold > total)
     throw new Error("threshold exceeds total");
-  const key = PrivateKey.fromHex(bytesToHex3(hexToBytes3(entropyHex)).padStart(64, "0"));
+  const key = PrivateKey.fromHex(bytesToHex3(hexToBytes4(entropyHex)).padStart(64, "0"));
   return key.toBackupShares(threshold, total);
 }
 function recoverEntropy(shares) {
@@ -299868,7 +299128,6 @@ function createConfiguredServer(opts) {
   const nativeServer = new McpServer({ name: package_default.name, version: package_default.version }, {
     supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
     capabilities: {
-      prompts: {},
       resources: {},
       tools: {},
       extensions: {
@@ -299908,8 +299167,7 @@ function createConfiguredServer(opts) {
         droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true
       });
     }
-    if (opts.loadPrompts)
-      registerAllPrompts(srv);
+    opts.loadPrompts;
     if (opts.loadResources)
       registerResources(srv);
   };
@@ -300803,7 +300061,7 @@ Key Source:`);
   logFunc2(`
 Effective Component Status:`);
   logFunc2(`  Transport Mode: ${CONFIG.transportMode.toUpperCase()}`);
-  logFunc2(`  Prompts:        ${effectiveConfig.loadPrompts ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m"}`);
+  logFunc2("  Prompts:        Retired (static tutorial prompts removed)");
   logFunc2(`  Resources:      ${effectiveConfig.loadResources ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m"}`);
   logFunc2(`  Tools (Overall):  ${effectiveConfig.loadTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m"}`);
   if (effectiveConfig.loadTools) {
@@ -301203,7 +300461,6 @@ var init_server2 = __esm(() => {
   init_stdio();
   init_zod();
   init_package();
-  init_prompts();
   init_resources();
   init_getPrice();
   init_compactCatalog();
