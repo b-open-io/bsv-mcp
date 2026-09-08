@@ -30,7 +30,8 @@
 		"smithery.yaml"
 	],
 	"bin": {
-		"bsv-mcp": "./dist/index.js"
+		"bsv-mcp": "./dist/index.js",
+		"bsv-mcp-local": "./dist/local-mcp-launcher.js"
 	},
 	"private": false,
 	"devDependencies": {

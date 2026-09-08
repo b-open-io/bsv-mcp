@@ -396,6 +396,24 @@ function usage(): string {
 	);
 }
 
+/**
+ * `import.meta.main` is rewritten to a CommonJS-only helper by Bun's Node
+ * bundler. Compare the resolved entry paths instead so both the source script
+ * and the npm-shipped ESM bundle can run directly under Bun or Node.
+ */
+function isLauncherEntryPoint(): boolean {
+	const entry = process.argv[1];
+	if (!entry) return false;
+	try {
+		return (
+			realpathSync(fileURLToPath(import.meta.url)) ===
+			realpathSync(resolve(entry))
+		);
+	} catch {
+		return false;
+	}
+}
+
 export function parseLauncherArguments(
 	argv: readonly string[],
 ): LocalMcpLaunchOptions {
@@ -430,7 +448,7 @@ async function main(): Promise<void> {
 	process.exitCode = exitCode;
 }
 
-if (import.meta.main) {
+if (isLauncherEntryPoint()) {
 	try {
 		await main();
 	} catch (error) {
