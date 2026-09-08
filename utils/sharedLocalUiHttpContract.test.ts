@@ -1,4 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { signerRequestAllowed } from "./signer";
 import type { MigrationSource } from "./vaultMigration";
 import type {
@@ -19,7 +22,7 @@ import { startVaultSetup } from "./vaultSetup";
  * authentication, and approval boundaries remain reviewable.
  */
 export const SHARED_LOCAL_UI_HTTP_CONTRACT = {
-	public: ["GET /", "GET /setup.js"],
+	public: ["GET /", "GET /assets/app.js"],
 	bearerReads: ["GET /api/inventory", "GET /api/migration/capabilities"],
 	bearerWrites: [
 		"POST /api/migration/unlock",
@@ -182,8 +185,11 @@ class UiContractBackend implements VaultMigrationBackend {
 }
 
 const setups: Array<{ close: () => Promise<void> }> = [];
+const assetsRoots: string[] = [];
 afterEach(async () => {
 	for (const setup of setups.splice(0)) await setup.close();
+	for (const root of assetsRoots.splice(0))
+		rmSync(root, { recursive: true, force: true });
 });
 
 function auth(setup: { url: string }) {
@@ -215,15 +221,27 @@ async function post(setup: { url: string }, path: string, body: unknown) {
 }
 
 async function setupWith(backend?: VaultMigrationBackend) {
+	const assetsDirectory = mkdtempSync(join(tmpdir(), "shared-ui-contract-"));
+	assetsRoots.push(assetsDirectory);
+	mkdirSync(join(assetsDirectory, "assets"));
+	writeFileSync(
+		join(assetsDirectory, "index.html"),
+		'<div id="root"></div><script type="module" src="/assets/app.js"></script>',
+	);
+	writeFileSync(
+		join(assetsDirectory, "assets", "app.js"),
+		'document.title = "Local setup";',
+	);
 	const setup = await startVaultSetup({
 		inspect: () => inventory,
+		assetsDirectory,
 		migrationBackend: backend,
 	});
 	setups.push(setup);
 	return setup;
 }
 
-test("serves a nonce-protected shell and keeps inventory reads bearer guarded", async () => {
+test("serves an external-script shell and keeps inventory reads bearer guarded", async () => {
 	const setup = await setupWith(new UiContractBackend());
 	const { url, headers } = auth(setup);
 
@@ -233,13 +251,13 @@ test("serves a nonce-protected shell and keeps inventory reads bearer guarded", 
 	expect(page.headers.get("x-content-type-options")).toBe("nosniff");
 	const csp = page.headers.get("content-security-policy") ?? "";
 	expect(csp).toContain("default-src 'none'");
-	expect(csp).toContain("script-src 'nonce-");
+	expect(csp).toContain("script-src 'self'");
 	expect(csp).toContain("connect-src 'self'");
 	const pageText = await page.text();
 	expect(pageText).not.toContain(PASSPHRASE);
 	expect(pageText).not.toContain(DESTINATION_PASSPHRASE);
 
-	const script = await fetch(`${url.origin}/setup.js`);
+	const script = await fetch(`${url.origin}/assets/app.js`);
 	expect(script.status).toBe(200);
 	expect(script.headers.get("cache-control")).toBe("no-store");
 
