@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -13,9 +13,29 @@ import { destroyWallet, initWallet } from "./walletInit";
 const identityKey = PrivateKey.fromString("6", 16).toPublicKey().toString();
 const paymentKey = PrivateKey.fromString("7", 16);
 
+const isolatedVariables = [
+	"BSV_MCP_ACCOUNT",
+	"BSV_MCP_PASSWORD",
+	"PRIVATE_KEY_WIF",
+	"IDENTITY_KEY_WIF",
+	"BRC100_WALLET_URL",
+	"REMOTE_STORAGE_URL",
+] as const;
+let previousEnvironment: Record<string, string | undefined>;
+beforeEach(() => {
+	previousEnvironment = {};
+	for (const name of isolatedVariables) {
+		previousEnvironment[name] = process.env[name];
+		delete process.env[name];
+	}
+});
 afterEach(() => {
 	mock.restore();
-	delete process.env.BSV_MCP_ACCOUNT;
+	for (const name of isolatedVariables) {
+		const previous = previousEnvironment[name];
+		if (previous === undefined) delete process.env[name];
+		else process.env[name] = previous;
+	}
 });
 
 test("embedded wallet opts out of automatic storage payments", async () => {

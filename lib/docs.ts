@@ -83,11 +83,11 @@ export const docs: DocSection[] = [
 			{
 				title: "Set up an encrypted account",
 				paragraphs: [
-					"Run bsv-mcp init in a local terminal. Choose a network, create or import a key, and enter an encryption password twice. The command shows only a public address. Back up the encrypted files before funding the wallet. Never paste private keys or passwords into chat.",
-					"Each account lives in ~/.bsv-mcp/accounts/<name>/ and has config.json, encrypted keys.bep, and wallet-main.db or wallet-test.db. BSV_MCP_ACCOUNT selects an account; the default name is default. Supply BSV_MCP_PASSWORD in the server process environment to unlock it. PRIVATE_KEY_WIF and IDENTITY_KEY_WIF are legacy environment overrides that trigger a persistent Vault migration warning; move them into Vault and remove them. A missing key, invalid key or bad password stops startup without generating a replacement.",
-					"Wallet storage is local by default. The account configuration can set activeRemote and backups; REMOTE_STORAGE_URL overrides the active remote. Wallet storage must be compatible with the 1Sat wallet SDK. These settings are separate from blockchain lookup services.",
+					"Start BSV MCP in your MCP client and open wallet setup. The browser wizard can create a wallet, import a detected account, or upload an encrypted or plaintext backup. Choose an account and network, then enter the Vault password in the local browser. Back up your Vault before funding the wallet. Never paste private keys or passwords into chat.",
+					"Accounts live in ~/.bsv-mcp/accounts/<name>/ with configuration and wallet databases; the embedded Vault stores their encrypted keys. BSV_MCP_ACCOUNT selects an account; the default name is default. The local wizard unlocks the Vault for the running MCP process and refreshes wallet tools without a restart. On restart, unlock it again through wallet setup. Existing encrypted accounts and legacy environment keys remain migration inputs; the wizard never silently replaces a missing key.",
+					"New mainnet accounts use https://wallet.1sat.app as the active wallet-storage provider and retain local SQLite as a backup; testnet accounts remain local until a compatible remote is selected. The account configuration can set activeRemote and backups; REMOTE_STORAGE_URL overrides the active remote. Wallet storage must be compatible with the 1Sat wallet SDK. These settings are separate from blockchain lookup services.",
 				],
-				code: "bunx bsv-mcp@latest init --account default\nbunx bsv-mcp@latest wallet_list\n# Configure BSV_MCP_PASSWORD locally, then start:\nBSV_MCP_ACCOUNT=default bunx bsv-mcp@latest --stdio",
+				code: "BSV_MCP_ACCOUNT=default bunx bsv-mcp@latest --stdio\n# Open wallet setup from your MCP client.\n# Or prepare an account in your browser before connecting:\nbunx bsv-mcp@latest vault-setup",
 			},
 			{
 				title: "Manage and migrate accounts",

@@ -68,43 +68,58 @@ Verify the encrypted account and database and make a backup before rerunning wit
 
 Do not rerun an old script that creates a missing key. Update the MCP registration after migration to use the named account or [external signer](external-signer.md).
 
-## Vault API status and read-only preview
+## Set up the local Vault
 
-The source tree now contains a trusted local Vault wallet API in
-`utils/vaultWalletController.ts` for integrators who supply an installed
-`@opl.dev/vault` module. `createVaultWalletController`
-loads project role bindings from an explicit absolute project root and project
-ID, resolves the bound existing account and machine-local Vault path, and
-supports the `direct-v1` contract for a selected private-key or WIF entry. An
-unlock validates the Vault ID, entry ID and public key, initializes the wallet
-with the existing account's network and storage configuration, and returns only
-public session status. The session facade supports operations through
-`controller.run(role, operation)`, a bounded TTL, and `controller.lock()`; stale
-project bindings and expired or locked sessions revoke access and clean up the
-wallet.
+Embedded local wallets use the installed `@opl.dev/vault` module when it is
+available. The encrypted Vault is stored at `VAULT_PATH` when that absolute
+path is configured, or at `~/.bsv/vault.bep` by default. The selected account's
+`config.json` stores a public `vaultBinding` containing the Vault and entry
+identifiers and public keys; it never stores a password or private key. The
+account's existing network, storage settings, and wallet database remain in
+use.
 
-Project mode is wired into local stdio startup through
-`scripts/local-mcp-launcher.ts project`. It consumes paired
-`--project-root` and `--project-id` selectors, unlocks the explicitly assigned
-`payments` role with the runtime-only `BSV_MCP_PASSWORD`, and uses `VAULT_PATH`
-or the installed module's `defaultVaultPath`. The optional Vault package is not
-a required runtime dependency. The initial project surface gates identity,
-encryption, and OneSat asset operations until their own role contexts are
-available. External and ordinary embedded startup continue to use their
-existing modes; legacy WIF environment variables remain a compatibility path
-with a migration warning.
+When a local stdio server has no usable wallet, finds an encrypted legacy
+account without a runtime password, or finds an account with a locked Vault, it
+keeps public tools available and registers the `wallet_onboarding` tool. Ask
+your agent to run `wallet_onboarding` to open setup on the computer running MCP.
+The tool opens a private loopback browser session only when invoked; startup
+does not open a browser. Passwords, key material, and the callback URL stay in
+the local setup session and are not returned to the agent.
 
-From a source checkout, run `bun run index.ts vault-setup` to open a local,
-read-only setup preview. It inventories named accounts, older
-`~/.bsv-mcp/keys.bep` or `keys.json` backups, the Sigma lab's `root.wif`, and
-known wallet database filenames including `wallet.db`. It also reports whether
-environment keys and a Vault file are present, without reading key contents or
-unlocking anything.
+The browser setup flow can:
 
-The preview binds only to loopback, opens your browser, and stays running until Ctrl+C or its five-minute timeout. If the browser cannot open, the command prints a local link. Keep that link private because it grants access to the inventory. Closing the browser tab does not stop the server.
+- create a new wallet in a new or existing encrypted Vault;
+- unlock a wallet already bound to the local Vault;
+- import a detected encrypted or plaintext local source, or a browsed `.bep`
+  or structured `.json` key backup; and
+- recover signing access for a database-only source when a matching key backup
+  proves the configured address. Existing `wallet-main.db`, `wallet-test.db`,
+  and `wallet.db` files are preserved, while conflicting databases or live
+  SQLite sidecars stop a source import before a write.
 
-This preview cannot import, delete, or switch keys. `wallet_migrate` still
-migrates legacy sources into the existing encrypted account format; it does not
-write a Vault or activate the new controller. Vault import, project-role
-selection in the server, and the migration wizard remain unwired. Existing
-wallet behavior is unchanged.
+After a successful create, import, or unlock, the wallet is activated in the
+same MCP session and the tool catalog is refreshed. No registration change or
+restart is needed for that session. On a later server restart, ask your agent
+to run `wallet_onboarding` again and enter the Vault password to unlock the
+persisted binding.
+
+From a source checkout, run this command for standalone local setup:
+
+```sh
+bun run index.ts vault-setup
+```
+
+Without explicit project selectors, the command supports the same create,
+import, and unlock flow and activates no MCP session. A paired
+`BSV_MCP_PROJECT_ROOT` and `BSV_MCP_PROJECT_ID` selects the separate
+project-role migration wizard instead; project mode keeps its explicit
+`payments` role and does not enable identity, encryption, or OneSat asset roles
+automatically. The local setup server binds to loopback and expires after five
+minutes or when you stop it with Ctrl+C.
+
+The existing `init`, `wallet_*`, and `wallet_migrate` commands remain supported
+for the legacy encrypted account format. `wallet_migrate` does not write a
+Vault; use browser setup to import a detected source or key backup into Vault.
+`PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` remain legacy compatibility inputs and
+continue to emit a Vault migration warning. Remove them after importing the
+keys into Vault.

@@ -26047,6 +26047,7 @@ var init_package = __esm(() => {
       "@modelcontextprotocol/ext-apps": "^1.7.5",
       "@modelcontextprotocol/sdk": "^1.30.0",
       "@modelcontextprotocol/server": "2.0.0",
+      "@opl.dev/vault": "0.0.1",
       "better-auth": "1.7.3",
       "bitcoin-backup": "^0.1.0",
       "bmap-api-types": "0.0.9",
@@ -26059,7 +26060,6 @@ var init_package = __esm(() => {
       "schema-dts": "^2.0.0",
       shiki: "^4.4.3",
       zod: "4.5.4",
-      "@opl.dev/vault": "0.0.1",
       "@bsv/message-box-client": "2.4.2"
     },
     scripts: {
@@ -260147,7 +260147,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-wallet-vault-integration/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -260854,7 +260854,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-wallet-vault-integration/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();

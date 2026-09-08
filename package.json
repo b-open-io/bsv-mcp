@@ -75,6 +75,7 @@
 		"@modelcontextprotocol/ext-apps": "^1.7.5",
 		"@modelcontextprotocol/sdk": "^1.30.0",
 		"@modelcontextprotocol/server": "2.0.0",
+		"@opl.dev/vault": "0.0.1",
 		"better-auth": "1.7.3",
 		"bitcoin-backup": "^0.1.0",
 		"bmap-api-types": "0.0.9",
@@ -87,7 +88,6 @@
 		"schema-dts": "^2.0.0",
 		"shiki": "^4.4.3",
 		"zod": "4.5.4",
-		"@opl.dev/vault": "0.0.1",
 		"@bsv/message-box-client": "2.4.2"
 	},
 	"scripts": {

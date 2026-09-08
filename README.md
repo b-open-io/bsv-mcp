@@ -29,11 +29,24 @@ bun install
 bun run build
 ```
 
-Create an encrypted account in a local terminal when you want embedded mode:
+For legacy embedded mode, create an encrypted account in a local terminal. The
+source-checkout launcher can open it after creation:
 
 ```sh
 bun run index.ts init --account default
 ```
+
+For a new local Vault, or to import an existing wallet through the private
+browser setup, register the built server directly:
+
+```sh
+# Codex: local Vault setup and unlock
+codex mcp add bsv-mcp-vault \
+  -- bun --no-env-file /absolute/path/to/bsv-mcp/dist/index.js --stdio
+```
+
+If the server reports that wallet setup is needed, ask your agent to run
+`wallet_onboarding`, then create, import, or unlock the wallet in the browser.
 
 Choose one explicit local wallet mode when registering the server:
 
@@ -44,7 +57,7 @@ codex mcp add bsv-mcp-external \
   --env BRC100_WALLET_ORIGINATOR=bsv-mcp.local \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts external
 
-# Codex: existing encrypted local account
+# Codex: existing encrypted local account (legacy account path)
 codex mcp add bsv-mcp-embedded \
   --env BSV_MCP_ACCOUNT=default \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts embedded
@@ -65,8 +78,9 @@ claude mcp add --transport stdio bsv-mcp-external \
   -- bun --no-env-file /absolute/path/to/bsv-mcp/scripts/local-mcp-launcher.ts external
 ```
 
-Set `BSV_MCP_PASSWORD` in the MCP host's runtime environment for embedded and
-project modes.
+Set `BSV_MCP_PASSWORD` in the MCP host's runtime environment for the launcher's
+existing-account embedded mode and for project mode. The direct Vault setup
+registration above collects its password in the local browser instead.
 Do not put that password in the registration command or saved MCP configuration.
 The launcher passes it to the child only at runtime, never through argv or its
 diagnostics. `BRC100_WALLET_URL` and `BRC100_WALLET_ORIGINATOR` are read at
@@ -75,7 +89,9 @@ runtime for external mode. Claude Code uses the same launcher command with
 
 The launcher starts the checked-out `dist/index.js` with `--no-env-file`, an
 explicit mode, and a working directory outside the checkout. Its embedded mode
-requires an existing encrypted account; it does not create or migrate one.
+requires an existing encrypted account; it does not create or migrate one. Use
+the direct server registration above when the browser setup must create or
+import a local Vault wallet.
 
 Or install the Claude Code plugin from the b-open-io marketplace for hosted MCP:
 
@@ -83,7 +99,10 @@ Or install the Claude Code plugin from the b-open-io marketplace for hosted MCP:
 claude plugin install bsv-mcp@b-open-io
 ```
 
-For another local client, register the same `bun --no-env-file .../scripts/local-mcp-launcher.ts external|embedded` command. For hosted access, connect to **https://bsvmcp.com**. See [client setup](https://bsvmcp.com/#install).
+For another local client, register the same launcher command for external or
+legacy embedded mode, or register `bun --no-env-file .../dist/index.js --stdio`
+for browser-based Vault setup. For hosted access, connect to
+**https://bsvmcp.com**. See [client setup](https://bsvmcp.com/#install).
 
 Ask your agent: **“Run bsv_status, then show my wallet balance.”**
 
@@ -126,9 +145,11 @@ status.
 
 External mode connects to an existing BRC-100 signer. The signer keeps the
 private keys, wallet storage, and permission decisions; BSV MCP receives only
-the SDK signer interface. Embedded mode opens an existing encrypted account in
-the local process after the launcher supplies `BSV_MCP_PASSWORD` at runtime.
-The selected account's database and storage configuration remain in use.
+the SDK signer interface. Embedded mode uses an encrypted local Vault wallet.
+When setup is needed, `wallet_onboarding` opens the private browser flow to
+create, import, or unlock it. The selected account's database and storage
+configuration remain in use. The launcher's existing-account embedded mode
+still supplies `BSV_MCP_PASSWORD` at runtime.
 Project mode opens only the explicitly assigned `payments` role from the
 project's local Vault bindings. It requires paired project selectors and
 `BSV_MCP_PASSWORD` at runtime; set `VAULT_PATH` when the installed Vault module
@@ -141,7 +162,15 @@ it does not read a wallet on your computer.
 
 ## Bring your wallet and infrastructure
 
-Connect a compatible existing wallet with `BRC100_WALLET_URL`, or select an encrypted account with `BSV_MCP_ACCOUNT` and unlock it with `BSV_MCP_PASSWORD` in the process environment. Startup never creates keys. An existing wallet keeps its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are legacy compatibility inputs; they trigger a persistent Vault migration warning and should be removed after migration. See the wallet setup guide for the required wallet API and configuration.
+Connect a compatible existing wallet with `BRC100_WALLET_URL`, select a legacy
+encrypted account with `BSV_MCP_ACCOUNT` and unlock it with
+`BSV_MCP_PASSWORD`, or use the local Vault browser setup. If setup is needed,
+ask your agent to run `wallet_onboarding`; after a restart, run it again to
+unlock the saved Vault. Startup never creates keys. An existing wallet keeps
+its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are
+legacy compatibility inputs; they trigger a persistent Vault migration warning
+and should be removed after importing the keys into Vault. See the wallet setup
+guide for the required wallet API and configuration.
 
 The default 1Sat API backend is `https://api.1sat.app`. New mainnet embedded
 accounts use `https://wallet.1sat.app` for wallet storage by default; testnet

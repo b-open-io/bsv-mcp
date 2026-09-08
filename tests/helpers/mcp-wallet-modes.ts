@@ -219,7 +219,7 @@ export async function runWalletMode(
 	const transport = new StdioClientTransport({
 		command: process.execPath,
 		args: [executable, "--stdio"],
-		cwd: repoRoot,
+		cwd: fixture.home,
 		env: fixture.env,
 		stderr: "pipe",
 	});
