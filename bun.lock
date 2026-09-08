@@ -7,7 +7,7 @@
       "dependencies": {
         "@1sat/actions": "^0.0.207",
         "@1sat/client": "0.0.51",
-        "@1sat/wallet-node": "^0.0.73",
+        "@1sat/wallet-node": "0.0.73",
         "@bsv/sdk": "^2.4.2",
         "@bsv/wallet-toolbox": "npm:@bopen-io/wallet-toolbox@2.6.2-brc153.5",
         "@modelcontextprotocol/client": "2.0.0",
