@@ -58,7 +58,7 @@ describe("not found markdown", () => {
 });
 
 describe("markdownPages", () => {
-	test("covers the routes middleware can rewrite", () => {
+	test("covers the routes proxy can rewrite", () => {
 		expect(Object.keys(markdownPages).sort()).toEqual([
 			"/",
 			"/connect",

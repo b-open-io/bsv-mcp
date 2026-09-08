@@ -1,355 +1,176 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Contributor guidance for the BSV MCP repository.
 
-## Project Overview
+## Project overview
 
-BSV MCP is a Model Context Protocol server that exposes Bitcoin SV (BSV) blockchain functionality to AI assistants. It provides tools for wallet operations, ordinals (NFTs), tokens, identity management, and social features through a modular architecture.
+BSV MCP is an open-source Model Context Protocol server for Bitcoin SV. It
+contains the published MCP package and the Next.js site that documents and hosts
+the remote MCP endpoint.
 
-**Current Version: 0.2.10**
+The supported deployment modes are:
 
-The project supports three deployment modes:
-1. **Local MCP Server** - Runs via stdio transport with OAuth 2.1 authentication
-2. **HTTP Server (Streamable HTTP)** - Runs as HTTP server using MCP 2025-03-26 Streamable HTTP spec with JWT validation
-3. **CloudFlare Worker** - Hosted implementation with OAuth 2.1 and Bitcoin-auth
+1. **Local stdio**: an AI client launches `bunx bsv-mcp@latest --stdio` on the
+   user’s computer. Wallet keys stay local or the client connects to an external
+   BRC-100 signer. Sigma Auth is not involved.
+2. **Self-hosted HTTP**: the package can run its Streamable HTTP server with
+   `TRANSPORT=http`.
+3. **Hosted Vercel site**: the Next.js app serves `https://bsvmcp.com` and its
+   protected MCP endpoint. Sigma Auth is a separate, generic OAuth authorization
+   server. It authenticates the account and issues a token; it does not hold
+   wallet keys or become BSV MCP.
 
-## Essential Commands
+The retired Cloudflare worker and OpenNext configuration were removed. Do not
+reintroduce a Cloudflare deployment path unless the product owner explicitly
+requests one.
 
-### Local Development
-```bash
-# Install dependencies
+## Essential commands
+
+```sh
 bun install
-
-# Build the project
-bun build ./index.ts --outdir ./dist --target node
-
-# Run locally (stdio mode for Claude Code)
-bun run index.ts
-
-# Run with environment variables
-TRANSPORT=stdio USE_DROPLIT_API=true bun run index.ts
-
-# Run tests
 bun test
-
-# Lint code
 bun run lint
-
-# Fix linting issues
-bun run lint:fix
+bun run build:all       # Vite MCP app, then the published server bundle
+bun run build:next      # Next.js site
+bun run dev             # Next.js site locally
+bun dist/index.js --stdio
 ```
 
-### CloudFlare Worker Deployment
-```bash
-# Navigate to cloudflare directory
-cd cloudflare
+The package version is defined in `package.json`. The published package includes
+the built `dist/` bundle, README, changelog, license, and Smithery manifest.
 
-# Install dependencies
-bun install
+For a local MCP connection:
 
-# Deploy the worker
-wrangler deploy
-
-# Check worker logs
-wrangler tail
-
-# Test locally
-wrangler dev
+```sh
+bunx bsv-mcp@latest --stdio
 ```
 
-### Testing with Claude Code CLI
-```bash
-# Install as plugin (simplest)
-claude plugin install bsv-mcp@b-open-io
+The server must never write protocol data to stdout in stdio mode. Keep the
+stdio guard as the first loaded module and send diagnostics to stderr.
 
-# Or add manually via MCP CLI
-claude mcp add bsv-mcp "bun run index.ts"
+## Repository layout
 
-# List configured servers
-claude mcp list
+- `index.ts`, `server.ts`: package entrypoint and MCP server factory.
+- `tools/`: BSV, wallet, ordinals, BAP, BSocial, MNEE, x402, and utility tools.
+- `utils/`: key management, wallet initialization, backend configuration, signing,
+  redaction, spending approval, and protocol helpers.
+- `app/`, `components/`, `lib/`: Next.js site, hosted MCP route, OAuth
+  protected-resource metadata, documentation, and landing page.
+- `prompts/`, `resources/`: MCP prompts and BRC/protocol resources.
+- `src/views/`: the Vite-built MCP App dashboard bundled into `dist/app.html`.
+- `scripts/`: package build and tool-manifest generation.
+- `docs/`: focused technical documentation. The website is the human-facing
+  documentation source.
+- `skills/bsv-mcp/SKILL.md`: the package skill used by supported clients.
 
-# Remove and re-add (useful after changes)
-claude mcp remove bsv-mcp
-claude mcp add bsv-mcp "bun run index.ts"
-```
+## OAuth boundary
 
-### CloudFlare Frontend (Next.js)
-```bash
-cd cloudflare/frontend
+Sigma Auth is generic. Never add `bsvmcp.com`, BSV MCP tool names, wallet
+configuration, or BSV-specific defaults to the Sigma Auth product.
 
-# Development
-bun dev
+For the hosted flow:
 
-# Build
-bun run build
+1. BSV MCP publishes OAuth protected-resource metadata and names Sigma as an
+   authorization server.
+2. The MCP client discovers Sigma’s authorization endpoints and authenticates the
+   user there.
+3. Sigma issues a short-lived token for the BSV MCP resource.
+4. BSV MCP validates the token’s signature, issuer, audience, expiry, and subject.
 
-# Lint
+The token only proves account authentication and consent to call the hosted
+resource. It does not connect a wallet on the user’s computer, derive a private
+key, approve a payment, or unlock a user-specific tool set. Tool availability is
+controlled by the BSV MCP deployment configuration. Do not infer wallet authority
+from an OAuth subject or scope.
+
+When changing hosted OAuth behavior, read the current MCP authorization
+specification and Better Auth MCP guidance first. Verify the complete client flow,
+not just a discovery endpoint or an empty DCR request.
+
+## Wallet and key safety
+
+- Never generate keys silently during startup.
+- New accounts live under `~/.bsv-mcp/accounts/<name>/` with encrypted
+  `keys.bep`, `config.json`, and the network-specific wallet database.
+- `BSV_MCP_ACCOUNT` selects the account and `BSV_MCP_PASSWORD` unlocks it in
+  the server process. `PRIVATE_KEY_WIF` is an explicit override.
+- Existing wallets should use `BRC100_WALLET_URL`; the wallet controls its keys
+  and approval policy.
+- Keep WIFs, mnemonics, OAuth secrets, bearer tokens, and database credentials
+  out of logs, tests, fixtures, commits, and chat.
+- Wallet mutations and broadcasts must respect `DISABLE_BROADCASTING` and the
+  existing spending-approval flow.
+- Use the redaction helpers for errors and tool responses that may contain key
+  material.
+- Do not create wallet directories outside `~/.bsv-mcp` without an explicit
+  design decision.
+
+See `docs/keys.md` and `docs/external-signer.md` before changing custody or
+migration code.
+
+## Backend configuration
+
+The default 1Sat service is `https://api.1sat.app` on mainnet and
+`https://testnet.api.1sat.app` on testnet. `ONESAT_API_URL` selects a
+compatible deployment. Explorer, JungleBus, ordinals, content, sponsorship,
+and remote wallet storage settings are separate.
+
+Use `utils/backends.ts` as the source of truth for backend defaults. Do not
+silently fall back between providers when a configured service fails.
+
+## Tool conventions
+
+- Validate every tool input with Zod.
+- Register tools through the category registration functions in `tools/`.
+- Keep tool names stable and prefixed by category.
+- Return actionable, sanitized errors.
+- Treat writes, payments, inscriptions, and broadcasts as non-idempotent unless
+  the tool explicitly proves otherwise.
+- Support both local-wallet and external-signer modes where the tool needs a
+  wallet. Do not add a new wallet mode for a single feature.
+- Update `lib/tool-manifest.json` through
+  `bun run tools:manifest` when registration changes.
+- Keep documentation in `lib/docs.ts` and generated Markdown aligned.
+
+## Testing
+
+Run the smallest relevant test first, then the full suite for changes that cross
+module boundaries:
+
+```sh
+bun test
 bun run lint
 ```
 
-## Core Architecture
+Tests may create random in-memory keys. They must not write real key material or
+use a funded wallet. Network tests should use local request handlers or explicit
+read-only public endpoints.
 
-### Entry Point
-- **index.ts**: Main server initialization with stdio or Streamable HTTP transport
-  - Key initialization with SecureKeyManager
-  - Transport mode detection (stdio/http)
-  - Conditional tool/prompt/resource registration based on env vars
-  - `createConfiguredServer()` factory produces a fully-wired `McpServer` instance
-  - HTTP mode: one `McpServer` + `WebStandardStreamableHTTPServerTransport` per session (session-per-request model); sessions tracked by `mcp-session-id` header
-  - Single `/mcp` endpoint handles all MCP traffic (GET, POST, DELETE); OAuth discovery at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
+When changing hosted MCP behavior, test:
 
-### Tool System
-- **tools/**: Modular tool categories, each with registration function
-  - `bsv/` - Price, transaction decoding, blockchain explorer
-  - `wallet/` - Send, receive, UTXOs, ordinals creation, collection minting
-  - `ordinals/` - NFT operations, marketplace listings
-  - `mnee/` - MNEE token operations
-  - `bap/` - Bitcoin Attestation Protocol identity management
-  - `bsocial/` - Social posts, likes, follows
-  - `bigblocks/` - React component registry and code generation
-  - `utils/` - Data conversion, encoding utilities
-  - `a2b/` - Agent-to-blockchain publishing (disabled by default)
+- RFC 9728 protected-resource metadata;
+- OAuth challenge and audience validation;
+- MCP initialize and tool discovery;
+- unauthenticated and malformed credentials;
+- walletless and external-signer startup paths.
 
-### Wallet Architecture
-- **Dual Mode Support**:
-  - **Local Wallet Mode**: Uses `Wallet` class with local private keys
-  - **Droplit API Mode**: Uses `IntegratedWallet` with remote faucet service (droplit.dev)
-- **Key Types**: Payment key (payPk), Identity key (identityPk), BAP master (xprv)
-- **Authentication**: OAuth 2.1 with sigma-auth for MCP clients, BSM for Droplit API operations
+## Maintenance rules
 
-### Key Management (SecureKeyManager)
-- **Encrypted Storage**: `~/.bsv-mcp/keys.bep` (bitcoin-backup format)
-- **Legacy Format**: `~/.bsv-mcp/keys.json` (backward compatible)
-- **Dynamic Passphrase Prompting**: Web-based secure passphrase entry
-- **Auto-migration**: Converts legacy keys to encrypted format
-- **Priority Order**:
-  1. PRIVATE_KEY_WIF environment variable (payPk only)
-  2. Encrypted keys.bep file (with passphrase prompt)
-  3. Legacy keys.json file (unencrypted)
-  4. Auto-generate new payPk and save
+- Prefer deleting retired deployment code and contradictory documentation over
+  preserving compatibility that no longer has a supported consumer.
+- Use Knip as a report, not an automatic delete list. Configure real entrypoints
+  before acting on unused-file or unused-export findings; MCP registration,
+  Next.js routing, Vite HTML entries, and tests are often discovered dynamically.
+- Keep historical release notes in `CHANGELOG.md`, even when the implementation
+  they describe has been retired.
+- Before deleting a branch, directory, or generated artifact, check for
+  uncommitted or unpushed work and verify that no deployment references it.
+- Make focused commits with tests and describe any production or protocol impact.
 
-### Content & Resources
-- **prompts/**: Educational content about BSV SDK, ordinals, protocols
-- **resources/**: BRC specifications, protocol docs, changelog
-- **utils/**: Shared utilities (broadcasting, buffer ops, error handling, key management)
+## Current documentation
 
-## Tool Registration Pattern
-
-Each tool category follows this pattern:
-
-```typescript
-// tools/category/index.ts
-export function registerCategoryTools(
-  server: McpServer,
-  config?: CategoryConfig
-): void {
-  server.addTool({
-    name: "category_toolName",
-    description: "...",
-    inputSchema: zodSchema,
-  }, async (params) => {
-    // Implementation
-  });
-}
-```
-
-Main registration in `tools/index.ts` conditionally loads categories based on:
-- Environment variables (DISABLE_*_TOOLS, ENABLE_*_TOOLS)
-- ToolsConfig object passed from index.ts
-- Key availability (payPk, identityPk, xprv)
-
-## Environment Variables
-
-### Core Configuration
-- `TRANSPORT`: Transport mode (`stdio` for Claude Code, `http` for Streamable HTTP server, default: `http`)
-- `PORT`: HTTP server port (default: 3000)
-- `PRIVATE_KEY_WIF`: Bitcoin SV payment private key in WIF format (optional)
-- `IDENTITY_KEY_WIF`: Identity key for BAP operations (optional)
-- ~~`BSV_MCP_PASSPHRASE`~~: **DEPRECATED - DO NOT USE** (security issue, removed in v0.1.0)
-
-### OAuth 2.1 Authentication
-- `ENABLE_OAUTH`: Enable OAuth 2.1 authentication with sigma-auth (default: false)
-- `OAUTH_ISSUER`: OAuth issuer URL (sigma-auth server, default: https://auth.sigmaidentity.com)
-- `RESOURCE_URL`: This resource server's URL for JWT validation (default: http://localhost:3000)
-
-**How it works**:
-- Authentication is proven via Bitcoin signature - no pre-registration needed
-- User's pubkey from Bitcoin signature becomes their client identity
-- BAP ID is resolved for usage tracking and billing
-- Access tokens are JWTs validated using JWKS from the issuer
-- Follows MCP 2025-03-26 specification and OAuth 2.1 standards
-
-### Droplit API Mode
-- `USE_DROPLIT_API`: Enable Droplit (droplit.dev) subsidized wallet mode (true/false, default: false); codebase uses `droplit` in variable names for backward compat
-- `DROPLIT_API_URL`: Droplit API endpoint (default: http://127.0.0.1:4000)
-- `DROPLIT_FAUCET_NAME`: Name of the faucet to use (required when USE_DROPLIT_API=true)
-
-### Feature Toggles
-- `DISABLE_PROMPTS`: Disable all prompts (default: false)
-- `DISABLE_RESOURCES`: Disable all resources (default: false)
-- `DISABLE_TOOLS`: Disable all tools (default: false)
-- `DISABLE_WALLET_TOOLS`: Disable wallet tools (default: false)
-- `DISABLE_MNEE_TOOLS`: Disable MNEE token tools (default: false)
-- `DISABLE_BSV_TOOLS`: Disable BSV blockchain tools (default: false)
-- `DISABLE_ORDINALS_TOOLS`: Disable ordinals/NFT tools (default: false)
-- `DISABLE_UTILS_TOOLS`: Disable utility tools (default: false)
-- `DISABLE_BAP_TOOLS`: Disable BAP identity tools (default: false)
-- `DISABLE_BSOCIAL_TOOLS`: Disable BSocial tools (default: false)
-- `DISABLE_BIGBLOCKS_TOOLS`: Disable BigBlocks tools (default: false)
-- `ENABLE_A2B_TOOLS`: Enable agent-to-blockchain tools (default: false)
-- `DISABLE_BROADCASTING`: Disable transaction broadcasting (default: false, useful for testing)
-
-### Key Management
-- `BSV_MCP_AUTO_MIGRATE`: Auto-migrate from unencrypted to encrypted keys (default: true)
-- `BSV_MCP_KEEP_LEGACY`: Keep legacy unencrypted file after migration (default: false)
-
-## Important Conventions
-
-1. **Schema Validation**: Use Zod schemas for all tool inputs
-2. **Error Handling**: Use colored console output (red=errors, yellow=warnings, green=success)
-3. **File Paths**: Always use absolute paths, never relative paths
-4. **Broadcasting Control**: Respect DISABLE_BROADCASTING for testing workflows
-5. **Price Caching**: BSV price data cached for 5 minutes to reduce API calls
-6. **Tool Dependencies**: Tools requiring keys gracefully fail with helpful messages when keys unavailable
-7. **OAuth Authentication**: MCP clients authenticate via sigma-auth with Bitcoin signatures (no pre-registration)
-8. **Passphrase Security**: NEVER store passphrases in environment variables (removed in v0.1.0)
-9. **JWT Validation**: Access tokens validated using JWKS from sigma-auth issuer
-
-## Adding New Tools
-
-1. Create new file in appropriate `tools/` subdirectory
-2. Define tool function with proper TypeScript types
-3. Add Zod schema for input validation
-4. Register tool in category's `index.ts` file
-5. Update main registration in `tools/index.ts` if creating new category
-6. Consider both local wallet and Droplit API modes for transaction-based tools
-7. Add tests in `.test.ts` file following existing patterns
-
-Example structure:
-```typescript
-// tools/category/myTool.ts
-import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-const myToolSchema = z.object({
-  param: z.string().describe("Description")
-});
-
-export function registerMyTool(server: McpServer): void {
-  server.addTool({
-    name: "category_myTool",
-    description: "What this tool does",
-    inputSchema: zodToJsonSchema(myToolSchema),
-  }, async (params) => {
-    const { param } = myToolSchema.parse(params);
-    // Implementation
-    return { content: [{ type: "text", text: result }] };
-  });
-}
-```
-
-## Testing Strategies
-
-### Unit Tests
-- Create `.test.ts` files alongside implementation
-- Mock external dependencies (API calls, file operations)
-- Test both success and error cases
-- Reference `tools/bap/generate.test.ts` and `tools/bap/getId.test.ts` for patterns
-
-### Integration Testing with MCP
-Use Claude Code CLI for end-to-end testing:
-```bash
-claude mcp add bsv-mcp-dev "bun run index.ts"
-# Test tools through natural language in Claude Code
-```
-
-### Programmatic Testing
-```typescript
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
-const transport = new StdioClientTransport({
-  command: "bun",
-  args: ["run", "index.ts"],
-  env: { TRANSPORT: "stdio" }
-});
-
-const client = new Client({ name: "test", version: "1.0.0" }, {});
-await client.connect(transport);
-const result = await client.callTool({ name: "tool_name", arguments: {} });
-```
-
-### Droplit API Testing
-1. Start go-faucet-api locally
-2. Configure env vars: USE_DROPLIT_API=true, DROPLIT_API_URL, DROPLIT_FAUCET_NAME
-3. Run test scripts or use Claude Code to test wallet operations
-
-## Security Best Practices
-
-1. **No Plaintext Passphrases**: BSV_MCP_PASSPHRASE removed in v0.1.0
-2. **Dynamic Prompting**: Passphrases entered via temporary web interface
-3. **Encrypted Storage**: AES-256-GCM with 600,000 PBKDF2 iterations (bitcoin-backup)
-4. **File Permissions**: Key files automatically created with 0600 permissions
-5. **Key Backup**: Automatic backup creation (keys.bep.backup) before operations
-6. **Authentication**: BSM signatures for Droplit API, Bitcoin-auth for hosted service
-
-## Troubleshooting
-
-### "Faucet not found" error in Droplit mode
-- Ensure faucet exists in Droplit API
-- Check DROPLIT_FAUCET_NAME matches existing faucet name
-
-### Authentication errors with Droplit API
-- Verify BSM signature format compatibility
-- Ensure key registered with API via `/auth/register`
-- Check go-bitcoin-auth version matches
-
-### MCP server not connecting in Claude Code
-- Verify TRANSPORT=stdio (automatic in Claude Code, but check manually if issues)
-- Run `bun install` to ensure all dependencies installed
-- Try `claude mcp remove bsv-mcp && claude mcp add bsv-mcp "bun run index.ts"`
-
-### HTTP client not connecting
-- Ensure client sends requests to `/mcp` (not `/sse` or `/messages`) — the old SSE endpoints no longer exist
-- For new sessions, omit `mcp-session-id`; include it on subsequent requests using the value from the server's response header
-- Verify `Content-Type: application/json` on POST requests
-
-### Tools not appearing
-- Check server logs for initialization errors
-- Verify required environment variables set
-- Ensure tool category not disabled via DISABLE_*_TOOLS
-- Check key availability for wallet/BAP/MNEE tools
-
-### Tests failing with WIF key errors
-- Generate valid WIF key using BSV SDK
-- Mock network calls properly in tests
-- Check test file WIF format matches network (mainnet vs testnet)
-
-## Current Development Focus
-
-### Phase 1 - Security Enhancement (Completed in v0.1.0)
-- ✅ Removed BSV_MCP_PASSPHRASE environment variable
-- ✅ Implemented dynamic passphrase prompting via web interface
-- ✅ Updated key loading/saving flows
-- ✅ Migration path for users with legacy env var
-
-### Phase 2 - Transport Upgrade (Completed in v0.2.10)
-- ✅ Replaced `BunSSEServerTransport` with `WebStandardStreamableHTTPServerTransport`
-- ✅ HTTP mode now follows MCP 2025-03-26 Streamable HTTP specification
-- ✅ Single `/mcp` endpoint replaces separate `/sse` and `/messages` endpoints
-- ✅ Session-per-request model: each new connection gets its own `McpServer` instance via `createConfiguredServer()` factory
-- ✅ OAuth 2.1 discovery endpoints at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
-
-### Current Architecture Notes
-- **Wallet Detection**: System detects wallet presence at startup and logs configuration
-- **Tool Loading**: Tools conditionally loaded based on key availability
-- **Three Deployment Modes**: Local (with keys), Droplit API (remote wallet), Hosted (CloudFlare)
-- **Storage Formats**: Encrypted .bep (preferred) vs legacy JSON (deprecated)
-- **MCP App Views**: `bsv_dashboard` opens the interactive dashboard (Explorer, Wallet, Ordinals) via the `ui://bsv-mcp/app.html` resource; results carry text plus structured content so plain clients still render
-
-## Future Development Roadmap
-
-High-priority features for future releases:
-- **Enhanced Onboarding**: Guided setup flow for new users
-- **Collection Minter Improvements**: More metadata options, batch operations
-- **Additional Protocols**: Support for more BSV protocols and standards
+- Human docs and hosted onboarding: `https://bsvmcp.com/docs` and
+  `https://bsvmcp.com/connect`.
+- Wallet custody: `docs/keys.md`, `docs/external-signer.md`.
+- BSV MCP system design: `docs/system-design.svg`.
+- Sigma/Auth boundary handoff: `docs/sigma-auth-handoff.md`.

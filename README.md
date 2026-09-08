@@ -40,7 +40,7 @@ Ask your agent: **“Run bsv_status, then show my wallet balance.”**
 
 ## Bring your wallet and infrastructure
 
-Connect a compatible existing wallet with `BRC100_WALLET_URL`, or select an encrypted account with `BSV_MCP_ACCOUNT` and unlock it with `BSV_MCP_PASSWORD` in the process environment. Startup never creates keys. An existing wallet keeps its keys and controls permissions. See the wallet setup guide for the required wallet API and configuration.
+Connect a compatible existing wallet with `BRC100_WALLET_URL`, or select an encrypted account with `BSV_MCP_ACCOUNT` and unlock it with `BSV_MCP_PASSWORD` in the process environment. Startup never creates keys. An existing wallet keeps its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are legacy compatibility inputs; they trigger a persistent Vault migration warning and should be removed after migration. See the wallet setup guide for the required wallet API and configuration.
 
 The default 1Sat backend is `https://api.1sat.app`. Override `ONESAT_API_URL` to use a compatible deployment; configure wallet storage, explorer, content, and legacy services separately. Available tools depend on wallet mode and enabled modules.
 

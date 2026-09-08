@@ -168,6 +168,13 @@ export async function migrateAccount(
 }
 export async function runAccountCommand(args: string[]): Promise<boolean> {
 	const command = args[0];
+	if (command === "vault-setup") {
+		if (args.length !== 1)
+			throw new Error("vault-setup does not accept arguments");
+		const { runVaultSetupCommand } = await import("./vaultSetupCommand");
+		await runVaultSetupCommand();
+		return true;
+	}
 	if (
 		![
 			"init",

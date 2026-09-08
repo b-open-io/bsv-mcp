@@ -24,7 +24,11 @@ import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
 import { registerResources } from "./resources/resources.ts";
 import { getBsvPriceWithCache } from "./tools/bsv/getPrice.ts";
-import { registerAllTools, type ToolsConfig } from "./tools/index.ts";
+import {
+	registerAllTools,
+	type ToolsConfig,
+	type VaultMigrationStatus,
+} from "./tools/index.ts";
 import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { runAccountCommand } from "./utils/accountCommands";
@@ -49,6 +53,7 @@ import {
 } from "./utils/jwtValidator.ts";
 import { initializeSecureKeys } from "./utils/keyManager.ts";
 import { setServerInstance } from "./utils/passphrasePrompt.ts";
+import { inspectMigration } from "./utils/vaultMigration";
 import {
 	destroyWallet,
 	initExternalWallet,
@@ -935,13 +940,14 @@ Usage: bun run index.ts [options]
 Options:
   --help, -h          Show this help message
   --version, -v       Show version information
+  vault-setup         Open the local read-only Vault migration preview
 
 Environment Variables:
   TRANSPORT           Transport mode: 'stdio' or 'http' (default: http)
   PORT               HTTP server port (default: 3000)
   BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
-  PRIVATE_KEY_WIF    Payment private key in WIF format
+  PRIVATE_KEY_WIF    Legacy payment key input; prefer Vault
   DISABLE_TOOLS      Disable all tools (default: false)
   DISABLE_WALLET_TOOLS   Disable wallet tools (default: false)
   DISABLE_BSV_TOOLS      Disable BSV tools (default: false)
@@ -964,7 +970,8 @@ Tool Categories:
 
 Authentication:
   - Most tools work without authentication
-  - Wallet operations use BRC100_WALLET_URL, PRIVATE_KEY_WIF or an initialized encrypted account
+  - Wallet operations use BRC100_WALLET_URL, an initialized encrypted account or legacy environment keys
+  - Environment WIFs are legacy compatibility inputs and trigger a migration warning
   - BAP/A2B tools require identity keys (generated via bap_generate tool)
 		`);
 		process.exit(0);
@@ -980,6 +987,49 @@ Authentication:
 	const sponsorConfig = CONFIG.useDroplitApi
 		? undefined
 		: readDroplitSponsorConfig();
+	let vaultMigration: VaultMigrationStatus = {
+		available: !externalWallet,
+		required: false,
+		sources: 0,
+		environmentKeys: { payment: false, identity: false },
+		nextStep: externalWallet
+			? "An external signer is selected; local key migration is not applicable."
+			: "No legacy key source was detected. Vault migration is still pending.",
+	};
+	if (!externalWallet) {
+		try {
+			const migration = inspectMigration();
+			vaultMigration = {
+				available: true,
+				required: migration.migrationRequired,
+				sources: migration.sources.length,
+				environmentKeys: {
+					payment: migration.environmentKeys.payment,
+					identity: migration.environmentKeys.identity,
+				},
+				nextStep: migration.migrationRequired
+					? "Run bsv-mcp vault-setup locally to inspect the detected source. Import into Vault is not enabled yet."
+					: "No legacy key source was detected. Vault migration is still pending.",
+			};
+			if (migration.migrationRequired) {
+				logFunc(
+					"\x1b[33mWARN: Vault migration is pending. Run bsv-mcp vault-setup locally for a read-only inventory; import remains unavailable until Vault integration is enabled.\x1b[0m",
+				);
+			}
+		} catch {
+			vaultMigration = {
+				available: true,
+				required: true,
+				sources: 0,
+				environmentKeys: { payment: false, identity: false },
+				nextStep:
+					"Run bsv-mcp vault-setup locally to inspect the key configuration.",
+			};
+			logFunc(
+				"\x1b[33mWARN: BSV MCP could not verify the local key layout. Run bsv-mcp vault-setup locally before using wallet tools.\x1b[0m",
+			);
+		}
+	}
 	const keys = await initializeKeysForWalletMode(externalWallet, async () =>
 		CONFIG.loadTools && CONFIG.loadWalletTools && !CONFIG.useDroplitApi
 			? initializeKeys()
@@ -1001,7 +1051,6 @@ Authentication:
 		xprv: undefined,
 		source: "external",
 	};
-
 	if (!externalWallet && payPk) {
 		const account = readAccount();
 		if (account) {
@@ -1046,6 +1095,11 @@ Authentication:
 	logFunc(
 		`  IDENTITY_KEY_WIF:     ${externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`,
 	);
+	if (!externalWallet && keySource === "env") {
+		logFunc(
+			"\x1b[33mWARN: Environment WIF keys are a legacy compatibility path. Move them into Vault and remove PRIVATE_KEY_WIF and IDENTITY_KEY_WIF when migration is complete.\x1b[0m",
+		);
+	}
 	if (process.env.BSV_MCP_PASSPHRASE) {
 		logFunc("  BSV_MCP_PASSPHRASE:   Deprecated; use BSV_MCP_PASSWORD");
 	}
@@ -1299,6 +1353,7 @@ Authentication:
 	// Build the shared tools config (used by server factory for each session)
 	const toolsConfig: ToolsConfig = CONFIG.loadTools
 		? {
+				vaultMigration,
 				enableAccountTools: !externalWallet && !CONFIG.useDroplitApi,
 				enableBsvTools: effectiveConfig.loadBsvTools,
 				enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,

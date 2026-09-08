@@ -25,7 +25,7 @@ Choose the network and whether to generate or import a key. Enter the encryption
 
 For headless use, supply `BSV_MCP_PASSWORD` through the process environment and select `BSV_MCP_ACCOUNT` (default: `default`). Do not put secrets in chat, command arguments, or committed configuration.
 
-Key resolution is explicit: `BRC100_WALLET_URL` selects an external signer and rejects conflicting local key variables. Otherwise `PRIVATE_KEY_WIF` takes precedence over the selected encrypted account. A bad key or password stops startup. There is no plaintext fallback and no automatic generation. Read-only operation is available with `DISABLE_WALLET_TOOLS=true`.
+Key resolution is explicit: `BRC100_WALLET_URL` selects an external signer and rejects conflicting local key variables. Otherwise `PRIVATE_KEY_WIF` takes precedence over the selected encrypted account as a legacy compatibility input. Its use prints a persistent Vault migration warning; move the key into Vault and remove both WIF environment variables. A bad key or password stops startup. There is no plaintext fallback and no automatic generation. Read-only operation is available with `DISABLE_WALLET_TOOLS=true`.
 
 ## Manage accounts
 
@@ -56,3 +56,11 @@ The legacy source is `~/.bsv-mcp/keys.json`. The lab source is `~/.local/share/s
 Verify the encrypted account and database and make a backup before rerunning with `--erase-source`. That option overwrites and removes the source plaintext file after confirmation. Overwriting cannot guarantee erasure from SSDs, APFS snapshots, backups or other copies. It does not modify experiment scripts or delete their directories. Repeating migration with the same identity does not replace the account.
 
 Do not rerun an old script that creates a missing key. Update the MCP registration after migration to use the named account or [external signer](external-signer.md).
+
+## Preview the Vault migration
+
+From this checkout, run `bun run index.ts vault-setup` to open a local, read-only setup preview. It inventories named accounts, older `~/.bsv-mcp/keys.bep` or `keys.json` backups, the Sigma lab's `root.wif`, and known wallet database filenames including `wallet.db`. It also reports whether environment keys and a Vault file are present, without reading key contents or unlocking anything.
+
+The preview binds only to loopback, opens your browser, and stays running until Ctrl+C or its five-minute timeout. If the browser cannot open, the command prints a local link. Keep that link private because it grants access to the inventory. Closing the browser tab does not stop the server.
+
+This preview cannot import, delete, or switch keys. Actual Vault migration remains pending the Vault dependency and verified signing integration; existing wallet behavior is unchanged.

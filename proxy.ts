@@ -7,6 +7,13 @@ import {
 } from "@/lib/content-negotiation";
 import { isMcpRequest, MCP_HANDLER_PATH } from "@/lib/mcp-request";
 
+/** Stable aliases use the same URL for both negotiated representations. */
+const STABLE_PAGE_ALIASES: Record<string, string> = {
+	"/index.md": "/",
+	"/connect.md": "/connect",
+	"/docs.md": "/docs",
+};
+
 /**
  * Accept negotiation for the site's pages, per acceptmarkdown.com.
  *
@@ -15,7 +22,7 @@ import { isMcpRequest, MCP_HANDLER_PATH } from "@/lib/mcp-request";
  * CDN cannot hand one variant to a client that asked for the other. A client
  * that accepts neither gets 406 rather than the wrong media type.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
 	// The site root is also the MCP endpoint, so `https://bsvmcp.com` is the
 	// whole connection URL with nothing to append. MCP requests are recognised
 	// by method and headers and rewritten to the handler; everything else falls
@@ -50,7 +57,18 @@ export function middleware(request: NextRequest) {
 
 	if (chosen === MEDIA_MARKDOWN) {
 		const url = request.nextUrl.clone();
-		url.pathname = `/md${request.nextUrl.pathname}`.replace(/\/$/, "");
+		const pagePath =
+			STABLE_PAGE_ALIASES[request.nextUrl.pathname] ?? request.nextUrl.pathname;
+		url.pathname = `/md${pagePath === "/" ? "" : pagePath}`;
+		const response = NextResponse.rewrite(url);
+		response.headers.set("Vary", VARY_HEADER);
+		return response;
+	}
+
+	const stablePage = STABLE_PAGE_ALIASES[request.nextUrl.pathname];
+	if (stablePage) {
+		const url = request.nextUrl.clone();
+		url.pathname = stablePage;
 		const response = NextResponse.rewrite(url);
 		response.headers.set("Vary", VARY_HEADER);
 		return response;

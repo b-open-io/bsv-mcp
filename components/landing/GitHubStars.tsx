@@ -1,7 +1,8 @@
 "use client";
 
-import { Github, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
+import { GitHubIcon } from "@/components/landing/GitHubIcon";
 
 export function GitHubStars({ url }: { url: string }) {
 	const [stars, setStars] = useState<number | null>(null);
@@ -35,7 +36,7 @@ export function GitHubStars({ url }: { url: string }) {
 					: `BSV MCP on GitHub, ${stars} stars`
 			}
 		>
-			<Github className="size-4" aria-hidden />
+			<GitHubIcon className="size-4" aria-hidden />
 			<span className="hidden sm:inline">github</span>
 			{stars !== null && (
 				<span className="inline-flex items-center gap-1 text-xs tabular-nums">

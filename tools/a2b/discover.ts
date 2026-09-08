@@ -140,7 +140,7 @@ export function registerA2bDiscoverTool(server: McpServer) {
 				let searchEndpoint = "/search/enhanced";
 
 				// For empty queries, use the regular search endpoint
-				if (!query || !query.trim()) {
+				if (!query?.trim()) {
 					searchEndpoint = "/search";
 				} else {
 					params.set("q", query); // enhanced search uses 'q' parameter

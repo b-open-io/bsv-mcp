@@ -6,7 +6,7 @@ import { markdownPages, renderNotFoundMarkdown } from "@/lib/markdown";
  * Markdown renderings of the site's pages.
  *
  * Reachable directly (`/md`, `/md/connect`), through the `.md` rewrites, and
- * through Accept negotiation in middleware.
+ * through Accept negotiation in proxy.
  */
 
 const MARKDOWN_CONTENT_TYPE = "text/markdown; charset=utf-8";

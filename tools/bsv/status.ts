@@ -9,7 +9,7 @@ import {
 	onesatUrl,
 } from "../../utils/backends";
 import { successResult } from "../../utils/errors";
-import type { ToolsConfig } from "../index";
+import type { ToolsConfig, VaultMigrationStatus } from "../index";
 
 export function registerStatusTool(
 	server: McpServer,
@@ -19,7 +19,7 @@ export function registerStatusTool(
 		"bsv_status",
 		{
 			description:
-				"Show server version, configured network, wallet availability, backend URLs and live 1Sat modules. Does not request keys, sign, sync or spend. Backend modules do not imply MCP tools or sponsor approval.",
+				"Show server version, configured network, wallet availability, backend URLs, live 1Sat modules and any persistent Vault migration warning. Does not request keys, sign, sync or spend. Backend modules do not imply MCP tools or sponsor approval.",
 			inputSchema: {
 				checkServices: z
 					.boolean()
@@ -65,9 +65,26 @@ export function registerStatusTool(
 					};
 				}
 			}
+			const vaultMigration: VaultMigrationStatus = config.vaultMigration ?? {
+				available: false,
+				required: false,
+				sources: 0,
+				environmentKeys: { payment: false, identity: false },
+				nextStep:
+					"Local key migration status is unavailable in hosted mode; inspect the computer that runs BSV MCP.",
+			};
 			const data = {
 				version: packageJson.version,
 				chain,
+				security: {
+					vaultMigration,
+					...(vaultMigration.required
+						? {
+								warning:
+									"Vault migration is pending. Use vault-setup for a read-only inventory; import remains unavailable until Vault integration is enabled.",
+							}
+						: {}),
+				},
 				wallet: {
 					available: Boolean(
 						config.ctx || config.wallet || config.integratedWallet,

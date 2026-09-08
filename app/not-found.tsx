@@ -1,11 +1,6 @@
-import {
-	ArrowRight,
-	FileText,
-	Github,
-	Home,
-	Map as MapIcon,
-} from "lucide-react";
+import { ArrowRight, FileText, Home, Map as MapIcon } from "lucide-react";
 import Link from "next/link";
+import { GitHubIcon } from "@/components/landing/GitHubIcon";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -25,7 +20,7 @@ export const metadata = {
 /**
  * The 404 body lists the recovery routes explicitly rather than only offering
  * a "go home" button, so an agent that lands here can pick its next request.
- * The markdown variant of this page is served by middleware negotiation.
+ * The markdown variant of this page is served by proxy negotiation.
  */
 const destinations = [
 	{
@@ -58,7 +53,7 @@ const destinations = [
 	},
 	{
 		href: GITHUB_URL,
-		icon: Github,
+		icon: GitHubIcon,
 		title: "Source",
 		description: "Code, README and issue tracker.",
 		external: true,

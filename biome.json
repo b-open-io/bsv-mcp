@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.12/schema.json",
 	"vcs": {
 		"enabled": false,
 		"clientKind": "git",
@@ -16,11 +16,6 @@
 			"!**/.next",
 			"!**/.vercel",
 			"!**/.wrangler",
-			"!**/cloudflare/frontend/.next",
-			"!**/cloudflare/frontend/.vercel",
-			"!**/cloudflare/frontend/.open-next",
-			"!**/cloudflare/.wrangler",
-			"!**/cloudflare/.cloudflare",
 			"!**/.vscode",
 			"!**/.claude"
 		]
@@ -33,7 +28,7 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"preset": "recommended"
 		}
 	},
 	"css": {

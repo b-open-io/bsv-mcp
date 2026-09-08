@@ -4,7 +4,6 @@ import {
 	Check,
 	Cloud,
 	Fingerprint,
-	Github,
 	Image as ImageIcon,
 	KeyRound,
 	MessageSquare,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { CopyCommand } from "@/components/landing/CopyCommand";
+import { GitHubIcon } from "@/components/landing/GitHubIcon";
 import { GitHubStars } from "@/components/landing/GitHubStars";
 import { InstallTabs } from "@/components/landing/InstallTabs";
 import { MobileMenu } from "@/components/landing/MobileMenu";
@@ -181,7 +181,7 @@ export default function LandingPage() {
 							</Button>
 							<Button size="xl" variant="outline" asChild>
 								<a href={GITHUB_URL} target="_blank" rel="noreferrer">
-									<Github />
+									<GitHubIcon />
 									Clone source
 								</a>
 							</Button>

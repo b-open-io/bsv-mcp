@@ -35,6 +35,7 @@ import type { Wallet } from "./wallet/wallet";
  * - enableMneeTools: controlled by DISABLE_MNEE_TOOLS
  */
 export interface ToolsConfig {
+	vaultMigration?: VaultMigrationStatus;
 	enableBsvTools?: boolean;
 	enableOrdinalsTools?: boolean;
 	enableUtilsTools?: boolean;
@@ -54,6 +55,14 @@ export interface ToolsConfig {
 	services?: OneSatServices;
 	droplitClient?: DroplitClient;
 	droplitApiUrl?: string;
+}
+
+export interface VaultMigrationStatus {
+	available: boolean;
+	required: boolean;
+	sources: number;
+	environmentKeys: { payment: boolean; identity: boolean };
+	nextStep: string;
 }
 
 /**
