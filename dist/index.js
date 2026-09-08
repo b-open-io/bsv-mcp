@@ -84416,7 +84416,39 @@ function parseRequiredJSON(name, s) {
 function identityKeyArg(v) {
   return v === true ? true : undefined;
 }
-function registerBrc100Tools(server, ctx) {
+function registerBrc100Tools(server, ctx, identityContext) {
+  if (ctx && identityContext !== undefined) {
+    const payments = ctx;
+    const identityMethods = new Set([
+      "getPublicKey",
+      "createSignature",
+      "verifySignature",
+      "createHmac",
+      "verifyHmac",
+      "encrypt",
+      "decrypt",
+      "acquireCertificate",
+      "listCertificates",
+      "proveCertificate",
+      "relinquishCertificate",
+      "discoverByIdentityKey",
+      "discoverByAttributes",
+      "revealCounterpartyKeyLinkage",
+      "revealSpecificKeyLinkage"
+    ]);
+    const wallet = new Proxy(payments.wallet, {
+      get(target, property) {
+        const selected = identityMethods.has(String(property)) ? identityContext?.wallet : target;
+        if (!selected)
+          return async () => {
+            throw new Error("No identity key is assigned. Configure wallet key defaults.");
+          };
+        const value = Reflect.get(selected, property, selected);
+        return typeof value === "function" ? value.bind(selected) : value;
+      }
+    });
+    ctx = Object.assign(Object.create(Object.getPrototypeOf(payments)), payments, { wallet });
+  }
   server.registerTool("wallet_createAction", {
     description: "Creates a new Bitcoin transaction. Handles funding, signing, and broadcasting based on options.",
     inputSchema: object2({
@@ -101100,7 +101132,7 @@ var init_sigmaSigningContext = __esm(() => {
 });
 
 // tools/wallet/createOrdinals.ts
-function registerCreateOrdinalsTool(server, ctx) {
+function registerCreateOrdinalsTool(server, ctx, identityContext) {
   server.registerTool("wallet_createOrdinals", {
     description: "Creates and inscribes ordinals (NFTs) on the Bitcoin SV blockchain. This tool lets you mint new digital artifacts by encoding data directly into the blockchain. Supports various content types including images, text, JSON, and HTML. The tool handles transaction creation, fee calculation, and broadcasting.",
     inputSchema: createOrdinalsArgsSchema
@@ -101125,6 +101157,8 @@ function registerCreateOrdinalsTool(server, ctx) {
     try {
       assertBroadcastAllowed("wallet_createOrdinals");
       if (signWithBAP === true) {
+        if (identityContext !== undefined && identityContext !== ctx)
+          throw new Error("Sigma inscriptions require the identity and ordinals roles to use the same key with the current wallet adapter.");
         try {
           await resolveSigmaSigningContext(ctx);
         } catch (preflight) {
@@ -112170,6 +112204,8 @@ var init_unlockBsv = __esm(() => {
 
 // tools/wallet/tools.ts
 function registerWalletTools(server, wallet, config) {
+  const assets = config.roleContexts ? config.roleContexts.ordinals : config.ctx;
+  const identity = config.roleContexts ? config.roleContexts.identity : config.ctx;
   registerSendBsvTool(server, config.ctx);
   registerGetAddressTool(server, config.ctx);
   if (config.scope === "payments") {
@@ -112177,35 +112213,52 @@ function registerWalletTools(server, wallet, config) {
       registerWalletGetBalanceTool(server, config.ctx);
     return;
   }
-  registerPurchaseListingTool(server, config.ctx);
-  registerTransferOrdTokenTool(server, config.ctx);
+  if (!config.roleContexts || assets)
+    registerPurchaseListingTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerTransferOrdTokenTool(server, assets);
   registerRefreshUtxosTool(server, config.ctx);
   const allowWholeWalletBalance = config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false;
   if (allowWholeWalletBalance) {
     registerWalletGetBalanceTool(server, config.ctx);
   }
-  registerBrc100Tools(server, config.ctx);
-  registerRevealDelegationTool(server, config.ctx);
-  registerCreateOrdinalsTool(server, config.ctx);
+  registerBrc100Tools(server, config.ctx, config.roleContexts ? identity ?? null : undefined);
+  if (!config.roleContexts || identity)
+    registerRevealDelegationTool(server, identity);
+  if (!config.roleContexts || assets)
+    registerCreateOrdinalsTool(server, assets, config.roleContexts ? identity ?? null : undefined);
   if (wallet) {
     registerGatherCollectionInfoTool(server, wallet);
     registerMintCollectionTool(server, wallet);
   }
-  registerGetOrdinalsTool(server, config.ctx);
-  registerListTokensTool(server, config.ctx);
-  registerGetBsv21BalancesTool(server, config.ctx);
-  registerGetLockDataTool(server, config.ctx);
-  registerSignBsmTool(server, config.ctx);
-  registerListOrdinalTool(server, config.ctx);
-  registerCancelListingTool(server, config.ctx);
+  if (!config.roleContexts || assets)
+    registerGetOrdinalsTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerListTokensTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerGetBsv21BalancesTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerGetLockDataTool(server, assets);
+  if (!config.roleContexts || identity)
+    registerSignBsmTool(server, identity);
+  if (!config.roleContexts || assets)
+    registerListOrdinalTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerCancelListingTool(server, assets);
   registerSendAllBsvTool(server, config.ctx);
-  registerLockBsvTool(server, config.ctx);
-  registerUnlockBsvTool(server, config.ctx);
-  registerOpnsRegisterTool(server, config.ctx);
-  registerOpnsDeregisterTool(server, config.ctx);
+  if (!config.roleContexts || assets)
+    registerLockBsvTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerUnlockBsvTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerOpnsRegisterTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerOpnsDeregisterTool(server, assets);
   registerSweepBsvTool(server, config.ctx);
-  registerSweepOrdinalsTool(server, config.ctx);
-  registerSweepBsv21Tool(server, config.ctx);
+  if (!config.roleContexts || assets)
+    registerSweepOrdinalsTool(server, assets);
+  if (!config.roleContexts || assets)
+    registerSweepBsv21Tool(server, assets);
 }
 var init_tools = __esm(() => {
   init_brc100();
@@ -157054,6 +157107,7 @@ function registerAllTools(server, config = {}) {
     } else if (config.wallet || config.ctx) {
       const walletToolOptions = {
         ctx: config.ctx,
+        roleContexts: config.roleContexts,
         allowWholeWalletBalance: !externalWallet,
         scope: config.walletScope
       };
@@ -157459,10 +157513,59 @@ var init_localUiAssets = __esm(() => {
   };
 });
 
+// utils/walletSettings.ts
+import {
+  closeSync as closeSync2,
+  constants as constants3,
+  fstatSync as fstatSync2,
+  openSync as openSync2,
+  readFileSync as readFileSync3
+} from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { isAbsolute as isAbsolute2, join as join5 } from "node:path";
+function readWalletSettings(home = homedir2()) {
+  let fd;
+  try {
+    fd = openSync2(join5(home, ".bsv-mcp", "settings.json"), constants3.O_RDONLY | constants3.O_NOFOLLOW);
+  } catch (error) {
+    if (error.code === "ENOENT")
+      return { sources: [] };
+    throw error;
+  }
+  try {
+    const stat = fstatSync2(fd);
+    if (!stat.isFile() || stat.size > 1024 * 1024)
+      throw new Error("Invalid wallet settings file");
+    const settings = settingsSchema.parse(JSON.parse(readFileSync3(fd, "utf8")));
+    const { sources } = settings;
+    if (new Set(sources.map((source) => source.name)).size !== sources.length)
+      throw new Error("Wallet source names must be unique");
+    return settings;
+  } finally {
+    closeSync2(fd);
+  }
+}
+function readWalletSources(home = homedir2()) {
+  return readWalletSettings(home).sources;
+}
+var walletSourceSchema, settingsSchema;
+var init_walletSettings = __esm(() => {
+  init_zod();
+  init_accounts();
+  walletSourceSchema = object2({
+    name: accountNameSchema,
+    directory: string2().min(1).refine(isAbsolute2, "Wallet source directory must be absolute"),
+    keyFile: _enum(["keys.json", "root.wif"]).default("keys.json"),
+    storageIdentityKey: string2().min(1).max(200).optional(),
+    depositPrefix: _enum(["mcp", "1sat"]).optional()
+  }).strict();
+  settingsSchema = object2({ sources: array(walletSourceSchema).default([]) }).passthrough();
+});
+
 // utils/vaultMigration.ts
 import { lstatSync as lstatSync2, readdirSync as readdirSync3 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
-import { join as join5 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { join as join6 } from "node:path";
 function exists(file, directory = false) {
   try {
     const stat = lstatSync2(file);
@@ -157476,23 +157579,24 @@ function exists(file, directory = false) {
   }
 }
 function inspectMigration(options = {}) {
-  const home = options.home ?? homedir2();
+  const home = options.home ?? homedir3();
   const env = options.env ?? process.env;
-  const base = join5(home, ".bsv-mcp");
+  const base = join6(home, ".bsv-mcp");
   const sources = [];
-  const inspect = (dir, account, location2) => {
+  const inspect = (dir, account, location2, metadata = {}) => {
     if (!exists(dir, true))
       return;
-    const encryptedBackup = exists(join5(dir, "keys.bep"));
-    const plaintextKeys = exists(join5(dir, location2 === "sigma-lab" ? "root.wif" : "keys.json"));
+    const encryptedBackup = exists(join6(dir, "keys.bep"));
+    const plaintextKeys = exists(join6(dir, metadata.keyFile ?? "keys.json"));
     const walletDatabases = [
       "wallet-main.db",
       "wallet-test.db",
       "wallet.db"
-    ].filter((name) => exists(join5(dir, name)));
+    ].filter((name) => exists(join6(dir, name)));
     if (encryptedBackup || plaintextKeys || walletDatabases.length)
       sources.push({
         directory: dir,
+        ...metadata,
         account,
         location: location2,
         encryptedBackup,
@@ -157502,23 +157606,22 @@ function inspectMigration(options = {}) {
   };
   if (exists(base, true)) {
     inspect(base, "default", "legacy-root");
-    const root = join5(base, "accounts");
+    const root = join6(base, "accounts");
     if (exists(root, true)) {
       for (const name of readdirSync3(root).sort()) {
         if (accountNameSchema.safeParse(name).success)
-          inspect(join5(root, name), name, "account");
+          inspect(join6(root, name), name, "account");
       }
     }
   }
-  const local = join5(home, ".local");
-  const share = join5(local, "share");
-  if (exists(local, true) && exists(share, true))
-    inspect(join5(share, "sigma-brc169-lab"), "sigma-lab", "sigma-lab");
+  for (const { name, directory, ...metadata } of readWalletSources(home)) {
+    inspect(directory, name, "custom", metadata);
+  }
   if (env.VAULT_PATH === "")
     throw new Error("VAULT_PATH is set but empty");
-  const vaultPath = env.VAULT_PATH ?? join5(home, ".bsv", "vault.bep");
+  const vaultPath = env.VAULT_PATH ?? join6(home, ".bsv", "vault.bep");
   if (env.VAULT_PATH === undefined)
-    exists(join5(home, ".bsv"), true);
+    exists(join6(home, ".bsv"), true);
   const environmentKeys = {
     payment: env.PRIVATE_KEY_WIF !== undefined,
     identity: env.IDENTITY_KEY_WIF !== undefined,
@@ -157526,7 +157629,7 @@ function inspectMigration(options = {}) {
   };
   return {
     sources,
-    boundAccounts: listAccounts(join5(base, "accounts")).filter((item) => readAccount(item.name, join5(base, "accounts"))?.vaultBinding).map(({ name, address }) => ({ name, address })),
+    boundAccounts: listAccounts(join6(base, "accounts")).filter((item) => readAccount(item.name, join6(base, "accounts"))?.vaultBinding).map(({ name, address }) => ({ name, address })),
     vaultExists: exists(vaultPath),
     environmentKeys,
     migrationRequired: sources.some((s) => s.encryptedBackup || s.plaintextKeys) || environmentKeys.payment || environmentKeys.identity
@@ -157534,6 +157637,7 @@ function inspectMigration(options = {}) {
 }
 var init_vaultMigration = __esm(() => {
   init_accounts();
+  init_walletSettings();
 });
 
 // utils/vaultMigrationWizard.ts
@@ -158197,7 +158301,7 @@ function stringArray(value) {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 function isLocation(value) {
-  return value === "account" || value === "legacy-root" || value === "sigma-lab";
+  return value === "account" || value === "legacy-root" || value === "custom";
 }
 function isConflictKind(value) {
   return value === "identity" || value === "address" || value === "database" || value === "vault-entry";
@@ -158283,6 +158387,105 @@ var init_vaultMigrationWizard = __esm(() => {
     "one-sat",
     "encryption"
   ];
+});
+
+// utils/walletRoleDefaults.ts
+import {
+  closeSync as closeSync3,
+  fsyncSync as fsyncSync2,
+  mkdirSync as mkdirSync2,
+  openSync as openSync3,
+  renameSync as renameSync3,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { join as join7 } from "node:path";
+function getWalletRoleSettings(home = homedir4(), env = process.env) {
+  const settings = readWalletSettings(home);
+  const defaults = walletRoleDefaultsSchema.parse(settings.defaults ?? {});
+  const effective = { ...defaults };
+  const overrides = [];
+  for (const role of WALLET_ROLES)
+    if (env[envNames[role]] !== undefined) {
+      effective[role] = env[envNames[role]] === "none" ? null : selector.parse(env[envNames[role]]);
+      overrides.push(role);
+    }
+  const root = join7(home, ".bsv-mcp", "accounts");
+  const keys = listAccounts(root).flatMap(({ name }) => {
+    const binding = readAccount(name, root)?.vaultBinding;
+    return binding ? ["payment", "identity"].flatMap((kind) => binding[kind] ? [
+      {
+        selector: `${name}:${kind}`,
+        accountName: name,
+        kind,
+        publicKey: binding[kind].publicKey
+      }
+    ] : []) : [];
+  });
+  return {
+    defaults,
+    effective,
+    overrides,
+    keys,
+    revision: typeof settings.revision === "number" ? settings.revision : 0
+  };
+}
+function saveWalletRoleDefaults(defaults, expectedRevision, home = homedir4()) {
+  const parsed = walletRoleDefaultsSchema.parse(defaults);
+  const base = join7(home, ".bsv-mcp");
+  regularPath(base, true);
+  mkdirSync2(base, { recursive: true, mode: 448 });
+  const lock = join7(base, "settings.json.lock");
+  const fd = openSync3(lock, "wx", 384);
+  const temp = join7(base, `settings.${process.pid}.tmp`);
+  try {
+    const current = getWalletRoleSettings(home, {});
+    if (current.revision !== expectedRevision)
+      throw new Error("Wallet settings changed. Reopen settings and try again.");
+    for (const value of Object.values(parsed))
+      if (value !== null && value !== undefined && !current.keys.some((key) => key.selector === value))
+        throw new Error("Choose a key already imported into this Vault.");
+    const settings = {
+      ...readWalletSettings(home),
+      defaults: parsed,
+      revision: current.revision + 1
+    };
+    const out = openSync3(temp, "wx", 384);
+    try {
+      writeFileSync(out, `${JSON.stringify(settings, null, 2)}
+`);
+      fsyncSync2(out);
+    } finally {
+      closeSync3(out);
+    }
+    renameSync3(temp, join7(base, "settings.json"));
+    return getWalletRoleSettings(home);
+  } finally {
+    try {
+      unlinkSync(temp);
+    } catch {}
+    closeSync3(fd);
+    unlinkSync(lock);
+  }
+}
+var WALLET_ROLES, selector, walletRoleDefaultsSchema, envNames;
+var init_walletRoleDefaults = __esm(() => {
+  init_zod();
+  init_accounts();
+  init_walletSettings();
+  WALLET_ROLES = ["payments", "identity", "ordinals"];
+  selector = string2().regex(/^[a-z0-9][a-z0-9_-]{0,63}:(payment|identity)$/);
+  walletRoleDefaultsSchema = object2({
+    payments: selector.nullable().optional(),
+    identity: selector.nullable().optional(),
+    ordinals: selector.nullable().optional()
+  }).strict();
+  envNames = {
+    payments: "BSV_MCP_PAYMENT_KEY",
+    identity: "BSV_MCP_IDENTITY_KEY",
+    ordinals: "BSV_MCP_ORDINALS_KEY"
+  };
 });
 
 // utils/vaultSetup.ts
@@ -158373,6 +158576,20 @@ async function startVaultSetup(options = {}) {
       return;
     }
     try {
+      if (apiPath === "/api/embedded/roles") {
+        if (req.method === "GET")
+          return writeJson(res, getWalletRoleSettings());
+        if (req.method !== "POST") {
+          res.writeHead(405, { Allow: "GET, POST" }).end();
+          return;
+        }
+        const body = await readJson(req);
+        if (typeof body.revision !== "number") {
+          res.writeHead(400).end();
+          return;
+        }
+        return writeJson(res, saveWalletRoleDefaults(body.defaults, body.revision));
+      }
       if (apiPath?.startsWith("/api/embedded/")) {
         if (req.method !== "POST") {
           res.writeHead(405, { Allow: "POST" }).end();
@@ -158603,6 +158820,7 @@ var init_vaultSetup = __esm(() => {
   init_localUiAssets();
   init_vaultMigration();
   init_vaultMigrationWizard();
+  init_walletRoleDefaults();
 });
 
 // utils/vaultSetupCommand.ts
@@ -291785,7 +292003,7 @@ async function denyStoragePayment(_info) {
 
 // utils/signer.ts
 import { chmodSync as chmodSync2, existsSync as existsSync5 } from "node:fs";
-import { join as join6 } from "node:path";
+import { join as join8 } from "node:path";
 function signerRequestAllowed(request, token, allowed) {
   const parts = new URL(request.url).pathname.split("/");
   const method = parts.length === 3 ? parts[2] : undefined;
@@ -291822,7 +292040,7 @@ async function serveSigner(name) {
     throw new Error("Account has no payment key");
   const dir = accountDir(name);
   secureDirectory(dir);
-  const filename = join6(dir, `wallet-${config.chain}.db`);
+  const filename = join8(dir, `wallet-${config.chain}.db`);
   regularPath(filename);
   const previousMask = process.umask(63);
   const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
@@ -291841,7 +292059,7 @@ async function serveSigner(name) {
   const result = await createNodeWallet(nodeWalletConfig).finally(() => process.umask(previousMask));
   if (existsSync5(filename))
     chmodSync2(filename, 384);
-  if (existsSync5(join6(dir, ".env"))) {
+  if (existsSync5(join8(dir, ".env"))) {
     await result.destroy();
     throw new Error("Signer account directory must not contain a .env file");
   }
@@ -291929,42 +292147,44 @@ var init_signer2 = __esm(() => {
 // utils/accountCommands.ts
 import {
   chmodSync as chmodSync3,
-  closeSync as closeSync2,
+  closeSync as closeSync4,
   existsSync as existsSync6,
-  fsyncSync as fsyncSync2,
-  openSync as openSync2,
+  fsyncSync as fsyncSync3,
+  openSync as openSync4,
   readdirSync as readdirSync4,
-  readFileSync as readFileSync3,
+  readFileSync as readFileSync4,
   rmSync as rmSync4,
   writeSync as writeSync2
 } from "node:fs";
-import { homedir as homedir3 } from "node:os";
-import { join as join7 } from "node:path";
+import { homedir as homedir5 } from "node:os";
+import { isAbsolute as isAbsolute3, join as join9 } from "node:path";
 function erasePlaintext(file) {
   regularPath(file);
-  const fd = openSync2(file, "r+");
+  const fd = openSync4(file, "r+");
   try {
-    const size = readFileSync3(fd).length;
+    const size = readFileSync4(fd).length;
     const zeros = new Uint8Array(Math.min(size, 65536));
     for (let offset = 0;offset < size; offset += zeros.length)
       writeSync2(fd, zeros, 0, Math.min(zeros.length, size - offset), offset);
-    fsyncSync2(fd);
+    fsyncSync3(fd);
   } finally {
-    closeSync2(fd);
+    closeSync4(fd);
   }
   rmSync4(file);
 }
-async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join7(homedir3(), ".bsv-mcp") : join7(homedir3(), ".local/share/sigma-brc169-lab")) {
-  const sourceFile = join7(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join9(homedir5(), ".bsv-mcp") : "", storageIdentityKey) {
+  if (!isAbsolute3(sourceDir) || source === "one-sat" && !storageIdentityKey)
+    throw new Error("OneSat migration requires an absolute source directory and storage identity");
+  const sourceFile = join9(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
   const target = accountDir(name, root);
-  const expectedStorage = source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab";
+  const expectedStorage = source === "legacy" ? "bsv-mcp" : storageIdentityKey ?? "";
   const verifyDestination = () => {
     const config = readAccount(name, root);
-    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "sigma-lab" && !existsSync6(join7(target, "wallet-main.db")))
+    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "one-sat" && !existsSync6(join9(target, "wallet-main.db")))
       throw new Error("Incomplete migration destination; source will not be erased. Preserve it and repair the account first.");
   };
   if (!existsSync6(sourceFile)) {
-    if (existsSync6(join7(target, "keys.bep"))) {
+    if (existsSync6(join9(target, "keys.bep"))) {
       await new SecureKeyManager({ keyDir: target }).loadEncryptedKeys(password);
       verifyDestination();
       return { name, alreadyMigrated: true };
@@ -291976,7 +292196,7 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
   let keys;
   try {
     keys = source === "legacy" ? new SecureKeyManager({ keyDir: sourceDir }).loadLegacyKeys() : {
-      payPk: PrivateKey.fromWif(readFileSync3(sourceFile, "utf8").trim())
+      payPk: PrivateKey.fromWif(readFileSync4(sourceFile, "utf8").trim())
     };
   } catch {
     throw new Error("Cannot read migration source; no files changed");
@@ -291998,16 +292218,16 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
     ...source === "legacy" ? {
       activeRemote: backendUrl("REMOTE_STORAGE_URL", `${onesatUrl("main")}/1sat/wallet`)
     } : {},
-    address: source === "sigma-lab" ? PublicKey.fromString((await new ProtoWallet_default(keys.payPk).getPublicKey({
+    address: source === "one-sat" ? PublicKey.fromString((await new ProtoWallet_default(keys.payPk).getPublicKey({
       protocolID: P1SAT_PROTOCOL,
       keyID: "1sat 0",
       forSelf: true
     })).publicKey).toAddress() : keys.payPk.toAddress(),
     depositPrefix: source === "legacy" ? "mcp" : "1sat"
   };
-  const dbSource = join7(sourceDir, "wallet.db");
-  if (source === "sigma-lab" && !existsSync6(dbSource))
-    throw new Error("Lab wallet database is missing; refusing an incomplete migration");
+  const dbSource = join9(sourceDir, "wallet.db");
+  if (source === "one-sat" && !existsSync6(dbSource))
+    throw new Error("Source wallet database is missing; refusing an incomplete migration");
   await createAccount(name, keys, password, config, root);
   try {
     if (existsSync6(dbSource)) {
@@ -292015,11 +292235,11 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
       const { Database } = await import("bun:sqlite");
       const db = new Database(dbSource, { readonly: true });
       try {
-        db.exec(`VACUUM INTO '${join7(target, "wallet-main.db").replaceAll("'", "''")}'`);
+        db.exec(`VACUUM INTO '${join9(target, "wallet-main.db").replaceAll("'", "''")}'`);
       } finally {
         db.close();
       }
-      chmodSync3(join7(target, "wallet-main.db"), 384);
+      chmodSync3(join9(target, "wallet-main.db"), 384);
     }
   } catch {
     rmSync4(target, { recursive: true, force: true });
@@ -292069,18 +292289,21 @@ async function runAccountCommand(args) {
   if (command === "wallet_migrate") {
     const sourceIndex = args.indexOf("--source");
     if (sourceIndex < 0)
-      throw new Error("Use --source legacy or --source sigma-lab");
+      throw new Error("Use --source legacy or --source one-sat --source-directory <path> --storage-identity <id>");
     const source = args[sourceIndex + 1];
-    if (source !== "legacy" && source !== "sigma-lab")
-      throw new Error("Use --source legacy or --source sigma-lab");
+    if (source !== "legacy" && source !== "one-sat")
+      throw new Error("Use --source legacy or --source one-sat --source-directory <path> --storage-identity <id>");
     await confirm("Stop all processes using the source wallet before migrating. Source wallet stopped?");
-    const password = existsSync6(join7(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
-    const result = await migrateAccount(name, source, password);
+    const password = existsSync6(join9(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
+    const sourceDir = source === "legacy" ? join9(homedir5(), ".bsv-mcp") : args[args.indexOf("--source-directory") + 1];
+    const storageIdentity = args.includes("--storage-identity") ? args[args.indexOf("--storage-identity") + 1] : undefined;
+    if (source === "one-sat" && !args.includes("--source-directory"))
+      throw new Error("An explicit source directory is required");
+    const result = await migrateAccount(name, source, password, accountsRoot(), sourceDir, storageIdentity);
     console.log(JSON.stringify(result));
     if (args.includes("--erase-source")) {
       await confirm("Encrypted keys and the account database are backed up and verified? Source overwrite cannot erase SSD snapshots");
-      const sourceDir = source === "legacy" ? join7(homedir3(), ".bsv-mcp") : join7(homedir3(), ".local/share/sigma-brc169-lab");
-      const sourceFile = join7(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+      const sourceFile = join9(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
       if (existsSync6(sourceFile))
         erasePlaintext(sourceFile);
     }
@@ -292095,7 +292318,7 @@ async function runAccountCommand(args) {
     const dir = accountDir(name);
     regularPath(dir, true);
     for (const file of readdirSync4(dir))
-      regularPath(join7(dir, file));
+      regularPath(join9(dir, file));
     rmSync4(dir, { recursive: true });
     console.log(`Removed account ${name}`);
     return true;
@@ -292119,7 +292342,7 @@ async function runAccountCommand(args) {
   const address = key.toAddress(chainInput === "test" ? [111] : [0]);
   await createAccount(name, { payPk: key }, password, newAccountConfig(chainInput, address));
   console.log(`Account ${name} created. Address: ${address}
-Back up ${join7(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
+Back up ${join9(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
   return true;
 }
 var init_accountCommands = __esm(() => {
@@ -292201,11 +292424,11 @@ __export(exports_dist, {
 });
 import { spawnSync } from "child_process";
 import { existsSync as existsSync7 } from "fs";
-import { dirname as dirname3, join as join8, resolve } from "path";
+import { dirname as dirname3, join as join10, resolve } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { dirname as dirname22, join as join22 } from "path";
-import { homedir as homedir4 } from "os";
+import { homedir as homedir6 } from "os";
 import { join as join33 } from "path";
 function concat(...parts) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -292566,16 +292789,16 @@ function helperDir() {
   const here = dirname3(fileURLToPath2(import.meta.url));
   const candidates = [resolve(here, "../../swift"), resolve(here, "../swift")];
   for (const dir of candidates) {
-    if (existsSync7(join8(dir, "build.sh")))
+    if (existsSync7(join10(dir, "build.sh")))
       return dir;
   }
   return candidates[0];
 }
 function enclaveBinaryPath() {
-  return join8(helperDir(), "enclave");
+  return join10(helperDir(), "enclave");
 }
 function enclaveBuildScript() {
-  return join8(helperDir(), "build.sh");
+  return join10(helperDir(), "build.sh");
 }
 function ensureBinary() {
   const binary = enclaveBinaryPath();
@@ -293213,7 +293436,7 @@ function defaultVaultPath() {
       throw new Error(`${VAULT_PATH_ENV} is set but empty`);
     return override;
   }
-  return join33(homedir4(), ".bsv", "vault.bep");
+  return join33(homedir6(), ".bsv", "vault.bep");
 }
 function randomSuffix() {
   const bytes = new Uint8Array(4);
@@ -293520,7 +293743,7 @@ import {
   rm as rm2,
   stat
 } from "node:fs/promises";
-import { basename, dirname as dirname4, isAbsolute as isAbsolute2, join as join9, resolve as resolve2 } from "node:path";
+import { basename, dirname as dirname4, isAbsolute as isAbsolute4, join as join11, resolve as resolve2 } from "node:path";
 function assertLabel(label) {
   if (typeof label !== "string" || label.trim().length === 0)
     throw failure("INVALID_LABEL");
@@ -293582,7 +293805,7 @@ function parseKeys(keys) {
   return parsed;
 }
 function canonicalVaultPath(input) {
-  if (typeof input !== "string" || !isAbsolute2(input))
+  if (typeof input !== "string" || !isAbsolute4(input))
     throw failure("INVALID_PATH");
   let parent = resolve2(input);
   const tail = [];
@@ -293599,7 +293822,7 @@ function canonicalVaultPath(input) {
   } catch {
     throw failure("INVALID_PATH");
   }
-  return join9(real, ...tail);
+  return join11(real, ...tail);
 }
 function assertNoSymlinks(resolvedInput) {
   let cursor = resolvedInput;
@@ -293977,7 +294200,7 @@ function createEmbeddedVaultIo(options) {
           }
           throw failure("VAULT_EXISTS");
         }
-        const stagePath = join9(ctx.stageDir, "vault.bep");
+        const stagePath = join11(ctx.stageDir, "vault.bep");
         const provider = new module.PassphraseProvider(password);
         let vault;
         let paymentId = "";
@@ -294080,7 +294303,7 @@ function createEmbeddedVaultIo(options) {
           assertPassword(password);
           assertConfirmation(password, input?.passwordConfirmation);
         }
-        const stagePath = join9(ctx.stageDir, "vault.bep");
+        const stagePath = join11(ctx.stageDir, "vault.bep");
         const provider = new module.PassphraseProvider(password);
         let vault;
         let originals = [];
@@ -294380,22 +294603,22 @@ var init_embeddedVaultIo = __esm(() => {
 import { randomUUID as randomUUID3 } from "node:crypto";
 import { existsSync as existsSync9, constants as fsConstants2, lstatSync as lstatSync4 } from "node:fs";
 import { chmod as chmod3, mkdir as mkdir3, open as open3, readFile as readFile3, rm as rm3 } from "node:fs/promises";
-import { isAbsolute as isAbsolute3, join as join10 } from "node:path";
+import { isAbsolute as isAbsolute5, join as join12 } from "node:path";
 function lockPathFor(accountsDirectory, accountName) {
-  return join10(accountsDirectory, `.${accountName}.first-run.lock`);
+  return join12(accountsDirectory, `.${accountName}.first-run.lock`);
 }
 function accountPathFor(accountsDirectory, accountName) {
-  return join10(accountsDirectory, accountName);
+  return join12(accountsDirectory, accountName);
 }
 function createEmbeddedFirstRunBackend(options) {
   const requestedVaultPath = options?.vaultPath;
   const requestedAccountsDirectory = options?.accountsDirectory;
   const requestedChain = options?.chain ?? "main";
   const writeAccountImpl = options?.writeAccountImpl ?? writeAccount;
-  if (typeof requestedVaultPath !== "string" || !isAbsolute3(requestedVaultPath)) {
+  if (typeof requestedVaultPath !== "string" || !isAbsolute5(requestedVaultPath)) {
     throw fail2("FAILED");
   }
-  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute3(requestedAccountsDirectory))) {
+  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute5(requestedAccountsDirectory))) {
     throw fail2("FAILED");
   }
   if (requestedChain !== "main" && requestedChain !== "test") {
@@ -294631,11 +294854,11 @@ import {
   existsSync as existsSync10,
   constants as fsConstants3,
   lstatSync as lstatSync5,
-  readFileSync as readFileSync4
+  readFileSync as readFileSync5
 } from "node:fs";
 import { copyFile as copyFile2 } from "node:fs/promises";
-import { homedir as homedir5 } from "node:os";
-import { isAbsolute as isAbsolute4, join as join11, resolve as resolve3 } from "node:path";
+import { homedir as homedir7 } from "node:os";
+import { isAbsolute as isAbsolute6, join as join13, resolve as resolve3 } from "node:path";
 function digest2(data) {
   return createHash4("sha256").update(data).digest("hex");
 }
@@ -294644,28 +294867,21 @@ function assertConfirmation2(value) {
     throw failure2("CONFIRMATION_REQUIRED", MESSAGES3.CONFIRMATION_REQUIRED);
 }
 function resolveTrustedHome(home) {
-  const candidate = home ?? homedir5();
-  if (typeof candidate !== "string" || !isAbsolute4(candidate))
+  const candidate = home ?? homedir7();
+  if (typeof candidate !== "string" || !isAbsolute6(candidate))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
 }
 function resolveVaultPath(vaultPath) {
-  if (typeof vaultPath !== "string" || !isAbsolute4(vaultPath))
+  if (typeof vaultPath !== "string" || !isAbsolute6(vaultPath))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return vaultPath;
 }
 function resolveDestRoot(accountsDirectory, home) {
-  const candidate = accountsDirectory ?? join11(home, ".bsv-mcp", "accounts");
-  if (typeof candidate !== "string" || !isAbsolute4(candidate))
+  const candidate = accountsDirectory ?? join13(home, ".bsv-mcp", "accounts");
+  if (typeof candidate !== "string" || !isAbsolute6(candidate))
     throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
-}
-function trustedSourceDir(home, location2, account) {
-  if (location2 === "account")
-    return join11(home, ".bsv-mcp", "accounts", account);
-  if (location2 === "legacy-root")
-    return join11(home, ".bsv-mcp");
-  return join11(home, ".local", "share", "sigma-brc169-lab");
 }
 function rejectUnsafePath(candidate) {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.includes("\x00"))
@@ -294688,7 +294904,7 @@ function rejectUnsafeDir(candidate) {
 function selectTrustedSource(source, home, destRoot, vaultPath) {
   const account = typeof source?.account === "string" ? source.account : undefined;
   const location2 = source?.location;
-  if (account === undefined || accountNameSchema.safeParse(account).success !== true || location2 !== "account" && location2 !== "legacy-root" && location2 !== "sigma-lab")
+  if (account === undefined || accountNameSchema.safeParse(account).success !== true || location2 !== "account" && location2 !== "legacy-root" && location2 !== "custom")
     throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   let inventory;
   try {
@@ -294705,8 +294921,10 @@ function selectTrustedSource(source, home, destRoot, vaultPath) {
   const destName = entry.account;
   if (accountNameSchema.safeParse(destName).success !== true)
     throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
-  const sourceDir = trustedSourceDir(home, entry.location, entry.account);
-  const destDir = join11(destRoot, destName);
+  const sourceDir = entry.directory;
+  if (!sourceDir)
+    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+  const destDir = join13(destRoot, destName);
   return {
     entry,
     sourceDir,
@@ -294764,12 +294982,12 @@ async function loadSourceKeys(selection, sourcePassphrase) {
   rejectUnsafeDir(sourceDir);
   if (!entry.encryptedBackup && !entry.plaintextKeys)
     throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
-  if (entry.location === "sigma-lab" && entry.plaintextKeys) {
-    const file = join11(sourceDir, "root.wif");
+  if (entry.keyFile === "root.wif" && entry.plaintextKeys) {
+    const file = join13(sourceDir, "root.wif");
     rejectUnsafePath(file);
     let wif;
     try {
-      wif = readFileSync4(file, "utf8").trim();
+      wif = readFileSync5(file, "utf8").trim();
     } catch {
       throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
@@ -294903,7 +295121,7 @@ function assertDatabasesCopyable(selection) {
     if (!DB_NAME_PATTERN.test(name))
       throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
     for (const suffix of ["-wal", "-shm"]) {
-      const sidecar = join11(selection.sourceDir, `${name}${suffix}`);
+      const sidecar = join13(selection.sourceDir, `${name}${suffix}`);
       try {
         lstatSync5(sidecar);
         throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
@@ -294923,13 +295141,13 @@ function assertNoDestinationDbCollision(selection) {
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
       throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
-    const from = join11(selection.sourceDir, name);
-    const to = join11(selection.destDir, name);
+    const from = join13(selection.sourceDir, name);
+    const to = join13(selection.destDir, name);
     let fromBytes = null;
     let toBytes = null;
     try {
       rejectUnsafePath(from);
-      fromBytes = existsSync10(from) ? readFileSync4(from) : null;
+      fromBytes = existsSync10(from) ? readFileSync5(from) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
@@ -294939,7 +295157,7 @@ function assertNoDestinationDbCollision(selection) {
       continue;
     try {
       rejectUnsafePath(to);
-      toBytes = existsSync10(to) ? readFileSync4(to) : null;
+      toBytes = existsSync10(to) ? readFileSync5(to) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
@@ -294962,12 +295180,12 @@ async function copyInventoryDatabases(selection) {
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
       throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
-    const from = join11(selection.sourceDir, name);
-    const to = join11(selection.destDir, name);
+    const from = join13(selection.sourceDir, name);
+    const to = join13(selection.destDir, name);
     let fromBytes;
     try {
       rejectUnsafePath(from);
-      fromBytes = readFileSync4(from);
+      fromBytes = readFileSync5(from);
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
@@ -294976,7 +295194,7 @@ async function copyInventoryDatabases(selection) {
     let toBytes = null;
     try {
       rejectUnsafePath(to);
-      toBytes = existsSync10(to) ? readFileSync4(to) : null;
+      toBytes = existsSync10(to) ? readFileSync5(to) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
@@ -294991,7 +295209,7 @@ async function copyInventoryDatabases(selection) {
       rejectUnsafeDir(selection.destDir);
       await copyFile2(from, to, fsConstants3.COPYFILE_EXCL);
       chmodSync4(to, 384);
-      const copied = readFileSync4(to);
+      const copied = readFileSync5(to);
       if (digest2(copied) !== digest2(fromBytes))
         throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     } catch (error) {
@@ -295210,7 +295428,9 @@ function createEmbeddedImportBackend(options) {
     assertNoDestinationDbCollision(selection);
     await copyInventoryDatabases(selection);
     const base = liveConfig ?? {
-      ...newAccountConfig(chain, rootAddress)
+      ...newAccountConfig(chain, rootAddress),
+      ...selection.entry.storageIdentityKey ? { storageIdentityKey: selection.entry.storageIdentityKey } : {},
+      ...selection.entry.depositPrefix ? { depositPrefix: selection.entry.depositPrefix } : {}
     };
     const next = liveConfig !== undefined ? {
       ...liveConfig,
@@ -295257,7 +295477,7 @@ function createEmbeddedImportBackend(options) {
     if (byteLength === 0 || byteLength > MAX_BACKUP_BYTES)
       throw failure2(byteLength > MAX_BACKUP_BYTES ? "BACKUP_TOO_LARGE" : "BACKUP_INVALID", byteLength > MAX_BACKUP_BYTES ? MESSAGES3.BACKUP_TOO_LARGE : MESSAGES3.BACKUP_INVALID);
     const destName = input.accountName;
-    const destDir = join11(destRoot, destName);
+    const destDir = join13(destRoot, destName);
     const keys = await parseBackupKeys(input.backupText, input.sourcePassphrase);
     const snapshot = readExistingConfig(destName, destRoot);
     const chain = resolveChain(snapshot.config, requestedChain);
@@ -295279,7 +295499,7 @@ function createEmbeddedImportBackend(options) {
             "wallet-test.db",
             "wallet.db"
           ]) {
-            const candidate = join11(destDir, name);
+            const candidate = join13(destDir, name);
             try {
               const stat = lstatSync5(candidate);
               if (!stat.isSymbolicLink() && stat.isFile())
@@ -295639,14 +295859,14 @@ async function handleSpendingAuthorization(request, permissionsManager, serverOv
 var serverInstance = null;
 
 // utils/walletInit.ts
-import { appendFileSync, chmodSync as chmodSync5, mkdirSync as mkdirSync2 } from "node:fs";
-import { homedir as homedir6 } from "node:os";
-import { join as join12 } from "node:path";
+import { appendFileSync, chmodSync as chmodSync5, mkdirSync as mkdirSync3 } from "node:fs";
+import { homedir as homedir8 } from "node:os";
+import { join as join14 } from "node:path";
 function writeAuditLog(dataDir, entry) {
   try {
-    mkdirSync2(dataDir, { recursive: true, mode: 448 });
+    mkdirSync3(dataDir, { recursive: true, mode: 448 });
     const serialized = JSON.stringify(entry, (_, value) => typeof value === "bigint" ? value.toString() : value);
-    appendFileSync(join12(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
+    appendFileSync(join14(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
 `, { encoding: "utf8", mode: 384 });
   } catch (error) {
     console.error("[wallet] failed to write audit log:", error);
@@ -295654,7 +295874,7 @@ function writeAuditLog(dataDir, entry) {
 }
 async function initWallet(privateKeyInput, chain = "main", options = {}) {
   options.sessionSignal?.throwIfAborted();
-  const config = readAccount(options.accountName);
+  const config = options.accountConfig ?? readAccount(options.accountName);
   if (options.accountName !== undefined && !config)
     throw new Error("The selected wallet account is not initialized");
   if (config && config.chain !== chain)
@@ -295663,7 +295883,7 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
     throw new Error("BSV_CHAIN conflicts with the selected account network");
   const dataDir = accountDir(options.accountName);
   secureDirectory(dataDir);
-  const filename = join12(dataDir, `wallet-${chain}.db`);
+  const filename = join14(dataDir, `wallet-${chain}.db`);
   regularPath(filename);
   const oldMask = process.umask(63);
   const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
@@ -295758,7 +295978,7 @@ async function initExternalWallet(config, chain = "main") {
     throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error });
   }
   const services = new OneSatServices(chain, onesatUrl(chain));
-  const dataDir = join12(homedir6(), ".bsv-mcp");
+  const dataDir = join14(homedir8(), ".bsv-mcp");
   const ctx = markExternalWalletContext(createContext(wallet, {
     services,
     chain,
@@ -295937,6 +296157,89 @@ var init_embeddedWalletActivation = __esm(() => {
   };
 });
 
+// utils/walletRoleActivation.ts
+import { createHash as createHash5 } from "node:crypto";
+async function activateWalletRoles(vaultPath, password, fallbackAccount) {
+  const { effective } = getWalletRoleSettings();
+  if (!Object.keys(effective).length)
+    return;
+  const payment = effective.payments === undefined ? `${fallbackAccount}:payment` : effective.payments;
+  if (!payment)
+    throw new Error("Choose a payment key in wallet settings.");
+  const selections = {
+    payments: payment,
+    identity: effective.identity === undefined ? payment : effective.identity,
+    ordinals: effective.ordinals === undefined ? payment : effective.ordinals
+  };
+  const opened = new Map;
+  const byRole = {};
+  try {
+    for (const role of ["payments", "identity", "ordinals"]) {
+      const selected = selections[role];
+      if (!selected)
+        continue;
+      if (!opened.has(selected)) {
+        const [accountName, kind] = selected.split(":");
+        const account = readAccount(accountName);
+        const binding = account?.vaultBinding;
+        const ref = kind === "payment" ? binding?.payment : binding?.identity;
+        if (!account || !binding || !ref)
+          throw new Error("A selected Vault key is unavailable. Reopen wallet settings.");
+        const io = createEmbeddedVaultIo({ vaultPath });
+        try {
+          const keys = await io.unlock({
+            password,
+            binding: { vaultId: binding.vaultId, payment: ref }
+          });
+          if (!keys.payPk)
+            throw new Error("The selected Vault key could not be unlocked.");
+          const isolated = `key-${createHash5("sha256").update(`${binding.vaultId}:${ref.entryId}`).digest("hex").slice(0, 24)}`;
+          const keyAddress = keys.payPk.toAddress(account.chain === "test" ? [111] : [0]);
+          const result = await initWallet(keys.payPk, account.chain, {
+            accountName: kind === "payment" ? accountName : isolated,
+            trackActive: false,
+            ...kind === "identity" ? {
+              accountConfig: {
+                ...newAccountConfig(account.chain, keyAddress),
+                storageIdentityKey: isolated
+              }
+            } : {}
+          });
+          opened.set(selected, result);
+        } finally {
+          io.lock();
+        }
+      }
+      byRole[role] = opened.get(selected);
+    }
+    const primary = byRole.payments;
+    if (!primary)
+      throw new Error("The payment key could not be activated.");
+    if (Object.values(byRole).some((value) => value?.ctx.chain !== primary.ctx.chain))
+      throw new Error("Selected role keys must use the same network.");
+    return {
+      ...primary,
+      roleContexts: {
+        payments: primary.ctx,
+        identity: byRole.identity?.ctx,
+        ordinals: byRole.ordinals?.ctx
+      },
+      destroy: async () => {
+        await Promise.allSettled([...opened.values()].map((result) => result.destroy()));
+      }
+    };
+  } catch (error) {
+    await Promise.allSettled([...opened.values()].map((result) => result.destroy()));
+    throw error;
+  }
+}
+var init_walletRoleActivation = __esm(() => {
+  init_accounts();
+  init_embeddedVaultIo();
+  init_walletInit();
+  init_walletRoleDefaults();
+});
+
 // utils/embeddedSetupActions.ts
 function createEmbeddedSetupActions(options) {
   const creator = createEmbeddedFirstRunBackend({
@@ -295961,14 +296264,11 @@ function createEmbeddedSetupActions(options) {
     }
   }
   async function activate(accountName, password) {
+    accountName = getWalletRoleSettings().effective.payments?.split(":")[0] ?? accountName;
     const binding = readAccount(accountName)?.vaultBinding;
     if (!binding)
       throw new Error("This wallet has not been saved in your Vault.");
-    const result = await activation.activate({
-      accountName,
-      password,
-      binding
-    });
+    const result = await activateWalletRoles(options.vaultPath, password, accountName) ?? await activation.activate({ accountName, password, binding });
     try {
       await options.onActivated(result, accountName);
     } catch {
@@ -295988,6 +296288,13 @@ function createEmbeddedSetupActions(options) {
     create: (body) => exclusive(async () => {
       const input = createInput.parse(body);
       const saved = await creator.create(input);
+      if (!input.activate)
+        return {
+          accountName: saved.accountName,
+          address: readAccount(saved.accountName)?.address ?? "",
+          ready: false,
+          saved: true
+        };
       return activate(saved.accountName, input.password);
     }),
     unlock: (body) => exclusive(async () => {
@@ -296014,6 +296321,13 @@ function createEmbeddedSetupActions(options) {
           confirmation: input.confirmation
         });
       }
+      if (!input.activate)
+        return {
+          accountName: saved.accountName,
+          address: readAccount(saved.accountName)?.address ?? "",
+          ready: false,
+          saved: true
+        };
       return activate(saved.accountName, input.destinationPassphrase);
     })
   };
@@ -296025,7 +296339,10 @@ var init_embeddedSetupActions = __esm(() => {
   init_embeddedFirstRunBackend();
   init_embeddedImportBackend();
   init_embeddedWalletActivation();
+  init_walletRoleDefaults();
+  init_walletRoleActivation();
   createInput = object2({
+    activate: boolean2().default(true),
     accountName: accountNameSchema,
     password: string2().min(8),
     passwordConfirmation: string2(),
@@ -296036,10 +296353,11 @@ var init_embeddedSetupActions = __esm(() => {
     password: string2().min(1)
   });
   importInput = object2({
+    activate: boolean2().default(true),
     accountName: accountNameSchema,
     source: object2({
       account: accountNameSchema,
-      location: _enum(["account", "legacy-root", "sigma-lab"]),
+      location: _enum(["account", "legacy-root", "custom"]),
       encryptedBackup: boolean2().default(false),
       plaintextKeys: boolean2().default(false),
       walletDatabases: array(string2()).default([])
@@ -297035,14 +297353,14 @@ var init_modernToolPolicy = __esm(() => {
 });
 
 // utils/passphrasePrompt.ts
-import { join as join13 } from "node:path";
+import { join as join15 } from "node:path";
 function setServerInstance(server) {
   serverInstance2 = server;
 }
 var LOCK_DIR, LOCK_FILE, serverInstance2 = null;
 var init_passphrasePrompt = __esm(() => {
-  LOCK_DIR = join13(process.env.HOME || "", ".bsv-mcp");
-  LOCK_FILE = join13(LOCK_DIR, "prompt.lock");
+  LOCK_DIR = join15(process.env.HOME || "", ".bsv-mcp");
+  LOCK_FILE = join15(LOCK_DIR, "prompt.lock");
 });
 
 // utils/vaultProfileDerivation.ts
@@ -297421,7 +297739,7 @@ var init_vaultProfileBinding = __esm(() => {
 });
 
 // utils/vaultWallet.ts
-import { isAbsolute as isAbsolute5 } from "node:path";
+import { isAbsolute as isAbsolute7 } from "node:path";
 function createOplVaultLoader(module) {
   return async (path, passphrase) => {
     let vault;
@@ -297457,7 +297775,7 @@ function createOplVaultLoader(module) {
 }
 async function openVaultWalletSession(selection, passphrase, dependencies) {
   const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
-  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute5(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
+  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute7(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
     throw new VaultWalletError("INVALID_SELECTION", "Select a valid Vault entry and existing wallet account.");
   }
   const ttl = selection.ttlSeconds ?? 300;
@@ -297713,7 +298031,7 @@ var init_vaultWallet = __esm(() => {
 
 // utils/projectRoleBindingsStore.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
-import { constants as constants3 } from "node:fs";
+import { constants as constants4 } from "node:fs";
 import {
   lstat as lstat2,
   open as open4,
@@ -297721,7 +298039,7 @@ import {
   rename as rename3,
   unlink
 } from "node:fs/promises";
-import { isAbsolute as isAbsolute6, join as join14 } from "node:path";
+import { isAbsolute as isAbsolute8, join as join16 } from "node:path";
 function fail4(code, message) {
   throw new ProjectRoleStoreError(code, message);
 }
@@ -297732,7 +298050,7 @@ function sameFile(a, b) {
   return a.dev === b.dev && a.ino === b.ino;
 }
 async function projectLocation(projectRoot) {
-  if (!isAbsolute6(projectRoot))
+  if (!isAbsolute8(projectRoot))
     fail4("PROJECT_ROLE_ROOT_INVALID", "An explicit absolute project root is required");
   const requested = await lstat2(projectRoot);
   if (!requested.isDirectory() || requested.isSymbolicLink())
@@ -297742,8 +298060,8 @@ async function projectLocation(projectRoot) {
   return {
     root,
     identity,
-    configPath: join14(root, PROJECT_ROLE_CONFIG_FILENAME),
-    lockPath: join14(root, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`)
+    configPath: join16(root, PROJECT_ROLE_CONFIG_FILENAME),
+    lockPath: join16(root, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`)
   };
 }
 async function assertRoot(location2) {
@@ -297755,7 +298073,7 @@ async function readDocument(location2) {
   await assertRoot(location2);
   let file;
   try {
-    file = await open4(location2.configPath, constants3.O_RDONLY | constants3.O_NOFOLLOW);
+    file = await open4(location2.configPath, constants4.O_RDONLY | constants4.O_NOFOLLOW);
   } catch (error) {
     if (isErrno(error, "ENOENT"))
       return { raw: null, document: {} };
@@ -297822,7 +298140,7 @@ async function saveProjectRoleBindings(projectRoot, input, options) {
   const location2 = await projectLocation(projectRoot);
   let lock;
   try {
-    lock = await open4(location2.lockPath, constants3.O_WRONLY | constants3.O_CREAT | constants3.O_EXCL | constants3.O_NOFOLLOW, 384);
+    lock = await open4(location2.lockPath, constants4.O_WRONLY | constants4.O_CREAT | constants4.O_EXCL | constants4.O_NOFOLLOW, 384);
   } catch (error) {
     if (isErrno(error, "EEXIST") || isErrno(error, "ELOOP")) {
       const existing = await lstat2(location2.lockPath);
@@ -297859,7 +298177,7 @@ async function saveProjectRoleBindings(projectRoot, input, options) {
 `;
     if (Buffer.byteLength(serialized, "utf8") > MAX_CONFIG_BYTES)
       fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
-    temporaryPath = join14(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID4()}.tmp`);
+    temporaryPath = join16(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID4()}.tmp`);
     const temporary = await open4(temporaryPath, "wx", 384);
     try {
       await temporary.writeFile(serialized, "utf8");
@@ -297901,7 +298219,7 @@ var init_projectRoleBindingsStore = __esm(() => {
 });
 
 // utils/vaultWalletController.ts
-import { isAbsolute as isAbsolute7 } from "node:path";
+import { isAbsolute as isAbsolute9 } from "node:path";
 async function loadInstalledVaultModule(importModule = (specifier) => import(specifier)) {
   let module;
   try {
@@ -297936,7 +298254,7 @@ function vaultSelectionFromSnapshot(snapshot, options) {
   };
 }
 function createVaultWalletController(options) {
-  if (!isAbsolute7(options.projectRoot) || !options.expectedProjectId)
+  if (!isAbsolute9(options.projectRoot) || !options.expectedProjectId)
     throw new VaultWalletError("PROJECT_REQUIRED", "An explicit absolute project root and project ID are required.");
   const projectRoot = options.projectRoot;
   const expectedProjectId = options.expectedProjectId;
@@ -298027,14 +298345,14 @@ var init_vaultWalletController = __esm(() => {
 });
 
 // utils/projectWalletRuntime.ts
-import { isAbsolute as isAbsolute8, resolve as resolve4 } from "node:path";
+import { isAbsolute as isAbsolute10, resolve as resolve4 } from "node:path";
 function fail5(code, message) {
   throw new VaultWalletError(code, message);
 }
 function explicitPath(value, name) {
   if (!value?.trim())
     fail5("PROJECT_PATH_INVALID", `${name} is required`);
-  if (!isAbsolute8(value))
+  if (!isAbsolute10(value))
     fail5("PROJECT_PATH_INVALID", `${name} must be an absolute path`);
   return resolve4(value);
 }
@@ -298310,11 +298628,11 @@ var init_projectRoleSelection = __esm(() => {
 
 // utils/vaultMigrationJournal.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { existsSync as existsSync11, lstatSync as lstatSync6, readFileSync as readFileSync5, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync11, lstatSync as lstatSync6, readFileSync as readFileSync6, realpathSync as realpathSync3 } from "node:fs";
 import { open as open5, rename as rename4, rm as rm4 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute9, join as join15, resolve as resolve5 } from "node:path";
+import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute11, join as join17, resolve as resolve5 } from "node:path";
 function canonicalMigrationPath(input) {
-  if (!isAbsolute9(input))
+  if (!isAbsolute11(input))
     throw new VaultWalletError("INVALID_PATH", "Migration paths must be absolute.");
   let parent = resolve5(input);
   const tail = [];
@@ -298325,13 +298643,13 @@ function canonicalMigrationPath(input) {
     tail.unshift(basename2(parent));
     parent = next;
   }
-  return join15(realpathSync3(parent), ...tail);
+  return join17(realpathSync3(parent), ...tail);
 }
 function migrationJournalPaths(vaultPath, sessionId) {
   const id = uuid2().parse(sessionId);
   return {
-    journal: join15(dirname5(vaultPath), `.vault-migration-${id}.json`),
-    stageDirectory: join15(dirname5(vaultPath), `.vault-migration-${id}`)
+    journal: join17(dirname5(vaultPath), `.vault-migration-${id}.json`),
+    stageDirectory: join17(dirname5(vaultPath), `.vault-migration-${id}`)
   };
 }
 async function writeMigrationJournal(journal) {
@@ -298365,7 +298683,7 @@ function readMigrationJournal(context) {
     return;
   let journal;
   try {
-    journal = migrationJournalSchema.parse(JSON.parse(readFileSync5(path, "utf8")));
+    journal = migrationJournalSchema.parse(JSON.parse(readFileSync6(path, "utf8")));
   } catch {
     throw new VaultWalletError("MIGRATION_JOURNAL_INVALID", "Migration recovery metadata is invalid; preserve the encrypted files for manual recovery.");
   }
@@ -298411,8 +298729,8 @@ var init_vaultMigrationJournal = __esm(() => {
 });
 
 // utils/vaultMigrationBackend.ts
-import { createHash as createHash5, randomUUID as randomUUID6 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync6 } from "node:fs";
+import { createHash as createHash6, randomUUID as randomUUID6 } from "node:crypto";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync7 } from "node:fs";
 import {
   chmod as chmod4,
   copyFile as copyFile3,
@@ -298423,7 +298741,7 @@ import {
   rename as rename5,
   rm as rm5
 } from "node:fs/promises";
-import { dirname as dirname6, isAbsolute as isAbsolute10, join as join16, sep as sep2 } from "node:path";
+import { dirname as dirname6, isAbsolute as isAbsolute12, join as join18, sep as sep2 } from "node:path";
 function roleCandidates(prepared) {
   return Object.entries(prepared.entries).flatMap(([candidateId, entry]) => entry?.publicKey ? [
     {
@@ -298460,14 +298778,14 @@ function sameDestination(prepared, destination) {
   return destination.accountName === prepared.accountName && canonicalMigrationPath(destination.vaultPath) === prepared.session.vaultPath && destination.vaultEntryId === prepared.session.vaultEntryId && (destination.expectedPublicKey === undefined || destination.expectedPublicKey === prepared.session.publicKey);
 }
 async function createAccountVaultMigrationBackend(options) {
-  if (!isAbsolute10(options.projectRoot) || !isAbsolute10(options.vaultPath) || !options.expectedProjectId)
+  if (!isAbsolute12(options.projectRoot) || !isAbsolute12(options.vaultPath) || !options.expectedProjectId)
     throw failure4("PROJECT_REQUIRED", "Configure an explicit project root, project ID and absolute Vault path.");
   const projectRoot = canonicalMigrationPath(options.projectRoot);
   const expectedProjectId = options.expectedProjectId;
   const roleAssignments = Object.freeze({ ...options.roleAssignments });
   const vaultPath = canonicalMigrationPath(options.vaultPath);
   const root = canonicalMigrationPath(options.accountsDirectory ?? accountsRoot());
-  if (!isAbsolute10(root))
+  if (!isAbsolute12(root))
     throw failure4("PROJECT_REQUIRED", "The account directory must be an explicit absolute path.");
   const now = options.now ?? Date.now;
   if (vaultPath === root || vaultPath === dirname6(vaultPath) || vaultPath.startsWith(`${root}${sep2}`))
@@ -298523,9 +298841,9 @@ async function createAccountVaultMigrationBackend(options) {
   };
   const checkSource = (prepared) => {
     for (const [name, hash] of prepared.sourceHashes) {
-      const path = join16(prepared.sourceDir, name);
+      const path = join18(prepared.sourceDir, name);
       regularPath(path);
-      if (!existsSync12(path) || digest3(readFileSync6(path)) !== hash)
+      if (!existsSync12(path) || digest3(readFileSync7(path)) !== hash)
         throw failure4("SOURCE_CHANGED", "The account changed since preview. Close its wallet and unlock again before migration.");
     }
   };
@@ -298552,15 +298870,15 @@ async function createAccountVaultMigrationBackend(options) {
         regularPath(root, true);
         const sourceDir = accountDir(name, root);
         regularPath(sourceDir, true);
-        const configPath = join16(sourceDir, "config.json");
+        const configPath = join18(sourceDir, "config.json");
         regularPath(configPath);
-        const configBytes = readFileSync6(configPath);
+        const configBytes = readFileSync7(configPath);
         const config = readAccount(name, root);
         if (!config)
           throw failure4("ACCOUNT_UNAVAILABLE", "The selected existing account configuration is unavailable.");
-        const sourcePath = join16(sourceDir, "keys.bep");
+        const sourcePath = join18(sourceDir, "keys.bep");
         regularPath(sourcePath);
-        const sourceBytes = readFileSync6(sourcePath);
+        const sourceBytes = readFileSync7(sourcePath);
         const keys = await decodeEncryptedKeys(sourceBytes.toString("utf8"), credentials.sourcePassphrase);
         if (!keys.payPk)
           throw failure4("SOURCE_UNSUPPORTED", "The encrypted account has no payment key.");
@@ -298569,7 +298887,7 @@ async function createAccountVaultMigrationBackend(options) {
           throw failure4("IDENTITY_MISMATCH", "The account payment key does not match the approved public key.");
         regularPath(dirname6(vaultPath), true);
         regularPath(vaultPath);
-        const vaultBefore = existsSync12(vaultPath) ? readFileSync6(vaultPath) : null;
+        const vaultBefore = existsSync12(vaultPath) ? readFileSync7(vaultPath) : null;
         vault = vaultBefore ? await module.openVault(vaultPath, new module.PassphraseProvider(credentials.destinationPassphrase)) : new module.Vault(module.createVaultDocument({ revealEnabled: true }));
         if (!vault.toDocument().settings.revealEnabled)
           throw failure4("REVEAL_DISABLED", "Enable Vault reveal locally before choosing in-memory wallet use.");
@@ -298605,9 +298923,9 @@ async function createAccountVaultMigrationBackend(options) {
         const sourceHashes = new Map;
         for (const file of readdirSync5(sourceDir)) {
           if (file === "keys.bep" || file === "config.json" || /^wallet(?:-(main|test))?\.db(?:-wal|-shm)?$/.test(file)) {
-            const path = join16(sourceDir, file);
+            const path = join18(sourceDir, file);
             regularPath(path);
-            sourceHashes.set(file, digest3(readFileSync6(path)));
+            sourceHashes.set(file, digest3(readFileSync7(path)));
           }
         }
         if (digest3(sourceBytes) !== sourceHashes.get("keys.bep") || digest3(configBytes) !== sourceHashes.get("config.json"))
@@ -298762,7 +299080,7 @@ async function createAccountVaultMigrationBackend(options) {
         stageDirectory = migrationJournalPaths(vaultPath, input.sessionId).stageDirectory;
         await mkdir4(stageDirectory, { mode: 448 });
         await chmod4(stageDirectory, 448);
-        const backup = join16(stageDirectory, "source-keys.bep");
+        const backup = join18(stageDirectory, "source-keys.bep");
         const backupHandle = await open6(backup, "wx", 384);
         try {
           await backupHandle.writeFile(prepared.sourceBytes);
@@ -298770,9 +299088,9 @@ async function createAccountVaultMigrationBackend(options) {
         } finally {
           await backupHandle.close();
         }
-        const stage = join16(stageDirectory, "destination.bep");
+        const stage = join18(stageDirectory, "destination.bep");
         if (prepared.vaultBefore) {
-          const previousBackup = join16(stageDirectory, "previous-vault.bep");
+          const previousBackup = join18(stageDirectory, "previous-vault.bep");
           await copyFile3(vaultPath, previousBackup);
           await chmod4(previousBackup, 384);
           await syncFile2(previousBackup);
@@ -298931,13 +299249,13 @@ async function createAccountVaultMigrationBackend(options) {
       const sourceDir = accountDir(recovered.accountName, root);
       regularPath(sourceDir, true);
       for (const [name, hash] of Object.entries(recovered.sourceHashes)) {
-        const path = join16(sourceDir, name);
+        const path = join18(sourceDir, name);
         regularPath(path);
-        if (!existsSync12(path) || digest3(readFileSync6(path)) !== hash)
+        if (!existsSync12(path) || digest3(readFileSync7(path)) !== hash)
           return { status: "unknown" };
       }
       regularPath(vaultPath);
-      const actualVaultHash = existsSync12(vaultPath) ? digest3(readFileSync6(vaultPath)) : null;
+      const actualVaultHash = existsSync12(vaultPath) ? digest3(readFileSync7(vaultPath)) : null;
       const config = await loadProjectRoleBindings(projectRoot, expectedProjectId);
       if (recovered.stagedVaultHash && actualVaultHash === recovered.stagedVaultHash && recovered.nextProjectConfig && JSON.stringify(config) === JSON.stringify(recovered.nextProjectConfig))
         return {
@@ -298957,7 +299275,7 @@ async function createAccountVaultMigrationBackend(options) {
     lock: close
   };
 }
-var digest3 = (data) => createHash5("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
+var digest3 = (data) => createHash6("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
 var init_vaultMigrationBackend = __esm(() => {
   init_mod();
   init_accounts();
@@ -298971,8 +299289,8 @@ var init_vaultMigrationBackend = __esm(() => {
 });
 
 // utils/vaultSetupBootstrap.ts
-import { homedir as homedir7 } from "node:os";
-import { isAbsolute as isAbsolute11, join as join17 } from "node:path";
+import { homedir as homedir9 } from "node:os";
+import { isAbsolute as isAbsolute13, join as join19 } from "node:path";
 function unavailable3(reason) {
   const fail = async () => {
     throw new Error(reason);
@@ -298989,10 +299307,10 @@ function unavailable3(reason) {
 async function createConfiguredVaultSetupBackend(env = process.env, dependencies = {}) {
   const projectRoot = env.BSV_MCP_PROJECT_ROOT;
   const projectId = env.BSV_MCP_PROJECT_ID;
-  if (!projectRoot || !projectId || !isAbsolute11(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
+  if (!projectRoot || !projectId || !isAbsolute13(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
     return unavailable3("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
-  const vaultPath = env.VAULT_PATH ?? join17(dependencies.home ?? homedir7(), ".bsv", "vault.bep");
-  if (!vaultPath || !isAbsolute11(vaultPath))
+  const vaultPath = env.VAULT_PATH ?? join19(dependencies.home ?? homedir9(), ".bsv", "vault.bep");
+  if (!vaultPath || !isAbsolute13(vaultPath))
     return unavailable3("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
   try {
     return await (dependencies.createBackend ?? createAccountVaultMigrationBackend)({
@@ -299012,7 +299330,7 @@ async function runConfiguredVaultSetup(options = {}) {
 `));
   await (options.run ?? runVaultSetupCommand)({
     start: () => {
-      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join17(homedir7(), ".bsv", "vault.bep");
+      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join19(homedir9(), ".bsv", "vault.bep");
       return (options.start ?? startVaultSetup)({
         migrationBackend,
         embeddedActions: options.embeddedActions ?? createEmbeddedSetupActions({
@@ -299022,7 +299340,7 @@ async function runConfiguredVaultSetup(options = {}) {
           }
         }),
         flow: migrationBackend.available && (options.env ?? process.env).BSV_MCP_PROJECT_ROOT ? "project" : options.embeddedActions ? "embedded" : "standalone",
-        ...isAbsolute11(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
+        ...isAbsolute13(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
       });
     },
     open: options.open,
@@ -299127,8 +299445,8 @@ var init_walletOnboarding = __esm(() => {
 
 // server.ts
 import { readFile as readFile5 } from "node:fs/promises";
-import { homedir as homedir8 } from "node:os";
-import path4, { dirname as dirname7, join as join18 } from "node:path";
+import { homedir as homedir10 } from "node:os";
+import path4, { dirname as dirname7, join as join20 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function getConfiguredTools(server) {
   return configuredTools.get(server)?.() ?? [];
@@ -299781,7 +300099,7 @@ function registerMcpAppTools(server, config) {
   registerAppResource(server, "BSV Dashboard", APP_RESOURCE_URI, {
     description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs"
   }, async () => {
-    const distPath = __appDirname.endsWith("dist") ? join18(__appDirname, "app.html") : join18(__appDirname, "dist", "app.html");
+    const distPath = __appDirname.endsWith("dist") ? join20(__appDirname, "app.html") : join20(__appDirname, "dist", "app.html");
     let html;
     try {
       html = await readFile5(distPath, "utf-8");
@@ -299913,9 +300231,10 @@ Authentication:
   let walletSetupNeeded = false;
   let walletSetupReason;
   let openWalletSetup;
+  let activatedWalletCleanup;
   let keys;
   try {
-    if (CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && readAccount()?.vaultBinding) {
+    if (CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && (readAccount()?.vaultBinding || Object.keys(getWalletRoleSettings().effective).length > 0)) {
       walletSetupReason = "locked";
       throw new MissingWalletKeysError("Unlock your wallet in local setup.");
     }
@@ -299988,21 +300307,23 @@ Authentication:
     openWalletSetup = createWalletSetupLauncher({
       embeddedActions: createEmbeddedSetupActions({
         getAvailableTools: () => server ? getConfiguredTools(server) : [],
-        vaultPath: process.env.VAULT_PATH ?? join18(homedir8(), ".bsv", "vault.bep"),
+        vaultPath: process.env.VAULT_PATH ?? join20(homedir10(), ".bsv", "vault.bep"),
         onActivated: async (result, selectedAccountName) => {
           const refresh = server ? refreshConfiguredCatalog.get(server) : undefined;
           if (!refresh)
             throw new Error("The MCP connection is unavailable.");
           remoteCtx = result.ctx;
           remoteServices = result.services;
+          activatedWalletCleanup = result.destroy;
           process.env.BSV_MCP_ACCOUNT = selectedAccountName;
           Object.assign(toolsConfig, {
             ctx: result.ctx,
+            roleContexts: result.roleContexts,
             services: result.services,
             walletSetupNeeded: false,
             openWalletSetup: undefined,
             localAccountAvailable: true,
-            enableAccountTools: true,
+            enableAccountTools: !result.roleContexts,
             enableWalletTools: CONFIG.loadWalletTools,
             enableOrdinalsTools: CONFIG.loadOrdinalsTools,
             disableBroadcasting: CONFIG.disableBroadcasting
@@ -300244,7 +300565,11 @@ Effective Component Status:`);
   };
   for (const sig of ["SIGINT", "SIGTERM"]) {
     process.once(sig, () => {
-      Promise.allSettled([projectRuntime?.cleanup(), destroyWallet()]).catch(() => {});
+      Promise.allSettled([
+        projectRuntime?.cleanup(),
+        activatedWalletCleanup?.(),
+        destroyWallet()
+      ]).catch(() => {});
     });
   }
   if (CONFIG.transportMode === "stdio") {
@@ -300491,6 +300816,7 @@ var init_server2 = __esm(() => {
   init_wallet3();
   init_accountCommands();
   init_accounts();
+  init_walletRoleDefaults();
   init_backends();
   init_droplit();
   init_embeddedSetupActions();

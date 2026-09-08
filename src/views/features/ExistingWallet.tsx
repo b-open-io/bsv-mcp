@@ -34,11 +34,15 @@ export function ExistingWallet({
 	const [confirmed, setConfirmed] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [ready, setReady] = useState(false);
+	const [savedAccount, setSavedAccount] = useState("");
+	const [inventoryRevision, setInventoryRevision] = useState(0);
 	const [error, setError] = useState("");
 	const [tools, setTools] = useState<AvailableSetupTool[]>();
 	useEffect(() => {
 		if (!token) return;
-		fetch("/api/inventory", { headers: { Authorization: `Bearer ${token}` } })
+		fetch(`/api/inventory?revision=${inventoryRevision}`, {
+			headers: { Authorization: `Bearer ${token}` },
+		})
 			.then(async (response) => {
 				if (!response.ok)
 					throw new Error(
@@ -60,7 +64,7 @@ export function ExistingWallet({
 				);
 			})
 			.catch((reason) => setError(reason.message));
-	}, [token]);
+	}, [token, inventoryRevision]);
 	function resetSelection() {
 		setSource(undefined);
 		setFile(undefined);
@@ -97,6 +101,7 @@ export function ExistingWallet({
 				body: JSON.stringify({
 					source,
 					accountName,
+					activate: false,
 					sourcePassphrase,
 					destinationPassphrase,
 					passwordConfirmation,
@@ -109,6 +114,12 @@ export function ExistingWallet({
 			const value = await response.json();
 			if (!response.ok)
 				throw new Error(value.error || "The wallet could not be imported.");
+			if (value.saved === true && value.ready === false) {
+				resetSelection();
+				setSavedAccount(value.accountName);
+				setInventoryRevision((value) => value + 1);
+				return;
+			}
 			if (value.ready !== true)
 				throw new Error(
 					"The wallet was saved, but could not be activated. Reopen setup to unlock it.",
@@ -148,6 +159,12 @@ export function ExistingWallet({
 				}
 			/>
 			{error && <Notice tone="error">{error}</Notice>}
+			{savedAccount && (
+				<Notice tone="success">
+					{savedAccount} is saved in your Vault. Import another wallet below, or
+					choose your default keys to continue.
+				</Notice>
+			)}
 			{ready ? (
 				<>
 					<Notice tone="success">
@@ -169,7 +186,7 @@ export function ExistingWallet({
 								onClick={() => onUnlock(account.name)}
 							>
 								<strong>{account.name}</strong>
-								<span>Already in your Vault — unlock to continue</span>
+								<span>Saved in your Vault · choose default keys</span>
 							</button>
 						))}
 						{sources === undefined ? (

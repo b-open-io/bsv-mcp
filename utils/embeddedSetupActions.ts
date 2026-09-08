@@ -5,8 +5,11 @@ import { createEmbeddedImportBackend } from "./embeddedImportBackend";
 import { createEmbeddedWalletActivation } from "./embeddedWalletActivation";
 import type { AvailableSetupTool, EmbeddedSetupActions } from "./vaultSetup";
 import type { WalletInitResult } from "./walletInit";
+import { getWalletRoleSettings } from "./walletRoleDefaults";
+import { activateWalletRoles } from "./walletRoleActivation";
 
 const createInput = z.object({
+	activate: z.boolean().default(true),
 	accountName: accountNameSchema,
 	password: z.string().min(8),
 	passwordConfirmation: z.string(),
@@ -17,6 +20,7 @@ const unlockInput = z.object({
 	password: z.string().min(1),
 });
 const importInput = z.object({
+	activate: z.boolean().default(true),
 	accountName: accountNameSchema,
 	source: z
 		.object({
@@ -75,14 +79,14 @@ export function createEmbeddedSetupActions(options: {
 		}
 	}
 	async function activate(accountName: string, password: string) {
+		accountName =
+			getWalletRoleSettings().effective.payments?.split(":")[0] ?? accountName;
 		const binding = readAccount(accountName)?.vaultBinding;
 		if (!binding)
 			throw new Error("This wallet has not been saved in your Vault.");
-		const result = await activation.activate({
-			accountName,
-			password,
-			binding,
-		});
+		const result =
+			(await activateWalletRoles(options.vaultPath, password, accountName)) ??
+			(await activation.activate({ accountName, password, binding }));
 		try {
 			await options.onActivated(result, accountName);
 		} catch {
@@ -105,6 +109,13 @@ export function createEmbeddedSetupActions(options: {
 			exclusive(async () => {
 				const input = createInput.parse(body);
 				const saved = await creator.create(input);
+				if (!input.activate)
+					return {
+						accountName: saved.accountName,
+						address: readAccount(saved.accountName)?.address ?? "",
+						ready: false,
+						saved: true,
+					};
 				return activate(saved.accountName, input.password);
 			}),
 		unlock: (body) =>
@@ -137,6 +148,13 @@ export function createEmbeddedSetupActions(options: {
 						confirmation: input.confirmation,
 					});
 				}
+				if (!input.activate)
+					return {
+						accountName: saved.accountName,
+						address: readAccount(saved.accountName)?.address ?? "",
+						ready: false,
+						saved: true,
+					};
 				return activate(saved.accountName, input.destinationPassphrase);
 			}),
 	};

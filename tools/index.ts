@@ -79,6 +79,11 @@ export interface ToolsConfig {
 	integratedWallet?: IntegratedWallet;
 	disableBroadcasting?: boolean; // For wallet tools
 	ctx?: OneSatContext;
+	roleContexts?: {
+		payments: OneSatContext;
+		identity?: OneSatContext;
+		ordinals?: OneSatContext;
+	};
 	services?: OneSatServices;
 	droplitClient?: DroplitClient;
 	droplitApiUrl?: string;
@@ -203,6 +208,7 @@ export function registerAllTools(
 			// Register normal wallet tools
 			const walletToolOptions = {
 				ctx: config.ctx,
+				roleContexts: config.roleContexts,
 				allowWholeWalletBalance: !externalWallet,
 				scope: config.walletScope,
 			};

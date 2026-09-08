@@ -32,6 +32,7 @@ export type CreateOrdinalsArgs = z.infer<typeof createOrdinalsArgsSchema>;
 export function registerCreateOrdinalsTool(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
+	identityContext?: OneSatContext | null,
 ) {
 	server.registerTool(
 		"wallet_createOrdinals",
@@ -62,6 +63,10 @@ export function registerCreateOrdinalsTool(
 			try {
 				assertBroadcastAllowed("wallet_createOrdinals");
 				if (signWithBAP === true) {
+					if (identityContext !== undefined && identityContext !== ctx)
+						throw new Error(
+							"Sigma inscriptions require the identity and ordinals roles to use the same key with the current wallet adapter.",
+						);
 					try {
 						await resolveSigmaSigningContext(ctx);
 					} catch (preflight: unknown) {

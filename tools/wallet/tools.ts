@@ -33,12 +33,24 @@ export function registerWalletTools(
 	wallet: Wallet | undefined,
 	config: {
 		ctx?: OneSatContext;
+		roleContexts?: {
+			payments: OneSatContext;
+			identity?: OneSatContext;
+			ordinals?: OneSatContext;
+		};
 		/** External signers do not expose the server's broad default-basket read. */
 		allowWholeWalletBalance?: boolean;
 		/** Project payments sessions do not authorize identity/OneSat operations. */
 		scope?: "full" | "payments";
 	},
 ): void {
+	const assets = config.roleContexts
+		? config.roleContexts.ordinals
+		: config.ctx;
+	const identity = config.roleContexts
+		? config.roleContexts.identity
+		: config.ctx;
+
 	registerSendBsvTool(server, config.ctx);
 
 	// Register the wallet_getAddress tool
@@ -51,10 +63,12 @@ export function registerWalletTools(
 	}
 
 	// Register the wallet_purchaseListing tool
-	registerPurchaseListingTool(server, config.ctx);
+	if (!config.roleContexts || assets)
+		registerPurchaseListingTool(server, assets);
 
 	// Register the wallet_transferOrdToken tool
-	registerTransferOrdTokenTool(server, config.ctx);
+	if (!config.roleContexts || assets)
+		registerTransferOrdTokenTool(server, assets);
 
 	// Register the wallet_refreshUtxos tool
 	registerRefreshUtxosTool(server, config.ctx);
@@ -69,11 +83,21 @@ export function registerWalletTools(
 	}
 
 	// Register full BRC-100 wallet interface
-	registerBrc100Tools(server, config.ctx);
-	registerRevealDelegationTool(server, config.ctx);
+	registerBrc100Tools(
+		server,
+		config.ctx,
+		config.roleContexts ? (identity ?? null) : undefined,
+	);
+	if (!config.roleContexts || identity)
+		registerRevealDelegationTool(server, identity);
 
 	// Register createOrdinals tool
-	registerCreateOrdinalsTool(server, config.ctx);
+	if (!config.roleContexts || assets)
+		registerCreateOrdinalsTool(
+			server,
+			assets,
+			config.roleContexts ? (identity ?? null) : undefined,
+		);
 
 	// Register collection tools
 	if (wallet) {
@@ -82,23 +106,25 @@ export function registerWalletTools(
 	}
 
 	// Register read-only wallet tools
-	registerGetOrdinalsTool(server, config.ctx);
-	registerListTokensTool(server, config.ctx);
-	registerGetBsv21BalancesTool(server, config.ctx);
-	registerGetLockDataTool(server, config.ctx);
-	registerSignBsmTool(server, config.ctx);
+	if (!config.roleContexts || assets) registerGetOrdinalsTool(server, assets);
+	if (!config.roleContexts || assets) registerListTokensTool(server, assets);
+	if (!config.roleContexts || assets)
+		registerGetBsv21BalancesTool(server, assets);
+	if (!config.roleContexts || assets) registerGetLockDataTool(server, assets);
+	if (!config.roleContexts || identity) registerSignBsmTool(server, identity);
 
 	// Register state-changing action tools
-	registerListOrdinalTool(server, config.ctx);
-	registerCancelListingTool(server, config.ctx);
+	if (!config.roleContexts || assets) registerListOrdinalTool(server, assets);
+	if (!config.roleContexts || assets) registerCancelListingTool(server, assets);
 	registerSendAllBsvTool(server, config.ctx);
-	registerLockBsvTool(server, config.ctx);
-	registerUnlockBsvTool(server, config.ctx);
-	registerOpnsRegisterTool(server, config.ctx);
-	registerOpnsDeregisterTool(server, config.ctx);
+	if (!config.roleContexts || assets) registerLockBsvTool(server, assets);
+	if (!config.roleContexts || assets) registerUnlockBsvTool(server, assets);
+	if (!config.roleContexts || assets) registerOpnsRegisterTool(server, assets);
+	if (!config.roleContexts || assets)
+		registerOpnsDeregisterTool(server, assets);
 
 	// Register sweep tools
 	registerSweepBsvTool(server, config.ctx);
-	registerSweepOrdinalsTool(server, config.ctx);
-	registerSweepBsv21Tool(server, config.ctx);
+	if (!config.roleContexts || assets) registerSweepOrdinalsTool(server, assets);
+	if (!config.roleContexts || assets) registerSweepBsv21Tool(server, assets);
 }

@@ -21,6 +21,7 @@ import {
 } from "@bsv/sdk";
 import { WalletPermissionsManager } from "@bsv/wallet-toolbox/out/src/index.client.js";
 import {
+	type AccountConfig,
 	accountDir,
 	readAccount,
 	regularPath,
@@ -85,6 +86,11 @@ export interface WalletInitResult {
 	ctx: OneSatContext;
 	depositAddress: string;
 	destroy: () => Promise<void>;
+	roleContexts?: {
+		payments: OneSatContext;
+		identity?: OneSatContext;
+		ordinals?: OneSatContext;
+	};
 }
 
 let activeResult: Pick<NodeWalletResult, "destroy"> | null = null;
@@ -101,13 +107,15 @@ export async function initWallet(
 	options: {
 		/** Explicit existing account for project-bound Vault sessions. */
 		accountName?: string;
+		/** Trusted public configuration for a separately stored Vault identity key. */
+		accountConfig?: AccountConfig;
 		/** Session-owned wallets must not replace the legacy global wallet. */
 		trackActive?: boolean;
 		sessionSignal?: AbortSignal;
 	} = {},
 ): Promise<WalletInitResult> {
 	options.sessionSignal?.throwIfAborted();
-	const config = readAccount(options.accountName);
+	const config = options.accountConfig ?? readAccount(options.accountName);
 	if (options.accountName !== undefined && !config)
 		throw new Error("The selected wallet account is not initialized");
 	if (config && config.chain !== chain)

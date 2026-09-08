@@ -8,6 +8,10 @@ import {
 	type VaultMigrationDestination,
 	VaultMigrationWizard,
 } from "./vaultMigrationWizard";
+import {
+	getWalletRoleSettings,
+	saveWalletRoleDefaults,
+} from "./walletRoleDefaults";
 
 function unavailableMigrationBackend(): VaultMigrationBackend {
 	const reason =
@@ -176,6 +180,23 @@ export async function startVaultSetup(
 			return;
 		}
 		try {
+			if (apiPath === "/api/embedded/roles") {
+				if (req.method === "GET")
+					return writeJson(res, getWalletRoleSettings());
+				if (req.method !== "POST") {
+					res.writeHead(405, { Allow: "GET, POST" }).end();
+					return;
+				}
+				const body = await readJson(req);
+				if (typeof body.revision !== "number") {
+					res.writeHead(400).end();
+					return;
+				}
+				return writeJson(
+					res,
+					saveWalletRoleDefaults(body.defaults, body.revision),
+				);
+			}
 			if (apiPath?.startsWith("/api/embedded/")) {
 				if (req.method !== "POST") {
 					res.writeHead(405, { Allow: "POST" }).end();

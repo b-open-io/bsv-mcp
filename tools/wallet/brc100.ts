@@ -60,7 +60,48 @@ function identityKeyArg(v: boolean | undefined): true | undefined {
 export function registerBrc100Tools(
 	server: McpServer,
 	ctx: OneSatContext | undefined,
+	identityContext?: OneSatContext | null,
 ) {
+	if (ctx && identityContext !== undefined) {
+		const payments = ctx;
+		const identityMethods = new Set([
+			"getPublicKey",
+			"createSignature",
+			"verifySignature",
+			"createHmac",
+			"verifyHmac",
+			"encrypt",
+			"decrypt",
+			"acquireCertificate",
+			"listCertificates",
+			"proveCertificate",
+			"relinquishCertificate",
+			"discoverByIdentityKey",
+			"discoverByAttributes",
+			"revealCounterpartyKeyLinkage",
+			"revealSpecificKeyLinkage",
+		]);
+		const wallet = new Proxy(payments.wallet, {
+			get(target, property) {
+				const selected = identityMethods.has(String(property))
+					? identityContext?.wallet
+					: target;
+				if (!selected)
+					return async () => {
+						throw new Error(
+							"No identity key is assigned. Configure wallet key defaults.",
+						);
+					};
+				const value = Reflect.get(selected, property, selected);
+				return typeof value === "function" ? value.bind(selected) : value;
+			},
+		});
+		ctx = Object.assign(
+			Object.create(Object.getPrototypeOf(payments)),
+			payments,
+			{ wallet },
+		);
+	}
 	// ── Transaction lifecycle ──────────────────────────────────────────
 
 	server.registerTool(

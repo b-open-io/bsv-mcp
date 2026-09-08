@@ -28,7 +28,9 @@ const settingsSchema = z
 	.passthrough();
 
 /** User-owned public selectors only. Never infer custom sources from installation paths. */
-export function readWalletSources(home = homedir()): WalletSource[] {
+export function readWalletSettings(
+	home = homedir(),
+): Record<string, unknown> & { sources: WalletSource[] } {
 	let fd: number;
 	try {
 		fd = openSync(
@@ -36,20 +38,24 @@ export function readWalletSources(home = homedir()): WalletSource[] {
 			constants.O_RDONLY | constants.O_NOFOLLOW,
 		);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		if ((error as NodeJS.ErrnoException).code === "ENOENT")
+			return { sources: [] };
 		throw error;
 	}
 	try {
 		const stat = fstatSync(fd);
 		if (!stat.isFile() || stat.size > 1024 * 1024)
 			throw new Error("Invalid wallet settings file");
-		const { sources } = settingsSchema.parse(
-			JSON.parse(readFileSync(fd, "utf8")),
-		);
+		const settings = settingsSchema.parse(JSON.parse(readFileSync(fd, "utf8")));
+		const { sources } = settings;
 		if (new Set(sources.map((source) => source.name)).size !== sources.length)
 			throw new Error("Wallet source names must be unique");
-		return sources;
+		return settings;
 	} finally {
 		closeSync(fd);
 	}
+}
+
+export function readWalletSources(home = homedir()): WalletSource[] {
+	return readWalletSettings(home).sources;
 }

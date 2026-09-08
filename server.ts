@@ -41,6 +41,7 @@ import { IntegratedWallet } from "./tools/wallet/integratedWallet.ts";
 import { Wallet } from "./tools/wallet/wallet.ts";
 import { runAccountCommand } from "./utils/accountCommands";
 import { accountDir, accountName, readAccount } from "./utils/accounts";
+import { getWalletRoleSettings } from "./utils/walletRoleDefaults";
 import {
 	contentUrl,
 	explorerFetch,
@@ -1279,6 +1280,7 @@ Authentication:
 		| "locked"
 		| undefined;
 	let openWalletSetup: (() => Promise<void>) | undefined;
+	let activatedWalletCleanup: (() => Promise<void>) | undefined;
 	let keys:
 		| Awaited<ReturnType<typeof initializeSecureKeys>>
 		| {
@@ -1295,7 +1297,8 @@ Authentication:
 			!projectRuntime &&
 			!externalWallet &&
 			!CONFIG.useDroplitApi &&
-			readAccount()?.vaultBinding
+			(readAccount()?.vaultBinding ||
+				Object.keys(getWalletRoleSettings().effective).length > 0)
 		) {
 			walletSetupReason = "locked";
 			throw new MissingWalletKeysError("Unlock your wallet in local setup.");
@@ -1409,14 +1412,16 @@ Authentication:
 					if (!refresh) throw new Error("The MCP connection is unavailable.");
 					remoteCtx = result.ctx;
 					remoteServices = result.services;
+					activatedWalletCleanup = result.destroy;
 					process.env.BSV_MCP_ACCOUNT = selectedAccountName;
 					Object.assign(toolsConfig, {
 						ctx: result.ctx,
+						roleContexts: result.roleContexts,
 						services: result.services,
 						walletSetupNeeded: false,
 						openWalletSetup: undefined,
 						localAccountAvailable: true,
-						enableAccountTools: true,
+						enableAccountTools: !result.roleContexts,
 						enableWalletTools: CONFIG.loadWalletTools,
 						enableOrdinalsTools: CONFIG.loadOrdinalsTools,
 						disableBroadcasting: CONFIG.disableBroadcasting,
@@ -1779,9 +1784,11 @@ Authentication:
 	// Clean up remote wallet on shutdown
 	for (const sig of ["SIGINT", "SIGTERM"] as const) {
 		process.once(sig, () => {
-			Promise.allSettled([projectRuntime?.cleanup(), destroyWallet()]).catch(
-				() => {},
-			);
+			Promise.allSettled([
+				projectRuntime?.cleanup(),
+				activatedWalletCleanup?.(),
+				destroyWallet(),
+			]).catch(() => {});
 		});
 	}
 

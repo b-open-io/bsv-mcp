@@ -9,6 +9,7 @@ import {
 	Surface,
 } from "../components/LocalShell";
 import { ExistingWallet } from "./ExistingWallet";
+import { WalletRoleSettings } from "./WalletRoleSettings";
 
 export function FirstRun({
 	token,
@@ -18,7 +19,7 @@ export function FirstRun({
 	standalone?: boolean;
 }) {
 	const [choice, setChoice] = useState<
-		"welcome" | "create" | "existing" | "unlock"
+		"welcome" | "create" | "existing" | "unlock" | "roles"
 	>("welcome");
 	const [boundAccounts, setBoundAccounts] = useState<Array<{ name: string }>>(
 		[],
@@ -64,7 +65,10 @@ export function FirstRun({
 			}
 			const view = window.history.state?.view;
 			setChoice(
-				view === "create" || view === "existing" || view === "unlock"
+				view === "create" ||
+					view === "existing" ||
+					view === "unlock" ||
+					view === "roles"
 					? view
 					: "welcome",
 			);
@@ -106,6 +110,7 @@ export function FirstRun({
 					},
 					body: JSON.stringify({
 						accountName: name,
+						activate: false,
 						password,
 						passwordConfirmation: confirmation,
 						confirmation: "CREATE_NEW_CONFIRMED",
@@ -119,6 +124,15 @@ export function FirstRun({
 				);
 			setPassword("");
 			setConfirmation("");
+			if (value.saved === true) {
+				setChoice("roles");
+				window.history.pushState(
+					{ view: "roles" },
+					"",
+					"/setup/source?mode=migration&view=roles",
+				);
+				return;
+			}
 			if (value.ready !== true)
 				throw new Error(
 					"Your wallet was saved, but could not be activated. Reopen setup to unlock it.",
@@ -145,16 +159,24 @@ export function FirstRun({
 				/>
 			</LocalShell>
 		);
+	if (choice === "roles")
+		return (
+			<WalletRoleSettings
+				token={token}
+				onBack={() => navigate("existing")}
+				onUnlock={(account) => {
+					setName(account);
+					navigate("unlock");
+				}}
+			/>
+		);
 	if (choice === "existing")
 		return (
 			<ExistingWallet
 				token={token}
 				standalone={standalone}
 				onWelcome={back}
-				onUnlock={(account) => {
-					setName(account);
-					navigate("unlock");
-				}}
+				onUnlock={() => navigate("roles")}
 			/>
 		);
 	return (
@@ -203,20 +225,12 @@ export function FirstRun({
 				</>
 			) : choice === "welcome" ? (
 				<div className="setup-choices">
-					{boundAccounts.map((account) => (
-						<button
-							type="button"
-							className="setup-choice"
-							key={account.name}
-							onClick={() => {
-								setName(account.name);
-								navigate("unlock");
-							}}
-						>
-							<strong>Unlock {account.name}</strong>
-							<span>Use a wallet already saved in your Vault.</span>
-						</button>
-					))}
+					{boundAccounts.length > 0 && (
+						<Button onClick={() => navigate("roles")}>
+							Choose default keys
+						</Button>
+					)}
+
 					<button
 						type="button"
 						className="setup-choice"
