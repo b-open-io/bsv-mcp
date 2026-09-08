@@ -2,9 +2,8 @@ import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { createContext } from "@1sat/actions";
 import * as nodeWallet from "@1sat/wallet-node";
 import { PrivateKey, type WalletInterface } from "@bsv/sdk";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/client";
+import { InMemoryTransport, McpServer } from "@modelcontextprotocol/server";
 import { registerAllTools } from "../tools";
 import {
 	initializeKeysForWalletMode,

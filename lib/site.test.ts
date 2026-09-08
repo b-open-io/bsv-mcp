@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import {
 	LATEST_PROTOCOL_VERSION,
 	SUPPORTED_PROTOCOL_VERSIONS,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/client";
 import {
 	getAppVersion,
 	MCP_ENDPOINT,
