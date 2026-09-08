@@ -271,6 +271,8 @@ test("internal address derivation gets owner origin without elevating public key
 	expect(derived.derivations[0]?.publicKey).toBe(OWNER_PUBLIC_KEY);
 	expect(calls).toHaveLength(3);
 	expect(calls[1]?.[1]).toBe(ADMIN_ORIGINATOR);
+	await ownerWallet.getPublicKey({ identityKey: true }, undefined);
+	expect(calls.at(-1)?.[1]).toBe(ADMIN_ORIGINATOR);
 });
 
 test("wallet_getAddress uses only the embedded derivation context", async () => {

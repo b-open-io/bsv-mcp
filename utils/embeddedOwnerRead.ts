@@ -58,7 +58,7 @@ export function withEmbeddedOwnerDerivation(
 
 			return (...args: unknown[]) => {
 				if (args.length < 2 || args[1] === undefined) {
-					return Reflect.apply(value, target, [...args, ownerOriginator]);
+					return Reflect.apply(value, target, [args[0], ownerOriginator]);
 				}
 				return Reflect.apply(value, target, args);
 			};
