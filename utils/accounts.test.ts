@@ -18,14 +18,49 @@ import { createAccount, migrateAccount } from "./accountCommands";
 import {
 	accountDir,
 	accountName,
+	DEFAULT_STORAGE_REMOTE_URL,
 	listAccounts,
 	newAccountConfig,
 	readAccount,
+	resolveStorageConfig,
 } from "./accounts";
 import { initializeSecureKeys, SecureKeyManager } from "./keyManager";
 import { signerChildEnvironment, signerRequestAllowed } from "./signer";
 
 const password = "test-only-password";
+test("new embedded accounts select the intended remote and resolve backups deterministically", () => {
+	const key = PrivateKey.fromString("4", 16);
+	const config = newAccountConfig("main", key.toAddress());
+
+	expect(config.activeRemote).toBe(DEFAULT_STORAGE_REMOTE_URL);
+	expect(newAccountConfig("test", key.toAddress([0x6f])).activeRemote).toBe(
+		undefined,
+	);
+	expect(
+		resolveStorageConfig({
+			activeRemote: "https://wallet.1sat.app",
+			backups: ["https://wallet.1sat.app", "https://backup.example"],
+		}),
+	).toEqual({
+		activeRemote: "https://wallet.1sat.app",
+		backups: ["https://backup.example"],
+	});
+	expect(
+		resolveStorageConfig(
+			{
+				activeRemote: "https://wallet.1sat.app",
+				backups: ["https://backup.example"],
+			},
+			"https://override.example",
+		),
+	).toEqual({
+		activeRemote: "https://override.example",
+		backups: ["https://backup.example"],
+	});
+	expect(() =>
+		resolveStorageConfig(undefined, "http://storage.example"),
+	).toThrow("HTTPS or loopback HTTP");
+});
 test("encrypted accounts preserve all keys, isolate accounts and never fall back to plaintext", async () => {
 	const root = mkdtempSync(join(tmpdir(), "bsv-accounts-"));
 	try {
@@ -169,6 +204,35 @@ test("migration preserves source, storage identity and SQLite data and is idempo
 		).rejects.toThrow("Incomplete migration destination");
 		expect(existsSync(join(source, "root.wif"))).toBe(true);
 	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+test("legacy migration keeps the historical storage endpoint by default", async () => {
+	const root = mkdtempSync(join(tmpdir(), "bsv-legacy-migrate-"));
+	const previousApi = process.env.ONESAT_API_URL;
+	const previousRemote = process.env.REMOTE_STORAGE_URL;
+	try {
+		delete process.env.ONESAT_API_URL;
+		delete process.env.REMOTE_STORAGE_URL;
+		const source = join(root, "source");
+		const accounts = join(root, "accounts");
+		mkdirSync(source);
+		const key = PrivateKey.fromString("5", 16);
+		writeFileSync(
+			join(source, "keys.json"),
+			JSON.stringify({ wif: key.toWif() }),
+			{ mode: 0o600 },
+		);
+
+		await migrateAccount("legacy", "legacy", password, accounts, source);
+		expect(readAccount("legacy", accounts)?.activeRemote).toBe(
+			"https://api.1sat.app/1sat/wallet",
+		);
+	} finally {
+		if (previousApi === undefined) delete process.env.ONESAT_API_URL;
+		else process.env.ONESAT_API_URL = previousApi;
+		if (previousRemote === undefined) delete process.env.REMOTE_STORAGE_URL;
+		else process.env.REMOTE_STORAGE_URL = previousRemote;
 		rmSync(root, { recursive: true, force: true });
 	}
 });
