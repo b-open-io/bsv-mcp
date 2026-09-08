@@ -787,7 +787,10 @@ export class VaultMigrationWizard {
 		this.update({
 			phase: "interrupted",
 			status: "failed",
-			error: { code: "interrupted", message, retryable: true },
+			// An interrupted cutover has an unknown write outcome. Require
+			// reconciliation before retrying, even when the source still appears
+			// usable locally.
+			error: { code: "interrupted", message, retryable: false },
 			cutoverConfirmed: false,
 		});
 		return this.snapshot();
@@ -891,7 +894,10 @@ export class VaultMigrationWizard {
 			)
 				? "Vault migration failed. No cutover was confirmed."
 				: rawMessage.slice(0, 500);
-		return this.fail("backend-error", message, true, noEffect);
+		// A generic backend failure may have happened after a durable write was
+		// attempted. Only a trusted adapter's explicit noEffect marker proves
+		// that retrying is safe.
+		return this.fail("backend-error", message, noEffect, noEffect);
 	}
 
 	private update(patch: Partial<MigrationWizardState>) {
