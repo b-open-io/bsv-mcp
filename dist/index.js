@@ -25840,7 +25840,7 @@ var init_package = __esm(() => {
     },
     scripts: {
       build: "bun run ./scripts/build.ts",
-      "build:view": "vite build && vite build --mode mcp",
+      "build:view": "NODE_ENV=production vite build && NODE_ENV=production vite build --mode mcp",
       "build:all": "bun run build:view && bun run build",
       dev: "next dev",
       "build:next": "next build",
@@ -226359,7 +226359,7 @@ var require_finalhandler = __commonJS(function(exports, module) {
   module.exports = finalhandler;
   function finalhandler(req, res, options) {
     var opts = options || {};
-    var env = opts.env || "test";
+    var env = opts.env || "production";
     var onerror = opts.onerror;
     return function(err) {
       var headers;
@@ -228851,7 +228851,7 @@ var require_application = __commonJS(function(exports, module) {
     });
   };
   app.defaultConfiguration = function defaultConfiguration() {
-    var env = "test";
+    var env = "production";
     this.enable("x-powered-by");
     this.set("etag", "weak");
     this.set("env", env);

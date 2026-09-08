@@ -48,7 +48,11 @@ const result = Bun.spawnSync(
 		`--banner=${STDIO_GUARD}`,
 		...UNUSED_KNEX_DRIVERS.flatMap((driver) => ["--external", driver]),
 	],
-	{ stdout: "inherit", stderr: "inherit" },
+	{
+		stdout: "inherit",
+		stderr: "inherit",
+		env: { ...process.env, NODE_ENV: "production" },
+	},
 );
 if (result.exitCode !== 0) {
 	process.stderr.write(`Build failed with exit code ${result.exitCode}\n`);
@@ -70,7 +74,11 @@ const launcher = Bun.spawnSync(
 		"--target=node",
 		`--outfile=${LAUNCHER_OUTFILE}`,
 	],
-	{ stdout: "inherit", stderr: "inherit" },
+	{
+		stdout: "inherit",
+		stderr: "inherit",
+		env: { ...process.env, NODE_ENV: "production" },
+	},
 );
 if (launcher.exitCode !== 0) {
 	process.stderr.write(

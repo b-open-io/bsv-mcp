@@ -134,9 +134,10 @@ mode, enabled modules, account context, and the selected profile determine what
 configured server, not a promise of a fixed default count. Set
 `MCP_TOOL_CATALOG=compact` only to opt into bounded read families; compact mode
 is a staged capability pending release validation. Tool availability still
-depends on wallet mode and enabled modules. Compact mode exposes only the
-`bsv_read`, `ordinals_read`, `wallet_read`, and `utility` families, each with a
-bounded operation enum; unknown operations are rejected. See the [MCP client
+depends on wallet mode and enabled modules. Its baseline read families are
+`bsv_read`, `ordinals_read`, `wallet_read`, and `utility`, each with a bounded
+operation enum; unknown operations are rejected. Eligible sessions also expose
+separate mutating `wallet_setup` and `wallet_payments` families. See the [MCP client
 protocol support guide](docs/mcp-client-protocol-support.md) for the per-family
 operation bounds, endpoint contracts, MCP Apps compatibility, and validation
 status.
@@ -146,6 +147,9 @@ status.
 External mode connects to an existing BRC-100 signer. The signer keeps the
 private keys, wallet storage, and permission decisions; BSV MCP receives only
 the SDK signer interface. Embedded mode uses an encrypted local Vault wallet.
+The wallet-ready screen displays an interactive cloud of the connected session’s
+available tools, generated from its live catalog.
+
 When setup is needed, `wallet_onboarding` opens the private browser flow to
 create, import, or unlock it. The selected account's database and storage
 configuration remain in use. The launcher's existing-account embedded mode

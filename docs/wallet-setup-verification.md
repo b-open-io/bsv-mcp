@@ -19,6 +19,16 @@ Verified September 8, 2026 against the bundled executable in the canonical check
 
 These checks establish local setup, import, persistence, and MCP activation. They do not establish funded transaction execution or remote storage availability. Four real-Vault project-profile tests are opt-in and remain skipped in the default suite. They were also run separately against the installed Vault package: all four passed, with 47 assertions, using synthetic fixtures.
 
-Final automated validation: 584 tests passed, 4 opt-in tests skipped, 0 failures across 84 files (3,176 assertions). TypeScript and production bundle builds passed. The canonical test helpers now isolate subprocess working directories and restore wallet environment variables so local checkout settings do not interfere with synthetic tests.
+Initial onboarding validation: 584 tests passed, 4 opt-in tests skipped, 0 failures across 84 files (3,176 assertions). TypeScript and production bundle builds passed. The canonical test helpers now isolate subprocess working directories and restore wallet environment variables so local checkout settings do not interfere with synthetic tests.
 
 After integrating skill discovery, reference retirement, and PeerPay receive, the full suite passed 659 tests with 4 opt-in skips and 0 failures (3,400 assertions across 91 files). A fresh browser-created synthetic wallet activated successfully, returned an address, and exposed the PeerPay and skill-discovery tools in the refreshed session. This follow-up did not send or receive funded payments.
+
+The tool-cloud follow-up passed 661 tests with 4 opt-in skips and 0 failures
+(3,424 assertions across 92 files), plus TypeScript and production builds.
+A fresh synthetic browser wallet displayed 83 live tools; selecting PeerPay
+showed its registered description. Full and compact metadata parity with
+`tools/list` is covered by the new catalog tests. An actual Codex 0.153.4 run
+against commit `0fed5be` negotiated `2025-06-18` and completed initialization,
+tool discovery, and a dashboard call with `ready: true`. Its server artifact
+SHA-256 was `3ffa3a7ee8af8f6ed31bc104bccc274a98895e18dbfefbbb4d65f4da5389491d`.
+Modern Codex negotiation was not observed.

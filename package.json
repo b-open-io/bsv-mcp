@@ -92,7 +92,7 @@
 	},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
-		"build:view": "vite build && vite build --mode mcp",
+		"build:view": "NODE_ENV=production vite build && NODE_ENV=production vite build --mode mcp",
 		"build:all": "bun run build:view && bun run build",
 		"dev": "next dev",
 		"build:next": "next build",

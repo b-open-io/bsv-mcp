@@ -2,7 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+
+- Create, import, and unlock an embedded wallet through private local browser
+  setup. Activation refreshes the connected MCP session immediately; the ready
+  screen shows an interactive tool cloud generated from its enabled catalog.
+- Receive selected PeerPay payments with `wallet_peerPayments` (or the compact
+  `wallet_payments` family). Wallet acceptance precedes acknowledgement;
+  automatic MessageBox service-fee spending is refused. Availability is limited
+  to eligible embedded wallets.
+- Discover skill metadata and links with `utils_find_skills`, using a bounded,
+  cached remote index without installing or fetching skill contents.
+- Preflight the published BAP identity before Sigma inscription signing when
+  `wallet_createOrdinals` requests `signWithBAP`.
+
 ### Changed
+
+- Retire static tutorial prompts and BRC/BitCom resource entries. Changelog,
+  JungleBus, and MCP App resources remain available.
+- Produce consistent production bundles regardless of the caller’s
+  `NODE_ENV`, and remove stale local UI build assets from packaged output.
 
 - Migrate the server/client/core boundaries and the surrounding server
   lifecycle, stdio transport, hosted adapter, request routing, and
@@ -23,7 +42,8 @@
   ext-apps itself v2-native.
 - Keep the full tool catalog as the default and capability-derived. Add an
   explicit `MCP_TOOL_CATALOG=compact` opt-in profile for bounded read families;
-  compact mode is staged and remains subject to release validation.
+  local compact catalog and routing tests pass; hosted and browser-host
+  validation remain separate release gates.
 
 ### Compatibility
 
@@ -37,7 +57,8 @@
   tests cover that denial. Current Codex acceptance covers the legacy 2025 wire
   path; modern Codex acceptance remains unverified because
   the installed client selects a 2025 protocol. Codex v0.153.4 acceptance
-  selected `2025-06-18` and verified initialize, `tools/list`, and a dashboard
+  on the `0fed5be` artifact selected `2025-06-18` and verified initialize,
+  `tools/list`, and a dashboard
   `tools/call` returning `ready: true`. The intended modern read scope is
   limited to reviewed, allowlisted read-only calls. Use a supported 2025
   connection with form elicitation for that approval flow.

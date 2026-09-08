@@ -39,7 +39,9 @@ export default defineConfig(({ mode }) => {
 			outDir: mcpResource
 				? resolve(__dirname, "dist")
 				: resolve(__dirname, "dist/local-ui"),
-			emptyOutDir: false,
+			// The local target owns its directory; the MCP target shares dist
+			// with the server bundle and must preserve those siblings.
+			emptyOutDir: !mcpResource,
 		},
 	};
 });

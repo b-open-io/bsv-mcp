@@ -121,7 +121,7 @@ Local setup and PeerPay receiving use separate `wallet_setup` and
 remain unavailable for modern requests.
 
 Wallet operations are filtered when the selected wallet context cannot support
-them. The manifest and catalog tests should verify stable schemas,
+them. The manifest and catalog tests verify stable schemas,
 deterministic family names, and one legacy implementation for each compact
 operation.
 
@@ -129,7 +129,8 @@ The modern transport proof covers protocol exchange, not wallet spending.
 Modern discovery and tool transport are available. Approval-dependent modern
 mutations remain unsupported pending approved request-scoped adapters. The
 central guard now rejects those requests before their callbacks run, and
-policy/wire tests cover that denial. Codex v0.153.4 acceptance verified a wire
+policy/wire tests cover that denial. Codex v0.153.4 acceptance against the
+`0fed5be` artifact verified a wire
 initialize selecting `2025-06-18`, `tools/list`, and a dashboard `tools/call`
 returning `ready: true`; modern Codex acceptance remains unverified because the
 installed client selects a 2025 protocol. The intended modern read scope is
