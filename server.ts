@@ -16,9 +16,14 @@ import {
 	registerAppResource,
 	registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+	createMcpHandler,
+	isLegacyRequest,
+	McpServer,
+	SUPPORTED_PROTOCOL_VERSIONS,
+	WebStandardStreamableHTTPServerTransport,
+} from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import packageJson from "./package.json";
 import { registerAllPrompts } from "./prompts/index.ts";
@@ -81,6 +86,7 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 	const srv = new McpServer(
 		{ name: packageJson.name, version: packageJson.version },
 		{
+			supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
 			capabilities: {
 				prompts: {},
 				resources: {},
@@ -145,6 +151,14 @@ const CONFIG = {
 	oauthIssuer: process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com",
 	resourceUrl: process.env.RESOURCE_URL || "", // Will be set based on port
 };
+
+// Advertise both protocol eras. v2 defaults to the legacy handshake unless a
+// client explicitly negotiates the modern revision, so retaining the legacy
+// entry keeps existing clients working while enabling 2026 discovery.
+const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
+	"2025-11-25",
+	...SUPPORTED_PROTOCOL_VERSIONS.filter((version) => version >= "2026-07-28"),
+];
 
 const logFunc = console.error;
 const KEY_FILE_PATH = path.join(accountDir(), "keys.bep");
@@ -1402,12 +1416,22 @@ Authentication:
 
 	// Start the server based on transport mode
 	if (CONFIG.transportMode === "stdio") {
-		// Stdio: single server instance, single transport
-		server = createConfiguredServer(serverFactoryOpts);
-		setServerInstance(server);
-		setSpendingApprovalServerInstance(server);
-		const transport = new StdioServerTransport();
-		await server.connect(transport);
+		// v2 owns the transport and pins the factory-created server to the
+		// negotiated era. Set the helper globals inside the factory: serveStdio
+		// may create a probe instance before selecting the connection instance.
+		serveStdio(
+			() => {
+				const configured = createConfiguredServer(serverFactoryOpts);
+				server = configured;
+				setServerInstance(configured);
+				setSpendingApprovalServerInstance(configured);
+				return configured;
+			},
+			{
+				legacy: "serve",
+				onerror: (error) => logFunc(`MCP stdio error: ${error}`),
+			},
+		);
 		logFunc("BSV MCP Server running on stdio");
 	} else {
 		// --- HTTP: Streamable HTTP transport (MCP 2025-03-26 spec) ---
@@ -1440,13 +1464,32 @@ Authentication:
 		const authServer =
 			process.env.OAUTH_ISSUER || "https://auth.sigmaidentity.com";
 
+		// The modern leg is deliberately strict. Requests without a 2026
+		// envelope are routed to the sessionful legacy leg below, preserving the
+		// existing 2025 Streamable HTTP behavior and session map.
+		const modernHandler = createMcpHandler(
+			() => {
+				const configured = createConfiguredServer(serverFactoryOpts);
+				// Keep the exported reference useful for diagnostics. Request auth is
+				// supplied to modernHandler.fetch per request, never stored globally.
+				server = configured;
+				return configured;
+			},
+			{
+				legacy: "reject",
+				responseMode: "auto",
+				onerror: (error) => logFunc(`MCP HTTP modern error: ${error}`),
+			},
+		);
+
 		/** CORS headers for the /mcp endpoint */
 		const corsHeaders = {
 			"Access-Control-Allow-Origin": "*",
 			"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 			"Access-Control-Allow-Headers":
-				"Content-Type, Authorization, mcp-session-id, Last-Event-ID, mcp-protocol-version",
-			"Access-Control-Expose-Headers": "mcp-session-id, mcp-protocol-version",
+				"Content-Type, Authorization, mcp-session-id, Last-Event-ID, mcp-protocol-version, mcp-method, mcp-name",
+			"Access-Control-Expose-Headers":
+				"mcp-session-id, mcp-protocol-version, mcp-method, mcp-name",
 		} as const;
 
 		/**
@@ -1581,6 +1624,17 @@ Authentication:
 								},
 							},
 						);
+					}
+
+					// Modern requests are stateless and do not use MCP-Session-Id.
+					// isLegacyRequest reads a clone, so the original body remains
+					// available to the selected handler.
+					if (!(await isLegacyRequest(req))) {
+						const response = await modernHandler.fetch(req, { authInfo });
+						for (const [k, v] of Object.entries(corsHeaders)) {
+							if (!response.headers.has(k)) response.headers.set(k, v);
+						}
+						return response;
 					}
 
 					// Route to existing session or create new one
