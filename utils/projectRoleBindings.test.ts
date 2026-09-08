@@ -3,6 +3,7 @@ import { PrivateKey } from "@bsv/sdk";
 import {
 	assertProjectRoleSnapshotCurrent,
 	changeProjectRoleBinding,
+	changeProjectRoleBindings,
 	PROJECT_KEY_ROLES,
 	type ProjectKeyRole,
 	type ProjectRoleBinding,
@@ -257,6 +258,153 @@ describe("project role configuration", () => {
 });
 
 describe("role transitions and pinned history", () => {
+	test("a four-role batch increments once and retains each prior binding", () => {
+		const initial = config();
+		const next = changeProjectRoleBindings(initial, {
+			expectedProjectId: "project-a",
+			expectedRevision: 0,
+			changes: PROJECT_KEY_ROLES.map((role) => ({
+				role,
+				binding: selection(role, `${role}-2`),
+			})),
+		});
+		expect(next.revision).toBe(1);
+		expect(next.bindings.slice(0, 4)).toEqual(initial.bindings);
+		expect(next.bindings).toHaveLength(8);
+		expect(next.retained).toEqual([
+			{
+				bindingId: "identity-signing-1",
+				uses: ["verify-history", "pending-actions"],
+			},
+			{ bindingId: "payments-1", uses: ["fund-recovery", "pending-actions"] },
+			{ bindingId: "one-sat-1", uses: ["asset-recovery", "pending-actions"] },
+			{ bindingId: "encryption-1", uses: ["decrypt-history"] },
+		]);
+		for (const role of PROJECT_KEY_ROLES) {
+			expect(next.current[role]).toBe(`${role}-2`);
+			expect(
+				resolveProjectRoleBinding(next, "project-a", role).binding
+					.previousBindingId,
+			).toBe(`${role}-1`);
+		}
+		expect(initial).toEqual(config());
+	});
+
+	test("mixed changes preserve untouched roles and existing history", () => {
+		const first = changeProjectRoleBinding(config(), {
+			expectedProjectId: "project-a",
+			expectedRevision: 0,
+			role: "payments",
+			binding: selection("payments", "payments-2"),
+		});
+		const next = changeProjectRoleBindings(first, {
+			expectedProjectId: "project-a",
+			expectedRevision: 1,
+			changes: [
+				{ role: "payments", binding: selection("payments", "payments-3") },
+				{ role: "encryption", binding: null },
+			],
+		});
+		expect(next.revision).toBe(2);
+		expect(next.current).toEqual({
+			...first.current,
+			payments: "payments-3",
+			encryption: null,
+		});
+		expect(next.bindings.slice(0, first.bindings.length)).toEqual([
+			...first.bindings,
+		]);
+		expect(next.retained.slice(0, first.retained.length)).toEqual([
+			...first.retained,
+		]);
+		expect(next.retained).toContainEqual({
+			bindingId: "payments-2",
+			uses: ["fund-recovery", "pending-actions"],
+		});
+		expect(next.retained).toContainEqual({
+			bindingId: "encryption-1",
+			uses: ["decrypt-history"],
+		});
+	});
+
+	test("duplicate roles are rejected rather than applying last-write-wins", () => {
+		const initial = config();
+		expect(() =>
+			changeProjectRoleBindings(initial, {
+				expectedProjectId: "project-a",
+				expectedRevision: 0,
+				changes: [
+					{ role: "payments", binding: selection("payments", "payments-2") },
+					{ role: "payments", binding: null },
+				],
+			}),
+		).toThrow("PROJECT_ROLE_DUPLICATE_ROLE");
+		expect(initial).toEqual(config());
+	});
+
+	test("a failing later change cannot partially mutate the source config", () => {
+		const initial = config();
+		expect(() =>
+			changeProjectRoleBindings(initial, {
+				expectedProjectId: "project-a",
+				expectedRevision: 0,
+				changes: [
+					{ role: "payments", binding: selection("payments", "payments-2") },
+					{
+						role: "encryption",
+						binding: {
+							...selection("encryption", "encryption-2"),
+							keyUseContract: "brc42-leaf-v1",
+						},
+					},
+				],
+			}),
+		).toThrow("explicit BRC-42 derivation");
+		expect(initial).toEqual(config());
+		expect(() =>
+			changeProjectRoleBindings(initial, {
+				expectedProjectId: "project-a",
+				expectedRevision: 0,
+				changes: [
+					{ role: "payments", binding: selection("payments", "shared-new-id") },
+					{ role: "one-sat", binding: selection("one-sat", "shared-new-id") },
+				],
+			}),
+		).toThrow("PROJECT_ROLE_BINDING_ID_EXISTS");
+		expect(initial).toEqual(config());
+	});
+
+	test("empty and all-noop batches keep the revision but still reject stale callers", () => {
+		const initial = config();
+		expect(
+			changeProjectRoleBindings(initial, {
+				expectedProjectId: "project-a",
+				expectedRevision: 0,
+				changes: [],
+			}),
+		).toEqual(initial);
+		const cleared = changeProjectRoleBinding(initial, {
+			expectedProjectId: "project-a",
+			expectedRevision: 0,
+			role: "payments",
+			binding: null,
+		});
+		expect(
+			changeProjectRoleBindings(cleared, {
+				expectedProjectId: "project-a",
+				expectedRevision: 1,
+				changes: [{ role: "payments", binding: null }],
+			}),
+		).toEqual(cleared);
+		expect(() =>
+			changeProjectRoleBindings(cleared, {
+				expectedProjectId: "project-a",
+				expectedRevision: 0,
+				changes: [],
+			}),
+		).toThrow("PROJECT_ROLE_REVISION_CONFLICT");
+	});
+
 	test("switching encryption retains old ciphertext key and rejects history loss", () => {
 		const initial = config();
 		const next = changeProjectRoleBinding(initial, {

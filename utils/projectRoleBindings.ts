@@ -253,59 +253,96 @@ export function assertProjectRoleSnapshotCurrent(
 		throw new Error("PROJECT_ROLE_SNAPSHOT_STALE");
 }
 
-export interface ProjectRoleChange {
-	expectedProjectId: string;
-	expectedRevision: number;
+export interface ProjectRoleSelectionChange {
 	role: ProjectKeyRole;
 	binding: Omit<ProjectRoleBinding, "role" | "previousBindingId"> | null;
 }
 
+export interface ProjectRoleBatchChange {
+	expectedProjectId: string;
+	expectedRevision: number;
+	changes: readonly ProjectRoleSelectionChange[];
+}
+
+export interface ProjectRoleChange extends ProjectRoleSelectionChange {
+	expectedProjectId: string;
+	expectedRevision: number;
+}
+
+const selectionChangeSchema = z
+	.object({
+		role: projectKeyRoleSchema,
+		binding: bindingFields
+			.omit({ role: true, previousBindingId: true })
+			.nullable(),
+	})
+	.strict();
+
 /**
- * Pure state transition: append a binding and retain the old key's purposes.
+ * Pure batch transition: change each role at most once and increment once.
+ * An empty batch or clearing only already-unassigned roles leaves revision as is.
  * Persistence must separately compare-and-swap expectedRevision under a lock.
  * This does not move funds/assets, re-encrypt data, or alter any Vault entry.
  */
+export function changeProjectRoleBindings(
+	input: unknown,
+	batch: ProjectRoleBatchChange,
+): Immutable<ProjectRoleBindings> {
+	const config = forProject(input, batch.expectedProjectId);
+	if (config.revision !== batch.expectedRevision)
+		throw new Error("PROJECT_ROLE_REVISION_CONFLICT");
+	const changes = z.array(selectionChangeSchema).parse(batch.changes);
+	if (new Set(changes.map((change) => change.role)).size !== changes.length)
+		throw new Error("PROJECT_ROLE_DUPLICATE_ROLE");
+	const effective = changes.filter(
+		(change) => change.binding !== null || config.current[change.role] !== null,
+	);
+	if (effective.length === 0) return freeze(config);
+	if (config.revision === Number.MAX_SAFE_INTEGER)
+		throw new Error("PROJECT_ROLE_REVISION_EXHAUSTED");
+	for (const change of effective) {
+		const { role } = change;
+		const previousId = config.current[role];
+		if (change.binding !== null) {
+			const fields = change.binding;
+			if (config.bindings.some((item) => item.bindingId === fields.bindingId))
+				throw new Error("PROJECT_ROLE_BINDING_ID_EXISTS");
+			config.bindings.push(
+				projectRoleBindingSchema.parse({
+					...fields,
+					role,
+					...(previousId === null ? {} : { previousBindingId: previousId }),
+				}),
+			);
+			config.current[role] = fields.bindingId;
+		} else {
+			config.current[role] = null;
+		}
+		if (previousId !== null) {
+			let retained = config.retained.find(
+				(item) => item.bindingId === previousId,
+			);
+			if (!retained) {
+				retained = { bindingId: previousId, uses: [] };
+				config.retained.push(retained);
+			}
+			retained.uses = [
+				...new Set([...retained.uses, ...requiredRetention[role]]),
+			];
+		}
+	}
+	config.revision += 1;
+	return parseProjectRoleBindings(config);
+}
+
+/** Single-role convenience form with the same batch validation and history rules. */
 export function changeProjectRoleBinding(
 	input: unknown,
 	change: ProjectRoleChange,
 ): Immutable<ProjectRoleBindings> {
-	const config = forProject(input, change.expectedProjectId);
-	const role = projectKeyRoleSchema.parse(change.role);
-	if (config.revision !== change.expectedRevision)
-		throw new Error("PROJECT_ROLE_REVISION_CONFLICT");
-	const previousId = config.current[role];
-	if (change.binding === null && previousId === null) return freeze(config);
-	if (config.revision === Number.MAX_SAFE_INTEGER)
-		throw new Error("PROJECT_ROLE_REVISION_EXHAUSTED");
-	if (change.binding !== null) {
-		const fields = bindingFields
-			.omit({ role: true, previousBindingId: true })
-			.parse(change.binding);
-		if (config.bindings.some((item) => item.bindingId === fields.bindingId))
-			throw new Error("PROJECT_ROLE_BINDING_ID_EXISTS");
-		config.bindings.push(
-			projectRoleBindingSchema.parse({
-				...fields,
-				role,
-				...(previousId === null ? {} : { previousBindingId: previousId }),
-			}),
-		);
-		config.current[role] = fields.bindingId;
-	} else {
-		config.current[role] = null;
-	}
-	if (previousId !== null) {
-		let retained = config.retained.find(
-			(item) => item.bindingId === previousId,
-		);
-		if (!retained) {
-			retained = { bindingId: previousId, uses: [] };
-			config.retained.push(retained);
-		}
-		retained.uses = [
-			...new Set([...retained.uses, ...requiredRetention[role]]),
-		];
-	}
-	config.revision += 1;
-	return parseProjectRoleBindings(config);
+	return changeProjectRoleBindings(input, {
+		expectedProjectId: change.expectedProjectId,
+		expectedRevision: change.expectedRevision,
+		changes: [{ role: change.role, binding: change.binding }],
+	});
 }
