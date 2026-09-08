@@ -20,6 +20,28 @@ export interface KeyManagerConfig {
 export interface SaveKeysOptions {
 	passphrase?: string;
 }
+export class MissingWalletKeysError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "MissingWalletKeysError";
+	}
+}
+export function isMissingWalletKeysError(
+	error: unknown,
+): error is MissingWalletKeysError {
+	return error instanceof MissingWalletKeysError;
+}
+export class LegacyWalletMigrationRequiredError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "LegacyWalletMigrationRequiredError";
+	}
+}
+export function isLegacyWalletMigrationRequiredError(
+	error: unknown,
+): error is LegacyWalletMigrationRequiredError {
+	return error instanceof LegacyWalletMigrationRequiredError;
+}
 export class SecureKeyManager {
 	readonly keyDir: string;
 	constructor(config: KeyManagerConfig = {}) {
@@ -46,7 +68,7 @@ export class SecureKeyManager {
 			};
 		}
 		if (this.hasLegacyKeys())
-			throw new Error(
+			throw new LegacyWalletMigrationRequiredError(
 				`Legacy plaintext keys require migration. Run bsv-mcp wallet_migrate --account ${accountName()}.`,
 			);
 		return { keys: {}, source: "none" };
@@ -163,10 +185,15 @@ export async function initializeSecureKeys(
 		}
 	}
 	const result = await manager.loadKeys(env.BSV_MCP_PASSWORD);
-	if (!result.keys.payPk)
+	if (!result.keys.payPk) {
+		if (result.source === "none")
+			throw new MissingWalletKeysError(
+				`No key found at ${manager.encryptedFile}. Run bsv-mcp init --account ${accountName()} in a terminal, or configure BRC100_WALLET_URL. For public reads only, set DISABLE_WALLET_TOOLS=true.`,
+			);
 		throw new Error(
 			`No key found at ${manager.encryptedFile}. Run bsv-mcp init --account ${accountName()} in a terminal, or configure BRC100_WALLET_URL. For public reads only, set DISABLE_WALLET_TOOLS=true.`,
 		);
+	}
 	return { ...result.keys, source: result.source };
 }
 

@@ -1,9 +1,10 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { accountNameSchema } from "./accounts";
+import { accountNameSchema, listAccounts, readAccount } from "./accounts";
 
 export interface MigrationSource {
+	directory?: string;
 	account: string;
 	location: "account" | "legacy-root" | "sigma-lab";
 	encryptedBackup: boolean;
@@ -12,6 +13,7 @@ export interface MigrationSource {
 }
 export interface MigrationInventory {
 	sources: MigrationSource[];
+	boundAccounts?: Array<{ name: string; address: string | null }>;
 	vaultExists: boolean;
 	environmentKeys: { payment: boolean; identity: boolean; empty: boolean };
 	migrationRequired: boolean;
@@ -57,6 +59,7 @@ export function inspectMigration(
 		].filter((name) => exists(join(dir, name)));
 		if (encryptedBackup || plaintextKeys || walletDatabases.length)
 			sources.push({
+				directory: dir,
 				account,
 				location,
 				encryptedBackup,
@@ -88,6 +91,11 @@ export function inspectMigration(
 	};
 	return {
 		sources,
+		boundAccounts: listAccounts(join(base, "accounts"))
+			.filter(
+				(item) => readAccount(item.name, join(base, "accounts"))?.vaultBinding,
+			)
+			.map(({ name, address }) => ({ name, address })),
 		vaultExists: exists(vaultPath),
 		environmentKeys,
 		migrationRequired:

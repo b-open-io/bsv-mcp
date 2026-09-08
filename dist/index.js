@@ -1807,6 +1807,46 @@ function handleIntersectionResults(result, left, right) {
   result.value = merged.data;
   return result;
 }
+function getTupleOptStart(items, key) {
+  for (let i = items.length - 1;i >= 0; i--) {
+    const omittable = key === "optin" ? items[i]._zod.optin !== undefined : items[i]._zod.optout === "optional";
+    if (!omittable)
+      return i + 1;
+  }
+  return 0;
+}
+function handleTupleResult(result, final, index) {
+  if (result.issues.length) {
+    final.issues.push(...prefixIssues(index, result.issues));
+  }
+  final.value[index] = result.value;
+}
+function handleTupleResults(itemResults, final, items, input, optoutStart) {
+  for (let i = 0;i < items.length; i++) {
+    const r = itemResults[i];
+    const isPresent = i < input.length;
+    if (!isPresent && i >= optoutStart && items[i]._zod.optin === "optional") {
+      final.value.length = i;
+      break;
+    }
+    if (r.issues.length) {
+      if (!isPresent && i >= optoutStart) {
+        final.value.length = i;
+        break;
+      }
+      final.issues.push(...prefixIssues(i, r.issues));
+    }
+    final.value[i] = r.value;
+  }
+  for (let i = final.value.length - 1;i >= input.length; i--) {
+    if (items[i]._zod.optout === "optional" && final.value[i] === undefined) {
+      final.value.length = i;
+    } else {
+      break;
+    }
+  }
+  return final;
+}
 function handleOptionalResult(payload, result) {
   payload.value = result.issues.length ? undefined : result.value;
   return payload;
@@ -1871,7 +1911,7 @@ function handleRefineResult(result, payload, input, inst) {
     payload.issues.push(issue(_iss));
   }
 }
-var $ZodType, toStandardResult = (r) => r.success ? { value: r.data } : { issues: r.error?.issues }, $ZodString, $ZodStringFormat, $ZodGUID, $ZodUUID, $ZodEmail, URL_BAD_FORMAT = 1, URL_UNPARSEABLE = 2, asciiTabOrNewline, $ZodURL, $ZodEmoji, $ZodNanoID, $ZodCUID, $ZodCUID2, $ZodULID, $ZodXID, $ZodKSUID, $ZodISODateTime, $ZodISODate, $ZodISOTime, $ZodISODuration, $ZodIPv4, ipv6Alphabet, $ZodIPv6, $ZodCIDRv4, $ZodCIDRv6, $ZodBase64, $ZodBase64URL, $ZodE164, $ZodJWT, $ZodNumber, $ZodNumberFormat, $ZodBoolean, $ZodUndefined, $ZodNull, $ZodAny, $ZodUnknown, $ZodNever, $ZodArray, NO_SYMBOL_KEYS, propShapes, $ZodObject, $ZodObjectJIT, $ZodUnion, $ZodDiscriminatedUnion, $ZodIntersection, $ZodRecord, $ZodEnum, $ZodLiteral, $ZodTransform, $ZodOptional, $ZodExactOptional, $ZodNullable, $ZodDefault, $ZodPrefault, $ZodNonOptional, $ZodCatch, $ZodPipe, $ZodPreprocess, $ZodReadonly, $ZodLazy, $ZodCustom;
+var $ZodType, toStandardResult = (r) => r.success ? { value: r.data } : { issues: r.error?.issues }, $ZodString, $ZodStringFormat, $ZodGUID, $ZodUUID, $ZodEmail, URL_BAD_FORMAT = 1, URL_UNPARSEABLE = 2, asciiTabOrNewline, $ZodURL, $ZodEmoji, $ZodNanoID, $ZodCUID, $ZodCUID2, $ZodULID, $ZodXID, $ZodKSUID, $ZodISODateTime, $ZodISODate, $ZodISOTime, $ZodISODuration, $ZodIPv4, ipv6Alphabet, $ZodIPv6, $ZodCIDRv4, $ZodCIDRv6, $ZodBase64, $ZodBase64URL, $ZodE164, $ZodJWT, $ZodNumber, $ZodNumberFormat, $ZodBoolean, $ZodUndefined, $ZodNull, $ZodAny, $ZodUnknown, $ZodNever, $ZodArray, NO_SYMBOL_KEYS, propShapes, $ZodObject, $ZodObjectJIT, $ZodUnion, $ZodDiscriminatedUnion, $ZodIntersection, $ZodTuple, $ZodRecord, $ZodEnum, $ZodLiteral, $ZodTransform, $ZodOptional, $ZodExactOptional, $ZodNullable, $ZodDefault, $ZodPrefault, $ZodNonOptional, $ZodCatch, $ZodPipe, $ZodPreprocess, $ZodReadonly, $ZodLazy, $ZodCustom;
 var init_schemas = __esm(() => {
   init_checks();
   init_core();
@@ -2706,6 +2746,79 @@ var init_schemas = __esm(() => {
         });
       }
       return handleIntersectionResults(payload, left, right);
+    };
+  });
+  $ZodTuple = /* @__PURE__ */ $constructor("$ZodTuple", (inst, def) => {
+    $ZodType.init(inst, def);
+    const items = def.items;
+    const memo = globalConfig.memoizer;
+    memo?.attach(inst);
+    inst._zod.parse = (payload, ctx) => {
+      const input = payload.value;
+      if (!Array.isArray(input)) {
+        payload.issues.push({
+          input,
+          inst,
+          expected: "tuple",
+          code: "invalid_type"
+        });
+        return payload;
+      }
+      payload.value = memo ? memo.alloc(inst, payload, [], ctx) : [];
+      const proms = [];
+      const optinStart = getTupleOptStart(items, "optin");
+      const optoutStart = getTupleOptStart(items, "optout");
+      if (!def.rest) {
+        if (input.length < optinStart) {
+          payload.issues.push({
+            code: "too_small",
+            minimum: optinStart,
+            inclusive: true,
+            input,
+            inst,
+            origin: "array"
+          });
+          return payload;
+        }
+        if (input.length > items.length) {
+          payload.issues.push({
+            code: "too_big",
+            maximum: items.length,
+            inclusive: true,
+            input,
+            inst,
+            origin: "array"
+          });
+        }
+      }
+      const itemResults = new Array(items.length);
+      for (let i = 0;i < items.length; i++) {
+        const r = items[i]._zod.run({ value: input[i], issues: [] }, ctx);
+        if (r instanceof Promise) {
+          proms.push(r.then((rr) => {
+            itemResults[i] = rr;
+          }));
+        } else {
+          itemResults[i] = r;
+        }
+      }
+      if (def.rest) {
+        let i = items.length - 1;
+        const rest = input.slice(items.length);
+        for (const el of rest) {
+          i++;
+          const result = def.rest._zod.run({ value: el, issues: [] }, ctx);
+          if (result instanceof Promise) {
+            proms.push(result.then((r) => handleTupleResult(r, payload, i)));
+          } else {
+            handleTupleResult(result, payload, i);
+          }
+        }
+      }
+      if (proms.length) {
+        return Promise.all(proms).then(() => handleTupleResults(itemResults, payload, items, input, optoutStart));
+      }
+      return handleTupleResults(itemResults, payload, items, input, optoutStart);
     };
   });
   $ZodRecord = /* @__PURE__ */ $constructor("$ZodRecord", (inst, def) => {
@@ -5417,6 +5530,9 @@ function string2(params) {
 function email2(params) {
   return _email(ZodEmail, params);
 }
+function uuid2(params) {
+  return _uuid(ZodUUID, params);
+}
 function url(params) {
   return _url(ZodURL, params);
 }
@@ -5483,6 +5599,17 @@ function intersection(left, right) {
     type: "intersection",
     left,
     right
+  });
+}
+function tuple(items, _paramsOrRest, _params) {
+  const hasRest = _paramsOrRest instanceof $ZodType;
+  const params = hasRest ? _params : _paramsOrRest;
+  const rest = hasRest ? _paramsOrRest : null;
+  return new ZodTuple({
+    type: "tuple",
+    items,
+    rest,
+    ...normalizeParams(params)
   });
 }
 function record(keyType, valueType, params) {
@@ -5614,7 +5741,7 @@ function preprocess(fn, schema) {
     out: schema
   });
 }
-var ZodType, _ZodString, ZodString, ZodStringFormat, ZodISODateTime, ZodISODate, ZodISOTime, ZodISODuration, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodNumber, ZodNumberFormat, ZodBoolean, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodArray, ZodObject, ZodUnion, ZodDiscriminatedUnion, ZodIntersection, ZodRecord, ZodEnum, ZodLiteral, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodCatch, ZodPipe, ZodPreprocess, ZodReadonly, ZodLazy, ZodCustom;
+var ZodType, _ZodString, ZodString, ZodStringFormat, ZodISODateTime, ZodISODate, ZodISOTime, ZodISODuration, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodNumber, ZodNumberFormat, ZodBoolean, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodArray, ZodObject, ZodUnion, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodEnum, ZodLiteral, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodCatch, ZodPipe, ZodPreprocess, ZodReadonly, ZodLazy, ZodCustom;
 var init_schemas3 = __esm(() => {
   init_core2();
   init_core2();
@@ -6201,6 +6328,28 @@ var init_schemas3 = __esm(() => {
     ZodType.init(inst, def);
     inst._zod.processJSONSchema = (ctx, json, params) => intersectionProcessor(inst, ctx, json, params);
   });
+  ZodTuple = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
+    _ensureDefaultMemoizer();
+    $ZodTuple.init(inst, def);
+    ZodType.init(inst, def);
+    inst._zod.processJSONSchema = (ctx, json, params) => tupleProcessor(inst, ctx, json, params);
+  }, {
+    rest(rest) {
+      return this.clone({
+        ...this._zod.def,
+        rest
+      });
+    },
+    partial() {
+      const def = this._zod.def;
+      if (def.checks?.length)
+        throw new Error(".partial() cannot be used on tuple schemas containing refinements");
+      return this.clone({
+        ...def,
+        items: def.items.map((item) => new ZodOptional({ type: "optional", innerType: item }))
+      });
+    }
+  });
   ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
     _ensureDefaultMemoizer();
     $ZodRecord.init(inst, def);
@@ -6389,14 +6538,32 @@ var init_compat = __esm(() => {
 });
 
 // node_modules/zod/v4/classic/iso.js
+var exports_iso2 = {};
+__export(exports_iso2, {
+  ZodISODate: () => ZodISODate,
+  ZodISODateTime: () => ZodISODateTime,
+  ZodISODuration: () => ZodISODuration,
+  ZodISOTime: () => ZodISOTime,
+  date: () => date2,
+  datetime: () => datetime2,
+  duration: () => duration2,
+  time: () => time2
+});
 function datetime2(params) {
   return _isoDateTime(ZodISODateTime, params);
 }
 function date2(params) {
   return _isoDate(ZodISODate, params);
 }
+function time2(params) {
+  return _isoTime(ZodISOTime, params);
+}
+function duration2(params) {
+  return _isoDuration(ZodISODuration, params);
+}
 var init_iso2 = __esm(() => {
   init_core2();
+  init_schemas3();
   init_schemas3();
 });
 
@@ -25832,10 +25999,12 @@ var init_package = __esm(() => {
       "LICENSE",
       "README.md",
       "CHANGELOG.md",
-      "smithery.yaml"
+      "smithery.yaml",
+      "dist/local-ui/**/*"
     ],
     bin: {
-      "bsv-mcp": "./dist/index.js"
+      "bsv-mcp": "./dist/index.js",
+      "bsv-mcp-local": "./dist/local-mcp-launcher.js"
     },
     private: false,
     devDependencies: {
@@ -25870,7 +26039,7 @@ var init_package = __esm(() => {
     dependencies: {
       "@1sat/actions": "^0.0.207",
       "@1sat/client": "0.0.51",
-      "@1sat/wallet-node": "^0.0.73",
+      "@1sat/wallet-node": "0.0.73",
       "@bsv/sdk": "^2.4.2",
       "@bsv/wallet-toolbox": "npm:@bopen-io/wallet-toolbox@2.6.2-brc153.5",
       "@modelcontextprotocol/client": "2.0.0",
@@ -25889,11 +26058,13 @@ var init_package = __esm(() => {
       "satoshi-token": "^0.0.7",
       "schema-dts": "^2.0.0",
       shiki: "^4.4.3",
-      zod: "4.5.4"
+      zod: "4.5.4",
+      "@opl.dev/vault": "0.0.1",
+      "@bsv/message-box-client": "2.4.2"
     },
     scripts: {
       build: "bun run ./scripts/build.ts",
-      "build:view": "vite build",
+      "build:view": "vite build && vite build --mode mcp",
       "build:all": "bun run build:view && bun run build",
       dev: "next dev",
       "build:next": "next build",
@@ -25902,6 +26073,10 @@ var init_package = __esm(() => {
       "lint:fix": "biome check . --write",
       prepack: "bun run build:all",
       "tools:manifest": "bun run ./scripts/generate-tool-manifest.ts"
+    },
+    patchedDependencies: {
+      "@1sat/wallet@0.0.106": "patches/@1sat%2Fwallet@0.0.106.patch",
+      "@1sat/wallet-node@0.0.73": "patches/@1sat%2Fwallet-node@0.0.73.patch"
     }
   };
 });
@@ -30372,6 +30547,58 @@ function setBigUint64(view, byteOffset, value, isLE) {
   view.setUint32(byteOffset + h, wh, isLE);
   view.setUint32(byteOffset + l, wl, isLE);
 }
+function pbkdf2Core(hash, password, salt, opts) {
+  ahash(hash);
+  const { c, dkLen = 32 } = { ...opts };
+  anumber(c);
+  anumber(dkLen);
+  if (c < 1)
+    throw new Error("iterations (c) should be >= 1");
+  const pwd = kdfInputToBytes(password);
+  const slt = kdfInputToBytes(salt);
+  const DK = new Uint8Array(dkLen);
+  const PRF = hmac.create(hash, pwd);
+  const PRFSalt = PRF._cloneInto().update(slt);
+  let prfW;
+  const arr = new Uint8Array(4);
+  const view = createView(arr);
+  const u = new Uint8Array(PRF.outputLen);
+  for (let ti = 1, pos = 0;pos < dkLen; ti++, pos += PRF.outputLen) {
+    const Ti = DK.subarray(pos, pos + PRF.outputLen);
+    view.setInt32(0, ti, false);
+    prfW = PRFSalt._cloneInto(prfW);
+    prfW.update(arr).digestInto(u);
+    Ti.set(u.subarray(0, Ti.length));
+    for (let ui = 1;ui < c; ui++) {
+      PRF._cloneInto(prfW).update(u).digestInto(u);
+      for (let i = 0;i < Ti.length; i++)
+        Ti[i] ^= u[i];
+    }
+  }
+  PRF.destroy();
+  PRFSalt.destroy();
+  if (prfW != null)
+    prfW.destroy();
+  clean(u);
+  return DK;
+}
+function pbkdf2Fast(password, salt, iterations, keylen) {
+  return pbkdf2Core(sha512Fast, password, salt, { c: iterations, dkLen: keylen });
+}
+function pbkdf2(password, salt, iterations, keylen, digest = "sha512") {
+  if (digest !== "sha512") {
+    throw new Error("Only sha512 is supported in this PBKDF2 implementation");
+  }
+  const pbkdf2Sync = NODE_CRYPTO?.pbkdf2Sync;
+  if (typeof pbkdf2Sync === "function") {
+    const out = pbkdf2Sync(toHashBytes(password), toHashBytes(salt), iterations, keylen, digest);
+    return Array.from(out);
+  }
+  const p = Uint8Array.from(password);
+  const s = Uint8Array.from(salt);
+  const out = pbkdf2Fast(p, s, iterations, keylen);
+  return Array.from(out);
+}
 function swapBytes32(w) {
   const res = w >>> 24 | w >>> 8 & 65280 | w << 8 & 16711680 | (w & 255) << 24;
   return res >>> 0;
@@ -30409,7 +30636,7 @@ var assert = (expression, message = "Hash assertion failed") => {
   if (native != null)
     return Array.from(native);
   return new SHA512HMAC(key).update(msg, enc).digest();
-}, U32_MASK64, _32n, shrSH = (h, _l, s) => h >>> s, shrSL = (h, l, s) => h << 32 - s | l >>> s, rotrSH = (h, l, s) => h >>> s | l << 32 - s, rotrSL = (h, l, s) => h << 32 - s | l >>> s, rotrBH = (h, l, s) => h << 64 - s | l >>> s - 32, rotrBL = (h, l, s) => h >>> s - 32 | l << 64 - s, add3L = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0), add3H = (low, Ah, Bh, Ch) => Math.trunc(Ah + Bh + Ch + Math.trunc(low / 2 ** 32)), add4L = (Al, Bl, Cl, Dl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0), add4H = (low, Ah, Bh, Ch, Dh) => Math.trunc(Ah + Bh + Ch + Dh + Math.trunc(low / 2 ** 32)), add5L = (Al, Bl, Cl, Dl, El) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0) + (El >>> 0), add5H = (low, Ah, Bh, Ch, Dh, Eh) => Ah + Bh + Ch + Dh + Eh + (low / 2 ** 32 | 0) | 0, HashMD, SHA256_IV, K2562, SHA256_W, FastSHA256, sha256Fast, SHA512_IV, K512, SHA512_Kh, SHA512_Kl, SHA512_W_H, SHA512_W_L, FastSHA512, sha512Fast, HMAC, hmac = (hash, key, message) => new HMAC(hash, key).update(message).digest(), isLittleEndian;
+}, kdfInputToBytes, U32_MASK64, _32n, shrSH = (h, _l, s) => h >>> s, shrSL = (h, l, s) => h << 32 - s | l >>> s, rotrSH = (h, l, s) => h >>> s | l << 32 - s, rotrSL = (h, l, s) => h << 32 - s | l >>> s, rotrBH = (h, l, s) => h << 64 - s | l >>> s - 32, rotrBL = (h, l, s) => h >>> s - 32 | l << 64 - s, add3L = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0), add3H = (low, Ah, Bh, Ch) => Math.trunc(Ah + Bh + Ch + Math.trunc(low / 2 ** 32)), add4L = (Al, Bl, Cl, Dl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0), add4H = (low, Ah, Bh, Ch, Dh) => Math.trunc(Ah + Bh + Ch + Dh + Math.trunc(low / 2 ** 32)), add5L = (Al, Bl, Cl, Dl, El) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0) + (El >>> 0), add5H = (low, Ah, Bh, Ch, Dh, Eh) => Ah + Bh + Ch + Dh + Eh + (low / 2 ** 32 | 0) | 0, HashMD, SHA256_IV, K2562, SHA256_W, FastSHA256, sha256Fast, SHA512_IV, K512, SHA512_Kh, SHA512_Kl, SHA512_W_H, SHA512_W_L, FastSHA512, sha512Fast, HMAC, hmac = (hash, key, message) => new HMAC(hash, key).update(message).digest(), isLittleEndian;
 var init_Hash = __esm(() => {
   init_hex();
   BufferCtor2 = typeof globalThis === "undefined" ? undefined : globalThis.Buffer;
@@ -30853,6 +31080,7 @@ var init_Hash = __esm(() => {
       return toHex32(this.h, "big");
     }
   };
+  kdfInputToBytes = toBytes;
   U32_MASK64 = BigInt(2 ** 32 - 1);
   _32n = BigInt(32);
   HashMD = class HashMD extends Hash {
@@ -42779,6 +43007,2271 @@ var init_HD = __esm(() => {
   init_BigNumber();
 });
 
+// node_modules/@bsv/sdk/dist/esm/src/compat/bip-39-wordlist-en.js
+var wordList;
+var init_bip_39_wordlist_en = __esm(() => {
+  wordList = {
+    value: [
+      "abandon",
+      "ability",
+      "able",
+      "about",
+      "above",
+      "absent",
+      "absorb",
+      "abstract",
+      "absurd",
+      "abuse",
+      "access",
+      "accident",
+      "account",
+      "accuse",
+      "achieve",
+      "acid",
+      "acoustic",
+      "acquire",
+      "across",
+      "act",
+      "action",
+      "actor",
+      "actress",
+      "actual",
+      "adapt",
+      "add",
+      "addict",
+      "address",
+      "adjust",
+      "admit",
+      "adult",
+      "advance",
+      "advice",
+      "aerobic",
+      "affair",
+      "afford",
+      "afraid",
+      "again",
+      "age",
+      "agent",
+      "agree",
+      "ahead",
+      "aim",
+      "air",
+      "airport",
+      "aisle",
+      "alarm",
+      "album",
+      "alcohol",
+      "alert",
+      "alien",
+      "all",
+      "alley",
+      "allow",
+      "almost",
+      "alone",
+      "alpha",
+      "already",
+      "also",
+      "alter",
+      "always",
+      "amateur",
+      "amazing",
+      "among",
+      "amount",
+      "amused",
+      "analyst",
+      "anchor",
+      "ancient",
+      "anger",
+      "angle",
+      "angry",
+      "animal",
+      "ankle",
+      "announce",
+      "annual",
+      "another",
+      "answer",
+      "antenna",
+      "antique",
+      "anxiety",
+      "any",
+      "apart",
+      "apology",
+      "appear",
+      "apple",
+      "approve",
+      "april",
+      "arch",
+      "arctic",
+      "area",
+      "arena",
+      "argue",
+      "arm",
+      "armed",
+      "armor",
+      "army",
+      "around",
+      "arrange",
+      "arrest",
+      "arrive",
+      "arrow",
+      "art",
+      "artefact",
+      "artist",
+      "artwork",
+      "ask",
+      "aspect",
+      "assault",
+      "asset",
+      "assist",
+      "assume",
+      "asthma",
+      "athlete",
+      "atom",
+      "attack",
+      "attend",
+      "attitude",
+      "attract",
+      "auction",
+      "audit",
+      "august",
+      "aunt",
+      "author",
+      "auto",
+      "autumn",
+      "average",
+      "avocado",
+      "avoid",
+      "awake",
+      "aware",
+      "away",
+      "awesome",
+      "awful",
+      "awkward",
+      "axis",
+      "baby",
+      "bachelor",
+      "bacon",
+      "badge",
+      "bag",
+      "balance",
+      "balcony",
+      "ball",
+      "bamboo",
+      "banana",
+      "banner",
+      "bar",
+      "barely",
+      "bargain",
+      "barrel",
+      "base",
+      "basic",
+      "basket",
+      "battle",
+      "beach",
+      "bean",
+      "beauty",
+      "because",
+      "become",
+      "beef",
+      "before",
+      "begin",
+      "behave",
+      "behind",
+      "believe",
+      "below",
+      "belt",
+      "bench",
+      "benefit",
+      "best",
+      "betray",
+      "better",
+      "between",
+      "beyond",
+      "bicycle",
+      "bid",
+      "bike",
+      "bind",
+      "biology",
+      "bird",
+      "birth",
+      "bitter",
+      "black",
+      "blade",
+      "blame",
+      "blanket",
+      "blast",
+      "bleak",
+      "bless",
+      "blind",
+      "blood",
+      "blossom",
+      "blouse",
+      "blue",
+      "blur",
+      "blush",
+      "board",
+      "boat",
+      "body",
+      "boil",
+      "bomb",
+      "bone",
+      "bonus",
+      "book",
+      "boost",
+      "border",
+      "boring",
+      "borrow",
+      "boss",
+      "bottom",
+      "bounce",
+      "box",
+      "boy",
+      "bracket",
+      "brain",
+      "brand",
+      "brass",
+      "brave",
+      "bread",
+      "breeze",
+      "brick",
+      "bridge",
+      "brief",
+      "bright",
+      "bring",
+      "brisk",
+      "broccoli",
+      "broken",
+      "bronze",
+      "broom",
+      "brother",
+      "brown",
+      "brush",
+      "bubble",
+      "buddy",
+      "budget",
+      "buffalo",
+      "build",
+      "bulb",
+      "bulk",
+      "bullet",
+      "bundle",
+      "bunker",
+      "burden",
+      "burger",
+      "burst",
+      "bus",
+      "business",
+      "busy",
+      "butter",
+      "buyer",
+      "buzz",
+      "cabbage",
+      "cabin",
+      "cable",
+      "cactus",
+      "cage",
+      "cake",
+      "call",
+      "calm",
+      "camera",
+      "camp",
+      "can",
+      "canal",
+      "cancel",
+      "candy",
+      "cannon",
+      "canoe",
+      "canvas",
+      "canyon",
+      "capable",
+      "capital",
+      "captain",
+      "car",
+      "carbon",
+      "card",
+      "cargo",
+      "carpet",
+      "carry",
+      "cart",
+      "case",
+      "cash",
+      "casino",
+      "castle",
+      "casual",
+      "cat",
+      "catalog",
+      "catch",
+      "category",
+      "cattle",
+      "caught",
+      "cause",
+      "caution",
+      "cave",
+      "ceiling",
+      "celery",
+      "cement",
+      "census",
+      "century",
+      "cereal",
+      "certain",
+      "chair",
+      "chalk",
+      "champion",
+      "change",
+      "chaos",
+      "chapter",
+      "charge",
+      "chase",
+      "chat",
+      "cheap",
+      "check",
+      "cheese",
+      "chef",
+      "cherry",
+      "chest",
+      "chicken",
+      "chief",
+      "child",
+      "chimney",
+      "choice",
+      "choose",
+      "chronic",
+      "chuckle",
+      "chunk",
+      "churn",
+      "cigar",
+      "cinnamon",
+      "circle",
+      "citizen",
+      "city",
+      "civil",
+      "claim",
+      "clap",
+      "clarify",
+      "claw",
+      "clay",
+      "clean",
+      "clerk",
+      "clever",
+      "click",
+      "client",
+      "cliff",
+      "climb",
+      "clinic",
+      "clip",
+      "clock",
+      "clog",
+      "close",
+      "cloth",
+      "cloud",
+      "clown",
+      "club",
+      "clump",
+      "cluster",
+      "clutch",
+      "coach",
+      "coast",
+      "coconut",
+      "code",
+      "coffee",
+      "coil",
+      "coin",
+      "collect",
+      "color",
+      "column",
+      "combine",
+      "come",
+      "comfort",
+      "comic",
+      "common",
+      "company",
+      "concert",
+      "conduct",
+      "confirm",
+      "congress",
+      "connect",
+      "consider",
+      "control",
+      "convince",
+      "cook",
+      "cool",
+      "copper",
+      "copy",
+      "coral",
+      "core",
+      "corn",
+      "correct",
+      "cost",
+      "cotton",
+      "couch",
+      "country",
+      "couple",
+      "course",
+      "cousin",
+      "cover",
+      "coyote",
+      "crack",
+      "cradle",
+      "craft",
+      "cram",
+      "crane",
+      "crash",
+      "crater",
+      "crawl",
+      "crazy",
+      "cream",
+      "credit",
+      "creek",
+      "crew",
+      "cricket",
+      "crime",
+      "crisp",
+      "critic",
+      "crop",
+      "cross",
+      "crouch",
+      "crowd",
+      "crucial",
+      "cruel",
+      "cruise",
+      "crumble",
+      "crunch",
+      "crush",
+      "cry",
+      "crystal",
+      "cube",
+      "culture",
+      "cup",
+      "cupboard",
+      "curious",
+      "current",
+      "curtain",
+      "curve",
+      "cushion",
+      "custom",
+      "cute",
+      "cycle",
+      "dad",
+      "damage",
+      "damp",
+      "dance",
+      "danger",
+      "daring",
+      "dash",
+      "daughter",
+      "dawn",
+      "day",
+      "deal",
+      "debate",
+      "debris",
+      "decade",
+      "december",
+      "decide",
+      "decline",
+      "decorate",
+      "decrease",
+      "deer",
+      "defense",
+      "define",
+      "defy",
+      "degree",
+      "delay",
+      "deliver",
+      "demand",
+      "demise",
+      "denial",
+      "dentist",
+      "deny",
+      "depart",
+      "depend",
+      "deposit",
+      "depth",
+      "deputy",
+      "derive",
+      "describe",
+      "desert",
+      "design",
+      "desk",
+      "despair",
+      "destroy",
+      "detail",
+      "detect",
+      "develop",
+      "device",
+      "devote",
+      "diagram",
+      "dial",
+      "diamond",
+      "diary",
+      "dice",
+      "diesel",
+      "diet",
+      "differ",
+      "digital",
+      "dignity",
+      "dilemma",
+      "dinner",
+      "dinosaur",
+      "direct",
+      "dirt",
+      "disagree",
+      "discover",
+      "disease",
+      "dish",
+      "dismiss",
+      "disorder",
+      "display",
+      "distance",
+      "divert",
+      "divide",
+      "divorce",
+      "dizzy",
+      "doctor",
+      "document",
+      "dog",
+      "doll",
+      "dolphin",
+      "domain",
+      "donate",
+      "donkey",
+      "donor",
+      "door",
+      "dose",
+      "double",
+      "dove",
+      "draft",
+      "dragon",
+      "drama",
+      "drastic",
+      "draw",
+      "dream",
+      "dress",
+      "drift",
+      "drill",
+      "drink",
+      "drip",
+      "drive",
+      "drop",
+      "drum",
+      "dry",
+      "duck",
+      "dumb",
+      "dune",
+      "during",
+      "dust",
+      "dutch",
+      "duty",
+      "dwarf",
+      "dynamic",
+      "eager",
+      "eagle",
+      "early",
+      "earn",
+      "earth",
+      "easily",
+      "east",
+      "easy",
+      "echo",
+      "ecology",
+      "economy",
+      "edge",
+      "edit",
+      "educate",
+      "effort",
+      "egg",
+      "eight",
+      "either",
+      "elbow",
+      "elder",
+      "electric",
+      "elegant",
+      "element",
+      "elephant",
+      "elevator",
+      "elite",
+      "else",
+      "embark",
+      "embody",
+      "embrace",
+      "emerge",
+      "emotion",
+      "employ",
+      "empower",
+      "empty",
+      "enable",
+      "enact",
+      "end",
+      "endless",
+      "endorse",
+      "enemy",
+      "energy",
+      "enforce",
+      "engage",
+      "engine",
+      "enhance",
+      "enjoy",
+      "enlist",
+      "enough",
+      "enrich",
+      "enroll",
+      "ensure",
+      "enter",
+      "entire",
+      "entry",
+      "envelope",
+      "episode",
+      "equal",
+      "equip",
+      "era",
+      "erase",
+      "erode",
+      "erosion",
+      "error",
+      "erupt",
+      "escape",
+      "essay",
+      "essence",
+      "estate",
+      "eternal",
+      "ethics",
+      "evidence",
+      "evil",
+      "evoke",
+      "evolve",
+      "exact",
+      "example",
+      "excess",
+      "exchange",
+      "excite",
+      "exclude",
+      "excuse",
+      "execute",
+      "exercise",
+      "exhaust",
+      "exhibit",
+      "exile",
+      "exist",
+      "exit",
+      "exotic",
+      "expand",
+      "expect",
+      "expire",
+      "explain",
+      "expose",
+      "express",
+      "extend",
+      "extra",
+      "eye",
+      "eyebrow",
+      "fabric",
+      "face",
+      "faculty",
+      "fade",
+      "faint",
+      "faith",
+      "fall",
+      "false",
+      "fame",
+      "family",
+      "famous",
+      "fan",
+      "fancy",
+      "fantasy",
+      "farm",
+      "fashion",
+      "fat",
+      "fatal",
+      "father",
+      "fatigue",
+      "fault",
+      "favorite",
+      "feature",
+      "february",
+      "federal",
+      "fee",
+      "feed",
+      "feel",
+      "female",
+      "fence",
+      "festival",
+      "fetch",
+      "fever",
+      "few",
+      "fiber",
+      "fiction",
+      "field",
+      "figure",
+      "file",
+      "film",
+      "filter",
+      "final",
+      "find",
+      "fine",
+      "finger",
+      "finish",
+      "fire",
+      "firm",
+      "first",
+      "fiscal",
+      "fish",
+      "fit",
+      "fitness",
+      "fix",
+      "flag",
+      "flame",
+      "flash",
+      "flat",
+      "flavor",
+      "flee",
+      "flight",
+      "flip",
+      "float",
+      "flock",
+      "floor",
+      "flower",
+      "fluid",
+      "flush",
+      "fly",
+      "foam",
+      "focus",
+      "fog",
+      "foil",
+      "fold",
+      "follow",
+      "food",
+      "foot",
+      "force",
+      "forest",
+      "forget",
+      "fork",
+      "fortune",
+      "forum",
+      "forward",
+      "fossil",
+      "foster",
+      "found",
+      "fox",
+      "fragile",
+      "frame",
+      "frequent",
+      "fresh",
+      "friend",
+      "fringe",
+      "frog",
+      "front",
+      "frost",
+      "frown",
+      "frozen",
+      "fruit",
+      "fuel",
+      "fun",
+      "funny",
+      "furnace",
+      "fury",
+      "future",
+      "gadget",
+      "gain",
+      "galaxy",
+      "gallery",
+      "game",
+      "gap",
+      "garage",
+      "garbage",
+      "garden",
+      "garlic",
+      "garment",
+      "gas",
+      "gasp",
+      "gate",
+      "gather",
+      "gauge",
+      "gaze",
+      "general",
+      "genius",
+      "genre",
+      "gentle",
+      "genuine",
+      "gesture",
+      "ghost",
+      "giant",
+      "gift",
+      "giggle",
+      "ginger",
+      "giraffe",
+      "girl",
+      "give",
+      "glad",
+      "glance",
+      "glare",
+      "glass",
+      "glide",
+      "glimpse",
+      "globe",
+      "gloom",
+      "glory",
+      "glove",
+      "glow",
+      "glue",
+      "goat",
+      "goddess",
+      "gold",
+      "good",
+      "goose",
+      "gorilla",
+      "gospel",
+      "gossip",
+      "govern",
+      "gown",
+      "grab",
+      "grace",
+      "grain",
+      "grant",
+      "grape",
+      "grass",
+      "gravity",
+      "great",
+      "green",
+      "grid",
+      "grief",
+      "grit",
+      "grocery",
+      "group",
+      "grow",
+      "grunt",
+      "guard",
+      "guess",
+      "guide",
+      "guilt",
+      "guitar",
+      "gun",
+      "gym",
+      "habit",
+      "hair",
+      "half",
+      "hammer",
+      "hamster",
+      "hand",
+      "happy",
+      "harbor",
+      "hard",
+      "harsh",
+      "harvest",
+      "hat",
+      "have",
+      "hawk",
+      "hazard",
+      "head",
+      "health",
+      "heart",
+      "heavy",
+      "hedgehog",
+      "height",
+      "hello",
+      "helmet",
+      "help",
+      "hen",
+      "hero",
+      "hidden",
+      "high",
+      "hill",
+      "hint",
+      "hip",
+      "hire",
+      "history",
+      "hobby",
+      "hockey",
+      "hold",
+      "hole",
+      "holiday",
+      "hollow",
+      "home",
+      "honey",
+      "hood",
+      "hope",
+      "horn",
+      "horror",
+      "horse",
+      "hospital",
+      "host",
+      "hotel",
+      "hour",
+      "hover",
+      "hub",
+      "huge",
+      "human",
+      "humble",
+      "humor",
+      "hundred",
+      "hungry",
+      "hunt",
+      "hurdle",
+      "hurry",
+      "hurt",
+      "husband",
+      "hybrid",
+      "ice",
+      "icon",
+      "idea",
+      "identify",
+      "idle",
+      "ignore",
+      "ill",
+      "illegal",
+      "illness",
+      "image",
+      "imitate",
+      "immense",
+      "immune",
+      "impact",
+      "impose",
+      "improve",
+      "impulse",
+      "inch",
+      "include",
+      "income",
+      "increase",
+      "index",
+      "indicate",
+      "indoor",
+      "industry",
+      "infant",
+      "inflict",
+      "inform",
+      "inhale",
+      "inherit",
+      "initial",
+      "inject",
+      "injury",
+      "inmate",
+      "inner",
+      "innocent",
+      "input",
+      "inquiry",
+      "insane",
+      "insect",
+      "inside",
+      "inspire",
+      "install",
+      "intact",
+      "interest",
+      "into",
+      "invest",
+      "invite",
+      "involve",
+      "iron",
+      "island",
+      "isolate",
+      "issue",
+      "item",
+      "ivory",
+      "jacket",
+      "jaguar",
+      "jar",
+      "jazz",
+      "jealous",
+      "jeans",
+      "jelly",
+      "jewel",
+      "job",
+      "join",
+      "joke",
+      "journey",
+      "joy",
+      "judge",
+      "juice",
+      "jump",
+      "jungle",
+      "junior",
+      "junk",
+      "just",
+      "kangaroo",
+      "keen",
+      "keep",
+      "ketchup",
+      "key",
+      "kick",
+      "kid",
+      "kidney",
+      "kind",
+      "kingdom",
+      "kiss",
+      "kit",
+      "kitchen",
+      "kite",
+      "kitten",
+      "kiwi",
+      "knee",
+      "knife",
+      "knock",
+      "know",
+      "lab",
+      "label",
+      "labor",
+      "ladder",
+      "lady",
+      "lake",
+      "lamp",
+      "language",
+      "laptop",
+      "large",
+      "later",
+      "latin",
+      "laugh",
+      "laundry",
+      "lava",
+      "law",
+      "lawn",
+      "lawsuit",
+      "layer",
+      "lazy",
+      "leader",
+      "leaf",
+      "learn",
+      "leave",
+      "lecture",
+      "left",
+      "leg",
+      "legal",
+      "legend",
+      "leisure",
+      "lemon",
+      "lend",
+      "length",
+      "lens",
+      "leopard",
+      "lesson",
+      "letter",
+      "level",
+      "liar",
+      "liberty",
+      "library",
+      "license",
+      "life",
+      "lift",
+      "light",
+      "like",
+      "limb",
+      "limit",
+      "link",
+      "lion",
+      "liquid",
+      "list",
+      "little",
+      "live",
+      "lizard",
+      "load",
+      "loan",
+      "lobster",
+      "local",
+      "lock",
+      "logic",
+      "lonely",
+      "long",
+      "loop",
+      "lottery",
+      "loud",
+      "lounge",
+      "love",
+      "loyal",
+      "lucky",
+      "luggage",
+      "lumber",
+      "lunar",
+      "lunch",
+      "luxury",
+      "lyrics",
+      "machine",
+      "mad",
+      "magic",
+      "magnet",
+      "maid",
+      "mail",
+      "main",
+      "major",
+      "make",
+      "mammal",
+      "man",
+      "manage",
+      "mandate",
+      "mango",
+      "mansion",
+      "manual",
+      "maple",
+      "marble",
+      "march",
+      "margin",
+      "marine",
+      "market",
+      "marriage",
+      "mask",
+      "mass",
+      "master",
+      "match",
+      "material",
+      "math",
+      "matrix",
+      "matter",
+      "maximum",
+      "maze",
+      "meadow",
+      "mean",
+      "measure",
+      "meat",
+      "mechanic",
+      "medal",
+      "media",
+      "melody",
+      "melt",
+      "member",
+      "memory",
+      "mention",
+      "menu",
+      "mercy",
+      "merge",
+      "merit",
+      "merry",
+      "mesh",
+      "message",
+      "metal",
+      "method",
+      "middle",
+      "midnight",
+      "milk",
+      "million",
+      "mimic",
+      "mind",
+      "minimum",
+      "minor",
+      "minute",
+      "miracle",
+      "mirror",
+      "misery",
+      "miss",
+      "mistake",
+      "mix",
+      "mixed",
+      "mixture",
+      "mobile",
+      "model",
+      "modify",
+      "mom",
+      "moment",
+      "monitor",
+      "monkey",
+      "monster",
+      "month",
+      "moon",
+      "moral",
+      "more",
+      "morning",
+      "mosquito",
+      "mother",
+      "motion",
+      "motor",
+      "mountain",
+      "mouse",
+      "move",
+      "movie",
+      "much",
+      "muffin",
+      "mule",
+      "multiply",
+      "muscle",
+      "museum",
+      "mushroom",
+      "music",
+      "must",
+      "mutual",
+      "myself",
+      "mystery",
+      "myth",
+      "naive",
+      "name",
+      "napkin",
+      "narrow",
+      "nasty",
+      "nation",
+      "nature",
+      "near",
+      "neck",
+      "need",
+      "negative",
+      "neglect",
+      "neither",
+      "nephew",
+      "nerve",
+      "nest",
+      "net",
+      "network",
+      "neutral",
+      "never",
+      "news",
+      "next",
+      "nice",
+      "night",
+      "noble",
+      "noise",
+      "nominee",
+      "noodle",
+      "normal",
+      "north",
+      "nose",
+      "notable",
+      "note",
+      "nothing",
+      "notice",
+      "novel",
+      "now",
+      "nuclear",
+      "number",
+      "nurse",
+      "nut",
+      "oak",
+      "obey",
+      "object",
+      "oblige",
+      "obscure",
+      "observe",
+      "obtain",
+      "obvious",
+      "occur",
+      "ocean",
+      "october",
+      "odor",
+      "off",
+      "offer",
+      "office",
+      "often",
+      "oil",
+      "okay",
+      "old",
+      "olive",
+      "olympic",
+      "omit",
+      "once",
+      "one",
+      "onion",
+      "online",
+      "only",
+      "open",
+      "opera",
+      "opinion",
+      "oppose",
+      "option",
+      "orange",
+      "orbit",
+      "orchard",
+      "order",
+      "ordinary",
+      "organ",
+      "orient",
+      "original",
+      "orphan",
+      "ostrich",
+      "other",
+      "outdoor",
+      "outer",
+      "output",
+      "outside",
+      "oval",
+      "oven",
+      "over",
+      "own",
+      "owner",
+      "oxygen",
+      "oyster",
+      "ozone",
+      "pact",
+      "paddle",
+      "page",
+      "pair",
+      "palace",
+      "palm",
+      "panda",
+      "panel",
+      "panic",
+      "panther",
+      "paper",
+      "parade",
+      "parent",
+      "park",
+      "parrot",
+      "party",
+      "pass",
+      "patch",
+      "path",
+      "patient",
+      "patrol",
+      "pattern",
+      "pause",
+      "pave",
+      "payment",
+      "peace",
+      "peanut",
+      "pear",
+      "peasant",
+      "pelican",
+      "pen",
+      "penalty",
+      "pencil",
+      "people",
+      "pepper",
+      "perfect",
+      "permit",
+      "person",
+      "pet",
+      "phone",
+      "photo",
+      "phrase",
+      "physical",
+      "piano",
+      "picnic",
+      "picture",
+      "piece",
+      "pig",
+      "pigeon",
+      "pill",
+      "pilot",
+      "pink",
+      "pioneer",
+      "pipe",
+      "pistol",
+      "pitch",
+      "pizza",
+      "place",
+      "planet",
+      "plastic",
+      "plate",
+      "play",
+      "please",
+      "pledge",
+      "pluck",
+      "plug",
+      "plunge",
+      "poem",
+      "poet",
+      "point",
+      "polar",
+      "pole",
+      "police",
+      "pond",
+      "pony",
+      "pool",
+      "popular",
+      "portion",
+      "position",
+      "possible",
+      "post",
+      "potato",
+      "pottery",
+      "poverty",
+      "powder",
+      "power",
+      "practice",
+      "praise",
+      "predict",
+      "prefer",
+      "prepare",
+      "present",
+      "pretty",
+      "prevent",
+      "price",
+      "pride",
+      "primary",
+      "print",
+      "priority",
+      "prison",
+      "private",
+      "prize",
+      "problem",
+      "process",
+      "produce",
+      "profit",
+      "program",
+      "project",
+      "promote",
+      "proof",
+      "property",
+      "prosper",
+      "protect",
+      "proud",
+      "provide",
+      "public",
+      "pudding",
+      "pull",
+      "pulp",
+      "pulse",
+      "pumpkin",
+      "punch",
+      "pupil",
+      "puppy",
+      "purchase",
+      "purity",
+      "purpose",
+      "purse",
+      "push",
+      "put",
+      "puzzle",
+      "pyramid",
+      "quality",
+      "quantum",
+      "quarter",
+      "question",
+      "quick",
+      "quit",
+      "quiz",
+      "quote",
+      "rabbit",
+      "raccoon",
+      "race",
+      "rack",
+      "radar",
+      "radio",
+      "rail",
+      "rain",
+      "raise",
+      "rally",
+      "ramp",
+      "ranch",
+      "random",
+      "range",
+      "rapid",
+      "rare",
+      "rate",
+      "rather",
+      "raven",
+      "raw",
+      "razor",
+      "ready",
+      "real",
+      "reason",
+      "rebel",
+      "rebuild",
+      "recall",
+      "receive",
+      "recipe",
+      "record",
+      "recycle",
+      "reduce",
+      "reflect",
+      "reform",
+      "refuse",
+      "region",
+      "regret",
+      "regular",
+      "reject",
+      "relax",
+      "release",
+      "relief",
+      "rely",
+      "remain",
+      "remember",
+      "remind",
+      "remove",
+      "render",
+      "renew",
+      "rent",
+      "reopen",
+      "repair",
+      "repeat",
+      "replace",
+      "report",
+      "require",
+      "rescue",
+      "resemble",
+      "resist",
+      "resource",
+      "response",
+      "result",
+      "retire",
+      "retreat",
+      "return",
+      "reunion",
+      "reveal",
+      "review",
+      "reward",
+      "rhythm",
+      "rib",
+      "ribbon",
+      "rice",
+      "rich",
+      "ride",
+      "ridge",
+      "rifle",
+      "right",
+      "rigid",
+      "ring",
+      "riot",
+      "ripple",
+      "risk",
+      "ritual",
+      "rival",
+      "river",
+      "road",
+      "roast",
+      "robot",
+      "robust",
+      "rocket",
+      "romance",
+      "roof",
+      "rookie",
+      "room",
+      "rose",
+      "rotate",
+      "rough",
+      "round",
+      "route",
+      "royal",
+      "rubber",
+      "rude",
+      "rug",
+      "rule",
+      "run",
+      "runway",
+      "rural",
+      "sad",
+      "saddle",
+      "sadness",
+      "safe",
+      "sail",
+      "salad",
+      "salmon",
+      "salon",
+      "salt",
+      "salute",
+      "same",
+      "sample",
+      "sand",
+      "satisfy",
+      "satoshi",
+      "sauce",
+      "sausage",
+      "save",
+      "say",
+      "scale",
+      "scan",
+      "scare",
+      "scatter",
+      "scene",
+      "scheme",
+      "school",
+      "science",
+      "scissors",
+      "scorpion",
+      "scout",
+      "scrap",
+      "screen",
+      "script",
+      "scrub",
+      "sea",
+      "search",
+      "season",
+      "seat",
+      "second",
+      "secret",
+      "section",
+      "security",
+      "seed",
+      "seek",
+      "segment",
+      "select",
+      "sell",
+      "seminar",
+      "senior",
+      "sense",
+      "sentence",
+      "series",
+      "service",
+      "session",
+      "settle",
+      "setup",
+      "seven",
+      "shadow",
+      "shaft",
+      "shallow",
+      "share",
+      "shed",
+      "shell",
+      "sheriff",
+      "shield",
+      "shift",
+      "shine",
+      "ship",
+      "shiver",
+      "shock",
+      "shoe",
+      "shoot",
+      "shop",
+      "short",
+      "shoulder",
+      "shove",
+      "shrimp",
+      "shrug",
+      "shuffle",
+      "shy",
+      "sibling",
+      "sick",
+      "side",
+      "siege",
+      "sight",
+      "sign",
+      "silent",
+      "silk",
+      "silly",
+      "silver",
+      "similar",
+      "simple",
+      "since",
+      "sing",
+      "siren",
+      "sister",
+      "situate",
+      "six",
+      "size",
+      "skate",
+      "sketch",
+      "ski",
+      "skill",
+      "skin",
+      "skirt",
+      "skull",
+      "slab",
+      "slam",
+      "sleep",
+      "slender",
+      "slice",
+      "slide",
+      "slight",
+      "slim",
+      "slogan",
+      "slot",
+      "slow",
+      "slush",
+      "small",
+      "smart",
+      "smile",
+      "smoke",
+      "smooth",
+      "snack",
+      "snake",
+      "snap",
+      "sniff",
+      "snow",
+      "soap",
+      "soccer",
+      "social",
+      "sock",
+      "soda",
+      "soft",
+      "solar",
+      "soldier",
+      "solid",
+      "solution",
+      "solve",
+      "someone",
+      "song",
+      "soon",
+      "sorry",
+      "sort",
+      "soul",
+      "sound",
+      "soup",
+      "source",
+      "south",
+      "space",
+      "spare",
+      "spatial",
+      "spawn",
+      "speak",
+      "special",
+      "speed",
+      "spell",
+      "spend",
+      "sphere",
+      "spice",
+      "spider",
+      "spike",
+      "spin",
+      "spirit",
+      "split",
+      "spoil",
+      "sponsor",
+      "spoon",
+      "sport",
+      "spot",
+      "spray",
+      "spread",
+      "spring",
+      "spy",
+      "square",
+      "squeeze",
+      "squirrel",
+      "stable",
+      "stadium",
+      "staff",
+      "stage",
+      "stairs",
+      "stamp",
+      "stand",
+      "start",
+      "state",
+      "stay",
+      "steak",
+      "steel",
+      "stem",
+      "step",
+      "stereo",
+      "stick",
+      "still",
+      "sting",
+      "stock",
+      "stomach",
+      "stone",
+      "stool",
+      "story",
+      "stove",
+      "strategy",
+      "street",
+      "strike",
+      "strong",
+      "struggle",
+      "student",
+      "stuff",
+      "stumble",
+      "style",
+      "subject",
+      "submit",
+      "subway",
+      "success",
+      "such",
+      "sudden",
+      "suffer",
+      "sugar",
+      "suggest",
+      "suit",
+      "summer",
+      "sun",
+      "sunny",
+      "sunset",
+      "super",
+      "supply",
+      "supreme",
+      "sure",
+      "surface",
+      "surge",
+      "surprise",
+      "surround",
+      "survey",
+      "suspect",
+      "sustain",
+      "swallow",
+      "swamp",
+      "swap",
+      "swarm",
+      "swear",
+      "sweet",
+      "swift",
+      "swim",
+      "swing",
+      "switch",
+      "sword",
+      "symbol",
+      "symptom",
+      "syrup",
+      "system",
+      "table",
+      "tackle",
+      "tag",
+      "tail",
+      "talent",
+      "talk",
+      "tank",
+      "tape",
+      "target",
+      "task",
+      "taste",
+      "tattoo",
+      "taxi",
+      "teach",
+      "team",
+      "tell",
+      "ten",
+      "tenant",
+      "tennis",
+      "tent",
+      "term",
+      "test",
+      "text",
+      "thank",
+      "that",
+      "theme",
+      "then",
+      "theory",
+      "there",
+      "they",
+      "thing",
+      "this",
+      "thought",
+      "three",
+      "thrive",
+      "throw",
+      "thumb",
+      "thunder",
+      "ticket",
+      "tide",
+      "tiger",
+      "tilt",
+      "timber",
+      "time",
+      "tiny",
+      "tip",
+      "tired",
+      "tissue",
+      "title",
+      "toast",
+      "tobacco",
+      "today",
+      "toddler",
+      "toe",
+      "together",
+      "toilet",
+      "token",
+      "tomato",
+      "tomorrow",
+      "tone",
+      "tongue",
+      "tonight",
+      "tool",
+      "tooth",
+      "top",
+      "topic",
+      "topple",
+      "torch",
+      "tornado",
+      "tortoise",
+      "toss",
+      "total",
+      "tourist",
+      "toward",
+      "tower",
+      "town",
+      "toy",
+      "track",
+      "trade",
+      "traffic",
+      "tragic",
+      "train",
+      "transfer",
+      "trap",
+      "trash",
+      "travel",
+      "tray",
+      "treat",
+      "tree",
+      "trend",
+      "trial",
+      "tribe",
+      "trick",
+      "trigger",
+      "trim",
+      "trip",
+      "trophy",
+      "trouble",
+      "truck",
+      "true",
+      "truly",
+      "trumpet",
+      "trust",
+      "truth",
+      "try",
+      "tube",
+      "tuition",
+      "tumble",
+      "tuna",
+      "tunnel",
+      "turkey",
+      "turn",
+      "turtle",
+      "twelve",
+      "twenty",
+      "twice",
+      "twin",
+      "twist",
+      "two",
+      "type",
+      "typical",
+      "ugly",
+      "umbrella",
+      "unable",
+      "unaware",
+      "uncle",
+      "uncover",
+      "under",
+      "undo",
+      "unfair",
+      "unfold",
+      "unhappy",
+      "uniform",
+      "unique",
+      "unit",
+      "universe",
+      "unknown",
+      "unlock",
+      "until",
+      "unusual",
+      "unveil",
+      "update",
+      "upgrade",
+      "uphold",
+      "upon",
+      "upper",
+      "upset",
+      "urban",
+      "urge",
+      "usage",
+      "use",
+      "used",
+      "useful",
+      "useless",
+      "usual",
+      "utility",
+      "vacant",
+      "vacuum",
+      "vague",
+      "valid",
+      "valley",
+      "valve",
+      "van",
+      "vanish",
+      "vapor",
+      "various",
+      "vast",
+      "vault",
+      "vehicle",
+      "velvet",
+      "vendor",
+      "venture",
+      "venue",
+      "verb",
+      "verify",
+      "version",
+      "very",
+      "vessel",
+      "veteran",
+      "viable",
+      "vibrant",
+      "vicious",
+      "victory",
+      "video",
+      "view",
+      "village",
+      "vintage",
+      "violin",
+      "virtual",
+      "virus",
+      "visa",
+      "visit",
+      "visual",
+      "vital",
+      "vivid",
+      "vocal",
+      "voice",
+      "void",
+      "volcano",
+      "volume",
+      "vote",
+      "voyage",
+      "wage",
+      "wagon",
+      "wait",
+      "walk",
+      "wall",
+      "walnut",
+      "want",
+      "warfare",
+      "warm",
+      "warrior",
+      "wash",
+      "wasp",
+      "waste",
+      "water",
+      "wave",
+      "way",
+      "wealth",
+      "weapon",
+      "wear",
+      "weasel",
+      "weather",
+      "web",
+      "wedding",
+      "weekend",
+      "weird",
+      "welcome",
+      "west",
+      "wet",
+      "whale",
+      "what",
+      "wheat",
+      "wheel",
+      "when",
+      "where",
+      "whip",
+      "whisper",
+      "wide",
+      "width",
+      "wife",
+      "wild",
+      "will",
+      "win",
+      "window",
+      "wine",
+      "wing",
+      "wink",
+      "winner",
+      "winter",
+      "wire",
+      "wisdom",
+      "wise",
+      "wish",
+      "witness",
+      "wolf",
+      "woman",
+      "wonder",
+      "wood",
+      "wool",
+      "word",
+      "work",
+      "world",
+      "worry",
+      "worth",
+      "wrap",
+      "wreck",
+      "wrestle",
+      "wrist",
+      "write",
+      "wrong",
+      "yard",
+      "year",
+      "yellow",
+      "you",
+      "young",
+      "youth",
+      "zebra",
+      "zero",
+      "zone",
+      "zoo"
+    ],
+    space: " "
+  };
+});
+
+// node_modules/@bsv/sdk/dist/esm/src/compat/Mnemonic.js
+class Mnemonic {
+  mnemonic;
+  seed;
+  Wordlist;
+  constructor(mnemonic, seed, wordlist = wordList) {
+    this.mnemonic = mnemonic ?? "";
+    this.seed = seed ?? [];
+    this.Wordlist = wordlist;
+  }
+  toBinary() {
+    const bw = new Writer;
+    if (this.mnemonic === "") {
+      bw.writeVarIntNum(0);
+    } else {
+      const buf = toArray2(this.mnemonic, "utf8");
+      bw.writeVarIntNum(buf.length);
+      bw.write(buf);
+    }
+    if (this.seed.length > 0) {
+      bw.writeVarIntNum(this.seed.length);
+      bw.write(this.seed);
+    } else {
+      bw.writeVarIntNum(0);
+    }
+    return bw.toArray();
+  }
+  fromBinary(bin) {
+    const br = new Reader(bin);
+    const mnemoniclen = br.readVarIntNum();
+    if (mnemoniclen > 0) {
+      this.mnemonic = encode3(br.read(mnemoniclen), "utf8");
+    }
+    const seedlen = br.readVarIntNum();
+    if (seedlen > 0) {
+      this.seed = br.read(seedlen);
+    }
+    return this;
+  }
+  fromRandom(bits) {
+    if (bits === undefined || bits === null || Number.isNaN(bits) || bits === 0) {
+      bits = 128;
+    }
+    if (bits % 32 !== 0) {
+      throw new Error("bits must be multiple of 32");
+    }
+    if (bits < 128) {
+      throw new Error("bits must be at least 128");
+    }
+    const buf = Random_default(bits / 8);
+    this.entropy2Mnemonic(buf);
+    this.mnemonic2Seed();
+    return this;
+  }
+  static fromRandom(bits) {
+    return new this().fromRandom(bits);
+  }
+  fromEntropy(buf) {
+    this.entropy2Mnemonic(buf);
+    return this;
+  }
+  static fromEntropy(buf) {
+    return new this().fromEntropy(buf);
+  }
+  fromString(mnemonic) {
+    this.mnemonic = mnemonic;
+    let valid = false;
+    try {
+      valid = this.check();
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      throw new Error("Mnemonic does not pass the check - was the mnemonic typed incorrectly? Are there extra spaces?");
+    }
+    return this;
+  }
+  static fromString(str) {
+    return new this().fromString(str);
+  }
+  toString() {
+    return this.mnemonic;
+  }
+  toSeed(passphrase) {
+    this.mnemonic2Seed(passphrase);
+    return this.seed;
+  }
+  entropy2Mnemonic(buf) {
+    if (buf.length < 128 / 8) {
+      throw new Error("Entropy is less than 128 bits. It must be 128 bits or more.");
+    }
+    const hash = sha256(buf);
+    let bin = "";
+    const bits = buf.length * 8;
+    for (const byte of buf) {
+      bin = bin + ("00000000" + byte.toString(2)).slice(-8);
+    }
+    let hashbits = hash[0].toString(2);
+    hashbits = ("00000000" + hashbits).slice(-8).slice(0, bits / 32);
+    bin = bin + hashbits;
+    if (bin.length % 11 !== 0) {
+      throw new Error("internal error - entropy not an even multiple of 11 bits - " + bin.length.toString());
+    }
+    let mnemonic = "";
+    for (let i = 0;i < bin.length / 11; i++) {
+      if (mnemonic !== "") {
+        mnemonic = mnemonic + this.Wordlist.space;
+      }
+      const wi = Number.parseInt(bin.slice(i * 11, (i + 1) * 11), 2);
+      mnemonic = mnemonic + this.Wordlist.value[wi];
+    }
+    this.mnemonic = mnemonic;
+    return this;
+  }
+  toEntropy() {
+    const words = this.mnemonic.split(this.Wordlist.space);
+    let bin = "";
+    for (const word of words) {
+      const ind = this.Wordlist.value.indexOf(word);
+      if (ind < 0) {
+        throw new Error(`Unknown word in mnemonic: "${word}"`);
+      }
+      bin = bin + ("00000000000" + ind.toString(2)).slice(-11);
+    }
+    if (bin.length % 11 !== 0) {
+      throw new Error("internal error - entropy not an even multiple of 11 bits - " + bin.length.toString());
+    }
+    const cs = bin.length / 33;
+    const entropyBits = bin.slice(0, bin.length - cs);
+    const buf = [];
+    for (let i = 0;i < entropyBits.length / 8; i++) {
+      buf.push(Number.parseInt(entropyBits.slice(i * 8, (i + 1) * 8), 2));
+    }
+    const hash = sha256(buf);
+    let expectedHashBits = hash[0].toString(2);
+    expectedHashBits = ("00000000" + expectedHashBits).slice(-8).slice(0, cs);
+    const actualHashBits = bin.slice(-cs);
+    if (expectedHashBits !== actualHashBits) {
+      throw new Error("Mnemonic checksum invalid");
+    }
+    return buf;
+  }
+  check() {
+    const mnemonic = this.mnemonic;
+    const words = mnemonic.split(this.Wordlist.space);
+    let bin = "";
+    for (const word of words) {
+      const ind = this.Wordlist.value.indexOf(word);
+      if (ind < 0) {
+        return false;
+      }
+      bin = bin + ("00000000000" + ind.toString(2)).slice(-11);
+    }
+    if (bin.length % 11 !== 0) {
+      throw new Error("internal error - entropy not an even multiple of 11 bits - " + bin.length.toString());
+    }
+    const cs = bin.length / 33;
+    const hashBits = bin.slice(-cs);
+    const nonhashBits = bin.slice(0, bin.length - cs);
+    const buf = [];
+    for (let i = 0;i < nonhashBits.length / 8; i++) {
+      buf.push(Number.parseInt(bin.slice(i * 8, (i + 1) * 8), 2));
+    }
+    const hash = sha256(buf.slice(0, nonhashBits.length / 8));
+    let expectedHashBits = hash[0].toString(2);
+    expectedHashBits = ("00000000" + expectedHashBits).slice(-8).slice(0, cs);
+    return expectedHashBits === hashBits;
+  }
+  mnemonic2Seed(passphrase = "") {
+    let mnemonic = this.mnemonic;
+    if (!this.check()) {
+      throw new Error("Mnemonic does not pass the check - was the mnemonic typed incorrectly? Are there extra spaces?");
+    }
+    if (typeof passphrase !== "string") {
+      throw new TypeError("passphrase must be a string or undefined");
+    }
+    mnemonic = mnemonic.normalize("NFKD");
+    passphrase = passphrase.normalize("NFKD");
+    const mbuf = toArray2(mnemonic, "utf8");
+    const pbuf = [
+      ...toArray2("mnemonic", "utf8"),
+      ...toArray2(passphrase, "utf8")
+    ];
+    this.seed = pbkdf2(mbuf, pbuf, 2048, 64, "sha512");
+    return this;
+  }
+  isValid(passphrase = "") {
+    let isValid;
+    try {
+      this.mnemonic2Seed(passphrase);
+      isValid = true;
+    } catch {
+      isValid = false;
+    }
+    return isValid;
+  }
+  static isValid(mnemonic, passphrase = "") {
+    return new Mnemonic(mnemonic).isValid(passphrase);
+  }
+}
+var init_Mnemonic = __esm(() => {
+  init_bip_39_wordlist_en();
+  init_utils();
+  init_Hash();
+  init_Random();
+});
+
 // node_modules/@bsv/sdk/dist/esm/src/compat/ECIES.js
 function expandEncryptionKey(key, sbox) {
   const keyLen = key.length;
@@ -43223,6 +45716,7 @@ var init_Utxo = __esm(() => {
 var init_compat2 = __esm(() => {
   init_BSM();
   init_HD();
+  init_Mnemonic();
   init_ECIES();
   init_Utxo();
 });
@@ -59096,7 +61590,7 @@ var import_argon2_umd_min, import_pbkdf2_umd_min, import_sha256_umd_min, import_
     }
     return r;
   }
-}, StorageReaderWriter, ACTION_BATCH_MAX_BLOB_BYTES, ACTION_BATCH_MAX_INLINE_BYTES, ACTION_BATCH_MAX_PACK_BYTES, ACTION_BATCH_MAX_PACK_ITEMS = 4096, sameStrings, sameNumbers, ACTION_BATCH_LEASE_MS, ACTION_BATCH_HARD_LIFETIME_MS, INITIAL_RESERVATION_LIMIT = 8, INITIAL_EXTRA_OUTPUTS = 3, activeBatchCommits, StorageProvider, argon2id, pbkdf2, createSHA256, createSHA512, HeightRange, ChaintracksServiceClient = class ChaintracksServiceClient {
+}, StorageReaderWriter, ACTION_BATCH_MAX_BLOB_BYTES, ACTION_BATCH_MAX_INLINE_BYTES, ACTION_BATCH_MAX_PACK_BYTES, ACTION_BATCH_MAX_PACK_ITEMS = 4096, sameStrings, sameNumbers, ACTION_BATCH_LEASE_MS, ACTION_BATCH_HARD_LIFETIME_MS, INITIAL_RESERVATION_LIMIT = 8, INITIAL_EXTRA_OUTPUTS = 3, activeBatchCommits, StorageProvider, argon2id, pbkdf22, createSHA256, createSHA512, HeightRange, ChaintracksServiceClient = class ChaintracksServiceClient {
   chain;
   serviceUrl;
   static createChaintracksServiceClientOptions() {
@@ -65499,7 +67993,7 @@ var init_index_client = __esm(() => {
     }
   };
   argon2id = import_argon2_umd_min.default.argon2id;
-  pbkdf2 = import_pbkdf2_umd_min.default.pbkdf2;
+  pbkdf22 = import_pbkdf2_umd_min.default.pbkdf2;
   createSHA256 = import_sha256_umd_min.default.createSHA256;
   createSHA512 = import_sha512_umd_min.default.createSHA512;
   HeightRange = class HeightRange {
@@ -71615,6 +74109,65 @@ var init_getPrice = __esm(() => {
   PRICE_CACHE_DURATION = 5 * 60 * 1000;
 });
 
+// utils/externalWalletConfig.ts
+function markExternalWalletContext(ctx) {
+  Object.defineProperty(ctx, EXTERNAL_WALLET_CONTEXT, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
+  return ctx;
+}
+function isExternalWalletContext(ctx) {
+  return ctx !== undefined && ctx[EXTERNAL_WALLET_CONTEXT] === true;
+}
+function readExternalWalletConfig(env = process.env) {
+  const raw = env.BRC100_WALLET_URL;
+  if (raw === undefined) {
+    if (env.BRC100_WALLET_ORIGINATOR !== undefined) {
+      throw new Error("BRC100_WALLET_ORIGINATOR requires BRC100_WALLET_URL");
+    }
+    return;
+  }
+  for (const name of ["PRIVATE_KEY_WIF", "IDENTITY_KEY_WIF"]) {
+    if (env[name] !== undefined) {
+      throw new Error(`BRC100_WALLET_URL conflicts with ${name}; select one wallet identity`);
+    }
+  }
+  if (env.USE_DROPLIT_API === "true") {
+    throw new Error("BRC100_WALLET_URL conflicts with USE_DROPLIT_API");
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error("BRC100_WALLET_URL must be a valid signer RPC URL");
+  }
+  const loopback = url.hostname === "localhost" || url.hostname === "[::1]" || /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(url.hostname);
+  if (!raw || raw !== raw.trim() || /[\\\s@?]/.test(raw) || url.username || url.password || raw.includes("#") || url.search || !(url.protocol === "https:" || url.protocol === "http:" && loopback)) {
+    throw new Error("BRC100_WALLET_URL requires HTTPS or HTTP loopback, without credentials, queries or fragments");
+  }
+  const originator = env.BRC100_WALLET_ORIGINATOR ?? "bsv-mcp.local";
+  let origin;
+  try {
+    origin = new URL(originator.includes("://") ? originator : `http://${originator}`);
+  } catch {
+    throw new Error("BRC100_WALLET_ORIGINATOR must be a domain or HTTP(S) origin");
+  }
+  if (!originator || /[\s\\]/.test(originator) || originator.length >= 250 || !["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || /[#?@]/.test(originator) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[::1\])$/i.test(origin.hostname) || origin.hostname.toLowerCase() === "admin.bsv-mcp.internal") {
+    throw new Error("BRC100_WALLET_ORIGINATOR must be a non-admin domain or HTTP(S) origin without credentials, path, query or fragment");
+  }
+  return { url: url.toString().replace(/\/$/, ""), originator };
+}
+async function initializeKeysForWalletMode(external, loadLocalKeys) {
+  return external ? undefined : loadLocalKeys();
+}
+var EXTERNAL_WALLET_CONTEXT;
+var init_externalWalletConfig = __esm(() => {
+  EXTERNAL_WALLET_CONTEXT = Symbol.for("bsv-mcp.external-wallet-context");
+});
+
 // tools/bsv/decodeTransaction.ts
 async function fetchJungleBusData(txid) {
   try {
@@ -73477,6 +76030,58 @@ var init_utils3 = __esm(() => {
   init_logger();
   init_transactionBuilder();
   encodingSchema2 = _enum(["utf8", "hex", "base64", "binary"]);
+});
+
+// tools/wallet/onboarding.ts
+function isWalletOnboardingAvailable(config) {
+  return config.walletSetupNeeded === true && typeof config.openWalletSetup === "function";
+}
+async function executeWalletOnboarding(openWalletSetup) {
+  try {
+    await openWalletSetup();
+    return {
+      ...createSuccessResponse({ ...WALLET_ONBOARDING_SUCCESS }),
+      structuredContent: { ...WALLET_ONBOARDING_SUCCESS }
+    };
+  } catch {
+    const data = { ...WALLET_ONBOARDING_FAILURE };
+    return {
+      ...createSuccessResponse(data),
+      structuredContent: data,
+      isError: true
+    };
+  }
+}
+function createWalletOnboardingHandler(openWalletSetup) {
+  return () => executeWalletOnboarding(openWalletSetup);
+}
+function registerWalletOnboardingTool(server, openWalletSetup) {
+  server.registerTool(WALLET_ONBOARDING_TOOL_NAME, {
+    description: "Open the local wallet setup in the browser. Only available when wallet setup is needed. Complete wallet setup in the browser.",
+    inputSchema: walletOnboardingInputSchema,
+    annotations: WALLET_ONBOARDING_ANNOTATIONS
+  }, createWalletOnboardingHandler(openWalletSetup));
+}
+var WALLET_ONBOARDING_TOOL_NAME = "wallet_onboarding", walletOnboardingInputSchema, WALLET_ONBOARDING_ANNOTATIONS, WALLET_ONBOARDING_SUCCESS, WALLET_ONBOARDING_FAILURE;
+var init_onboarding = __esm(() => {
+  init_zod();
+  walletOnboardingInputSchema = object2({});
+  WALLET_ONBOARDING_ANNOTATIONS = {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true
+  };
+  WALLET_ONBOARDING_SUCCESS = {
+    status: "opened",
+    setupNeeded: true,
+    nextStep: "Complete wallet setup in the browser."
+  };
+  WALLET_ONBOARDING_FAILURE = {
+    status: "error",
+    setupNeeded: true,
+    message: "Failed to open wallet setup. Try again or inspect the computer that runs BSV MCP."
+  };
 });
 
 // tools/wallet/brc100.ts
@@ -82129,11 +84734,13 @@ async function createWalletCore(config, localStorage2, toolbox) {
   const remoteClients = [];
   const connectRemote = async (url) => {
     const client = new toolbox.StorageClient(wallet, url);
-    installStorageClientPaymentAutoRetry({
-      client,
-      wallet,
-      storage
-    });
+    if (config.autoStoragePayments !== false) {
+      installStorageClientPaymentAutoRetry({
+        client,
+        wallet,
+        storage
+      });
+    }
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`Remote storage connection timeout: ${url}`)), timeout));
     await Promise.race([
       storage.addWalletStorageProvider(client),
@@ -82190,11 +84797,13 @@ async function createWalletCore(config, localStorage2, toolbox) {
       return;
     }
   };
-  installStoragePaymentAutoRetry({
-    wallet,
-    getActiveRemoteUrl,
-    onStoragePaymentRequired: config.onStoragePaymentRequired
-  });
+  if (config.autoStoragePayments !== false) {
+    installStoragePaymentAutoRetry({
+      wallet,
+      getActiveRemoteUrl,
+      onStoragePaymentRequired: config.onStoragePaymentRequired
+    });
+  }
   let monitor;
   if (toolbox.Monitor) {
     monitor = new toolbox.Monitor({
@@ -99264,6 +101873,45 @@ var init_gatherCollectionInfo = __esm(() => {
   });
 });
 
+// utils/embeddedOwnerRead.ts
+function withEmbeddedOwnerDefaultBasketRead(wallet, ownerOriginator) {
+  return new Proxy(wallet, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property !== "listOutputs" || typeof value !== "function") {
+        return value;
+      }
+      return (...args) => {
+        const request = args[0];
+        if (typeof request === "object" && request !== null && "basket" in request && request.basket === DEFAULT_BASKET) {
+          return Reflect.apply(value, target, [request, ownerOriginator]);
+        }
+        return Reflect.apply(value, target, args);
+      };
+    }
+  });
+}
+function withEmbeddedOwnerDerivation(wallet, ownerOriginator) {
+  return new Proxy(wallet, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (property !== "getPublicKey" || typeof value !== "function") {
+        return value;
+      }
+      return (...args) => {
+        if (args.length < 2 || args[1] === undefined) {
+          return Reflect.apply(value, target, [args[0], ownerOriginator]);
+        }
+        return Reflect.apply(value, target, args);
+      };
+    }
+  });
+}
+var DEFAULT_BASKET = "default", EMBEDDED_OWNER_ORIGINATOR;
+var init_embeddedOwnerRead = __esm(() => {
+  EMBEDDED_OWNER_ORIGINATOR = Symbol("bsv-mcp.embedded-owner-originator");
+});
+
 // tools/wallet/getAddress.ts
 function registerGetAddressTool(server, ctx) {
   server.registerTool("wallet_getAddress", {
@@ -99274,7 +101922,12 @@ function registerGetAddressTool(server, ctx) {
       if (!ctx) {
         throw new Error("BRC-100 wallet context not available");
       }
-      const { derivations } = await deriveDepositAddresses.execute(ctx, {
+      const ownerOriginator = ctx[EMBEDDED_OWNER_ORIGINATOR];
+      const deriveContext = ownerOriginator ? {
+        ...ctx,
+        wallet: withEmbeddedOwnerDerivation(ctx.wallet, ownerOriginator)
+      } : ctx;
+      const { derivations } = await deriveDepositAddresses.execute(deriveContext, {
         prefix: MCP_ADDRESS_PREFIX
       });
       const firstDerivation = derivations[0];
@@ -99313,6 +101966,7 @@ var MCP_ADDRESS_PREFIX = "mcp";
 var init_getAddress = __esm(() => {
   init_dist7();
   init_zod();
+  init_embeddedOwnerRead();
 });
 
 // node_modules/satoshi-token/dist/index.js
@@ -109955,10 +112609,18 @@ var init_unlockBsv = __esm(() => {
 function registerWalletTools(server, wallet, config) {
   registerSendBsvTool(server, config.ctx);
   registerGetAddressTool(server, config.ctx);
+  if (config.scope === "payments") {
+    if (config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false)
+      registerWalletGetBalanceTool(server, config.ctx);
+    return;
+  }
   registerPurchaseListingTool(server, config.ctx);
   registerTransferOrdTokenTool(server, config.ctx);
   registerRefreshUtxosTool(server, config.ctx);
-  registerWalletGetBalanceTool(server, config.ctx);
+  const allowWholeWalletBalance = config.allowWholeWalletBalance ?? config.ctx?.isBaseWallet !== false;
+  if (allowWholeWalletBalance) {
+    registerWalletGetBalanceTool(server, config.ctx);
+  }
   registerBrc100Tools(server, config.ctx);
   registerRevealDelegationTool(server, config.ctx);
   registerCreateOrdinalsTool(server, config.ctx);
@@ -110073,9 +112735,12 @@ function categoryEnabled(config, category) {
       return isEnabled2(config.enableUtilsTools, "DISABLE_UTILS_TOOLS");
     case "wallet_read":
       return isEnabled2(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
+    case "wallet_setup":
+      return true;
   }
 }
 function captureConfig(config) {
+  const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
   const bsv = categoryEnabled(config, "bsv_read") ? captureRegistrations((server) => {
     registerBsvTools(server);
     registerStatusTool(server, config);
@@ -110085,7 +112750,9 @@ function captureConfig(config) {
   }) : new Map;
   const utility = categoryEnabled(config, "utility") ? captureRegistrations((server) => registerUtilsTools(server)) : new Map;
   const wallet = categoryEnabled(config, "wallet_read") && !config.integratedWallet?.isDroplitMode && (config.wallet || config.ctx) ? captureRegistrations((server) => registerWalletTools(server, config.wallet, {
-    ctx: config.ctx
+    ctx: config.ctx,
+    allowWholeWalletBalance: !externalWallet,
+    scope: config.walletScope
   })) : new Map;
   return { bsv, ordinals, utility, wallet };
 }
@@ -110093,6 +112760,28 @@ function walletAvailability({ config }) {
   return config.ctx ? { available: true } : {
     available: false,
     reason: "BRC-100 wallet context not available"
+  };
+}
+function buildWalletSetupFamily(config) {
+  if (!isWalletOnboardingAvailable(config) || !config.openWalletSetup)
+    return null;
+  const openWalletSetup = config.openWalletSetup;
+  const operations = new Map([
+    [
+      WALLET_ONBOARDING_TOOL_NAME,
+      {
+        id: WALLET_ONBOARDING_TOOL_NAME,
+        schema: walletOnboardingInputSchema,
+        handler: () => executeWalletOnboarding(openWalletSetup),
+        annotations: { ...WALLET_ONBOARDING_ANNOTATIONS }
+      }
+    ]
+  ]);
+  return {
+    name: "wallet_setup",
+    description: "Wallet setup operation. Select operation and pass that operation's arguments in args.",
+    operations,
+    annotations: { ...WALLET_ONBOARDING_ANNOTATIONS }
   };
 }
 function buildCompactFamilies(config) {
@@ -110105,8 +112794,8 @@ function buildCompactFamilies(config) {
     families.push(readOnlyFamily("ordinals_read", "Read-only Ordinals and marketplace operations. Select operation and pass that operation's arguments in args.", operationsFromCaptures(captured.ordinals, ORDINALS_READS)));
   }
   if (categoryEnabled(config, "wallet_read") && !config.integratedWallet?.isDroplitMode && (config.wallet || config.ctx)) {
-    const operations = operationsFromCaptures(captured.wallet, CORE_WALLET_READS, walletAvailability);
-    if (config.ctx) {
+    const operations = operationsFromCaptures(captured.wallet, config.walletScope === "payments" ? PAYMENTS_WALLET_READS : CORE_WALLET_READS, walletAvailability);
+    if (config.ctx && config.walletScope !== "payments") {
       for (const operation of operationsFromCaptures(captured.wallet, BRC100_WALLET_READS, walletAvailability)) {
         operations.set(operation[0], operation[1]);
       }
@@ -110116,6 +112805,9 @@ function buildCompactFamilies(config) {
   if (categoryEnabled(config, "utility")) {
     families.push(readOnlyFamily("utility", "Read-only data conversion operation. Select operation and pass that operation's arguments in args.", operationsFromCaptures(captured.utility, ["utils_convertData"])));
   }
+  const walletSetupFamily = buildWalletSetupFamily(config);
+  if (walletSetupFamily)
+    families.push(walletSetupFamily);
   return families.filter((family) => family.operations.size > 0);
 }
 function familySchema(operations) {
@@ -110170,13 +112862,15 @@ function resolveToolCatalogFromEnvironment(value = process.env.MCP_TOOL_CATALOG)
     return value;
   throw new Error(`MCP_TOOL_CATALOG must be "full" or "compact"; received "${value}"`);
 }
-var COMPACT_OPERATION_LEGACY_NAMES, READ_ONLY_ANNOTATIONS, CORE_WALLET_READS, BRC100_WALLET_READS, BSV_READS, ORDINALS_READS;
+var COMPACT_OPERATION_LEGACY_NAMES, READ_ONLY_ANNOTATIONS, CORE_WALLET_READS, PAYMENTS_WALLET_READS, BRC100_WALLET_READS, BSV_READS, ORDINALS_READS;
 var init_compactCatalog = __esm(() => {
   init_zod();
+  init_externalWalletConfig();
   init_bsv();
   init_status();
   init_ordinals();
   init_utils3();
+  init_onboarding();
   init_tools();
   COMPACT_OPERATION_LEGACY_NAMES = {
     bsv_read: [
@@ -110207,7 +112901,8 @@ var init_compactCatalog = __esm(() => {
       "wallet_isAuthenticated",
       "wallet_waitForAuthentication"
     ],
-    utility: ["utils_convertData"]
+    utility: ["utils_convertData"],
+    wallet_setup: ["wallet_onboarding"]
   };
   READ_ONLY_ANNOTATIONS = {
     readOnlyHint: true,
@@ -110222,6 +112917,10 @@ var init_compactCatalog = __esm(() => {
     "wallet_listTokens",
     "wallet_getBsv21Balances",
     "wallet_getLockData"
+  ];
+  PAYMENTS_WALLET_READS = [
+    "wallet_getAddress",
+    "wallet_getBalance"
   ];
   BRC100_WALLET_READS = [
     "wallet_getHeight",
@@ -110529,19 +113228,35 @@ var init_friend = __esm(() => {
 });
 
 // utils/accounts.ts
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  constants as fsConstants,
+  fstatSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
-  writeFileSync
+  rmSync,
+  writeSync
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+function resolveStorageConfig(config, activeRemoteOverride) {
+  const validate = (url) => {
+    if (!remote.safeParse(url).success)
+      throw new Error("Wallet storage URL must be HTTPS or loopback HTTP");
+    return url;
+  };
+  const activeRemote = activeRemoteOverride === undefined ? config?.activeRemote : validate(activeRemoteOverride);
+  const backups = config?.backups?.map(validate).filter((url) => url !== activeRemote);
+  return { activeRemote, backups };
+}
 function accountsRoot() {
   const base = join(homedir(), ".bsv-mcp");
   regularPath(base, true);
@@ -110579,21 +113294,229 @@ function readAccount(name = accountName(), root = accountsRoot()) {
     throw new Error(`Invalid account configuration at ${file}`);
   }
 }
-function writeAccount(name, config, root = accountsRoot()) {
-  const data = accountConfigSchema.parse(config);
+function sha256Hex(raw) {
+  return createHash("sha256").update(raw).digest("hex");
+}
+function readAccountRevision(name = accountName(), root = accountsRoot()) {
+  regularPath(root, true);
+  const dir = accountDir(name, root);
+  regularPath(dir, true);
+  const file = join(dir, "config.json");
+  regularPath(file);
+  if (!existsSync(file))
+    return null;
+  const raw = readFileSync(file);
+  try {
+    accountConfigSchema.parse(JSON.parse(raw.toString("utf8")));
+  } catch {
+    throw new Error(`Invalid account configuration at ${file}`);
+  }
+  return sha256Hex(raw);
+}
+function configLockPath(dir) {
+  return join(dir, ".config.json.lock");
+}
+function sortKeysDeep(value) {
+  if (Array.isArray(value))
+    return value.map(sortKeysDeep);
+  if (value !== null && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort())
+      out[key] = sortKeysDeep(value[key]);
+    return out;
+  }
+  return value;
+}
+function bindingsEqual(a, b) {
+  return JSON.stringify(sortKeysDeep(a)) === JSON.stringify(sortKeysDeep(b));
+}
+function tryFsyncFile(fd) {
+  try {
+    fsyncSync(fd);
+  } catch {}
+}
+function tryFsyncDir(dir) {
+  try {
+    const fd = openSync(dir, "r");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {}
+}
+function writeAccount(name, config, root = accountsRoot(), options) {
+  const candidate = accountConfigSchema.parse(config);
   regularPath(root, true);
   secureDirectory(root);
   const dir = accountDir(name, root);
   secureDirectory(dir);
   const file = join(dir, "config.json");
   regularPath(file);
-  const temp = join(dir, `.config-${randomBytes(8).toString("hex")}`);
-  writeFileSync(temp, `${JSON.stringify(data, null, 2)}
-`, {
-    mode: 384,
-    flag: "wx"
-  });
-  renameSync(temp, file);
+  const lockPath = configLockPath(dir);
+  try {
+    lstatSync(lockPath);
+    throw new Error("ACCOUNT_CONFIG_BUSY: account config is locked by another writer");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("ACCOUNT_CONFIG_BUSY"))
+      throw error;
+    if (error instanceof Error && "code" in error && error.code !== "ENOENT") {
+      throw new Error("ACCOUNT_CONFIG_BUSY: account config lock cannot be inspected");
+    }
+  }
+  let lockFd;
+  let lockDev;
+  let lockIno;
+  let lockClosed = false;
+  try {
+    lockFd = openSync(lockPath, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 384);
+    const owned = fstatSync(lockFd);
+    lockDev = owned.dev;
+    lockIno = owned.ino;
+    writeSync(lockFd, `${process.pid}
+`);
+  } catch (error) {
+    if (lockFd !== undefined) {
+      try {
+        closeSync(lockFd);
+      } catch {}
+      lockClosed = true;
+      try {
+        const current = lstatSync(lockPath);
+        if (!current.isSymbolicLink() && current.dev === lockDev && current.ino === lockIno) {
+          try {
+            rmSync(lockPath, { force: true });
+          } catch {}
+        }
+      } catch {}
+      lockFd = undefined;
+    }
+    if (error instanceof Error && error.message.includes("ACCOUNT_CONFIG_"))
+      throw error;
+    throw new Error("ACCOUNT_CONFIG_BUSY: account config is locked by another writer");
+  }
+  let tempPath;
+  try {
+    regularPath(file);
+    let currentRaw = null;
+    let existing;
+    if (existsSync(file)) {
+      currentRaw = readFileSync(file);
+      try {
+        existing = accountConfigSchema.parse(JSON.parse(currentRaw.toString("utf8")));
+      } catch {
+        throw new Error(`Invalid account configuration at ${file}`);
+      }
+    }
+    const expected = options?.expectedRevision;
+    if (expected !== undefined) {
+      const currentRevision = currentRaw ? sha256Hex(currentRaw) : null;
+      if (expected === null) {
+        if (currentRevision !== null)
+          throw new Error("ACCOUNT_CONFIG_CHANGED: account config already exists");
+      } else if (currentRevision !== expected) {
+        throw new Error("ACCOUNT_CONFIG_CHANGED: account config revision mismatch");
+      }
+    }
+    const existingHistory = existing?.vaultBindingHistory ?? [];
+    const candidateHistory = candidate.vaultBindingHistory ?? [];
+    const mergedHistory = [...existingHistory];
+    for (const entry of candidateHistory) {
+      const duplicate = mergedHistory.some((kept) => kept.changedAt === entry.changedAt && bindingsEqual(kept.binding, entry.binding));
+      if (!duplicate)
+        mergedHistory.push(entry);
+    }
+    const existingBinding = existing?.vaultBinding;
+    const candidateBinding = candidate.vaultBinding;
+    if (existingBinding !== undefined && !bindingsEqual(existingBinding, candidateBinding)) {
+      mergedHistory.push({
+        binding: existingBinding,
+        changedAt: new Date().toISOString()
+      });
+    }
+    const finalConfig = { ...candidate };
+    if (existing !== undefined) {
+      if (finalConfig.address === undefined && existing.address !== undefined)
+        finalConfig.address = existing.address;
+      if (finalConfig.activeRemote === undefined && existing.activeRemote !== undefined)
+        finalConfig.activeRemote = existing.activeRemote;
+      if (finalConfig.backups === undefined && existing.backups !== undefined)
+        finalConfig.backups = [...existing.backups];
+    }
+    if (mergedHistory.length > 0) {
+      finalConfig.vaultBindingHistory = mergedHistory;
+    } else {
+      delete finalConfig.vaultBindingHistory;
+    }
+    const data = accountConfigSchema.parse(finalConfig);
+    tempPath = join(dir, `.config-${randomBytes(8).toString("hex")}.tmp`);
+    const payload = `${JSON.stringify(data, null, 2)}
+`;
+    const fd = openSync(tempPath, "wx", 384);
+    try {
+      writeSync(fd, payload);
+      tryFsyncFile(fd);
+    } finally {
+      closeSync(fd);
+    }
+    chmodSync(tempPath, 384);
+    renameSync(tempPath, file);
+    tempPath = undefined;
+    try {
+      chmodSync(file, 384);
+    } catch {}
+    tryFsyncDir(dir);
+  } finally {
+    if (tempPath !== undefined) {
+      try {
+        rmSync(tempPath, { force: true });
+      } catch {}
+    }
+    if (lockFd !== undefined && !lockClosed) {
+      let stillOurs = false;
+      let ownedDev;
+      let ownedIno;
+      try {
+        const ownedStat = fstatSync(lockFd);
+        ownedDev = ownedStat.dev;
+        ownedIno = ownedStat.ino;
+      } catch {
+        ownedDev = lockDev;
+        ownedIno = lockIno;
+      }
+      try {
+        const current = lstatSync(lockPath);
+        stillOurs = !current.isSymbolicLink() && current.dev === ownedDev && current.ino === ownedIno;
+      } catch {
+        stillOurs = false;
+      }
+      if (stillOurs) {
+        try {
+          rmSync(lockPath);
+        } catch {
+          try {
+            closeSync(lockFd);
+          } catch {}
+          lockClosed = true;
+          try {
+            const current = lstatSync(lockPath);
+            if (!current.isSymbolicLink() && current.dev === ownedDev && current.ino === ownedIno) {
+              try {
+                rmSync(lockPath);
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+      if (!lockClosed) {
+        try {
+          closeSync(lockFd);
+        } catch {}
+        lockClosed = true;
+      }
+      lockFd = undefined;
+    }
+  }
 }
 function listAccounts(root = accountsRoot()) {
   regularPath(root, true);
@@ -110614,10 +113537,11 @@ function newAccountConfig(chain, address) {
     chain,
     address,
     storageIdentityKey: `bsv-mcp-${randomBytes(16).toString("hex")}`,
+    ...chain === "main" ? { activeRemote: DEFAULT_STORAGE_REMOTE_URL } : {},
     depositPrefix: "mcp"
   };
 }
-var accountNameSchema, remote, accountConfigSchema;
+var accountNameSchema, DEFAULT_STORAGE_REMOTE_URL = "https://wallet.1sat.app", remote, compressedPublicKeySchema, nonEmptyStringSchema, vaultPaymentSchema, vaultHdSchema, embeddedVaultBindingSchema, vaultBindingHistoryItemSchema, accountConfigSchema;
 var init_accounts = __esm(() => {
   init_zod();
   accountNameSchema = string2().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/, "Use 1–64 lowercase letters, digits, underscores or hyphens");
@@ -110625,13 +113549,37 @@ var init_accounts = __esm(() => {
     const u = new URL(s);
     return !u.username && !u.password && !u.search && !u.hash && (u.protocol === "https:" || u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname));
   });
+  compressedPublicKeySchema = string2().regex(/^0[23][0-9a-fA-F]{64}$/, "Invalid compressed public key");
+  nonEmptyStringSchema = string2().min(1);
+  vaultPaymentSchema = object2({
+    entryId: nonEmptyStringSchema,
+    publicKey: compressedPublicKeySchema
+  }).strict();
+  vaultHdSchema = object2({
+    entryId: nonEmptyStringSchema,
+    expectedXpub: nonEmptyStringSchema
+  }).strict();
+  embeddedVaultBindingSchema = object2({
+    version: literal(1),
+    contract: literal("embedded-roots-v1"),
+    vaultId: nonEmptyStringSchema,
+    payment: vaultPaymentSchema,
+    identity: vaultPaymentSchema.optional(),
+    hd: vaultHdSchema.optional()
+  }).strict();
+  vaultBindingHistoryItemSchema = object2({
+    binding: embeddedVaultBindingSchema,
+    changedAt: string2().datetime()
+  }).strict();
   accountConfigSchema = object2({
     chain: _enum(["main", "test"]),
     storageIdentityKey: string2().min(1).max(200),
     activeRemote: remote.optional(),
     backups: array(remote).optional(),
     address: string2().regex(/^[123mn][1-9A-HJ-NP-Za-km-z]{24,40}$/).optional(),
-    depositPrefix: _enum(["mcp", "1sat"]).default("mcp")
+    depositPrefix: _enum(["mcp", "1sat"]).default("mcp"),
+    vaultBinding: embeddedVaultBindingSchema.optional(),
+    vaultBindingHistory: array(vaultBindingHistoryItemSchema).optional()
   }).strict();
 });
 
@@ -110839,6 +113787,10 @@ async function decryptData(encryptedBackup, passphrase, attemptIterations) {
 function hexToBytes2(hex) {
   return Uint8Array.from(toArray22(hex, "hex"));
 }
+function bytesToBase64Url(bytes) {
+  const b64 = toBase6422(Array.from(bytes));
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+}
 function assertP256PublicKeyHex(publicKeyHex, label) {
   return validateUncompressedHex(publicKeyHex, label).bytes;
 }
@@ -110854,6 +113806,48 @@ function validateUncompressedHex(publicKeyHex, label) {
     throw new Error(`${label}: public key must be 65-byte X9.63 uncompressed (0x04 || X || Y).`);
   }
   return { x: bytes.slice(1, 33), y: bytes.slice(33, 65), bytes };
+}
+async function importEcdhPublicKey(publicKeyHex, label) {
+  const { x, y } = validateUncompressedHex(publicKeyHex, label);
+  const jwk = {
+    kty: "EC",
+    crv: "P-256",
+    x: bytesToBase64Url(x),
+    y: bytesToBase64Url(y),
+    ext: true
+  };
+  try {
+    return await globalThis.crypto.subtle.importKey("jwk", jwk, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  } catch (error) {
+    throw new Error(`${label}: invalid P-256 public key (${error.message}).`);
+  }
+}
+async function deriveKek(sharedSecret) {
+  const hkdfKey = await globalThis.crypto.subtle.importKey("raw", sharedSecret, { name: "HKDF" }, false, ["deriveBits"]);
+  const kekBytes = await globalThis.crypto.subtle.deriveBits({
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: new Uint8Array(0),
+    info: new TextEncoder().encode(INFO)
+  }, hkdfKey, 256);
+  return globalThis.crypto.subtle.importKey("raw", kekBytes, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function eciesEncrypt(recipientPublicKeyHex, plaintextBytes) {
+  const recipientPublicKey = await importEcdhPublicKey(recipientPublicKeyHex, "eciesEncrypt");
+  const ephemeral = await globalThis.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const ephemeralRaw = new Uint8Array(await globalThis.crypto.subtle.exportKey("raw", ephemeral.publicKey));
+  if (ephemeralRaw.length !== 65 || ephemeralRaw[0] !== 4) {
+    throw new Error("eciesEncrypt: failed to export ephemeral P-256 public key.");
+  }
+  const sharedSecret = await globalThis.crypto.subtle.deriveBits({ name: "ECDH", public: recipientPublicKey }, ephemeral.privateKey, 256);
+  const kek = await deriveKek(sharedSecret);
+  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, kek, plaintextBytes));
+  const wrapped = new Uint8Array(ephemeralRaw.length + nonce.length + ciphertext.length);
+  wrapped.set(ephemeralRaw, 0);
+  wrapped.set(nonce, ephemeralRaw.length);
+  wrapped.set(ciphertext, ephemeralRaw.length + nonce.length);
+  return wrapped;
 }
 function isDerivationDescriptor(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -110879,6 +113873,70 @@ function isDerivationDescriptor(value) {
     return false;
   return true;
 }
+function isLegacyBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "xprv" in backup && "mnemonic" in backup && "ids" in backup;
+}
+function isType42Backup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "rootPk" in backup && "ids" in backup && !("xprv" in backup);
+}
+function isAccountBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "wif" in backup && "id" in backup && !("xprv" in backup) && !("rootPk" in backup);
+}
+function isWifBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "wif" in backup && !("id" in backup) && !("xprv" in backup) && !("rootPk" in backup);
+}
+function isOneSatBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "ordPk" in backup && "payPk" in backup && "identityPk" in backup && !("mnemonic" in backup) && !("payDerivationPath" in backup);
+}
+function isVaultBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "encryptedVault" in backup;
+}
+function isYoursWalletBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "payPk" in backup && "ordPk" in backup && (("mnemonic" in backup) || ("payDerivationPath" in backup) || ("ordDerivationPath" in backup));
+}
+function isYoursWalletZipBackup(backup) {
+  if (hasSigmaSeedMarker(backup))
+    return false;
+  return "chromeStorage" in backup && typeof backup.chromeStorage === "object" && backup.chromeStorage !== null;
+}
+function getBackupType(backup) {
+  if (isSigmaSeedBackup(backup))
+    return "SigmaSeed";
+  if (isLegacyBackup(backup))
+    return "Legacy";
+  if (isType42Backup(backup))
+    return "Type42";
+  if (isAccountBackup(backup))
+    return "Account";
+  if (isWifBackup(backup))
+    return "WIF";
+  if (isOneSatBackup(backup))
+    return "OneSat";
+  if (isVaultBackup(backup))
+    return "Vault";
+  if (isYoursWalletZipBackup(backup))
+    return "YoursWalletZip";
+  if (isYoursWalletBackup(backup))
+    return "YoursWallet";
+  return "Unknown";
+}
+function b64encode(bytes) {
+  return toBase6432(Array.from(bytes));
+}
 function b64decode(b64, label) {
   let numbers;
   try {
@@ -110887,6 +113945,81 @@ function b64decode(b64, label) {
     throw new Error(`${label}: invalid Base64.`);
   }
   return Uint8Array.from(numbers);
+}
+function validateSlotId(id) {
+  if (typeof id !== "string" || id.length < 1 || id.length > 63 || !SLOT_ID_RE.test(id)) {
+    throw new Error("Invalid slot id: must be 1-63 chars matching ^[a-zA-Z0-9][a-zA-Z0-9._-]*$.");
+  }
+}
+function validateIterations(iterations) {
+  if (typeof iterations !== "number" || !Number.isSafeInteger(iterations) || iterations < 1 || iterations > 4294967295) {
+    throw new Error("Invalid iterations: must be a positive 32-bit integer.");
+  }
+}
+function buildPayloadJson(payload) {
+  const payloadToEncrypt = {
+    ...payload,
+    createdAt: isSigmaSeedBackup(payload) ? payload.createdAt : payload.createdAt || new Date().toISOString()
+  };
+  return JSON.stringify(payloadToEncrypt);
+}
+function getDescriptorFromPayload(payload) {
+  const maybe = payload.derivation;
+  if (maybe === undefined)
+    return;
+  if (!isDerivationDescriptor(maybe)) {
+    throw new Error("Invalid derivation descriptor on payload.");
+  }
+  return maybe;
+}
+function validateSlotSpecShape(slot, seen) {
+  if (!slot || typeof slot !== "object")
+    throw new Error("Invalid slot: must be an object.");
+  if (slot.type !== "pbkdf2" && slot.type !== "device-p256") {
+    throw new Error(`Unknown slot type '${slot.type}'.`);
+  }
+  validateSlotId(slot.id);
+  if (seen.has(slot.id))
+    throw new Error(`Duplicate slot id '${slot.id}'.`);
+  seen.add(slot.id);
+  if (slot.type === "pbkdf2") {
+    if (typeof slot.passphrase !== "string" || slot.passphrase.length === 0) {
+      throw new Error("Invalid passphrase: Passphrase must be a non-empty string.");
+    }
+    if (slot.passphrase.length < 8) {
+      throw new Error("Invalid passphrase: Passphrase must be at least 8 characters long.");
+    }
+    if (slot.iterations !== undefined)
+      validateIterations(slot.iterations);
+  } else {
+    assertP256PublicKeyHex(slot.publicKey, "Invalid device publicKey");
+  }
+}
+async function wrapContentKey(slot, contentKey) {
+  if (slot.type === "pbkdf2") {
+    const iterations = slot.iterations ?? RECOMMENDED_PBKDF2_ITERATIONS;
+    const salt = globalThis.crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES2));
+    const kek = await deriveKey(slot.passphrase, salt, iterations);
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
+    const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, kek, contentKey));
+    const wrapped = new Uint8Array(iv.length + ct.length);
+    wrapped.set(iv, 0);
+    wrapped.set(ct, iv.length);
+    return {
+      type: "pbkdf2",
+      id: slot.id,
+      salt: b64encode(salt),
+      iterations,
+      wrapped: b64encode(wrapped)
+    };
+  }
+  const wrappedBytes = await eciesEncrypt(slot.publicKey, contentKey);
+  return {
+    type: "device-p256",
+    id: slot.id,
+    publicKey: slot.publicKey.toLowerCase(),
+    wrapped: b64encode(wrappedBytes)
+  };
 }
 async function unwrapPbkdf2Slot(slot, passphrase) {
   const salt = b64decode(slot.salt, "pbkdf2 slot salt");
@@ -111039,11 +114172,82 @@ function parseEnvelope(decoded) {
   };
   return { header, iv, ciphertext };
 }
+function encodeEnvelope(header, iv, ciphertext) {
+  const headerJson = JSON.stringify(header);
+  const headerBytes = new TextEncoder().encode(headerJson);
+  if (headerBytes.length > 65535) {
+    throw new Error("Envelope header too large.");
+  }
+  const out = new Uint8Array(4 + 1 + 2 + headerBytes.length + iv.length + ciphertext.length);
+  out[0] = MAGIC_BYTES[0];
+  out[1] = MAGIC_BYTES[1];
+  out[2] = MAGIC_BYTES[2];
+  out[3] = MAGIC_BYTES[3];
+  out[4] = ENVELOPE_VERSION;
+  out[5] = headerBytes.length >> 8 & 255;
+  out[6] = headerBytes.length & 255;
+  out.set(headerBytes, 7);
+  out.set(iv, 7 + headerBytes.length);
+  out.set(ciphertext, 7 + headerBytes.length + iv.length);
+  return b64encode(out);
+}
 async function importContentKey(contentKey, usages) {
   if (contentKey.length !== CONTENT_KEY_LENGTH_BYTES) {
     throw new Error("Invalid content key length.");
   }
   return globalThis.crypto.subtle.importKey("raw", contentKey, { name: "AES-GCM", length: 256 }, false, usages);
+}
+async function resolveContentKey(header, unlock) {
+  if ("unwrap" in unlock && "slotId" in unlock) {
+    const slot = header.slots.find((s) => s.id === unlock.slotId);
+    if (!slot)
+      throw new Error(`Slot '${unlock.slotId}' not found.`);
+    const wrapped = b64decode(slot.wrapped, "slot wrapped");
+    const contentKey = await unlock.unwrap(wrapped);
+    if (!(contentKey instanceof Uint8Array) || contentKey.length !== CONTENT_KEY_LENGTH_BYTES) {
+      throw new Error("Invalid unwrap result: must return 32-byte content key.");
+    }
+    return contentKey;
+  }
+  if ("slotId" in unlock && "passphrase" in unlock) {
+    const slot = header.slots.find((s) => s.id === unlock.slotId);
+    if (!slot)
+      throw new Error(`Slot '${unlock.slotId}' not found.`);
+    if (slot.type !== "pbkdf2") {
+      throw new Error(`Slot '${unlock.slotId}' is not a pbkdf2 slot.`);
+    }
+    try {
+      const contentKey = await unwrapPbkdf2Slot(slot, unlock.passphrase);
+      if (contentKey.length !== CONTENT_KEY_LENGTH_BYTES) {
+        throw new Error("Decryption failed: Invalid content key.");
+      }
+      return contentKey;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "OperationError") {
+        throw new Error("Decryption failed: Invalid passphrase or corrupted data.");
+      }
+      throw error;
+    }
+  }
+  if ("passphrase" in unlock && !("slotId" in unlock)) {
+    const pbkdf2Slots = header.slots.filter((s) => s.type === "pbkdf2");
+    if (pbkdf2Slots.length === 0) {
+      throw new Error("Decryption failed: No pbkdf2 slot available.");
+    }
+    for (const slot of pbkdf2Slots) {
+      try {
+        const contentKey = await unwrapPbkdf2Slot(slot, unlock.passphrase);
+        if (contentKey.length === CONTENT_KEY_LENGTH_BYTES)
+          return contentKey;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "OperationError")
+          continue;
+        throw error;
+      }
+    }
+    throw new Error("Decryption failed: Invalid passphrase or corrupted data.");
+  }
+  throw new Error("Invalid unlock: must provide passphrase or slotId+unwrap.");
 }
 async function decryptPayload(contentKey, iv, ciphertext) {
   const key = await importContentKey(contentKey, ["decrypt"]);
@@ -111057,6 +114261,46 @@ async function decryptPayload(contentKey, iv, ciphertext) {
     throw error;
   }
   return parseDecryptedPayload(new TextDecoder().decode(pt));
+}
+async function sealBackup(payload, slots) {
+  if (!isValidPayload(payload)) {
+    throw new Error("Invalid payload: Payload must be an object matching SigmaSeedBackup, BapMasterBackup, BapAccountBackup, WifBackup, OneSatBackup, VaultBackup, YoursWalletBackup, or YoursWalletZipBackup structure.");
+  }
+  if (!Array.isArray(slots) || slots.length === 0) {
+    throw new Error("Invalid slots: at least one slot is required.");
+  }
+  const seen = new Set;
+  for (const s of slots)
+    validateSlotSpecShape(s, seen);
+  const descriptor = getDescriptorFromPayload(payload);
+  const payloadJson = buildPayloadJson(payload);
+  const payloadBytes = new TextEncoder().encode(payloadJson);
+  const contentKey = globalThis.crypto.getRandomValues(new Uint8Array(CONTENT_KEY_LENGTH_BYTES));
+  const wrappedSlots = [];
+  for (const s of slots) {
+    wrappedSlots.push(await wrapContentKey(s, contentKey));
+  }
+  const header = {
+    v: 2,
+    slots: wrappedSlots,
+    ...descriptor !== undefined ? { descriptor } : {}
+  };
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
+  const key = await importContentKey(contentKey, ["encrypt"]);
+  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, payloadBytes));
+  return encodeEnvelope(header, iv, ct);
+}
+async function openBackup(encrypted, unlock) {
+  if (typeof encrypted !== "string" || encrypted.length === 0) {
+    throw new Error("Invalid encryptedString: Must be a non-empty string.");
+  }
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded)) {
+    throw new Error("Invalid envelope: not a v2 envelope.");
+  }
+  const { header, iv, ciphertext } = parseEnvelope(decoded);
+  const contentKey = await resolveContentKey(header, unlock);
+  return decryptPayload(contentKey, iv, ciphertext);
 }
 async function openV2WithPassphrase(encrypted, passphrase, attemptIterations) {
   const decoded = decodeBase64Envelope(encrypted);
@@ -111090,6 +114334,119 @@ async function openV2WithPassphrase(encrypted, passphrase, attemptIterations) {
     }
   }
   throw new Error("Decryption failed: Invalid passphrase or corrupted data.");
+}
+function inspectEnvelope(encrypted) {
+  if (typeof encrypted !== "string" || encrypted.length === 0) {
+    throw new Error("Invalid encryptedString: Must be a non-empty string.");
+  }
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded)) {
+    return { version: 1, slots: [] };
+  }
+  const { header } = parseEnvelope(decoded);
+  return {
+    version: 2,
+    slots: header.slots.map((s) => s.type === "pbkdf2" ? { type: s.type, id: s.id, iterations: s.iterations } : { type: s.type, id: s.id, publicKey: s.publicKey }),
+    ...header.descriptor !== undefined ? { descriptor: header.descriptor } : {}
+  };
+}
+function isEnvelopeV2(encrypted) {
+  try {
+    if (typeof encrypted !== "string" || encrypted.length === 0)
+      return false;
+    const decoded = decodeBase64Envelope(encrypted);
+    if (!hasV2Magic(decoded))
+      return false;
+    parseEnvelope(decoded);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function addSlot(encrypted, unlock, slot) {
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded))
+    throw new Error("Invalid envelope: not a v2 envelope.");
+  const { header, iv, ciphertext } = parseEnvelope(decoded);
+  validateSlotSpecShape(slot, new Set(header.slots.map((s) => s.id)));
+  const contentKey = await resolveContentKey(header, unlock);
+  const wrapped = await wrapContentKey(slot, contentKey);
+  const newHeader = {
+    v: 2,
+    slots: [...header.slots, wrapped],
+    ...header.descriptor !== undefined ? { descriptor: header.descriptor } : {}
+  };
+  return encodeEnvelope(newHeader, iv, ciphertext);
+}
+async function removeSlot(encrypted, unlock, slotId) {
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded))
+    throw new Error("Invalid envelope: not a v2 envelope.");
+  const { header, iv, ciphertext } = parseEnvelope(decoded);
+  if (!header.slots.some((s) => s.id === slotId)) {
+    throw new Error(`Slot '${slotId}' not found.`);
+  }
+  if (header.slots.length <= 1) {
+    throw new Error("Cannot remove the last slot.");
+  }
+  await resolveContentKey(header, unlock);
+  const newHeader = {
+    v: 2,
+    slots: header.slots.filter((s) => s.id !== slotId),
+    ...header.descriptor !== undefined ? { descriptor: header.descriptor } : {}
+  };
+  return encodeEnvelope(newHeader, iv, ciphertext);
+}
+async function rewrapBackup(encrypted, unlock, slots) {
+  if (!Array.isArray(slots) || slots.length === 0) {
+    throw new Error("Invalid slots: at least one slot is required.");
+  }
+  const seen = new Set;
+  for (const s of slots)
+    validateSlotSpecShape(s, seen);
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded))
+    throw new Error("Invalid envelope: not a v2 envelope.");
+  const { header, iv: oldIv, ciphertext: oldCiphertext } = parseEnvelope(decoded);
+  const oldContentKey = await resolveContentKey(header, unlock);
+  const payload = await decryptPayload(oldContentKey, oldIv, oldCiphertext);
+  const payloadJson = JSON.stringify(payload);
+  const payloadBytes = new TextEncoder().encode(payloadJson);
+  const newContentKey = globalThis.crypto.getRandomValues(new Uint8Array(CONTENT_KEY_LENGTH_BYTES));
+  const wrappedSlots = [];
+  for (const s of slots) {
+    wrappedSlots.push(await wrapContentKey(s, newContentKey));
+  }
+  const descriptor = getDescriptorFromPayload(payload);
+  const newHeader = {
+    v: 2,
+    slots: wrappedSlots,
+    ...descriptor !== undefined ? { descriptor } : {}
+  };
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
+  const key = await importContentKey(newContentKey, ["encrypt"]);
+  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, payloadBytes));
+  return encodeEnvelope(newHeader, iv, ct);
+}
+async function updateBackupPayload(encrypted, unlock, payload) {
+  if (!isValidPayload(payload)) {
+    throw new Error("Invalid payload: Payload must match a supported backup structure.");
+  }
+  const decoded = decodeBase64Envelope(encrypted);
+  if (!hasV2Magic(decoded))
+    throw new Error("Invalid envelope: not a v2 envelope.");
+  const { header } = parseEnvelope(decoded);
+  const contentKey = await resolveContentKey(header, unlock);
+  const descriptor = getDescriptorFromPayload(payload);
+  const newHeader = {
+    v: 2,
+    slots: header.slots,
+    ...descriptor !== undefined ? { descriptor } : {}
+  };
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
+  const key = await importContentKey(contentKey, ["encrypt"]);
+  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(buildPayloadJson(payload))));
+  return encodeEnvelope(newHeader, iv, ct);
 }
 async function encryptBackup(payload, passphrase, iterations) {
   if (!isValidPayload(payload)) {
@@ -111142,7 +114499,7 @@ var __create3, __getProtoOf3, __defProp4, __getOwnPropNames3, __hasOwnProp3, __t
   if (canCache)
     cache.set(mod, to);
   return to;
-}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray11, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, toArray22, toBase6422, toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
+}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray11, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, toArray22, toBase6422, INFO = "se-vault-v1", toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
 var init_dist9 = __esm(() => {
   init_mod();
   init_mod();
@@ -112785,6 +116142,12 @@ var init_dist9 = __esm(() => {
 // utils/keyManager.ts
 import fs3 from "node:fs";
 import path3 from "node:path";
+function isMissingWalletKeysError(error) {
+  return error instanceof MissingWalletKeysError;
+}
+function isLegacyWalletMigrationRequiredError(error) {
+  return error instanceof LegacyWalletMigrationRequiredError;
+}
 
 class SecureKeyManager {
   keyDir;
@@ -112808,7 +116171,7 @@ class SecureKeyManager {
       };
     }
     if (this.hasLegacyKeys())
-      throw new Error(`Legacy plaintext keys require migration. Run bsv-mcp wallet_migrate --account ${accountName()}.`);
+      throw new LegacyWalletMigrationRequiredError(`Legacy plaintext keys require migration. Run bsv-mcp wallet_migrate --account ${accountName()}.`);
     return { keys: {}, source: "none" };
   }
   loadLegacyKeys() {
@@ -112897,8 +116260,11 @@ async function initializeSecureKeys(manager = new SecureKeyManager, env = proces
     }
   }
   const result = await manager.loadKeys(env.BSV_MCP_PASSWORD);
-  if (!result.keys.payPk)
+  if (!result.keys.payPk) {
+    if (result.source === "none")
+      throw new MissingWalletKeysError(`No key found at ${manager.encryptedFile}. Run bsv-mcp init --account ${accountName()} in a terminal, or configure BRC100_WALLET_URL. For public reads only, set DISABLE_WALLET_TOOLS=true.`);
     throw new Error(`No key found at ${manager.encryptedFile}. Run bsv-mcp init --account ${accountName()} in a terminal, or configure BRC100_WALLET_URL. For public reads only, set DISABLE_WALLET_TOOLS=true.`);
+  }
   return { ...result.keys, source: result.source };
 }
 async function decodeEncryptedKeys(encrypted, password) {
@@ -112908,11 +116274,23 @@ async function decodeEncryptedKeys(encrypted, password) {
     throw new Error("Cannot unlock backup; check the password and format");
   }
 }
-var keyManager;
+var MissingWalletKeysError, LegacyWalletMigrationRequiredError, keyManager;
 var init_keyManager = __esm(() => {
   init_mod();
   init_dist9();
   init_accounts();
+  MissingWalletKeysError = class MissingWalletKeysError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "MissingWalletKeysError";
+    }
+  };
+  LegacyWalletMigrationRequiredError = class LegacyWalletMigrationRequiredError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "LegacyWalletMigrationRequiredError";
+    }
+  };
   keyManager = new SecureKeyManager;
 });
 
@@ -114097,7 +117475,7 @@ var init_x402_http = __esm(() => {
 });
 
 // utils/x402-protocol.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function canonical(value) {
   if (typeof value === "string" && /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value))
     throw new Error("Invalid Unicode in challenge");
@@ -114144,7 +117522,7 @@ function parseChallenge(raw, request) {
     payUrl: payUrl.toString()
   };
 }
-var sha2562 = (value) => createHash("sha256").update(value).digest("hex"), hex, script2, amount, compact, bound;
+var sha2562 = (value) => createHash2("sha256").update(value).digest("hex"), hex, script2, amount, compact, bound;
 var init_x402_protocol = __esm(() => {
   init_mod();
   init_zod();
@@ -114585,6 +117963,7 @@ function serviceHeaders() {
   }
 }
 function registerX402Tools(server, config) {
+  const paymentsOnly = config.walletScope === "payments";
   const paymentWallet = config.enableWalletTools === false || process.env.DISABLE_WALLET_TOOLS === "true" ? undefined : config.ctx?.wallet;
   const broadcastingDisabled = config.disableBroadcasting === true || process.env.DISABLE_BROADCASTING === "true";
   let client;
@@ -114623,7 +118002,13 @@ function registerX402Tools(server, config) {
       idempotentHint: false,
       openWorldHint: true
     }
-  }, (args) => run(() => getClient().request(args)));
+  }, (args) => {
+    if (paymentsOnly && args.auth === "brc31")
+      return run(async () => {
+        throw new Error("BRC-31 authentication requires the explicitly assigned identity role; the project payments role cannot authenticate this request");
+      });
+    return run(() => getClient().request(args));
+  });
   if (paymentWallet && !broadcastingDisabled) {
     server.registerTool("x402_payQuote", {
       description: "Pay a previously quoted BSV service request from the connected wallet, then return its response. Only call after authorization for the service, amount, and total limit including mining fees. Reuses the stored URL, method, body and credentials. Wallet permission checks apply. Does not automatically pay changed terms or retry a failed payment.",
@@ -117096,7 +120481,7 @@ function utf8ToBytes2(str) {
     throw new Error("string expected");
   return new Uint8Array(new TextEncoder().encode(str));
 }
-function kdfInputToBytes(data) {
+function kdfInputToBytes2(data) {
   if (typeof data === "string")
     data = utf8ToBytes2(data);
   abytes2(data);
@@ -117145,15 +120530,15 @@ function setBigUint642(view, byteOffset, value, isLE) {
   view.setUint32(byteOffset + h, wh, isLE);
   view.setUint32(byteOffset + l, wl, isLE);
 }
-function pbkdf2Core(hash, password, salt, opts) {
+function pbkdf2Core2(hash, password, salt, opts) {
   ahash2(hash);
   const { c, dkLen } = Object.assign({ dkLen: 32 }, opts);
   anumber2(c);
   anumber2(dkLen);
   if (c < 1)
     throw new Error("iterations (c) should be >= 1");
-  const pwd = kdfInputToBytes(password);
-  const slt = kdfInputToBytes(salt);
+  const pwd = kdfInputToBytes2(password);
+  const slt = kdfInputToBytes2(salt);
   const DK = new Uint8Array(dkLen);
   const PRF = hmac2.create(hash, pwd);
   const PRFSalt = PRF._cloneInto().update(slt);
@@ -117179,10 +120564,10 @@ function pbkdf2Core(hash, password, salt, opts) {
   clean2(u);
   return DK;
 }
-function pbkdf2Fast(password, salt, iterations, keylen) {
-  return pbkdf2Core(sha512Fast2, password, salt, { c: iterations, dkLen: keylen });
+function pbkdf2Fast2(password, salt, iterations, keylen) {
+  return pbkdf2Core2(sha512Fast2, password, salt, { c: iterations, dkLen: keylen });
 }
-function pbkdf22(password, salt, iterations, keylen, digest = "sha512") {
+function pbkdf23(password, salt, iterations, keylen, digest = "sha512") {
   if (digest !== "sha512") {
     throw new Error("Only sha512 is supported in this PBKDF2 implementation");
   }
@@ -117196,7 +120581,7 @@ function pbkdf22(password, salt, iterations, keylen, digest = "sha512") {
   } catch {}
   const p = Uint8Array.from(password);
   const s = Uint8Array.from(salt);
-  const out = pbkdf2Fast(p, s, iterations, keylen);
+  const out = pbkdf2Fast2(p, s, iterations, keylen);
   return Array.from(out);
 }
 function swapBytes322(w) {
@@ -126741,9 +130126,9 @@ var init_HD2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/compat/bip-39-wordlist-en.js
-var wordList;
-var init_bip_39_wordlist_en = __esm(() => {
-  wordList = {
+var wordList2;
+var init_bip_39_wordlist_en2 = __esm(() => {
+  wordList2 = {
     value: [
       "abandon",
       "ability",
@@ -128803,7 +132188,7 @@ class Mnemonic2 {
   mnemonic;
   seed;
   Wordlist;
-  constructor(mnemonic, seed, wordlist = wordList) {
+  constructor(mnemonic, seed, wordlist = wordList2) {
     this.mnemonic = mnemonic ?? "";
     this.seed = seed ?? [];
     this.Wordlist = wordlist;
@@ -128944,7 +132329,7 @@ class Mnemonic2 {
       ...toArray15("mnemonic", "utf8"),
       ...toArray15(passphrase, "utf8")
     ];
-    this.seed = pbkdf22(mbuf, pbuf, 2048, 64, "sha512");
+    this.seed = pbkdf23(mbuf, pbuf, 2048, 64, "sha512");
     return this;
   }
   isValid(passphrase = "") {
@@ -128961,8 +132346,8 @@ class Mnemonic2 {
     return new Mnemonic2(mnemonic).isValid(passphrase);
   }
 }
-var init_Mnemonic = __esm(() => {
-  init_bip_39_wordlist_en();
+var init_Mnemonic2 = __esm(() => {
+  init_bip_39_wordlist_en2();
   init_utils5();
   init_Hash2();
 });
@@ -129118,7 +132503,7 @@ var init_Utxo2 = __esm(() => {
 var init_compat3 = __esm(() => {
   init_BSM2();
   init_HD2();
-  init_Mnemonic();
+  init_Mnemonic2();
   init_ECIES2();
   init_Utxo2();
 });
@@ -153322,7 +156707,7 @@ var init_mnee2 = __esm(() => {
 });
 
 // utils/accountStore.ts
-import { existsSync as existsSync2, renameSync as renameSync2, rmSync } from "node:fs";
+import { existsSync as existsSync2, renameSync as renameSync2, rmSync as rmSync2 } from "node:fs";
 import { join as join2 } from "node:path";
 async function createAccount(name, keys, password, config, root = accountsRoot()) {
   const dir = accountDir(name, root);
@@ -153344,11 +156729,11 @@ async function createAccount(name, keys, password, config, root = accountsRoot()
         throw new Error("Account appeared during setup");
       renameSync2(ready, dir);
     } catch (error) {
-      rmSync(ready, { recursive: true, force: true });
+      rmSync2(ready, { recursive: true, force: true });
       throw error;
     }
   } catch (error) {
-    rmSync(stage, { recursive: true, force: true });
+    rmSync2(stage, { recursive: true, force: true });
     throw error;
   }
 }
@@ -153358,7 +156743,7 @@ var init_accountStore = __esm(() => {
 });
 
 // tools/wallet/accounts.ts
-import { existsSync as existsSync3, readdirSync as readdirSync2, rmSync as rmSync2 } from "node:fs";
+import { existsSync as existsSync3, readdirSync as readdirSync2, rmSync as rmSync3 } from "node:fs";
 import { join as join3 } from "node:path";
 function registerAccountTools(server) {
   const run = async (fn) => {
@@ -153446,7 +156831,7 @@ function registerAccountTools(server) {
     regularPath(dir, true);
     for (const file of readdirSync2(dir))
       regularPath(join3(dir, file));
-    rmSync2(dir, { recursive: true });
+    rmSync3(dir, { recursive: true });
     return { removed: name };
   }));
 }
@@ -154022,6 +157407,7 @@ function registerAllTools(server, config = {}) {
     registerBsocialTools(server, { wallet: config.wallet });
   }
   if (enableWalletTools) {
+    const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
     if (config.enableAccountTools === true && !process.env.BRC100_WALLET_URL)
       registerAccountTools(server);
     if (config.droplitClient)
@@ -154037,7 +157423,9 @@ function registerAllTools(server, config = {}) {
       }
     } else if (config.wallet || config.ctx) {
       const walletToolOptions = {
-        ctx: config.ctx
+        ctx: config.ctx,
+        allowWholeWalletBalance: !externalWallet,
+        scope: config.walletScope
       };
       registerWalletTools(server, config.wallet, walletToolOptions);
     }
@@ -154045,8 +157433,12 @@ function registerAllTools(server, config = {}) {
   if (enableMneeTools && (!config.ctx || config.wallet)) {
     registerMneeTools(server);
   }
+  if (isWalletOnboardingAvailable(config) && config.openWalletSetup) {
+    registerWalletOnboardingTool(server, config.openWalletSetup);
+  }
 }
 var init_tools2 = __esm(() => {
+  init_externalWalletConfig();
   init_bap3();
   init_getId();
   init_bsocial2();
@@ -154061,6 +157453,7 @@ var init_tools2 = __esm(() => {
   init_droplit2();
   init_droplitDiscovery();
   init_getBalanceDroplit();
+  init_onboarding();
   init_setupDroplit();
   init_tools();
 });
@@ -154381,10 +157774,60 @@ async function newPassword() {
   return value;
 }
 
+// utils/localUiAssets.ts
+import { existsSync as existsSync4, readFileSync as readFileSync2, realpathSync, statSync } from "node:fs";
+import { dirname, extname, isAbsolute, join as join4, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+function localUiAssetsDirectory(moduleUrl = import.meta.url) {
+  const here = dirname(fileURLToPath(moduleUrl));
+  const candidates = [
+    join4(here, "local-ui"),
+    join4(here, "..", "dist", "local-ui")
+  ];
+  return candidates.find((path) => existsSync4(join4(path, "index.html"))) ?? candidates[0];
+}
+function readLocalUiAsset(requestPath, directory) {
+  const pathname = requestPath.split("?", 1)[0];
+  if (!pathname || pathname !== "/" && !/^\/assets\/[A-Za-z0-9_./-]+$/.test(pathname))
+    return;
+  const segments = pathname.split("/");
+  if (segments.some((segment) => segment === "." || segment === ".." || segment.startsWith(".")))
+    return;
+  const filename = pathname === "/" ? "index.html" : pathname.slice(1);
+  const contentType = types9[extname(filename)];
+  if (!contentType || pathname !== "/" && extname(filename) === ".html")
+    return;
+  try {
+    const root = realpathSync(directory);
+    const path = realpathSync(join4(root, filename));
+    const subpath = relative(root, path);
+    if (isAbsolute(subpath) || subpath === ".." || subpath.startsWith(`..${sep}`) || !statSync(path).isFile())
+      return;
+    return { body: readFileSync2(path), contentType };
+  } catch {
+    return;
+  }
+}
+var types9;
+var init_localUiAssets = __esm(() => {
+  types9 = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2"
+  };
+});
+
 // utils/vaultMigration.ts
 import { lstatSync as lstatSync2, readdirSync as readdirSync3 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 function exists(file, directory = false) {
   try {
     const stat = lstatSync2(file);
@@ -154400,20 +157843,21 @@ function exists(file, directory = false) {
 function inspectMigration(options = {}) {
   const home = options.home ?? homedir2();
   const env = options.env ?? process.env;
-  const base = join4(home, ".bsv-mcp");
+  const base = join5(home, ".bsv-mcp");
   const sources = [];
   const inspect = (dir, account, location2) => {
     if (!exists(dir, true))
       return;
-    const encryptedBackup = exists(join4(dir, "keys.bep"));
-    const plaintextKeys = exists(join4(dir, location2 === "sigma-lab" ? "root.wif" : "keys.json"));
+    const encryptedBackup = exists(join5(dir, "keys.bep"));
+    const plaintextKeys = exists(join5(dir, location2 === "sigma-lab" ? "root.wif" : "keys.json"));
     const walletDatabases = [
       "wallet-main.db",
       "wallet-test.db",
       "wallet.db"
-    ].filter((name) => exists(join4(dir, name)));
+    ].filter((name) => exists(join5(dir, name)));
     if (encryptedBackup || plaintextKeys || walletDatabases.length)
       sources.push({
+        directory: dir,
         account,
         location: location2,
         encryptedBackup,
@@ -154423,23 +157867,23 @@ function inspectMigration(options = {}) {
   };
   if (exists(base, true)) {
     inspect(base, "default", "legacy-root");
-    const root = join4(base, "accounts");
+    const root = join5(base, "accounts");
     if (exists(root, true)) {
       for (const name of readdirSync3(root).sort()) {
         if (accountNameSchema.safeParse(name).success)
-          inspect(join4(root, name), name, "account");
+          inspect(join5(root, name), name, "account");
       }
     }
   }
-  const local = join4(home, ".local");
-  const share = join4(local, "share");
+  const local = join5(home, ".local");
+  const share = join5(local, "share");
   if (exists(local, true) && exists(share, true))
-    inspect(join4(share, "sigma-brc169-lab"), "sigma-lab", "sigma-lab");
+    inspect(join5(share, "sigma-brc169-lab"), "sigma-lab", "sigma-lab");
   if (env.VAULT_PATH === "")
     throw new Error("VAULT_PATH is set but empty");
-  const vaultPath = env.VAULT_PATH ?? join4(home, ".bsv", "vault.bep");
+  const vaultPath = env.VAULT_PATH ?? join5(home, ".bsv", "vault.bep");
   if (env.VAULT_PATH === undefined)
-    exists(join4(home, ".bsv"), true);
+    exists(join5(home, ".bsv"), true);
   const environmentKeys = {
     payment: env.PRIVATE_KEY_WIF !== undefined,
     identity: env.IDENTITY_KEY_WIF !== undefined,
@@ -154447,6 +157891,7 @@ function inspectMigration(options = {}) {
   };
   return {
     sources,
+    boundAccounts: listAccounts(join5(base, "accounts")).filter((item) => readAccount(item.name, join5(base, "accounts"))?.vaultBinding).map(({ name, address }) => ({ name, address })),
     vaultExists: exists(vaultPath),
     environmentKeys,
     migrationRequired: sources.some((s) => s.encryptedBackup || s.plaintextKeys) || environmentKeys.payment || environmentKeys.identity
@@ -154456,34 +157901,821 @@ var init_vaultMigration = __esm(() => {
   init_accounts();
 });
 
+// utils/vaultMigrationWizard.ts
+class VaultMigrationWizard {
+  backend;
+  now;
+  ttlMs;
+  listeners = new Set;
+  state;
+  operation = 0;
+  cutoverInFlight = false;
+  constructor(options) {
+    this.backend = options.backend;
+    this.now = options.now ?? Date.now;
+    this.ttlMs = options.ttlMs ?? 300000;
+    const available = options.backend?.available === true;
+    this.state = {
+      phase: options.inventory.sources.length > 0 ? "source" : "inventory",
+      status: available ? "idle" : "blocked",
+      inventory: options.inventory,
+      backend: {
+        available,
+        reason: available ? undefined : options.backend?.unavailableReason ?? "Vault migration is unavailable until the local Vault backend is enabled."
+      },
+      cutoverConfirmed: false
+    };
+  }
+  snapshot() {
+    return cloneState(this.state);
+  }
+  subscribe(listener) {
+    this.listeners.add(listener);
+    listener(this.snapshot());
+    return () => this.listeners.delete(listener);
+  }
+  selectSource(source) {
+    if (this.state.phase === "cutover" || this.state.phase === "complete")
+      return this.snapshot();
+    const selected = typeof source === "string" ? this.state.inventory.sources.find((item) => sourceKey(item) === source) : this.state.inventory.sources.find((item) => sourceKey(item) === sourceKey(source));
+    if (!selected)
+      return this.fail("invalid-selection", "Select an eligible local source.", false);
+    this.operation += 1;
+    this.update({
+      phase: "destination",
+      status: this.state.backend.available ? "idle" : "blocked",
+      source: selected,
+      destination: undefined,
+      session: undefined,
+      preview: undefined,
+      roleSelection: undefined,
+      cutoverConfirmed: false,
+      error: undefined
+    });
+    return this.snapshot();
+  }
+  selectDestination(destination) {
+    if (this.state.phase === "cutover" || this.state.phase === "complete")
+      return this.snapshot();
+    if (!isDestination(destination))
+      return this.fail("invalid-selection", "Choose a Vault path, entry, and account name before continuing.", false);
+    if (!this.state.source)
+      return this.fail("invalid-selection", "Select a source before choosing a destination.", false);
+    this.operation += 1;
+    this.update({
+      phase: "unlock",
+      status: this.state.backend.available ? "idle" : "blocked",
+      destination: { ...destination },
+      session: undefined,
+      preview: undefined,
+      roleSelection: undefined,
+      cutoverConfirmed: false,
+      error: undefined
+    });
+    return this.snapshot();
+  }
+  async unlock(secrets) {
+    if (!this.state.backend.available || !this.backend)
+      return this.fail("backend-unavailable", this.state.backend.reason ?? "Vault migration backend is unavailable.", false);
+    if (!this.state.source || !this.state.destination)
+      return this.fail("invalid-selection", "Choose a source and destination before unlocking.", false);
+    const sourcePassphrase = typeof secrets === "string" ? secrets : secrets.sourcePassphrase;
+    const destinationPassphrase = typeof secrets === "string" ? undefined : secrets.destinationPassphrase;
+    if (typeof sourcePassphrase !== "string" || typeof destinationPassphrase !== "undefined" && typeof destinationPassphrase !== "string" || sourcePassphrase.length === 0 && (destinationPassphrase === undefined || destinationPassphrase.length === 0))
+      return this.fail("invalid-selection", "Enter the local unlock passphrase.", true);
+    this.update({ phase: "unlock", status: "working", error: undefined });
+    const operation = ++this.operation;
+    let ephemeralSourcePassphrase = sourcePassphrase;
+    let ephemeralDestinationPassphrase = destinationPassphrase;
+    try {
+      const session = await this.backend.beginUnlock({
+        ...this.state.destination,
+        accountName: this.state.destination.accountName,
+        source: this.state.source,
+        sourcePassphrase: ephemeralSourcePassphrase,
+        destinationPassphrase: ephemeralDestinationPassphrase,
+        ttlMs: this.ttlMs
+      });
+      ephemeralSourcePassphrase = "";
+      ephemeralDestinationPassphrase = undefined;
+      if (!isSession(session))
+        throw new Error("Vault backend returned an invalid session");
+      if (session.vaultPath !== this.state.destination.vaultPath || this.state.destination.vaultEntryId !== "new" && session.vaultEntryId !== this.state.destination.vaultEntryId || this.state.destination.expectedPublicKey !== undefined && session.publicKey !== this.state.destination.expectedPublicKey)
+        throw new Error("Vault backend returned a session for a different destination");
+      if (operation !== this.operation) {
+        await this.backend.lock(session.sessionId).catch(() => {
+          return;
+        });
+        return this.snapshot();
+      }
+      this.update({
+        phase: "preview",
+        status: "working",
+        session: {
+          sessionId: session.sessionId,
+          expiresAt: session.expiresAt,
+          vaultEntryId: session.vaultEntryId,
+          publicKey: session.publicKey
+        }
+      });
+      return await this.loadPreview(++this.operation);
+    } catch (error) {
+      ephemeralSourcePassphrase = "";
+      ephemeralDestinationPassphrase = undefined;
+      if (operation !== this.operation)
+        return this.snapshot();
+      return this.failFromError(error);
+    }
+  }
+  async loadPreview(operation = ++this.operation) {
+    if (this.state.phase === "cutover" || this.state.phase === "complete" || this.state.phase === "interrupted")
+      return this.snapshot();
+    if (!this.backend || !this.state.backend.available)
+      return this.fail("backend-unavailable", this.state.backend.reason ?? "Vault migration backend is unavailable.", false);
+    if (!this.state.source || !this.state.destination || !this.state.session)
+      return this.fail("invalid-selection", "Unlock a destination before previewing migration.", true);
+    if (!this.sessionIsActive())
+      return this.expire();
+    this.update({ phase: "preview", status: "working", error: undefined });
+    try {
+      const rawPreview = await this.backend.preview({
+        sessionId: this.state.session.sessionId,
+        source: this.state.source,
+        destination: this.state.destination
+      });
+      if (operation !== this.operation)
+        return this.snapshot();
+      const preview = sanitizePreview(rawPreview);
+      if (!preview)
+        throw new Error("Vault backend returned an invalid preview");
+      this.update({
+        phase: preview.conflicts.length > 0 ? "conflict-review" : "ready",
+        status: "idle",
+        preview,
+        cutoverConfirmed: false
+      });
+      return this.snapshot();
+    } catch (error) {
+      if (operation !== this.operation)
+        return this.snapshot();
+      return this.failFromError(error);
+    }
+  }
+  resolveConflict(conflictId, resolution) {
+    if (this.state.phase === "cutover" || this.state.phase === "complete" || this.state.phase === "interrupted")
+      return this.snapshot();
+    if (!isConflictResolution(resolution))
+      return this.fail("conflict", "Choose a supported conflict resolution.", true);
+    const preview = this.state.preview;
+    if (!preview)
+      return this.fail("conflict", "Load a migration preview first.", true);
+    const conflicts = preview.conflicts;
+    if (!conflicts.some((conflict) => conflict.id === conflictId))
+      return this.fail("conflict", "That migration conflict is no longer present.", true);
+    const next = conflicts.map((conflict) => conflict.id === conflictId ? { ...conflict, resolution } : conflict);
+    this.update({
+      phase: next.every((conflict) => conflict.resolution) ? "ready" : "conflict-review",
+      status: "idle",
+      preview: { ...preview, conflicts: next },
+      cutoverConfirmed: false,
+      error: undefined
+    });
+    return this.snapshot();
+  }
+  confirmCutover(confirmation, roleSelection) {
+    if (this.state.phase === "cutover" || this.state.phase === "complete" || this.state.phase === "interrupted")
+      return this.snapshot();
+    if (confirmation !== CUTOVER_CONFIRMATION)
+      return this.fail("cutover-not-confirmed", `Type ${CUTOVER_CONFIRMATION} to authorize the wallet switch.`, false);
+    if (!this.state.preview || !this.state.session)
+      return this.fail("invalid-selection", "Review the migration preview before continuing.", false);
+    if (this.state.preview.conflicts.some((conflict) => !conflict.resolution))
+      return this.fail("conflict", "Resolve every existing Vault conflict before continuing.", false);
+    let selectedRoles;
+    if (this.state.preview.projectRoles) {
+      selectedRoles = parseProjectRoleSelection(roleSelection);
+      if (!selectedRoles)
+        return this.fail("invalid-selection", "Choose an explicit project role for each key before continuing.", false);
+      const roles = this.state.preview.projectRoles;
+      if (selectedRoles.expectedProjectId !== roles.projectId || selectedRoles.expectedRevision !== projectRoleRevision(roles.current))
+        return this.fail("invalid-selection", "The project role inventory changed. Reload the preview before continuing.", true);
+    }
+    if (!this.sessionIsActive())
+      return this.expire();
+    this.update({
+      roleSelection: selectedRoles,
+      cutoverConfirmed: true,
+      phase: "ready",
+      status: "idle",
+      error: undefined
+    });
+    return this.snapshot();
+  }
+  async cutover() {
+    if (["complete", "interrupted", "locked", "expired"].includes(this.state.phase))
+      return this.snapshot();
+    if (this.cutoverInFlight)
+      return this.snapshot();
+    if (!this.backend || !this.state.backend.available)
+      return this.fail("backend-unavailable", this.state.backend.reason ?? "Vault migration backend is unavailable.", false);
+    if (!this.state.source || !this.state.destination || !this.state.session || !this.state.preview)
+      return this.fail("invalid-selection", "Review the migration before switching to Vault.", false);
+    if (!this.state.cutoverConfirmed)
+      return this.fail("cutover-not-confirmed", "Explicit cutover confirmation is required.", false);
+    if (!this.sessionIsActive())
+      return this.expire();
+    this.cutoverInFlight = true;
+    const operation = ++this.operation;
+    this.update({
+      phase: "cutover",
+      status: "working",
+      progress: {
+        stage: "backup",
+        completed: 0,
+        total: 4,
+        message: "Preparing a recoverable backup"
+      },
+      error: undefined
+    });
+    try {
+      const resolutions = Object.fromEntries(this.state.preview.conflicts.filter((conflict) => Boolean(conflict.resolution)).map((conflict) => [conflict.id, conflict.resolution]));
+      const rawResult = await this.backend.cutover({
+        sessionId: this.state.session.sessionId,
+        source: this.state.source,
+        destination: this.state.destination,
+        confirmation: CUTOVER_CONFIRMATION,
+        resolutions,
+        ...this.state.roleSelection ? { roleSelection: this.state.roleSelection } : {}
+      }, (progress) => {
+        const safeProgress = sanitizeProgress(progress);
+        if (safeProgress)
+          this.update({
+            phase: "cutover",
+            status: "working",
+            progress: safeProgress
+          });
+      });
+      if (operation !== this.operation)
+        return this.snapshot();
+      const result = sanitizeCutoverResult(rawResult);
+      if (!result)
+        throw new Error("Vault backend returned an invalid cutover result");
+      this.update({
+        phase: "complete",
+        status: "complete",
+        progress: {
+          stage: "complete",
+          completed: 4,
+          total: 4,
+          message: "Vault migration verified"
+        },
+        result
+      });
+      return this.snapshot();
+    } catch (error) {
+      if (operation !== this.operation)
+        return this.snapshot();
+      const code = String(error.code ?? error.name ?? "").toLowerCase();
+      if (code.includes("expire") || code.includes("lock"))
+        return this.failFromError(error);
+      if (isNoEffectFailure(error))
+        return this.failFromError(error);
+      return this.interrupt("Cutover status is unknown. Check the local backup and Vault entries before retrying.");
+    } finally {
+      this.cutoverInFlight = false;
+    }
+  }
+  async lock() {
+    if (this.backend && this.state.session) {
+      try {
+        await this.backend.lock(this.state.session.sessionId);
+      } catch (error) {
+        return this.failFromError(error);
+      }
+    }
+    this.update({
+      phase: "locked",
+      status: "blocked",
+      session: undefined,
+      roleSelection: undefined,
+      cutoverConfirmed: false
+    });
+    return this.snapshot();
+  }
+  async reconcile() {
+    if (this.state.phase !== "interrupted")
+      return this.snapshot();
+    if (!this.backend?.reconcile || !this.state.source || !this.state.destination || !this.state.session)
+      return this.snapshot();
+    const operation = ++this.operation;
+    try {
+      const raw = await this.backend.reconcile({
+        sessionId: this.state.session.sessionId,
+        source: this.state.source,
+        destination: this.state.destination
+      });
+      if (operation !== this.operation)
+        return this.snapshot();
+      if (!raw || typeof raw !== "object")
+        return this.interrupt("Cutover status remains unknown. Keep the source and backup until it is reconciled.");
+      if (raw.status === "complete") {
+        const result = sanitizeCutoverResult(raw.result);
+        if (!result)
+          return this.interrupt("Cutover status remains unknown. Keep the source and backup until it is reconciled.");
+        this.update({
+          phase: "complete",
+          status: "complete",
+          result,
+          error: undefined
+        });
+        return this.snapshot();
+      }
+      if (raw.status === "safe-to-retry") {
+        this.update({
+          phase: "destination",
+          status: "idle",
+          session: undefined,
+          preview: undefined,
+          roleSelection: undefined,
+          progress: undefined,
+          cutoverConfirmed: false,
+          error: undefined
+        });
+        return this.snapshot();
+      }
+      return this.interrupt("Cutover status remains unknown. Keep the source and backup until it is reconciled.");
+    } catch {
+      return this.interrupt("Cutover status remains unknown. Keep the source and backup until it is reconciled.");
+    }
+  }
+  interrupt(message = "Migration was interrupted. Resume only after checking the source and backup.") {
+    this.update({
+      phase: "interrupted",
+      status: "failed",
+      error: { code: "interrupted", message, retryable: false },
+      cutoverConfirmed: false
+    });
+    return this.snapshot();
+  }
+  async retry() {
+    if (this.cutoverInFlight)
+      return this.snapshot();
+    if (this.state.phase === "complete")
+      return this.snapshot();
+    if (this.state.phase === "interrupted")
+      return this.reconcile();
+    if (this.state.session && this.sessionIsActive() && this.state.preview)
+      return this.loadPreview();
+    this.update({
+      phase: this.state.source ? "destination" : "source",
+      status: this.state.backend.available ? "idle" : "blocked",
+      session: undefined,
+      preview: undefined,
+      roleSelection: undefined,
+      progress: undefined,
+      cutoverConfirmed: false,
+      error: undefined
+    });
+    return this.snapshot();
+  }
+  sessionIsActive() {
+    return Boolean(this.state.session && this.now() < this.state.session.expiresAt);
+  }
+  expire() {
+    this.update({
+      phase: "expired",
+      status: "blocked",
+      session: undefined,
+      roleSelection: undefined,
+      cutoverConfirmed: false,
+      error: {
+        code: "expired",
+        message: "The local unlock session expired. Unlock again to continue.",
+        retryable: true
+      }
+    });
+    return this.snapshot();
+  }
+  fail(code, message, retryable, noEffect = false) {
+    this.update({
+      phase: code === "backend-unavailable" ? this.state.phase : "error",
+      status: code === "backend-unavailable" ? "blocked" : "failed",
+      error: {
+        code,
+        message,
+        retryable,
+        ...noEffect ? { noEffect: true } : {}
+      }
+    });
+    return this.snapshot();
+  }
+  failFromError(error) {
+    const value = error;
+    const code = String(value.code ?? value.name ?? "").toLowerCase();
+    const noEffect = value.noEffect === true;
+    if (code.includes("expire"))
+      return this.expire();
+    if (code.includes("lock")) {
+      this.update({
+        phase: "locked",
+        status: "blocked",
+        session: undefined,
+        cutoverConfirmed: false,
+        error: {
+          code: "locked",
+          message: "Vault is locked. Unlock it locally to continue.",
+          retryable: true
+        }
+      });
+      return this.snapshot();
+    }
+    if (code.includes("abort") || code.includes("interrupt"))
+      return this.interrupt("Migration was interrupted before completion. Check the backup before retrying.");
+    const rawMessage = typeof value.message === "string" && value.message.length > 0 ? value.message : "Vault migration failed. No cutover was confirmed.";
+    const message = /passphrase|password|secret|private\s*key|\bwif\b|mnemonic/i.test(rawMessage) ? "Vault migration failed. No cutover was confirmed." : rawMessage.slice(0, 500);
+    return this.fail("backend-error", message, noEffect, noEffect);
+  }
+  update(patch) {
+    this.state = { ...this.state, ...patch };
+    for (const listener of this.listeners)
+      listener(this.snapshot());
+  }
+}
+function sourceKey(source) {
+  return `${source.location}:${source.account}`;
+}
+function isDestination(value) {
+  if (!value || typeof value !== "object")
+    return false;
+  const item = value;
+  return typeof item.accountName === "string" && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(item.accountName) && typeof item.vaultPath === "string" && item.vaultPath.length > 0 && item.vaultPath.length <= 4096 && typeof item.vaultEntryId === "string" && item.vaultEntryId.length > 0 && item.vaultEntryId.length <= 200 && (item.expectedPublicKey === undefined || typeof item.expectedPublicKey === "string");
+}
+function parseProjectRoleSelection(value) {
+  if (!isRecord(value))
+    return;
+  if (Object.keys(value).length !== 3 || !["expectedProjectId", "expectedRevision", "roleAssignments"].every((key) => Object.hasOwn(value, key)))
+    return;
+  if (typeof value.expectedProjectId !== "string" || value.expectedProjectId.length === 0 || value.expectedProjectId.length > 128)
+    return;
+  const expectedRevision = value.expectedRevision;
+  if (expectedRevision !== null && (typeof expectedRevision !== "number" || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0))
+    return;
+  const assignments = value.roleAssignments;
+  if (!isRecord(assignments))
+    return;
+  if (Object.keys(assignments).length !== PROJECT_KEY_ROLES.length || !PROJECT_KEY_ROLES.every((role) => Object.hasOwn(assignments, role)))
+    return;
+  const safeAssignments = {};
+  for (const role of PROJECT_KEY_ROLES) {
+    const choice = assignments[role];
+    if (typeof choice !== "string" || choice !== "unassigned" && !/^(?:keep|select):[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(choice))
+      return;
+    safeAssignments[role] = choice;
+  }
+  return {
+    expectedProjectId: value.expectedProjectId,
+    expectedRevision,
+    roleAssignments: safeAssignments
+  };
+}
+function isSession(value) {
+  if (!value || typeof value !== "object")
+    return false;
+  const item = value;
+  return typeof item.sessionId === "string" && item.sessionId.length > 0 && typeof item.expiresAt === "number" && Number.isFinite(item.expiresAt) && typeof item.vaultPath === "string" && typeof item.vaultEntryId === "string";
+}
+function sanitizePreview(value) {
+  if (!value || typeof value !== "object")
+    return;
+  const item = value;
+  const source = item.source;
+  const destination = item.destination;
+  const preservation = item.preservation;
+  if (!isRecord(source) || !isRecord(destination) || !isRecord(preservation))
+    return;
+  if (typeof source.account !== "string" || !isLocation(source.location) || !stringArray(source.addresses) || !stringArray(source.databaseFiles) || typeof destination.accountName !== "string" || typeof destination.vaultPath !== "string" || typeof destination.vaultEntryId !== "string" || !stringArray(destination.addresses) || !Array.isArray(destination.existingVaultEntries) || !isPreservationStatus(preservation.identity, [
+    "match",
+    "mismatch",
+    "unknown"
+  ]) || !isPreservationStatus(preservation.addresses, [
+    "match",
+    "mismatch",
+    "unknown"
+  ]) || !stringArray(preservation.databases) || !isPreservationStatus(preservation.vaultEntries, [
+    "retain",
+    "conflict",
+    "unknown"
+  ]) || !Array.isArray(item.conflicts))
+    return;
+  const conflicts = [];
+  for (const value of item.conflicts) {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.message !== "string")
+      return;
+    if (!isConflictKind(value.kind))
+      return;
+    const resolution = value.resolution;
+    if (resolution !== undefined && !isConflictResolution(resolution))
+      return;
+    conflicts.push({
+      id: value.id,
+      kind: value.kind,
+      message: value.message.slice(0, 500),
+      ...resolution ? { resolution } : {}
+    });
+  }
+  const entries = [];
+  for (const value of destination.existingVaultEntries) {
+    if (!isRecord(value) || typeof value.entryId !== "string")
+      return;
+    entries.push({
+      entryId: value.entryId,
+      ...typeof value.publicKey === "string" ? { publicKey: value.publicKey } : {},
+      ...typeof value.label === "string" ? { label: value.label.slice(0, 200) } : {}
+    });
+  }
+  let projectRoles;
+  if (Object.hasOwn(item, "projectRoles")) {
+    projectRoles = sanitizeProjectRoles(item.projectRoles);
+    if (!projectRoles)
+      return;
+  }
+  return {
+    source: {
+      account: source.account,
+      location: source.location,
+      ...typeof source.identity === "string" ? { identity: source.identity } : {},
+      addresses: [...source.addresses],
+      databaseFiles: [...source.databaseFiles]
+    },
+    destination: {
+      accountName: destination.accountName,
+      vaultPath: destination.vaultPath,
+      vaultEntryId: destination.vaultEntryId,
+      ...typeof destination.identity === "string" ? { identity: destination.identity } : {},
+      addresses: [...destination.addresses],
+      existingVaultEntries: entries
+    },
+    preservation: {
+      identity: preservation.identity,
+      addresses: preservation.addresses,
+      databases: [...preservation.databases],
+      vaultEntries: preservation.vaultEntries
+    },
+    conflicts,
+    ...projectRoles ? { projectRoles } : {}
+  };
+}
+function sanitizeProjectRoles(value) {
+  if (!isRecord(value) || typeof value.projectId !== "string")
+    return;
+  if (value.projectId.length === 0 || value.projectId.length > 128 || !Array.isArray(value.candidates))
+    return;
+  const current = value.current;
+  let safeCurrent;
+  if (current === null)
+    safeCurrent = null;
+  else {
+    if (!isRecord(current))
+      return;
+    if (typeof current.projectId !== "string" || current.projectId !== value.projectId || typeof current.revision !== "number" || !Number.isSafeInteger(current.revision) || current.revision < 0 || !isRecord(current.current))
+      return;
+    const assignments = {};
+    for (const role of PROJECT_KEY_ROLES) {
+      const selected = current.current[role];
+      if (selected !== null && typeof selected !== "string")
+        return;
+      assignments[role] = selected;
+    }
+    safeCurrent = {
+      projectId: current.projectId,
+      revision: current.revision,
+      current: assignments
+    };
+  }
+  const candidates = [];
+  const ids = new Set;
+  for (const candidate of value.candidates) {
+    if (!isRecord(candidate) || typeof candidate.candidateId !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(candidate.candidateId) || ids.has(candidate.candidateId) || typeof candidate.label !== "string" || !Array.isArray(candidate.supportedRoles) || !candidate.supportedRoles.every((role) => PROJECT_KEY_ROLES.includes(role)))
+      return;
+    ids.add(candidate.candidateId);
+    candidates.push({
+      candidateId: candidate.candidateId,
+      label: candidate.label.slice(0, 200),
+      supportedRoles: [
+        ...new Set(candidate.supportedRoles)
+      ],
+      ...typeof candidate.unavailableReason === "string" ? { unavailableReason: candidate.unavailableReason.slice(0, 300) } : {},
+      ...typeof candidate.publicDerivationLabel === "string" ? {
+        publicDerivationLabel: candidate.publicDerivationLabel.slice(0, 200)
+      } : {}
+    });
+  }
+  return { projectId: value.projectId, current: safeCurrent, candidates };
+}
+function projectRoleRevision(value) {
+  return isRecord(value) && typeof value.revision === "number" && Number.isSafeInteger(value.revision) && value.revision >= 0 ? value.revision : null;
+}
+function cloneProjectRoleCurrent(value) {
+  if (!isRecord(value))
+    return value;
+  return {
+    ...value,
+    ...isRecord(value.current) ? { current: { ...value.current } } : {}
+  };
+}
+function sanitizeCutoverResult(value) {
+  if (!isRecord(value) || value.completed !== true || value.verified !== true || typeof value.accountName !== "string" || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.accountName))
+    return;
+  const preserved = value.preserved;
+  if (!isRecord(preserved) || preserved.identity !== true || preserved.addresses !== true || !stringArray(preserved.databases) || !stringArray(preserved.vaultEntries))
+    return;
+  return {
+    completed: true,
+    verified: true,
+    accountName: value.accountName,
+    preserved: {
+      identity: true,
+      addresses: true,
+      databases: [...preserved.databases],
+      vaultEntries: [...preserved.vaultEntries]
+    }
+  };
+}
+function sanitizeProgress(value) {
+  if (!isRecord(value) || !isProgressStage(value.stage) || typeof value.completed !== "number" || typeof value.total !== "number" || typeof value.message !== "string")
+    return;
+  const message = /passphrase|password|secret|private\s*key|\bwif\b|mnemonic/i.test(value.message) ? "Migration is continuing" : value.message.slice(0, 300);
+  return {
+    stage: value.stage,
+    completed: Math.max(0, Math.min(value.total, Math.floor(value.completed))),
+    total: Math.max(1, Math.floor(value.total)),
+    message
+  };
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function isNoEffectFailure(value) {
+  return isRecord(value) && value.noEffect === true;
+}
+function stringArray(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+function isLocation(value) {
+  return value === "account" || value === "legacy-root" || value === "sigma-lab";
+}
+function isConflictKind(value) {
+  return value === "identity" || value === "address" || value === "database" || value === "vault-entry";
+}
+function isConflictResolution(value) {
+  return value === "keep-existing" || value === "import-source" || value === "skip";
+}
+function isPreservationStatus(value, statuses) {
+  return typeof value === "string" && statuses.includes(value);
+}
+function isProgressStage(value) {
+  return value === "backup" || value === "import" || value === "verify" || value === "cutover" || value === "complete";
+}
+function cloneState(state) {
+  return {
+    ...state,
+    inventory: {
+      ...state.inventory,
+      sources: state.inventory.sources.map((source) => ({
+        ...source,
+        walletDatabases: [...source.walletDatabases]
+      })),
+      environmentKeys: { ...state.inventory.environmentKeys }
+    },
+    backend: { ...state.backend },
+    source: state.source ? { ...state.source, walletDatabases: [...state.source.walletDatabases] } : undefined,
+    destination: state.destination ? { ...state.destination } : undefined,
+    session: state.session ? { ...state.session } : undefined,
+    preview: state.preview ? {
+      ...state.preview,
+      source: {
+        ...state.preview.source,
+        addresses: [...state.preview.source.addresses],
+        databaseFiles: [...state.preview.source.databaseFiles]
+      },
+      destination: {
+        ...state.preview.destination,
+        addresses: [...state.preview.destination.addresses],
+        existingVaultEntries: state.preview.destination.existingVaultEntries.map((entry) => ({
+          ...entry
+        }))
+      },
+      preservation: {
+        ...state.preview.preservation,
+        databases: [...state.preview.preservation.databases]
+      },
+      conflicts: state.preview.conflicts.map((conflict) => ({
+        ...conflict
+      })),
+      ...state.preview.projectRoles ? {
+        projectRoles: {
+          ...state.preview.projectRoles,
+          current: cloneProjectRoleCurrent(state.preview.projectRoles.current),
+          candidates: state.preview.projectRoles.candidates.map((candidate) => ({
+            ...candidate,
+            supportedRoles: [...candidate.supportedRoles]
+          }))
+        }
+      } : {}
+    } : undefined,
+    roleSelection: state.roleSelection ? {
+      expectedProjectId: state.roleSelection.expectedProjectId,
+      expectedRevision: state.roleSelection.expectedRevision,
+      roleAssignments: { ...state.roleSelection.roleAssignments }
+    } : undefined,
+    progress: state.progress ? { ...state.progress } : undefined,
+    result: state.result ? {
+      ...state.result,
+      preserved: {
+        ...state.result.preserved,
+        databases: [...state.result.preserved.databases],
+        vaultEntries: [...state.result.preserved.vaultEntries]
+      }
+    } : undefined,
+    error: state.error ? { ...state.error } : undefined
+  };
+}
+var PROJECT_KEY_ROLES, CUTOVER_CONFIRMATION = "MIGRATE_AND_SWITCH";
+var init_vaultMigrationWizard = __esm(() => {
+  PROJECT_KEY_ROLES = [
+    "identity-signing",
+    "payments",
+    "one-sat",
+    "encryption"
+  ];
+});
+
 // utils/vaultSetup.ts
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
+function unavailableMigrationBackend() {
+  const reason = "The local Vault migration backend could not be initialized. Check the Vault package and project configuration, then reopen setup.";
+  const unavailable = async () => {
+    throw new Error(reason);
+  };
+  return {
+    available: false,
+    unavailableReason: reason,
+    beginUnlock: unavailable,
+    preview: unavailable,
+    cutover: unavailable,
+    lock: async () => {}
+  };
+}
 async function startVaultSetup(options = {}) {
+  if (options.migrationBackend && options.migrationBackendFactory)
+    throw new Error("Provide either migrationBackend or migrationBackendFactory, not both.");
+  let migrationBackend = options.migrationBackend;
+  if (!migrationBackend && options.migrationBackendFactory) {
+    try {
+      const candidate = await options.migrationBackendFactory();
+      if (!candidate || typeof candidate.available !== "boolean")
+        throw new Error("invalid backend");
+      migrationBackend = candidate;
+    } catch {
+      migrationBackend = unavailableMigrationBackend();
+    }
+  }
   const token = randomBytes2(32).toString("hex");
+  const assetsDirectory = options.assetsDirectory ?? localUiAssetsDirectory();
   let origin = "";
-  const server = createServer((req, res) => {
+  let wizard;
+  const server = createServer(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
     if (req.headers.host !== new URL(origin).host || req.headers.origin && req.headers.origin !== origin) {
       res.writeHead(403).end();
       return;
     }
-    if (req.method !== "GET") {
-      res.writeHead(405, { Allow: "GET" }).end();
+    const requestPath = req.url?.split("?", 1)[0];
+    const setupRoute = /^\/setup\/(source|destination|unlock|review)$/.test(requestPath ?? "");
+    if (requestPath === "/" || setupRoute || requestPath?.startsWith("/assets/")) {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.writeHead(405, { Allow: "GET, HEAD" }).end();
+        return;
+      }
+      const asset = readLocalUiAsset(setupRoute ? "/" : req.url ?? "/", assetsDirectory);
+      if (!asset) {
+        res.writeHead(requestPath === "/" ? 503 : 404, {
+          "Content-Type": "text/plain; charset=utf-8"
+        }).end(requestPath === "/" ? "The local setup UI is unavailable. Rebuild or reinstall bsv-mcp, then reopen setup." : "Not found");
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": asset.contentType,
+        "Content-Length": asset.body.byteLength
+      }).end(req.method === "HEAD" ? undefined : asset.body);
       return;
     }
-    if (req.url === "/") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(page);
-      return;
-    }
-    if (req.url === "/setup.js") {
-      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" }).end(script4);
-      return;
-    }
-    if (req.url !== "/api/inventory") {
+    const apiPath = req.url?.split("?", 1)[0];
+    if (apiPath !== "/api/inventory" && !apiPath?.startsWith("/api/migration/") && !apiPath?.startsWith("/api/embedded/")) {
       res.writeHead(404).end();
       return;
     }
@@ -154493,9 +158725,177 @@ async function startVaultSetup(options = {}) {
       res.writeHead(403).end();
       return;
     }
+    if (apiPath === "/api/migration/capabilities") {
+      if (req.method !== "GET") {
+        res.writeHead(405, { Allow: "GET" }).end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
+        available: migrationBackend?.available === true,
+        destinationDefaults: options.destinationDefaults,
+        reason: migrationBackend?.available === true ? undefined : migrationBackend?.unavailableReason ?? "Vault migration is unavailable until the local Vault backend is enabled."
+      }));
+      return;
+    }
     try {
-      const inventory = (options.inspect ?? inspectMigration)();
-      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(inventory));
+      if (apiPath?.startsWith("/api/embedded/")) {
+        if (req.method !== "POST") {
+          res.writeHead(405, { Allow: "POST" }).end();
+          return;
+        }
+        const action = apiPath === "/api/embedded/create" ? "create" : apiPath === "/api/embedded/import" ? "import" : apiPath === "/api/embedded/unlock" ? "unlock" : undefined;
+        if (!action) {
+          res.writeHead(404).end();
+          return;
+        }
+        const embeddedAction = options.embeddedActions?.[action];
+        if (!embeddedAction) {
+          res.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "Wallet setup is not connected. Reopen setup from the MCP client."
+          }));
+          return;
+        }
+        try {
+          const body = await readJson(req, 8 * 1024 * 1024);
+          const result = await embeddedAction(body);
+          return writeJson(res, result);
+        } catch (error) {
+          const safeNames = [
+            "EmbeddedFirstRunError",
+            "EmbeddedVaultError",
+            "EmbeddedWalletActivationError",
+            "EmbeddedImportError"
+          ];
+          const message = error instanceof Error && safeNames.includes(error.name) ? error.message : "Wallet setup could not complete. Check your selection and passwords, then try again.";
+          res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: message }));
+          return;
+        }
+      }
+      if (apiPath === "/api/inventory") {
+        if (req.method !== "GET") {
+          res.writeHead(405, { Allow: "GET" }).end();
+          return;
+        }
+        const inventory = (options.inspect ?? inspectMigration)();
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(inventory));
+        return;
+      }
+      const current = () => wizard ??= new VaultMigrationWizard({
+        inventory: (options.inspect ?? inspectMigration)(),
+        backend: migrationBackend
+      });
+      if (!migrationBackend?.available) {
+        res.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({
+          error: "Vault migration backend is unavailable."
+        }));
+        return;
+      }
+      if (req.method !== "POST") {
+        res.writeHead(405, { Allow: "POST" }).end();
+        return;
+      }
+      const body = await readJson(req);
+      if (apiPath === "/api/migration/unlock") {
+        const source = body.source;
+        const destination = body.destination;
+        const sourcePassphrase = body.sourcePassphrase;
+        const destinationPassphrase = body.destinationPassphrase;
+        if (!source || typeof source.account !== "string" || typeof source.location !== "string" || typeof sourcePassphrase !== "string" || destinationPassphrase !== undefined && typeof destinationPassphrase !== "string" || !destination) {
+          res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "Source, destination, and local unlock fields are required."
+          }));
+          return;
+        }
+        const selected = current().selectSource(`${source.location}:${source.account}`);
+        if (selected.error)
+          return writeWizardError(res, selected);
+        const selectedDestination = current().selectDestination(destination);
+        if (selectedDestination.error)
+          return writeWizardError(res, selectedDestination);
+        const result = await current().unlock({
+          sourcePassphrase,
+          destinationPassphrase
+        });
+        return result.error ? writeWizardError(res, result) : writeJson(res, {
+          session: result.session,
+          preview: result.preview
+        });
+      }
+      if (apiPath === "/api/migration/preview") {
+        if (body.sessionId !== current().snapshot().session?.sessionId) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "The local unlock session is no longer active."
+          }));
+          return;
+        }
+        const result = await current().loadPreview();
+        return result.error ? writeWizardError(res, result) : writeJson(res, {
+          session: result.session,
+          preview: result.preview
+        });
+      }
+      if (apiPath === "/api/migration/cutover") {
+        if (body.sessionId !== current().snapshot().session?.sessionId) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "The local unlock session is no longer active."
+          }));
+          return;
+        }
+        const confirmation = body.confirmation;
+        const confirmed = current().confirmCutover(typeof confirmation === "string" ? confirmation : "", body.roleSelection);
+        if (confirmed.error)
+          return writeWizardError(res, confirmed);
+        const result = await current().cutover();
+        if (!result.result && !result.error) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Migration is already in progress." }));
+          return;
+        }
+        return result.error ? writeWizardError(res, result) : writeJson(res, result.result);
+      }
+      if (apiPath === "/api/migration/resolve") {
+        if (body.sessionId !== current().snapshot().session?.sessionId) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "The local unlock session is no longer active."
+          }));
+          return;
+        }
+        const conflictId = body.conflictId;
+        const resolution = body.resolution;
+        if (typeof conflictId !== "string" || !isConflictResolution(resolution)) {
+          res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "A conflict and supported resolution are required."
+          }));
+          return;
+        }
+        const result = current().resolveConflict(conflictId, resolution);
+        return result.error ? writeWizardError(res, result) : writeJson(res, { preview: result.preview });
+      }
+      if (apiPath === "/api/migration/reconcile") {
+        if (body.sessionId !== current().snapshot().session?.sessionId) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "The local unlock session is no longer active."
+          }));
+          return;
+        }
+        const result = await current().reconcile();
+        return result.error ? writeWizardError(res, result) : writeJson(res, {
+          phase: result.phase,
+          session: result.session,
+          preview: result.preview,
+          result: result.result
+        });
+      }
+      if (apiPath === "/api/migration/lock") {
+        if (body.sessionId !== current().snapshot().session?.sessionId) {
+          res.writeHead(409, { "Content-Type": "application/json" }).end(JSON.stringify({
+            error: "The local unlock session is no longer active."
+          }));
+          return;
+        }
+        const result = await current().lock();
+        return result.error ? writeWizardError(res, result) : writeJson(res, { locked: true });
+      }
+      res.writeHead(404).end();
     } catch {
       res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({
         error: "Could not inspect local setup. Check account paths before continuing."
@@ -154514,36 +158914,60 @@ async function startVaultSetup(options = {}) {
   let closing;
   const close = () => {
     clearTimeout(timer);
-    closing ??= new Promise((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-      server.closeAllConnections();
-    });
+    closing ??= (async () => {
+      if (wizard)
+        await wizard.lock().catch(() => {
+          return;
+        });
+      await new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+        server.closeAllConnections();
+      });
+    })();
     return closing;
   };
   const timer = setTimeout(() => {
     close();
   }, options.timeoutMs ?? 300000);
   timer.unref();
-  return { url: `${origin}/#${token}`, close, closed };
+  return {
+    url: `${origin}/${options.flow && options.flow !== "embedded" ? `?flow=${options.flow}` : ""}#${token}`,
+    close,
+    closed
+  };
 }
-var page = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BSV MCP local setup</title><body><main><h1>Move your existing identity into Vault</h1><p>This page inspects your local setup. Your keys and wallet databases are not changed.</p><div id="status" role="status">Inspecting local setup…</div><ul id="sources"></ul><p>Migration is not yet enabled in this preview. The next step will unlock your existing backup locally, preserve each key as a standalone Vault entry, and verify the original addresses before switching the wallet to Vault.</p></main><script src="/setup.js"></script></body></html>`, script4 = `const token = location.hash.slice(1); history.replaceState(null, '', '/');
-fetch('/api/inventory', {headers: {Authorization: 'Bearer ' + token}}).then(async response => {
- if (!response.ok) throw new Error('Unable to inspect setup. Reopen the setup link from BSV MCP.');
- const data = await response.json();
- document.getElementById('status').textContent = data.migrationRequired ? 'Existing keys found. Review the accounts below.' : 'No existing keys found.';
- const list = document.getElementById('sources');
- for (const source of data.sources) {
-  const item = document.createElement('li');
-  item.textContent = source.account + (source.location === 'legacy-root' ? ' (older setup)' : '') + ': ' + [source.encryptedBackup && 'encrypted backup', source.plaintextKeys && 'plaintext keys', source.walletDatabases.length && source.walletDatabases.length + ' wallet database(s)'].filter(Boolean).join(', ');
-  list.append(item);
- }
- if (data.environmentKeys.payment || data.environmentKeys.identity) {
-  const item = document.createElement('li'); item.textContent = data.environmentKeys.empty ? 'An environment key is empty and needs correction.' : 'Keys are configured in the process environment.'; list.append(item);
- }
- const item = document.createElement('li'); item.textContent = data.vaultExists ? 'An existing Vault was found; migration must preserve its entries.' : 'No Vault file was found.'; list.append(item);
-}).catch(error => {document.getElementById('status').textContent = error.message;});`;
+function writeJson(response, value) {
+  response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(value));
+}
+function writeWizardError(response, state) {
+  const code = state.error?.code ?? "backend-error";
+  const status = code === "backend-unavailable" ? 503 : code === "invalid-selection" ? 400 : 409;
+  response.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify({
+    error: state.error?.message ?? "Vault migration failed.",
+    ...state.error?.noEffect === true ? { noEffect: true } : {}
+  }));
+}
+async function readJson(request, maximumBytes = 64 * 1024) {
+  let size = 0;
+  const chunks = [];
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maximumBytes)
+      throw new Error("Migration request is too large");
+    chunks.push(buffer);
+  }
+  if (chunks.length === 0)
+    return {};
+  const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Migration request must be a JSON object");
+  return value;
+}
 var init_vaultSetup = __esm(() => {
+  init_localUiAssets();
   init_vaultMigration();
+  init_vaultMigrationWizard();
 });
 
 // utils/vaultSetupCommand.ts
@@ -154571,8 +158995,7 @@ async function runVaultSetupCommand(options = {}) {
     try {
       await (options.open ?? openLocalBrowser)(setup.url);
     } catch {
-      log("The browser could not open automatically. Open this local setup link yourself:");
-      log(setup.url);
+      log("The browser could not be opened automatically. Retry with bsv-mcp vault-setup (stop this command with Ctrl+C if needed).");
     }
     await setup.closed;
   } finally {
@@ -222301,7 +226724,7 @@ var require_finalhandler = __commonJS(function(exports, module) {
   module.exports = finalhandler;
   function finalhandler(req, res, options) {
     var opts = options || {};
-    var env = opts.env || "development";
+    var env = opts.env || "test";
     var onerror = opts.onerror;
     return function(err) {
       var headers;
@@ -224793,7 +229216,7 @@ var require_application = __commonJS(function(exports, module) {
     });
   };
   app.defaultConfiguration = function defaultConfiguration() {
-    var env = "development";
+    var env = "test";
     this.enable("x-powered-by");
     this.set("etag", "weak");
     this.set("env", env);
@@ -255724,7 +260147,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-v2-integration/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-wallet-vault-integration/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -256431,7 +260854,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-v2-integration/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/.codex/worktrees/bsv-mcp-wallet-vault-integration/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();
@@ -282852,7 +287275,7 @@ var require_src6 = __commonJS(function(exports) {
 
 // node_modules/@1sat/wallet-node/dist/fsTaskStateStore.js
 import { promises as fs4 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname as dirname2 } from "node:path";
 function createFsTaskStateStore(filePath) {
   return {
     async load() {
@@ -282870,7 +287293,7 @@ function createFsTaskStateStore(filePath) {
       }
     },
     async save(state) {
-      await fs4.mkdir(dirname(filePath), { recursive: true });
+      await fs4.mkdir(dirname2(filePath), { recursive: true });
       const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
       await fs4.writeFile(tmp, JSON.stringify(state), "utf8");
       await fs4.rename(tmp, filePath);
@@ -287720,9 +292143,14 @@ var init_dist10 = __esm(() => {
   init_dist6();
 });
 
+// utils/storagePayment.ts
+async function denyStoragePayment(_info) {
+  return false;
+}
+
 // utils/signer.ts
-import { chmodSync as chmodSync2, existsSync as existsSync4 } from "node:fs";
-import { join as join5 } from "node:path";
+import { chmodSync as chmodSync2, existsSync as existsSync5 } from "node:fs";
+import { join as join6 } from "node:path";
 function signerRequestAllowed(request, token, allowed) {
   const parts = new URL(request.url).pathname.split("/");
   const method = parts.length === 3 ? parts[2] : undefined;
@@ -287759,22 +292187,26 @@ async function serveSigner(name) {
     throw new Error("Account has no payment key");
   const dir = accountDir(name);
   secureDirectory(dir);
-  const filename = join5(dir, `wallet-${config.chain}.db`);
+  const filename = join6(dir, `wallet-${config.chain}.db`);
   regularPath(filename);
   const previousMask = process.umask(63);
-  const result = await createNodeWallet({
+  const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
+  const nodeWalletConfig = {
     privateKey: keys.payPk,
     chain: config.chain,
     storageIdentityKey: config.storageIdentityKey,
     storage: { provider: "bun-sqlite", filename },
-    activeRemote: config.activeRemote,
-    backups: config.backups,
+    activeRemote: storageConfig.activeRemote,
+    backups: storageConfig.backups,
     servicesBaseUrl: onesatUrl(config.chain),
-    skipInitialMonitor: true
-  }).finally(() => process.umask(previousMask));
-  if (existsSync4(filename))
+    skipInitialMonitor: true,
+    autoStoragePayments: false,
+    onStoragePaymentRequired: denyStoragePayment
+  };
+  const result = await createNodeWallet(nodeWalletConfig).finally(() => process.umask(previousMask));
+  if (existsSync5(filename))
     chmodSync2(filename, 384);
-  if (existsSync4(join5(dir, ".env"))) {
+  if (existsSync5(join6(dir, ".env"))) {
     await result.destroy();
     throw new Error("Signer account directory must not contain a .env file");
   }
@@ -287862,42 +292294,42 @@ var init_signer2 = __esm(() => {
 // utils/accountCommands.ts
 import {
   chmodSync as chmodSync3,
-  closeSync,
-  existsSync as existsSync5,
-  fsyncSync,
-  openSync,
+  closeSync as closeSync2,
+  existsSync as existsSync6,
+  fsyncSync as fsyncSync2,
+  openSync as openSync2,
   readdirSync as readdirSync4,
-  readFileSync as readFileSync2,
-  rmSync as rmSync3,
-  writeSync
+  readFileSync as readFileSync3,
+  rmSync as rmSync4,
+  writeSync as writeSync2
 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
 function erasePlaintext(file) {
   regularPath(file);
-  const fd = openSync(file, "r+");
+  const fd = openSync2(file, "r+");
   try {
-    const size = readFileSync2(fd).length;
+    const size = readFileSync3(fd).length;
     const zeros = new Uint8Array(Math.min(size, 65536));
     for (let offset = 0;offset < size; offset += zeros.length)
-      writeSync(fd, zeros, 0, Math.min(zeros.length, size - offset), offset);
-    fsyncSync(fd);
+      writeSync2(fd, zeros, 0, Math.min(zeros.length, size - offset), offset);
+    fsyncSync2(fd);
   } finally {
-    closeSync(fd);
+    closeSync2(fd);
   }
-  rmSync3(file);
+  rmSync4(file);
 }
-async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join6(homedir3(), ".bsv-mcp") : join6(homedir3(), ".local/share/sigma-brc169-lab")) {
-  const sourceFile = join6(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join7(homedir3(), ".bsv-mcp") : join7(homedir3(), ".local/share/sigma-brc169-lab")) {
+  const sourceFile = join7(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
   const target = accountDir(name, root);
   const expectedStorage = source === "legacy" ? "bsv-mcp" : "sigma-brc169-lab";
   const verifyDestination = () => {
     const config = readAccount(name, root);
-    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "sigma-lab" && !existsSync5(join6(target, "wallet-main.db")))
+    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "sigma-lab" && !existsSync6(join7(target, "wallet-main.db")))
       throw new Error("Incomplete migration destination; source will not be erased. Preserve it and repair the account first.");
   };
-  if (!existsSync5(sourceFile)) {
-    if (existsSync5(join6(target, "keys.bep"))) {
+  if (!existsSync6(sourceFile)) {
+    if (existsSync6(join7(target, "keys.bep"))) {
       await new SecureKeyManager({ keyDir: target }).loadEncryptedKeys(password);
       verifyDestination();
       return { name, alreadyMigrated: true };
@@ -287909,14 +292341,14 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
   let keys;
   try {
     keys = source === "legacy" ? new SecureKeyManager({ keyDir: sourceDir }).loadLegacyKeys() : {
-      payPk: PrivateKey.fromWif(readFileSync2(sourceFile, "utf8").trim())
+      payPk: PrivateKey.fromWif(readFileSync3(sourceFile, "utf8").trim())
     };
   } catch {
     throw new Error("Cannot read migration source; no files changed");
   }
   if (!keys.payPk)
     throw new Error("Source has no payment key");
-  if (existsSync5(target)) {
+  if (existsSync6(target)) {
     const old = await new SecureKeyManager({
       keyDir: target
     }).loadEncryptedKeys(password);
@@ -287938,24 +292370,24 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
     })).publicKey).toAddress() : keys.payPk.toAddress(),
     depositPrefix: source === "legacy" ? "mcp" : "1sat"
   };
-  const dbSource = join6(sourceDir, "wallet.db");
-  if (source === "sigma-lab" && !existsSync5(dbSource))
+  const dbSource = join7(sourceDir, "wallet.db");
+  if (source === "sigma-lab" && !existsSync6(dbSource))
     throw new Error("Lab wallet database is missing; refusing an incomplete migration");
   await createAccount(name, keys, password, config, root);
   try {
-    if (existsSync5(dbSource)) {
+    if (existsSync6(dbSource)) {
       regularPath(dbSource);
       const { Database } = await import("bun:sqlite");
       const db = new Database(dbSource, { readonly: true });
       try {
-        db.exec(`VACUUM INTO '${join6(target, "wallet-main.db").replaceAll("'", "''")}'`);
+        db.exec(`VACUUM INTO '${join7(target, "wallet-main.db").replaceAll("'", "''")}'`);
       } finally {
         db.close();
       }
-      chmodSync3(join6(target, "wallet-main.db"), 384);
+      chmodSync3(join7(target, "wallet-main.db"), 384);
     }
   } catch {
-    rmSync3(target, { recursive: true, force: true });
+    rmSync4(target, { recursive: true, force: true });
     throw new Error("Database snapshot failed; migration source was not changed");
   }
   return { name, alreadyMigrated: false };
@@ -288007,14 +292439,14 @@ async function runAccountCommand(args) {
     if (source !== "legacy" && source !== "sigma-lab")
       throw new Error("Use --source legacy or --source sigma-lab");
     await confirm("Stop all processes using the source wallet before migrating. Source wallet stopped?");
-    const password = existsSync5(join6(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
+    const password = existsSync6(join7(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
     const result = await migrateAccount(name, source, password);
     console.log(JSON.stringify(result));
     if (args.includes("--erase-source")) {
       await confirm("Encrypted keys and the account database are backed up and verified? Source overwrite cannot erase SSD snapshots");
-      const sourceDir = source === "legacy" ? join6(homedir3(), ".bsv-mcp") : join6(homedir3(), ".local/share/sigma-brc169-lab");
-      const sourceFile = join6(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
-      if (existsSync5(sourceFile))
+      const sourceDir = source === "legacy" ? join7(homedir3(), ".bsv-mcp") : join7(homedir3(), ".local/share/sigma-brc169-lab");
+      const sourceFile = join7(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+      if (existsSync6(sourceFile))
         erasePlaintext(sourceFile);
     }
     return true;
@@ -288028,12 +292460,12 @@ async function runAccountCommand(args) {
     const dir = accountDir(name);
     regularPath(dir, true);
     for (const file of readdirSync4(dir))
-      regularPath(join6(dir, file));
-    rmSync3(dir, { recursive: true });
+      regularPath(join7(dir, file));
+    rmSync4(dir, { recursive: true });
     console.log(`Removed account ${name}`);
     return true;
   }
-  if (existsSync5(accountDir(name)))
+  if (existsSync6(accountDir(name)))
     throw new Error("Account already exists; choose a different name");
   const chainInput = await terminalInput("Network: main or test");
   if (chainInput !== "main" && chainInput !== "test")
@@ -288052,7 +292484,7 @@ async function runAccountCommand(args) {
   const address = key.toAddress(chainInput === "test" ? [111] : [0]);
   await createAccount(name, { payPk: key }, password, newAccountConfig(chainInput, address));
   console.log(`Account ${name} created. Address: ${address}
-Back up ${join6(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
+Back up ${join7(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
   return true;
 }
 var init_accountCommands = __esm(() => {
@@ -288065,51 +292497,3923 @@ var init_accountCommands = __esm(() => {
   init_keyManager();
 });
 
-// utils/externalWalletConfig.ts
-function readExternalWalletConfig(env = process.env) {
-  const raw = env.BRC100_WALLET_URL;
-  if (raw === undefined) {
-    if (env.BRC100_WALLET_ORIGINATOR !== undefined) {
-      throw new Error("BRC100_WALLET_ORIGINATOR requires BRC100_WALLET_URL");
-    }
-    return;
+// node_modules/@opl.dev/vault/dist/index.js
+var exports_dist = {};
+__export(exports_dist, {
+  BRC157_PHRASE: () => BRC157_PHRASE,
+  DEFAULT_PBKDF2_ITERATIONS: () => DEFAULT_PBKDF2_ITERATIONS,
+  DERIVATION_SCHEMES: () => DERIVATION_SCHEMES,
+  DeviceKeyProvider: () => DeviceKeyProvider,
+  ENTRY_KINDS: () => ENTRY_KINDS,
+  EnclaveProvider: () => EnclaveProvider,
+  FileLocked: () => FileLocked,
+  FileStorage: () => FileStorage,
+  MemoryStorage: () => MemoryStorage,
+  PassphraseProvider: () => PassphraseProvider,
+  SE_VAULT_HKDF_INFO: () => SE_VAULT_HKDF_INFO,
+  SessionExpired: () => SessionExpired,
+  VAULT_ENTRY_SCHEME: () => VAULT_ENTRY_SCHEME,
+  VAULT_PATH_ENV: () => VAULT_PATH_ENV,
+  VAULT_SCHEME: () => VAULT_SCHEME,
+  Vault: () => Vault,
+  addVaultSlot: () => addVaultSlot,
+  base64Utf8: () => base64Utf8,
+  bip32Derive: () => bip32Derive,
+  brc157IdentityKey: () => brc157IdentityKey,
+  brc157Profile: () => brc157Profile,
+  brc157Root: () => brc157Root,
+  brc42Derive: () => brc42Derive,
+  brc42DerivePublicKey: () => brc42DerivePublicKey,
+  bytesToHex: () => bytesToHex3,
+  concat: () => concat,
+  createSigner: () => createSigner,
+  createVault: () => createVault,
+  createVaultDocument: () => createVaultDocument,
+  defaultVaultPath: () => defaultVaultPath,
+  eciesUnwrap: () => eciesUnwrap,
+  eciesWrap: () => eciesWrap,
+  enclaveBinaryPath: () => enclaveBinaryPath,
+  enclaveBuildScript: () => enclaveBuildScript,
+  entropyToMnemonic: () => entropyToMnemonic,
+  exportDocument: () => exportDocument,
+  exportEncrypted: () => exportEncrypted,
+  exportSealed: () => exportSealed,
+  fromHexString: () => fromHexString,
+  hexToBytes: () => hexToBytes3,
+  importEncrypted: () => importEncrypted,
+  importSealed: () => importSealed,
+  inspectVault: () => inspectVault,
+  isEnclaveSupported: () => isEnclaveSupported,
+  isoNow: () => isoNow,
+  mnemonicToEntropy: () => mnemonicToEntropy,
+  openVault: () => openVault,
+  privateKeyToHex: () => privateKeyToHex,
+  providerToUnlock: () => providerToUnlock,
+  publicKeyHex: () => publicKeyHex,
+  randomBytes: () => randomBytes3,
+  randomId: () => randomId,
+  randomSuffix: () => randomSuffix,
+  recoverEntropy: () => recoverEntropy,
+  removeVaultSlot: () => removeVaultSlot,
+  rewrapVault: () => rewrapVault,
+  saveVault: () => saveVault,
+  splitEntropy: () => splitEntropy,
+  throwIfType42: () => throwIfType42,
+  toHexString: () => toHexString,
+  utf8Base64: () => utf8Base64,
+  validateDocument: () => validateDocument,
+  validateEntry: () => validateEntry
+});
+import { spawnSync } from "child_process";
+import { existsSync as existsSync7 } from "fs";
+import { dirname as dirname3, join as join8, resolve } from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { dirname as dirname22, join as join22 } from "path";
+import { homedir as homedir4 } from "os";
+import { join as join33 } from "path";
+function concat(...parts) {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) {
+    out.set(p, offset);
+    offset += p.length;
   }
-  for (const name of ["PRIVATE_KEY_WIF", "IDENTITY_KEY_WIF"]) {
-    if (env[name] !== undefined) {
-      throw new Error(`BRC100_WALLET_URL conflicts with ${name}; select one wallet identity`);
-    }
-  }
-  if (env.USE_DROPLIT_API === "true") {
-    throw new Error("BRC100_WALLET_URL conflicts with USE_DROPLIT_API");
-  }
-  let url;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error("BRC100_WALLET_URL must be a valid signer RPC URL");
-  }
-  const loopback = url.hostname === "localhost" || url.hostname === "[::1]" || /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(url.hostname);
-  if (!raw || raw !== raw.trim() || /[\\\s@?]/.test(raw) || url.username || url.password || raw.includes("#") || url.search || !(url.protocol === "https:" || url.protocol === "http:" && loopback)) {
-    throw new Error("BRC100_WALLET_URL requires HTTPS or HTTP loopback, without credentials, queries or fragments");
-  }
-  const originator = env.BRC100_WALLET_ORIGINATOR ?? "bsv-mcp.local";
-  let origin;
-  try {
-    origin = new URL(originator.includes("://") ? originator : `http://${originator}`);
-  } catch {
-    throw new Error("BRC100_WALLET_ORIGINATOR must be a domain or HTTP(S) origin");
-  }
-  if (!originator || /[\s\\]/.test(originator) || originator.length >= 250 || !["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || /[#?@]/.test(originator) || !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*|\[::1\])$/i.test(origin.hostname) || origin.hostname.toLowerCase() === "admin.bsv-mcp.internal") {
-    throw new Error("BRC100_WALLET_ORIGINATOR must be a non-admin domain or HTTP(S) origin without credentials, path, query or fragment");
-  }
-  return { url: url.toString().replace(/\/$/, ""), originator };
+  return out;
 }
-async function initializeKeysForWalletMode(external, loadLocalKeys) {
-  return external ? undefined : loadLocalKeys();
+function toHexString(bytes) {
+  let out = "";
+  for (let i = 0;i < bytes.length; i++)
+    out += bytes[i].toString(16).padStart(2, "0");
+  return out;
+}
+function fromHexString(hex) {
+  if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(hex))
+    throw new Error("invalid hex");
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0;i < out.length; i++)
+    out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+function randomBytes3(length) {
+  const out = new Uint8Array(length);
+  crypto.getRandomValues(out);
+  return out;
+}
+function hexToBytes3(hex) {
+  if (typeof hex !== "string")
+    throw new Error("invalid entropy hex");
+  return Array.from(fromHexString(hex));
+}
+function checkScalarRange(bytes) {
+  const sizes = new Set([16, 20, 24, 28, 32]);
+  if (!sizes.has(bytes.length))
+    throw new Error("invalid entropy length");
+  const value = bytes.length === 0 ? 0n : BigInt(`0x${bytesToHex3(bytes)}`);
+  if (value < 1n || value >= SECP256K1_N)
+    throw new Error("entropy out of range");
+}
+function entropyToMnemonic(entropyHex) {
+  const bytes = hexToBytes3(entropyHex);
+  checkScalarRange(bytes);
+  return Mnemonic.fromEntropy(bytes).toString();
+}
+function mnemonicToEntropy(words) {
+  const count = words.trim().split(/\s+/).filter(Boolean).length;
+  if (!WORD_COUNTS.has(count))
+    throw new Error("invalid mnemonic word count");
+  const mnemonic = Mnemonic.fromString(words.trim().split(/\s+/).join(" "));
+  const entropy = mnemonic.toEntropy();
+  checkScalarRange(entropy);
+  return bytesToHex3(entropy);
+}
+function seedFromEntropy(entropyHex) {
+  const bytes = hexToBytes3(entropyHex);
+  checkScalarRange(bytes);
+  return Mnemonic.fromEntropy(bytes).toSeed();
+}
+function brc157Root(entropyHex) {
+  return HD.fromSeed(seedFromEntropy(entropyHex)).derive("m/0'/0'").privKey;
+}
+function brc157Profile(entropyHex, index) {
+  if (!Number.isInteger(index) || index < 0)
+    throw new Error("invalid profile index");
+  return HD.fromSeed(seedFromEntropy(entropyHex)).derive(`m/0'/${index}'`).privKey;
+}
+function brc157IdentityKey(entropyHex) {
+  return brc157Root(entropyHex).toPublicKey().encode(true, "hex");
+}
+function privateKeyToHex(key) {
+  return key.toHex().padStart(64, "0");
+}
+function publicKeyHex(key) {
+  const pub = key instanceof PrivateKey ? key.toPublicKey() : key;
+  return pub.encode(true, "hex");
+}
+function bip32Derive(xkey, path) {
+  return HD.fromString(xkey).derive(path).toString();
+}
+function brc42Derive(rootWif, protocolID, keyID, counterparty) {
+  const root = PrivateKey.fromWif(rootWif);
+  const deriver = new KeyDeriver(root);
+  return deriver.derivePrivateKey(protocolID, keyID, counterparty);
+}
+function brc42DerivePublicKey(rootWif, protocolID, keyID, counterparty) {
+  return publicKeyHex(brc42Derive(rootWif, protocolID, keyID, counterparty));
+}
+function throwIfType42(scheme) {
+  if (scheme === "type42")
+    throw new Error("unsupported in this version");
+}
+function randomId() {
+  return crypto.randomUUID();
+}
+function isoNow(now) {
+  return new Date(now ? now() : Date.now()).toISOString();
+}
+function fail(message) {
+  throw new Error(message);
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function validateEntry(raw, index = 0) {
+  if (!isRecord2(raw))
+    fail(`entries[${index}]: must be an object`);
+  if (typeof raw.id !== "string" || raw.id.length === 0)
+    fail(`entries[${index}]: bad id`);
+  if (typeof raw.kind !== "string" || !ENTRY_KINDS.includes(raw.kind)) {
+    fail(`entries[${index}]: unknown kind`);
+  }
+  if (typeof raw.label !== "string")
+    fail(`entries[${index}]: bad label`);
+  if (!Array.isArray(raw.tags) || !raw.tags.every((t) => typeof t === "string")) {
+    fail(`entries[${index}]: bad tags`);
+  }
+  if (typeof raw.createdAt !== "string" || typeof raw.updatedAt !== "string") {
+    fail(`entries[${index}]: bad timestamps`);
+  }
+  if (typeof raw.value !== "string")
+    fail(`entries[${index}]: bad value`);
+  if (raw.publicKey !== undefined && typeof raw.publicKey !== "string") {
+    fail(`entries[${index}]: bad publicKey`);
+  }
+  if (raw.derivation !== undefined) {
+    if (!isRecord2(raw.derivation))
+      fail(`entries[${index}]: bad derivation`);
+    const d = raw.derivation;
+    if (typeof d.scheme !== "string" || !DERIVATION_SCHEMES.includes(d.scheme)) {
+      fail(`entries[${index}]: unknown derivation scheme`);
+    }
+    for (const key of ["path", "parentIdentityKey", "cohort"]) {
+      if (d[key] !== undefined && typeof d[key] !== "string")
+        fail(`entries[${index}]: bad derivation.${key}`);
+    }
+    if (d.index !== undefined && typeof d.index !== "number") {
+      fail(`entries[${index}]: bad derivation.index`);
+    }
+  }
+  if (raw.roles !== undefined) {
+    if (!isRecord2(raw.roles))
+      fail(`entries[${index}]: bad roles`);
+    for (const key of ["identity", "funding", "ordinals", "encryption"]) {
+      const v = raw.roles[key];
+      if (v !== undefined && typeof v !== "boolean")
+        fail(`entries[${index}]: bad roles.${key}`);
+    }
+  }
+  if (raw.shares !== undefined) {
+    if (!isRecord2(raw.shares))
+      fail(`entries[${index}]: bad shares`);
+    const s = raw.shares;
+    if (typeof s.threshold !== "number" || typeof s.total !== "number" || !Array.isArray(s.shareIds)) {
+      fail(`entries[${index}]: bad shares`);
+    }
+    if (!s.shareIds.every((v) => typeof v === "string")) {
+      fail(`entries[${index}]: bad shares.shareIds`);
+    }
+  }
+  if (!isRecord2(raw.metadata))
+    fail(`entries[${index}]: bad metadata`);
+  for (const v of Object.values(raw.metadata)) {
+    if (typeof v !== "string")
+      fail(`entries[${index}]: bad metadata value`);
+  }
+  return raw;
+}
+function checkLogLine(raw, index) {
+  if (!isRecord2(raw))
+    fail(`log[${index}]: must be an object`);
+  if (typeof raw.at !== "string" || typeof raw.op !== "string" || typeof raw.ok !== "boolean") {
+    fail(`log[${index}]: bad required fields`);
+  }
+  for (const key of ["entryId", "reason", "caller", "detail"]) {
+    if (raw[key] !== undefined && typeof raw[key] !== "string")
+      fail(`log[${index}]: bad ${key}`);
+  }
+  return raw;
+}
+function validateDocument(value) {
+  if (!isRecord2(value))
+    fail("document must be an object");
+  if (value.version !== 1)
+    fail(`unsupported document version: ${String(value.version)}`);
+  if (typeof value.id !== "string" || value.id.length === 0)
+    fail("document: bad id");
+  if (typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") {
+    fail("document: bad timestamps");
+  }
+  if (!isRecord2(value.settings))
+    fail("document: bad settings");
+  const settings = value.settings;
+  if (typeof settings.revealEnabled !== "boolean" || typeof settings.unlockTtlSeconds !== "number") {
+    fail("document: bad settings fields");
+  }
+  if (!Array.isArray(value.entries))
+    fail("document: bad entries");
+  if (!Array.isArray(value.log))
+    fail("document: bad log");
+  const entries = value.entries.map((e, i) => validateEntry(e, i));
+  const seen = new Set;
+  for (const e of entries) {
+    if (seen.has(e.id))
+      fail(`duplicate entry id: ${e.id}`);
+    seen.add(e.id);
+  }
+  for (const e of entries) {
+    if (e.shares) {
+      for (const ref of e.shares.shareIds) {
+        if (!seen.has(ref))
+          fail(`entry ${e.id}: shares reference missing id ${ref}`);
+      }
+    }
+  }
+  for (const [i, line] of value.log.entries())
+    checkLogLine(line, i);
+  return value;
+}
+function subtle() {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error("WebCrypto is not available");
+  }
+  return crypto.subtle;
+}
+async function deriveKek2(passphrase, salt, iterations) {
+  const base = await subtle().importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+  return subtle().deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 
+class PassphraseProvider {
+  passphrase;
+  iterations;
+  type = "passphrase";
+  constructor(passphrase, iterations = DEFAULT_PBKDF2_ITERATIONS) {
+    this.passphrase = passphrase;
+    this.iterations = iterations;
+    if (passphrase.length === 0)
+      throw new Error("empty passphrase");
+  }
+  isSupported() {
+    return typeof crypto !== "undefined" && !!crypto.subtle;
+  }
+  async wrap(contentKey) {
+    const salt = randomBytes3(SALT_BYTES);
+    const iv = randomBytes3(IV_BYTES);
+    const kek = await deriveKek2(this.passphrase, salt, this.iterations);
+    const sealed = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv }, kek, contentKey));
+    const out = concat(salt, iv, sealed);
+    return out;
+  }
+  async unwrap(wrapped) {
+    if (wrapped.length < SALT_BYTES + IV_BYTES + 16)
+      throw new Error("wrapped key too short");
+    const salt = wrapped.slice(0, SALT_BYTES);
+    const iv = wrapped.slice(SALT_BYTES, SALT_BYTES + IV_BYTES);
+    const sealed = wrapped.slice(SALT_BYTES + IV_BYTES);
+    const kek = await deriveKek2(this.passphrase, salt, this.iterations);
+    const plain = await subtle().decrypt({ name: "AES-GCM", iv }, kek, sealed);
+    return new Uint8Array(plain);
+  }
+}
+function subtle2() {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error("WebCrypto is not available");
+  }
+  return crypto.subtle;
+}
+async function importDevicePublicKey(raw65) {
+  return subtle2().importKey("raw", raw65, { name: "ECDH", namedCurve: "P-256" }, true, []);
+}
+async function deriveKek22(sharedX) {
+  const base = await subtle2().importKey("raw", sharedX, "HKDF", false, [
+    "deriveKey"
+  ]);
+  return subtle2().deriveKey({
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: new Uint8Array(0),
+    info: new TextEncoder().encode(SE_VAULT_HKDF_INFO)
+  }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function eciesWrap(recipientRaw65, contentKey) {
+  const recipient = await importDevicePublicKey(recipientRaw65);
+  const ephemeral = await subtle2().generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveBits"
+  ]);
+  const shared = new Uint8Array(await subtle2().deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256));
+  const kek = await deriveKek22(shared);
+  const nonce = randomBytes3(12);
+  const sealed = new Uint8Array(await subtle2().encrypt({ name: "AES-GCM", iv: nonce }, kek, contentKey));
+  const ephemeralPub = new Uint8Array(await subtle2().exportKey("raw", ephemeral.publicKey));
+  shared.fill(0);
+  return concat(ephemeralPub, nonce, sealed);
+}
+async function eciesUnwrap(devicePrivateKey, wrapped) {
+  if (wrapped.length < 65 + 12 + 16)
+    throw new Error("wrapped key too short");
+  const ephemeralRaw = wrapped.slice(0, 65);
+  const nonce = wrapped.slice(65, 77);
+  const sealed = wrapped.slice(77);
+  const ephemeralPub = await importDevicePublicKey(ephemeralRaw);
+  const shared = new Uint8Array(await subtle2().deriveBits({ name: "ECDH", public: ephemeralPub }, devicePrivateKey, 256));
+  const kek = await deriveKek22(shared);
+  const plain = await subtle2().decrypt({ name: "AES-GCM", iv: nonce }, kek, sealed);
+  shared.fill(0);
+  return new Uint8Array(plain);
+}
+
+class DeviceKeyProvider {
+  devicePrivateKey;
+  publicKeyHexCache;
+  type = "device-p256";
+  constructor(devicePrivateKey, publicKeyHexCache) {
+    this.devicePrivateKey = devicePrivateKey;
+    this.publicKeyHexCache = publicKeyHexCache;
+  }
+  static async generate() {
+    const pair = await subtle2().generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+      "deriveBits"
+    ]);
+    const raw = new Uint8Array(await subtle2().exportKey("raw", pair.publicKey));
+    return new DeviceKeyProvider(pair.privateKey, toHexString(raw));
+  }
+  async exportWrapped(passphrase, iterations) {
+    const jwk = await subtle2().exportKey("jwk", this.devicePrivateKey);
+    const bytes = new TextEncoder().encode(JSON.stringify(jwk));
+    const provider = new PassphraseProvider(passphrase, iterations);
+    return provider.wrap(bytes);
+  }
+  static async importWrapped(wrapped, passphrase, iterations) {
+    const provider = new PassphraseProvider(passphrase, iterations);
+    const bytes = await provider.unwrap(wrapped);
+    const jwk = JSON.parse(new TextDecoder().decode(bytes));
+    const privateKey = await subtle2().importKey("jwk", jwk, { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+    const { d: _d, key_ops: _ops, ...publicJwk } = jwk;
+    const publicKey = await subtle2().importKey("jwk", publicJwk, { name: "ECDH", namedCurve: "P-256" }, true, []);
+    const raw = new Uint8Array(await subtle2().exportKey("raw", publicKey));
+    return new DeviceKeyProvider(privateKey, toHexString(raw));
+  }
+  isSupported() {
+    return typeof crypto !== "undefined" && !!crypto.subtle;
+  }
+  async publicKey() {
+    return this.publicKeyHexCache;
+  }
+  async wrap(contentKey) {
+    return eciesWrap(fromHexString(this.publicKeyHexCache), contentKey);
+  }
+  async unwrap(wrapped) {
+    return eciesUnwrap(this.devicePrivateKey, wrapped);
+  }
+}
+function helperDir() {
+  const here = dirname3(fileURLToPath2(import.meta.url));
+  const candidates = [resolve(here, "../../swift"), resolve(here, "../swift")];
+  for (const dir of candidates) {
+    if (existsSync7(join8(dir, "build.sh")))
+      return dir;
+  }
+  return candidates[0];
+}
+function enclaveBinaryPath() {
+  return join8(helperDir(), "enclave");
+}
+function enclaveBuildScript() {
+  return join8(helperDir(), "build.sh");
+}
+function ensureBinary() {
+  const binary = enclaveBinaryPath();
+  if (!existsSync7(binary)) {
+    const script = enclaveBuildScript();
+    const result = spawnSync(script, [], { encoding: "utf8" });
+    if (result.error) {
+      throw new Error(`enclave build failed: ${result.error.message}`);
+    }
+    if (result.status !== 0 || !existsSync7(binary)) {
+      throw new Error(`enclave binary unavailable: ${result.stderr || "build failed"}`);
+    }
+  }
+  return binary;
+}
+function runHelper(args, stdin) {
+  const binary = ensureBinary();
+  const result = spawnSync(binary, args, {
+    input: stdin,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  if (result.error)
+    throw result.error;
+  const stdout = result.stdout.trim();
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    throw new Error(`enclave helper returned invalid JSON: ${stdout}`);
+  }
+}
+function isEnclaveSupported() {
+  return process.platform === "darwin" && process.arch === "arm64";
+}
+
+class EnclaveProvider {
+  label;
+  type = "enclave";
+  constructor(label = "vault") {
+    this.label = label;
+  }
+  isSupported() {
+    return isEnclaveSupported();
+  }
+  requireSupported() {
+    if (!this.isSupported())
+      throw new Error("Secure Enclave is not supported on this platform");
+  }
+  async publicKey() {
+    this.requireSupported();
+    const listed = runHelper(["list"]);
+    if (!listed.success)
+      throw new Error(listed.error || "enclave list failed");
+    const items = JSON.parse(listed.data || "[]");
+    const found = items.find((i) => i.label === this.label);
+    if (found)
+      return found.publicKey;
+    const generated = runHelper(["generate", this.label]);
+    if (!generated.success || !generated.data) {
+      throw new Error(generated.error || "enclave generate failed");
+    }
+    return generated.data;
+  }
+  async wrap(contentKey) {
+    this.requireSupported();
+    await this.publicKey();
+    const plaintext = Buffer.from(contentKey).toString("base64");
+    const out = runHelper(["encrypt", this.label], plaintext);
+    if (!out.success || !out.data)
+      throw new Error(out.error || "enclave encrypt failed");
+    return Uint8Array.from(Buffer.from(out.data, "base64"));
+  }
+  async unwrap(wrapped) {
+    this.requireSupported();
+    const b64 = Buffer.from(wrapped).toString("base64");
+    const out = runHelper(["decrypt", this.label, b64, "Vault"]);
+    if (!out.success || !out.data)
+      throw new Error(out.error || "enclave decrypt failed");
+    return Uint8Array.from(Buffer.from(out.data, "base64"));
+  }
+}
+function splitEntropy(entropyHex, threshold, total) {
+  if (!Number.isInteger(threshold) || !Number.isInteger(total) || threshold < 2 || total < 2) {
+    throw new Error("invalid split parameters");
+  }
+  if (threshold > total)
+    throw new Error("threshold exceeds total");
+  const key = PrivateKey.fromHex(bytesToHex3(hexToBytes3(entropyHex)).padStart(64, "0"));
+  return key.toBackupShares(threshold, total);
+}
+function recoverEntropy(shares) {
+  if (!Array.isArray(shares) || shares.length === 0)
+    throw new Error("no shares provided");
+  const key = PrivateKey.fromBackupShares(shares);
+  return key.toHex().padStart(64, "0");
+}
+function createSigner(privateKey, session, now = Date.now) {
+  const wallet = new ProtoWallet_default(privateKey);
+  function checkSession() {
+    if (now() > session.expiresAt)
+      throw new SessionExpired;
+  }
+  function ownPublicKeyHex() {
+    return privateKey.toPublicKey().encode(true, "hex");
+  }
+  return {
+    publicKey() {
+      checkSession();
+      return ownPublicKeyHex();
+    },
+    derivedPublicKey(protocolID, keyID, counterparty = "self") {
+      checkSession();
+      return wallet.keyDeriver === undefined ? ownPublicKeyHex() : wallet.keyDeriver.derivePublicKey(protocolID, keyID, counterparty).encode(true, "hex");
+    },
+    async sign(data, protocolID, keyID, counterparty = "self") {
+      checkSession();
+      if (protocolID === undefined || keyID === undefined) {
+        const signature = privateKey.sign(Array.from(data));
+        return Uint8Array.from(signature.toDER());
+      }
+      const result = await wallet.createSignature({
+        protocolID,
+        keyID,
+        counterparty,
+        data: Array.from(data)
+      });
+      return Uint8Array.from(result.signature);
+    },
+    async encrypt(data, protocolID, keyID, counterparty) {
+      checkSession();
+      const result = await wallet.encrypt({
+        protocolID,
+        keyID,
+        counterparty,
+        plaintext: Array.from(data)
+      });
+      return Uint8Array.from(result.ciphertext);
+    },
+    async decrypt(data, protocolID, keyID, counterparty) {
+      checkSession();
+      const result = await wallet.decrypt({
+        protocolID,
+        keyID,
+        counterparty,
+        ciphertext: Array.from(data)
+      });
+      return Uint8Array.from(result.plaintext);
+    },
+    async ecdh(counterpartyPublicKey, protocolID, keyID) {
+      checkSession();
+      if (wallet.keyDeriver === undefined) {
+        const point = privateKey.deriveSharedSecret(PublicKey.fromString(counterpartyPublicKey));
+        return Uint8Array.from(point.encode(true).slice(1));
+      }
+      const symmetric = wallet.keyDeriver.deriveSymmetricKey(protocolID, keyID, counterpartyPublicKey);
+      return Uint8Array.from(symmetric.toArray("be", 32));
+    }
+  };
+}
+
+class FileStorage {
+  path;
+  constructor(path) {
+    this.path = path;
+  }
+  get lockPath() {
+    return `${this.path}.lock`;
+  }
+  async read() {
+    try {
+      return await readFile(this.path, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT")
+        return null;
+      throw error;
+    }
+  }
+  async lock(now = Date.now) {
+    const info = { pid: process.pid, at: now() };
+    try {
+      const raw = await readFile(this.lockPath, "utf8");
+      const existing = JSON.parse(raw);
+      if (typeof existing.at === "number" && now() - existing.at < LOCK_STALE_MS) {
+        throw new FileLocked(this.path);
+      }
+    } catch (error) {
+      if (error instanceof FileLocked)
+        throw error;
+      if (error.code !== "ENOENT") {
+        const corrupt = error instanceof SyntaxError;
+        if (!corrupt)
+          throw error;
+      }
+    }
+    await mkdir(dirname22(this.path), { recursive: true });
+    await writeFile(this.lockPath, JSON.stringify(info), { mode: 384 });
+  }
+  async unlock() {
+    try {
+      await rm(this.lockPath, { force: true });
+    } catch {}
+  }
+  async withLock(fn, now) {
+    await this.lock(now);
+    try {
+      return await fn();
+    } finally {
+      await this.unlock();
+    }
+  }
+  async write(data, now) {
+    await this.withLock(async () => {
+      await mkdir(dirname22(this.path), { recursive: true });
+      const tmp = join22(dirname22(this.path), `.vault-tmp-${process.pid}-${Date.now()}`);
+      try {
+        await writeFile(tmp, data, { mode: 384 });
+        await chmod(tmp, 384);
+        await rename(tmp, this.path);
+        await chmod(this.path, 384);
+      } finally {
+        await rm(tmp, { force: true });
+      }
+    }, now);
+  }
+}
+
+class MemoryStorage {
+  data = null;
+  async read() {
+    return this.data;
+  }
+  async write(data) {
+    this.data = data;
+  }
+}
+function createVaultDocument(settings) {
+  return {
+    version: 1,
+    id: randomId(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    settings: {
+      revealEnabled: settings?.revealEnabled ?? true,
+      unlockTtlSeconds: settings?.unlockTtlSeconds ?? 300
+    },
+    entries: [],
+    log: []
+  };
+}
+function strip(entry) {
+  const { value: _value, ...rest } = entry;
+  return rest;
+}
+function randomHex32() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return bytesToHex3(Array.from(bytes));
+}
+function pubkeyFromWif(wif) {
+  return publicKeyHex(PrivateKey.fromWif(wif));
+}
+function pubkeyFromHex(hex) {
+  return publicKeyHex(PrivateKey.fromHex(hex));
+}
+function pubkeyFromXprv(xprv) {
+  return publicKeyHex(HD.fromString(xprv).privKey);
+}
+function pubkeyFromXpub(xpub) {
+  return HD.fromString(xpub).pubKey.encode(true, "hex");
+}
+
+class Vault {
+  doc;
+  now;
+  session = null;
+  constructor(doc, opts = {}) {
+    this.doc = validateDocument(structuredClone(doc));
+    this.now = opts.now ?? Date.now;
+  }
+  appendLog(op, fields = {}) {
+    this.doc.log.push({
+      at: isoNow(this.now),
+      op,
+      ok: true,
+      ...fields
+    });
+    this.doc.updatedAt = isoNow(this.now);
+  }
+  find(id) {
+    const entry = this.doc.entries.find((e) => e.id === id);
+    if (!entry)
+      throw new Error(`unknown entry: ${id}`);
+    return entry;
+  }
+  makeEntry(kind, label, value, opts = {}) {
+    const at = isoNow(this.now);
+    const { tags = [], metadata = {}, ...rest } = opts;
+    const entry = {
+      id: randomId(),
+      kind,
+      label,
+      tags,
+      createdAt: at,
+      updatedAt: at,
+      value,
+      metadata,
+      ...rest
+    };
+    this.doc.entries.push(entry);
+    return entry;
+  }
+  entropyOf(entry) {
+    if (entry.kind === "entropy")
+      return entry.value;
+    if (entry.kind === "mnemonic")
+      return mnemonicToEntropy(entry.value);
+    throw new Error(`entry ${entry.id} is not an entropy source`);
+  }
+  signingKeyOf(entry) {
+    switch (entry.kind) {
+      case "private":
+        return PrivateKey.fromHex(entry.value);
+      case "wif":
+        return PrivateKey.fromWif(entry.value);
+      case "account": {
+        const parsed = JSON.parse(entry.value);
+        return PrivateKey.fromWif(parsed.wif);
+      }
+      case "hd-private":
+        return HD.fromString(entry.value).privKey;
+      default:
+        throw new Error(`entry ${entry.id} cannot sign`);
+    }
+  }
+  brc42Params(spec) {
+    if (!spec.brc42)
+      throw new Error("brc42 derivation requires brc42 parameters");
+    return { ...spec.brc42, counterparty: spec.brc42.counterparty ?? "self" };
+  }
+  list(filter = {}) {
+    return this.doc.entries.filter((e) => (filter.kind === undefined || e.kind === filter.kind) && (filter.tag === undefined || e.tags.includes(filter.tag)) && (filter.role === undefined || e.roles?.[filter.role] === true)).map(strip);
+  }
+  get(id) {
+    return strip(this.find(id));
+  }
+  unlock(reason, ttlSeconds) {
+    const ttl = ttlSeconds ?? this.doc.settings.unlockTtlSeconds;
+    this.session = { reason, expiresAt: this.now() + ttl * 1000 };
+    this.appendLog("unlock", { reason, ok: true });
+  }
+  lock() {
+    this.session = null;
+    this.appendLog("lock", { ok: true });
+  }
+  importPlain(payload, label) {
+    if (typeof payload !== "object" || payload === null)
+      throw new Error("unsupported backup payload");
+    const backup = payload;
+    const base = label;
+    const created = [];
+    const detail = (() => {
+      try {
+        return getBackupType(backup);
+      } catch {
+        return "Unknown";
+      }
+    })();
+    if (isSigmaSeedBackup(backup)) {
+      created.push(this.makeEntry("mnemonic", base, backup.mnemonic, { derivation: { scheme: "brc157" } }));
+    } else if (isOneSatBackup(backup)) {
+      created.push(this.makeEntry("wif", `${base} ordinals`, backup.ordPk, {
+        publicKey: pubkeyFromWif(backup.ordPk),
+        roles: { ordinals: true }
+      }), this.makeEntry("wif", `${base} funding`, backup.payPk, {
+        publicKey: pubkeyFromWif(backup.payPk),
+        roles: { funding: true }
+      }), this.makeEntry("wif", `${base} identity`, backup.identityPk, {
+        publicKey: pubkeyFromWif(backup.identityPk),
+        roles: { identity: true }
+      }));
+    } else if (isLegacyBackup(backup)) {
+      created.push(this.makeEntry("mnemonic", base, backup.mnemonic, { metadata: { ids: backup.ids } }), this.makeEntry("hd-private", `${base} hd-private`, backup.xprv, {
+        publicKey: pubkeyFromXprv(backup.xprv),
+        metadata: { ids: backup.ids }
+      }));
+    } else if (isType42Backup(backup)) {
+      let publicKey;
+      try {
+        publicKey = pubkeyFromWif(backup.rootPk);
+      } catch {
+        try {
+          publicKey = pubkeyFromHex(backup.rootPk);
+        } catch {
+          publicKey = undefined;
+        }
+      }
+      created.push(this.makeEntry("private", base, backup.rootPk, {
+        publicKey,
+        metadata: { ids: backup.ids }
+      }));
+    } else if (isAccountBackup(backup)) {
+      created.push(this.makeEntry("account", base, JSON.stringify({ wif: backup.wif, id: backup.id }), {
+        publicKey: pubkeyFromWif(backup.wif)
+      }));
+    } else if (isWifBackup(backup)) {
+      created.push(this.makeEntry("wif", base, backup.wif, { publicKey: pubkeyFromWif(backup.wif) }));
+    } else {
+      throw new Error("unsupported backup payload");
+    }
+    for (const entry of created) {
+      this.appendLog("import", { entryId: entry.id, detail, ok: true });
+    }
+    return created;
+  }
+  generateEntropy(label) {
+    const entry = this.makeEntry("entropy", label, randomHex32());
+    this.appendLog("generate", { entryId: entry.id, detail: "entropy", ok: true });
+    return entry;
+  }
+  generateKey(label) {
+    const key = PrivateKey.fromRandom();
+    const entry = this.makeEntry("private", label, privateKeyToHex(key), {
+      publicKey: publicKeyHex(key)
+    });
+    this.appendLog("generate", { entryId: entry.id, detail: "private", ok: true });
+    return entry;
+  }
+  generateSymmetric(label) {
+    const entry = this.makeEntry("symmetric", label, randomHex32());
+    this.appendLog("generate", { entryId: entry.id, detail: "symmetric", ok: true });
+    return entry;
+  }
+  derive(id, spec, label) {
+    throwIfType42(spec.scheme);
+    const source = this.find(id);
+    let entry;
+    if (spec.scheme === "brc157") {
+      const entropyHex = this.entropyOf(source);
+      const key = spec.index === undefined ? brc157Root(entropyHex) : brc157Profile(entropyHex, spec.index);
+      entry = this.makeEntry("private", label, privateKeyToHex(key), {
+        publicKey: publicKeyHex(key),
+        derivation: {
+          scheme: "brc157",
+          path: `m/0'/${spec.index ?? 0}'`,
+          parentIdentityKey: brc157IdentityKey(entropyHex),
+          ...spec.index === undefined ? {} : { index: spec.index }
+        }
+      });
+    } else if (spec.scheme === "bip32" || spec.scheme === "legacy-bip32-unhardened") {
+      if (source.kind !== "hd-private" && source.kind !== "hd-public") {
+        throw new Error(`entry ${id} cannot bip32-derive`);
+      }
+      if (!spec.path)
+        throw new Error("bip32 derivation requires a path");
+      const child = bip32Derive(source.value, spec.path);
+      entry = this.makeEntry(source.kind, label, child, {
+        publicKey: source.kind === "hd-private" ? pubkeyFromXprv(child) : pubkeyFromXpub(child),
+        derivation: { scheme: spec.scheme, path: spec.path }
+      });
+    } else if (spec.scheme === "brc42") {
+      const key = this.signingKeyOf(source);
+      const { protocolID, keyID, counterparty } = this.brc42Params(spec);
+      const child = brc42Derive(key.toWif(), protocolID, keyID, counterparty);
+      entry = this.makeEntry("private", label, privateKeyToHex(child), {
+        publicKey: publicKeyHex(child),
+        derivation: {
+          scheme: "brc42",
+          path: `${protocolID[0]}:${protocolID[1]}/${keyID}/${counterparty}`,
+          parentIdentityKey: publicKeyHex(key)
+        }
+      });
+    } else {
+      throw new Error(`unknown derivation scheme: ${spec.scheme}`);
+    }
+    this.appendLog("derive", { entryId: entry.id, detail: spec.scheme, ok: true });
+    return entry;
+  }
+  publicKey(id, spec) {
+    const entry = this.find(id);
+    if (spec !== undefined) {
+      throwIfType42(spec.scheme);
+      if (spec.scheme !== "brc42")
+        throw new Error(`cannot derive public key with ${spec.scheme}`);
+      const { protocolID, keyID, counterparty } = this.brc42Params(spec);
+      if (entry.kind === "entropy" || entry.kind === "mnemonic") {
+        const rootWif2 = brc157Root(this.entropyOf(entry)).toWif();
+        return brc42DerivePublicKey(rootWif2, protocolID, keyID, counterparty);
+      }
+      const rootWif = this.signingKeyOf(entry).toWif();
+      return brc42DerivePublicKey(rootWif, protocolID, keyID, counterparty);
+    }
+    switch (entry.kind) {
+      case "entropy":
+        return brc157IdentityKey(entry.value);
+      case "mnemonic":
+        return brc157IdentityKey(mnemonicToEntropy(entry.value));
+      case "private":
+        return pubkeyFromHex(entry.value);
+      case "wif":
+        return pubkeyFromWif(entry.value);
+      case "account":
+        return pubkeyFromWif(JSON.parse(entry.value).wif);
+      case "hd-private":
+        return pubkeyFromXprv(entry.value);
+      case "hd-public":
+        return entry.publicKey ?? pubkeyFromXpub(entry.value);
+      default:
+        throw new Error(`entry ${id} has no public key`);
+    }
+  }
+  identityKey(id) {
+    const entry = this.find(id);
+    if (entry.kind === "entropy")
+      return brc157IdentityKey(entry.value);
+    if (entry.kind === "mnemonic")
+      return brc157IdentityKey(mnemonicToEntropy(entry.value));
+    return this.publicKey(id);
+  }
+  profile(id, index, label) {
+    const source = this.find(id);
+    if (source.kind !== "entropy" && source.kind !== "mnemonic") {
+      throw new Error(`entry ${id} is not brc157-capable`);
+    }
+    const entropyHex = this.entropyOf(source);
+    const key = brc157Profile(entropyHex, index);
+    const entry = this.makeEntry("private", label, privateKeyToHex(key), {
+      publicKey: publicKeyHex(key),
+      derivation: {
+        scheme: "brc157",
+        path: `m/0'/${index}'`,
+        parentIdentityKey: brc157IdentityKey(entropyHex),
+        index
+      }
+    });
+    this.appendLog("profile", { entryId: entry.id, ok: true });
+    return entry;
+  }
+  signer(id, spec) {
+    if (!this.session || this.now() > this.session.expiresAt)
+      throw new SessionExpired;
+    const entry = this.find(id);
+    if (entry.kind === "entropy" || entry.kind === "mnemonic") {
+      throw new Error("roots do not sign");
+    }
+    if (entry.derivation?.scheme === "brc157" && spec === undefined) {
+      throw new Error("profile roots sign only through brc42 derivation");
+    }
+    let key = this.signingKeyOf(entry);
+    if (spec !== undefined) {
+      throwIfType42(spec.scheme);
+      if (spec.scheme !== "brc42")
+        throw new Error(`cannot sign with ${spec.scheme}`);
+      const { protocolID, keyID, counterparty } = this.brc42Params(spec);
+      key = brc42Derive(key.toWif(), protocolID, keyID, counterparty);
+    }
+    const handle = createSigner(key, { expiresAt: this.session.expiresAt }, this.now);
+    this.appendLog("signer", { entryId: id, ok: true });
+    return handle;
+  }
+  split(id, threshold, total) {
+    const source = this.find(id);
+    if (source.kind !== "entropy")
+      throw new Error(`entry ${id} cannot be split`);
+    const values = splitEntropy(source.value, threshold, total);
+    const shares = values.map((value, i) => this.makeEntry("share", `${source.label} share ${i + 1}`, value, {
+      metadata: { sourceId: source.id }
+    }));
+    source.shares = { threshold, total, shareIds: shares.map((s) => s.id) };
+    source.updatedAt = isoNow(this.now);
+    for (const share of shares) {
+      this.appendLog("split", { entryId: share.id, ok: true });
+    }
+    return shares;
+  }
+  recover(shareIds, label) {
+    const values = shareIds.map((shareId) => {
+      const share = this.find(shareId);
+      if (share.kind !== "share")
+        throw new Error(`entry ${shareId} is not a share`);
+      return share.value;
+    });
+    const entropyHex = recoverEntropy(values);
+    const entry = this.makeEntry("entropy", label, entropyHex);
+    this.appendLog("recover", { entryId: entry.id, ok: true });
+    return entry;
+  }
+  reveal(id, reason) {
+    const entry = this.find(id);
+    if (!this.doc.settings.revealEnabled) {
+      this.appendLog("reveal", { entryId: id, reason, ok: false, detail: "disabled" });
+      throw new Error("reveal is disabled");
+    }
+    this.appendLog("reveal", { entryId: id, reason, ok: true });
+    return entry.value;
+  }
+  readForExport(id, detail) {
+    const entry = this.find(id);
+    this.logExport(detail, id);
+    return structuredClone(entry);
+  }
+  logExport(detail, entryId) {
+    this.appendLog("export", {
+      ...entryId === undefined ? {} : { entryId },
+      ...detail === undefined ? {} : { detail },
+      ok: true
+    });
+  }
+  adoptEntry(entry, detail) {
+    const checked = validateEntry({
+      ...entry,
+      tags: entry.tags ?? [],
+      metadata: entry.metadata ?? {}
+    });
+    const adopted = {
+      ...structuredClone(checked),
+      id: randomId(),
+      updatedAt: isoNow(this.now)
+    };
+    this.doc.entries.push(adopted);
+    this.appendLog("import", {
+      entryId: adopted.id,
+      ...detail === undefined ? {} : { detail },
+      ok: true
+    });
+    return adopted;
+  }
+  toDocument() {
+    return structuredClone(this.doc);
+  }
+}
+function defaultVaultPath() {
+  const override = process.env[VAULT_PATH_ENV];
+  if (override !== undefined) {
+    if (override.length === 0)
+      throw new Error(`${VAULT_PATH_ENV} is set but empty`);
+    return override;
+  }
+  return join33(homedir4(), ".bsv", "vault.bep");
+}
+function randomSuffix() {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+function slotIdFor(provider) {
+  return `${provider.type}-${randomSuffix()}`;
+}
+function passphraseOf(provider) {
+  if (provider instanceof PassphraseProvider)
+    return provider.passphrase;
+  if (provider.type === "passphrase") {
+    throw new Error("passphrase provider does not expose its passphrase");
+  }
+  throw new Error(`provider type '${provider.type}' is not a passphrase provider`);
+}
+async function providerToSlotSpec(provider, id) {
+  if (provider.type === "passphrase") {
+    return { type: "pbkdf2", id, passphrase: passphraseOf(provider) };
+  }
+  if (provider.type === "device-p256" || provider.type === "enclave") {
+    if (!provider.publicKey)
+      throw new Error(`provider type '${provider.type}' has no publicKey`);
+    return { type: "device-p256", id, publicKey: await provider.publicKey() };
+  }
+  throw new Error(`unknown provider type '${provider.type}'`);
+}
+async function providerToUnlock(provider, slots) {
+  if (provider.type === "passphrase") {
+    return { passphrase: passphraseOf(provider) };
+  }
+  const deviceSlots = slots.filter((s) => s.type === "device-p256");
+  if (deviceSlots.length === 0) {
+    throw new Error(`vault has no device-p256 slot for a '${provider.type}' provider`);
+  }
+  let match = deviceSlots.length === 1 ? deviceSlots[0] : undefined;
+  if (provider.publicKey) {
+    const key = (await provider.publicKey()).toLowerCase();
+    const found = deviceSlots.find((s) => s.publicKey?.toLowerCase() === key);
+    if (found)
+      match = found;
+    else if (deviceSlots.length > 1) {
+      throw new Error(`no slot matches this '${provider.type}' key`);
+    }
+  }
+  const slot = match ?? deviceSlots[0];
+  const slotId = slot.id;
+  return { slotId, unwrap: (wrapped) => provider.unwrap(wrapped) };
+}
+function base64Utf8(text) {
+  return Buffer.from(text, "utf8").toString("base64");
+}
+function utf8Base64(b64) {
+  return Buffer.from(b64, "base64").toString("utf8");
+}
+function encodeDocument(doc) {
+  return base64Utf8(JSON.stringify(doc));
+}
+function decodeVaultBackup(payload) {
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("vault payload is not an object");
+  }
+  const backup = payload;
+  if (backup.scheme !== VAULT_SCHEME) {
+    throw new Error(`not an opl vault (scheme '${String(backup.scheme)}')`);
+  }
+  if (typeof backup.encryptedVault !== "string") {
+    throw new Error("vault payload is missing its encrypted vault document");
+  }
+  return validateDocument(JSON.parse(utf8Base64(backup.encryptedVault)));
+}
+function vaultBackupPayload(doc) {
+  return { encryptedVault: encodeDocument(doc), scheme: VAULT_SCHEME };
+}
+async function readEnvelopeText(path) {
+  const text = await new FileStorage(path).read();
+  if (text === null)
+    throw new Error(`vault not found: ${path}`);
+  return text;
+}
+async function createVault(path, providers, settings = {}) {
+  if (providers.length === 0)
+    throw new Error("at least one provider is required");
+  const hasPassphrase = providers.some((p) => p.type === "passphrase");
+  if (!hasPassphrase && providers.length === 1 && providers[0].type === "enclave" && settings.allowSingleHardwareSlot !== true) {
+    throw new Error("refusing to create a vault with only an enclave slot and no passphrase recovery slot");
+  }
+  const specs = [];
+  for (const provider of providers) {
+    specs.push(await providerToSlotSpec(provider, slotIdFor(provider)));
+  }
+  const doc = createVaultDocument({
+    revealEnabled: settings.revealEnabled,
+    unlockTtlSeconds: settings.unlockTtlSeconds
+  });
+  const encrypted = await sealBackup(vaultBackupPayload(doc), specs);
+  await new FileStorage(path).write(encrypted);
+  return new Vault(doc);
+}
+async function openVault(path, provider) {
+  const encrypted = await readEnvelopeText(path);
+  const inspected = inspectEnvelope(encrypted);
+  const unlock = await providerToUnlock(provider, inspected.slots);
+  const doc = decodeVaultBackup(await openBackup(encrypted, unlock));
+  return new Vault(doc);
+}
+async function saveVault(path, vault, provider) {
+  const encrypted = await readEnvelopeText(path);
+  const inspected = inspectEnvelope(encrypted);
+  const unlock = await providerToUnlock(provider, inspected.slots);
+  const next = await updateBackupPayload(encrypted, unlock, vaultBackupPayload(vault.toDocument()));
+  await new FileStorage(path).write(next);
+}
+async function addVaultSlot(path, unlockProvider, newProvider) {
+  const encrypted = await readEnvelopeText(path);
+  const inspected = inspectEnvelope(encrypted);
+  const unlock = await providerToUnlock(unlockProvider, inspected.slots);
+  const id = slotIdFor(newProvider);
+  const next = await addSlot(encrypted, unlock, await providerToSlotSpec(newProvider, id));
+  await new FileStorage(path).write(next);
+  return id;
+}
+async function removeVaultSlot(path, unlockProvider, slotId) {
+  const encrypted = await readEnvelopeText(path);
+  const inspected = inspectEnvelope(encrypted);
+  if (inspected.slots.length <= 1) {
+    throw new Error(`refusing to remove the last slot ('${slotId}')`);
+  }
+  const unlock = await providerToUnlock(unlockProvider, inspected.slots);
+  const next = await removeSlot(encrypted, unlock, slotId);
+  await new FileStorage(path).write(next);
+}
+async function rewrapVault(path, unlockProvider) {
+  const encrypted = await readEnvelopeText(path);
+  const inspected = inspectEnvelope(encrypted);
+  const unlock = await providerToUnlock(unlockProvider, inspected.slots);
+  const specs = [];
+  for (const slot of inspected.slots) {
+    if (slot.type === "pbkdf2") {
+      if (!(unlockProvider instanceof PassphraseProvider)) {
+        throw new Error("rewrap needs the passphrase provider to rebuild pbkdf2 slots");
+      }
+      specs.push({ type: "pbkdf2", id: slot.id, passphrase: unlockProvider.passphrase });
+    } else if (slot.type === "device-p256") {
+      if (!slot.publicKey)
+        throw new Error(`slot '${slot.id}' is missing its public key`);
+      specs.push({ type: "device-p256", id: slot.id, publicKey: slot.publicKey });
+    } else {
+      throw new Error(`unknown slot type '${slot.type}'`);
+    }
+  }
+  const next = await rewrapBackup(encrypted, unlock, specs);
+  await new FileStorage(path).write(next);
+}
+async function inspectVault(path) {
+  return inspectEnvelope(await readEnvelopeText(path));
+}
+function passphraseOfUnlock(unlock) {
+  if ("passphrase" in unlock)
+    return unlock.passphrase;
+  if (unlock.provider instanceof PassphraseProvider)
+    return unlock.provider.passphrase;
+  return null;
+}
+function isVaultBackup2(payload) {
+  return typeof payload === "object" && payload !== null && typeof payload.encryptedVault === "string";
+}
+function decodeDocumentPayload(payload) {
+  const doc = JSON.parse(utf8Base64(payload.encryptedVault));
+  if (!Array.isArray(doc.entries))
+    throw new Error("vault payload has no entries");
+  return { entries: doc.entries, detail: payload.scheme ?? VAULT_SCHEME };
+}
+function decodeSingleEntryPayload(payload) {
+  const parsed = JSON.parse(utf8Base64(payload.encryptedVault));
+  if (typeof parsed !== "object" || parsed === null || typeof parsed.entry !== "object") {
+    throw new Error("entry payload has no entry");
+  }
+  return parsed.entry;
+}
+async function importEncrypted(vault, bep, unlock, label) {
+  let payload;
+  if (isEnvelopeV2(bep)) {
+    const openUnlock = "passphrase" in unlock ? { passphrase: unlock.passphrase } : await providerToUnlock(unlock.provider, inspectEnvelope(bep).slots);
+    payload = await openBackup(bep, openUnlock);
+  } else {
+    const passphrase = passphraseOfUnlock(unlock);
+    if (passphrase === null) {
+      throw new Error("v1 envelopes require a passphrase unlock");
+    }
+    payload = await decryptBackup(bep, passphrase);
+  }
+  if (isVaultBackup2(payload)) {
+    if (payload.scheme === VAULT_SCHEME) {
+      const { entries, detail } = decodeDocumentPayload(payload);
+      return entries.map((entry) => vault.adoptEntry(entry, detail));
+    }
+    if (payload.scheme === VAULT_ENTRY_SCHEME) {
+      return [vault.adoptEntry(decodeSingleEntryPayload(payload), payload.scheme)];
+    }
+  }
+  return vault.importPlain(payload, label);
+}
+async function importSealed(vault, wrapped, provider, label) {
+  const plain = await provider.unwrap(wrapped);
+  const parsed = JSON.parse(new TextDecoder().decode(plain));
+  if (typeof parsed !== "object" || parsed === null || typeof parsed.entry !== "object") {
+    throw new Error("sealed payload has no entry");
+  }
+  const entry = { ...parsed.entry };
+  if (label.length > 0)
+    entry.label = label;
+  return vault.adoptEntry(entry, "sealed");
+}
+async function exportEncrypted(vault, id, passphrase, opts = {}) {
+  if (opts.as === "native") {
+    const entry2 = vault.readForExport(id, "encrypted-native");
+    if (entry2.kind === "wif") {
+      return sealBackup({ wif: entry2.value, label: entry2.label, createdAt: entry2.createdAt }, [
+        { type: "pbkdf2", id: `export-${randomSuffix()}`, passphrase }
+      ]);
+    }
+    if (entry2.kind === "account") {
+      const parsed = JSON.parse(entry2.value);
+      return sealBackup({ wif: parsed.wif, id: parsed.id, label: entry2.label, createdAt: entry2.createdAt }, [{ type: "pbkdf2", id: `export-${randomSuffix()}`, passphrase }]);
+    }
+    throw new Error(`entry kind '${entry2.kind}' has no native export form`);
+  }
+  const entry = vault.readForExport(id, "encrypted");
+  const payload = {
+    encryptedVault: base64Utf8(JSON.stringify({ entry })),
+    scheme: VAULT_ENTRY_SCHEME
+  };
+  return sealBackup(payload, [{ type: "pbkdf2", id: `export-${randomSuffix()}`, passphrase }]);
+}
+async function exportSealed(vault, id, recipientPublicKeyHex) {
+  const entry = vault.readForExport(id, recipientPublicKeyHex);
+  return eciesEncrypt(recipientPublicKeyHex, new TextEncoder().encode(JSON.stringify({ entry })));
+}
+async function exportDocument(vault, passphrase) {
+  vault.logExport("document");
+  const payload = {
+    encryptedVault: base64Utf8(JSON.stringify(vault.toDocument())),
+    scheme: VAULT_SCHEME
+  };
+  return sealBackup(payload, [{ type: "pbkdf2", id: `export-${randomSuffix()}`, passphrase }]);
+}
+var SE_VAULT_HKDF_INFO = "se-vault-v1", SECP256K1_N, WORD_COUNTS, BRC157_PHRASE = "legal winner thank year wave sausage worth useful legal winner thank yellow", bytesToHex3, ENTRY_KINDS, DERIVATION_SCHEMES, DEFAULT_PBKDF2_ITERATIONS = 600000, SALT_BYTES = 16, IV_BYTES = 12, SessionExpired, LOCK_STALE_MS = 60000, FileLocked, VAULT_SCHEME = "opl-vault-v1", VAULT_PATH_ENV = "VAULT_PATH", VAULT_ENTRY_SCHEME = "opl-vault-entry-v1";
+var init_dist11 = __esm(() => {
+  init_mod();
+  init_mod();
+  init_mod();
+  init_dist9();
+  init_mod();
+  init_dist9();
+  init_dist9();
+  SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+  WORD_COUNTS = new Set([12, 15, 18, 21, 24]);
+  bytesToHex3 = toHexString;
+  ENTRY_KINDS = [
+    "entropy",
+    "mnemonic",
+    "hd-private",
+    "hd-public",
+    "private",
+    "wif",
+    "account",
+    "share",
+    "symmetric"
+  ];
+  DERIVATION_SCHEMES = [
+    "brc157",
+    "bip32",
+    "type42",
+    "brc42",
+    "legacy-bip32-unhardened"
+  ];
+  SessionExpired = class SessionExpired extends Error {
+    constructor() {
+      super("SessionExpired");
+      this.name = "SessionExpired";
+    }
+  };
+  FileLocked = class FileLocked extends Error {
+    constructor(path) {
+      super(`vault file is locked: ${path}`);
+      this.name = "FileLocked";
+    }
+  };
+});
+
+// utils/embeddedVaultIo.ts
+import { createHash as createHash3, randomUUID as randomUUID2 } from "node:crypto";
+import { existsSync as existsSync8, lstatSync as lstatSync3, realpathSync as realpathSync2 } from "node:fs";
+import {
+  chmod as chmod2,
+  copyFile,
+  lstat,
+  mkdir as mkdir2,
+  open as open2,
+  readFile as readFile2,
+  rename as rename2,
+  rm as rm2,
+  stat
+} from "node:fs/promises";
+import { basename, dirname as dirname4, isAbsolute as isAbsolute2, join as join9, resolve as resolve2 } from "node:path";
+function assertLabel(label) {
+  if (typeof label !== "string" || label.trim().length === 0)
+    throw failure("INVALID_LABEL");
+  return label;
+}
+function assertPassword(password) {
+  if (typeof password !== "string" || password.length < 8)
+    throw failure("INVALID_PASSWORD");
+  return password;
+}
+function assertConfirmation(password, confirmation) {
+  if (typeof confirmation !== "string" || confirmation !== password)
+    throw failure("PASSWORD_MISMATCH");
+}
+function parseKeys(keys) {
+  if (!keys || typeof keys !== "object")
+    throw failure("INVALID_KEY");
+  let payPub;
+  try {
+    payPub = PrivateKey.fromWif(keys.payPk).toPublicKey().toString();
+  } catch {
+    throw failure("INVALID_KEY");
+  }
+  if (!COMPRESSED_PUBKEY.test(payPub))
+    throw failure("INVALID_KEY");
+  const parsed = { payWif: keys.payPk, payPub };
+  if (keys.identityPk !== undefined) {
+    let identityPub;
+    try {
+      identityPub = PrivateKey.fromWif(keys.identityPk).toPublicKey().toString();
+    } catch {
+      throw failure("INVALID_KEY");
+    }
+    if (!COMPRESSED_PUBKEY.test(identityPub))
+      throw failure("INVALID_KEY");
+    parsed.identityWif = keys.identityPk;
+    parsed.identityPub = identityPub;
+  }
+  if (keys.xprv !== undefined) {
+    let expectedXpub;
+    let hdPub;
+    try {
+      const hd = HD.fromString(keys.xprv);
+      if (!hd.isPrivate())
+        throw failure("INVALID_KEY");
+      expectedXpub = hd.toPublic().toString();
+      hdPub = hd.pubKey.toString();
+    } catch (error) {
+      if (error instanceof EmbeddedVaultError)
+        throw error;
+      throw failure("INVALID_KEY");
+    }
+    if (!COMPRESSED_PUBKEY.test(hdPub))
+      throw failure("INVALID_KEY");
+    parsed.xprv = keys.xprv;
+    parsed.expectedXpub = expectedXpub;
+    parsed.hdPub = hdPub;
+  }
+  return parsed;
+}
+function canonicalVaultPath(input) {
+  if (typeof input !== "string" || !isAbsolute2(input))
+    throw failure("INVALID_PATH");
+  let parent = resolve2(input);
+  const tail = [];
+  while (!existsSync8(parent)) {
+    const next = dirname4(parent);
+    if (next === parent)
+      throw failure("INVALID_PATH");
+    tail.unshift(basename(parent));
+    parent = next;
+  }
+  let real;
+  try {
+    real = realpathSync2(parent);
+  } catch {
+    throw failure("INVALID_PATH");
+  }
+  return join9(real, ...tail);
+}
+function assertNoSymlinks(resolvedInput) {
+  let cursor = resolvedInput;
+  let previous = "";
+  while (cursor !== undefined && cursor !== previous) {
+    try {
+      if (lstatSync3(cursor).isSymbolicLink())
+        throw failure("INVALID_PATH");
+    } catch (error) {
+      if (error instanceof EmbeddedVaultError)
+        throw error;
+      if (error?.code !== "ENOENT")
+        throw failure("INVALID_PATH");
+    }
+    previous = cursor;
+    const next = dirname4(cursor);
+    cursor = next === cursor ? undefined : next;
+  }
+}
+async function syncFile(path) {
+  const handle = await open2(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function syncDirectory(path) {
+  const handle = await open2(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function loadVaultModule(loadModule) {
+  try {
+    const candidate = await (loadModule ?? (() => Promise.resolve().then(() => (init_dist11(), exports_dist))))();
+    if (candidate && typeof candidate === "object" && ["PassphraseProvider", "createVault", "openVault", "saveVault"].every((name) => typeof candidate[name] === "function"))
+      return candidate;
+  } catch {}
+  throw failure("VAULT_PACKAGE_INCOMPATIBLE");
+}
+function createEmbeddedVaultIo(options) {
+  const now = options.now ?? Date.now;
+  const requestedPath = options.vaultPath;
+  const loadModule = options.loadModule;
+  let held;
+  let epoch = 0;
+  const asSafeWriteError = (error) => error instanceof EmbeddedVaultError ? error : failure("WRITE_FAILED");
+  const lockPrevious = () => {
+    epoch += 1;
+    if (!held)
+      return;
+    const previous = held;
+    held = undefined;
+    try {
+      previous.lock();
+    } catch {}
+  };
+  const resolveCanonical = () => {
+    const resolved = resolve2(requestedPath);
+    assertNoSymlinks(resolved);
+    const canonical = canonicalVaultPath(requestedPath);
+    assertNoSymlinks(canonical);
+    return canonical;
+  };
+  const withExclusiveWrite = async (canonical, work) => {
+    const lockPath = `${canonical}.lock`;
+    const nonce = randomUUID2();
+    let lockHandle;
+    try {
+      lockHandle = await open2(lockPath, "wx", 384);
+    } catch (error) {
+      if (error?.code === "EEXIST")
+        throw failure("VAULT_BUSY");
+      throw failure("WRITE_FAILED");
+    }
+    let lockIno = -1;
+    let lockDev = -1;
+    try {
+      const identity = await lockHandle.stat();
+      lockIno = identity.ino;
+      lockDev = identity.dev;
+    } catch {
+      try {
+        await lockHandle.close();
+      } catch {}
+      lockHandle = undefined;
+      throw failure("WRITE_FAILED");
+    }
+    const owned = async () => {
+      try {
+        const link = await lstat(lockPath);
+        if (link.isSymbolicLink() || !link.isFile())
+          return false;
+        const current = await stat(lockPath);
+        if (current.ino !== lockIno || current.dev !== lockDev)
+          return false;
+        const raw = await readFile2(lockPath, "utf8");
+        return JSON.parse(raw).nonce === nonce;
+      } catch {
+        return false;
+      }
+    };
+    const assertOwned = async () => {
+      if (!await owned())
+        throw failure("VAULT_CHANGED");
+    };
+    const releaseLock = async () => {
+      try {
+        await lockHandle?.close();
+      } catch {} finally {
+        lockHandle = undefined;
+      }
+      try {
+        if (await owned())
+          await rm2(lockPath);
+      } catch {}
+    };
+    const stageDir = `${canonical}.stage-${randomUUID2()}`;
+    let stageOwned = false;
+    let stageIno = -1;
+    let stageDev = -1;
+    const removeOwnedStage = async () => {
+      if (!stageOwned)
+        return;
+      try {
+        const link = await lstat(stageDir);
+        if (link.isSymbolicLink() || !link.isDirectory())
+          return;
+        const current = await stat(stageDir);
+        if (current.ino !== stageIno || current.dev !== stageDev)
+          return;
+        await rm2(stageDir, { recursive: true, force: true });
+      } catch {}
+    };
+    let settled = false;
+    const release = async (outcome) => {
+      if (settled)
+        return;
+      settled = true;
+      try {
+        if (outcome !== "uncertain")
+          await removeOwnedStage();
+      } catch {}
+      await releaseLock();
+    };
+    try {
+      try {
+        await lockHandle.writeFile(JSON.stringify({ pid: process.pid, nonce, at: now() }));
+        await lockHandle.sync();
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      let beforeBytes = null;
+      try {
+        beforeBytes = existsSync8(canonical) ? await readFile2(canonical) : null;
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      try {
+        await mkdir2(stageDir, { mode: 448 });
+        await chmod2(stageDir, 448);
+        const identity = await stat(stageDir);
+        stageIno = identity.ino;
+        stageDev = identity.dev;
+        stageOwned = true;
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      return await work({ stageDir, beforeBytes, release, assertOwned });
+    } catch (error) {
+      if (!settled) {
+        try {
+          await release("abort");
+        } catch {}
+      }
+      throw asSafeWriteError(error);
+    }
+  };
+  const verifyStaged = async (params) => {
+    let staged;
+    try {
+      try {
+        staged = await params.module.openVault(params.stagePath, new params.module.PassphraseProvider(params.password));
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      const active = staged;
+      const document2 = active.toDocument();
+      if (!document2.settings.revealEnabled)
+        throw failure("REVEAL_DISABLED");
+      if (params.vaultId !== null && document2.id !== params.vaultId)
+        throw failure("VAULT_CHANGED");
+      const byId = new Map(document2.entries.map((entry) => [entry.id, entry]));
+      const revealChecked = (entryId) => {
+        active.unlock(VERIFY_REASON, 30);
+        try {
+          return active.reveal(entryId, VERIFY_REASON);
+        } catch {
+          throw failure("VAULT_CHANGED");
+        } finally {
+          try {
+            active.lock();
+          } catch {}
+        }
+      };
+      const checkDirectEntry = (ref, secret, isHex) => {
+        const entry = byId.get(ref.entryId);
+        if (!entry || !KEY_KINDS.has(entry.kind))
+          throw failure("VAULT_CHANGED");
+        if (typeof entry.publicKey !== "string" || entry.publicKey.toLowerCase() !== ref.publicKey.toLowerCase())
+          throw failure("VAULT_CHANGED");
+        const revealed = revealChecked(ref.entryId);
+        if (revealed !== secret)
+          throw failure("VAULT_CHANGED");
+        let key;
+        try {
+          key = isHex ? PrivateKey.fromHex(revealed) : PrivateKey.fromWif(revealed);
+        } catch {
+          throw failure("VAULT_CHANGED");
+        }
+        if (key.toPublicKey().toString().toLowerCase() !== ref.publicKey.toLowerCase())
+          throw failure("VAULT_CHANGED");
+      };
+      checkDirectEntry(params.receipt.payment, params.parsed ? params.parsed.payWif : params.paymentHex ?? "", params.parsed === null);
+      if (params.receipt.identity)
+        checkDirectEntry(params.receipt.identity, params.parsed?.identityWif ?? "", false);
+      if (params.receipt.hd) {
+        const entry = byId.get(params.receipt.hd.entryId);
+        if (entry?.kind !== "hd-private")
+          throw failure("VAULT_CHANGED");
+        if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey))
+          throw failure("VAULT_CHANGED");
+        const revealed = revealChecked(params.receipt.hd.entryId);
+        if (revealed !== (params.parsed?.xprv ?? ""))
+          throw failure("VAULT_CHANGED");
+        let xpub;
+        let hdPub;
+        let isPrivate = false;
+        try {
+          const hd = HD.fromString(revealed);
+          isPrivate = hd.isPrivate();
+          xpub = hd.toPublic().toString();
+          hdPub = hd.pubKey.toString();
+        } catch {
+          throw failure("VAULT_CHANGED");
+        }
+        if (!isPrivate)
+          throw failure("VAULT_CHANGED");
+        if (xpub !== params.receipt.hd.expectedXpub)
+          throw failure("VAULT_CHANGED");
+        if (hdPub.toLowerCase() !== entry.publicKey.toLowerCase())
+          throw failure("VAULT_CHANGED");
+        if (params.parsed?.hdPub !== undefined && hdPub.toLowerCase() !== params.parsed.hdPub.toLowerCase())
+          throw failure("VAULT_CHANGED");
+      }
+      for (const original of params.originals) {
+        const current = byId.get(original.id);
+        if (!current || JSON.stringify(current) !== JSON.stringify(original))
+          throw failure("VAULT_CHANGED");
+      }
+      return document2.id;
+    } catch (error) {
+      if (error instanceof EmbeddedVaultError)
+        throw error;
+      throw failure("WRITE_FAILED");
+    } finally {
+      try {
+        staged?.lock();
+      } catch {}
+    }
+  };
+  const commitStage = async (params) => {
+    const { stagePath, canonical, beforeBytes, release, assertOwned } = params;
+    const uncertain = async (code) => {
+      try {
+        await release("uncertain");
+      } catch {}
+      throw failure(code);
+    };
+    try {
+      assertNoSymlinks(resolve2(canonical));
+      assertNoSymlinks(canonical);
+      const parentLink = await lstat(dirname4(canonical));
+      if (parentLink.isSymbolicLink() || !parentLink.isDirectory())
+        throw failure("VAULT_CHANGED");
+      if (existsSync8(canonical)) {
+        const destLink = await lstat(canonical);
+        if (destLink.isSymbolicLink() || !destLink.isFile())
+          throw failure("VAULT_CHANGED");
+      }
+    } catch (error) {
+      if (error instanceof EmbeddedVaultError)
+        return await uncertain(error.code === "INVALID_PATH" ? "VAULT_CHANGED" : error.code);
+      return await uncertain("WRITE_FAILED");
+    }
+    if (beforeBytes) {
+      const backupPath = `${canonical}.backup-${randomUUID2()}.bep`;
+      let backupHandle;
+      try {
+        backupHandle = await open2(backupPath, "wx", 384);
+        await backupHandle.writeFile(beforeBytes);
+        await backupHandle.sync();
+      } catch {
+        throw failure("WRITE_FAILED");
+      } finally {
+        try {
+          await backupHandle?.close();
+        } catch {}
+      }
+      try {
+        await chmod2(backupPath, 384);
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+    }
+    try {
+      await syncFile(stagePath);
+    } catch {
+      throw failure("WRITE_FAILED");
+    }
+    let actual = null;
+    try {
+      actual = existsSync8(canonical) ? await readFile2(canonical) : null;
+    } catch {
+      throw failure("WRITE_FAILED");
+    }
+    if (actual === null !== (beforeBytes === null) || actual !== null && beforeBytes !== null && digest(actual) !== digest(beforeBytes)) {
+      await release("uncertain");
+      throw failure("VAULT_CHANGED");
+    }
+    try {
+      await assertOwned();
+    } catch (error) {
+      if (error instanceof EmbeddedVaultError)
+        return await uncertain(error.code);
+      return await uncertain("WRITE_FAILED");
+    }
+    try {
+      await rename2(stagePath, canonical);
+    } catch {
+      return await uncertain("WRITE_FAILED");
+    }
+    try {
+      await syncDirectory(dirname4(canonical));
+    } catch {
+      return await uncertain("WRITE_FAILED");
+    }
+    try {
+      await release("commit");
+    } catch {
+      throw failure("WRITE_FAILED");
+    }
+  };
+  return {
+    async create(input) {
+      const password = assertPassword(input?.password);
+      assertConfirmation(password, input?.passwordConfirmation);
+      const label = assertLabel(input?.label);
+      const module = await loadVaultModule(loadModule);
+      const canonical = resolveCanonical();
+      try {
+        await mkdir2(dirname4(canonical), { recursive: true, mode: 448 });
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      return await withExclusiveWrite(canonical, async (ctx) => {
+        if (ctx.beforeBytes !== null) {
+          try {
+            await ctx.release("abort");
+          } catch {
+            throw failure("WRITE_FAILED");
+          }
+          throw failure("VAULT_EXISTS");
+        }
+        const stagePath = join9(ctx.stageDir, "vault.bep");
+        const provider = new module.PassphraseProvider(password);
+        let vault;
+        let paymentId = "";
+        try {
+          vault = await module.createVault(stagePath, [provider], {
+            revealEnabled: true
+          });
+          const payment = vault.generateKey(label);
+          paymentId = payment.id;
+          await module.saveVault(stagePath, vault, provider);
+        } catch (error) {
+          if (error instanceof EmbeddedVaultError)
+            throw error;
+          throw failure("WRITE_FAILED");
+        } finally {
+          try {
+            vault?.lock();
+          } catch {}
+        }
+        let staged;
+        let paymentHex = "";
+        let stagedVaultId = "";
+        try {
+          try {
+            staged = await module.openVault(stagePath, new module.PassphraseProvider(password));
+          } catch {
+            throw failure("WRITE_FAILED");
+          }
+          const entry = staged.get(paymentId);
+          if (entry.kind !== "private" || typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey))
+            throw failure("VAULT_CHANGED");
+          staged.unlock(VERIFY_REASON, 30);
+          try {
+            paymentHex = staged.reveal(paymentId, VERIFY_REASON);
+          } finally {
+            staged.lock();
+          }
+          const publicKey = PrivateKey.fromHex(paymentHex).toPublicKey().toString();
+          if (publicKey.toLowerCase() !== entry.publicKey.toLowerCase())
+            throw failure("VAULT_CHANGED");
+          stagedVaultId = staged.toDocument().id;
+          const receipt = {
+            vaultId: stagedVaultId,
+            payment: { entryId: paymentId, publicKey }
+          };
+          const verifiedId = await verifyStaged({
+            module,
+            stagePath,
+            password,
+            vaultId: stagedVaultId,
+            receipt,
+            parsed: null,
+            paymentHex,
+            originals: []
+          });
+          receipt.vaultId = verifiedId;
+          await commitStage({
+            stagePath,
+            stageDir: ctx.stageDir,
+            canonical,
+            beforeBytes: ctx.beforeBytes,
+            release: ctx.release,
+            assertOwned: ctx.assertOwned
+          });
+          return receipt;
+        } catch (error) {
+          if (error instanceof EmbeddedVaultError)
+            throw error;
+          throw failure("WRITE_FAILED");
+        } finally {
+          try {
+            staged?.lock();
+          } catch {}
+        }
+      });
+    },
+    async importKeys(input) {
+      const label = assertLabel(input?.label);
+      const parsed = parseKeys(input?.keys ?? {});
+      const passwordCandidate = input?.password;
+      if (typeof passwordCandidate !== "string" || !passwordCandidate)
+        throw failure("INVALID_PASSWORD");
+      const probeResolved = resolve2(requestedPath);
+      assertNoSymlinks(probeResolved);
+      if (!existsSync8(canonicalVaultPath(requestedPath))) {
+        assertPassword(passwordCandidate);
+        assertConfirmation(passwordCandidate, input?.passwordConfirmation);
+      }
+      const module = await loadVaultModule(loadModule);
+      const canonical = resolveCanonical();
+      try {
+        await mkdir2(dirname4(canonical), { recursive: true, mode: 448 });
+      } catch {
+        throw failure("WRITE_FAILED");
+      }
+      return await withExclusiveWrite(canonical, async (ctx) => {
+        const password = passwordCandidate;
+        const fresh = ctx.beforeBytes === null;
+        if (fresh) {
+          assertPassword(password);
+          assertConfirmation(password, input?.passwordConfirmation);
+        }
+        const stagePath = join9(ctx.stageDir, "vault.bep");
+        const provider = new module.PassphraseProvider(password);
+        let vault;
+        let originals = [];
+        let vaultId = null;
+        let paymentId = "";
+        let identityId;
+        let hdId;
+        try {
+          if (fresh) {
+            try {
+              vault = await module.createVault(stagePath, [provider], {
+                revealEnabled: true
+              });
+            } catch {
+              throw failure("WRITE_FAILED");
+            }
+          } else {
+            try {
+              await copyFile(canonical, stagePath);
+              await chmod2(stagePath, 384);
+            } catch {
+              throw failure("WRITE_FAILED");
+            }
+            try {
+              vault = await module.openVault(stagePath, provider);
+            } catch {
+              throw failure("UNLOCK_FAILED");
+            }
+            if (!vault.toDocument().settings.revealEnabled)
+              throw failure("REVEAL_DISABLED");
+            originals = structuredClone(vault.toDocument().entries);
+            vaultId = vault.toDocument().id;
+          }
+          const active = vault;
+          const payment = active.importPlain({ wif: parsed.payWif }, `${label} payment`)[0];
+          if (!payment)
+            throw failure("WRITE_FAILED");
+          paymentId = payment.id;
+          if (parsed.identityWif !== undefined) {
+            const identity = active.importPlain({ wif: parsed.identityWif }, `${label} identity`)[0];
+            if (!identity)
+              throw failure("WRITE_FAILED");
+            identityId = identity.id;
+          }
+          if (parsed.xprv !== undefined) {
+            const at = new Date(now()).toISOString();
+            const adopted = active.adoptEntry({
+              id: randomUUID2(),
+              kind: "hd-private",
+              label: `${label} hd`,
+              tags: [],
+              createdAt: at,
+              updatedAt: at,
+              value: parsed.xprv,
+              publicKey: parsed.hdPub ?? parsed.expectedXpub,
+              metadata: {}
+            }, "Import retained HD key");
+            if (!adopted)
+              throw failure("WRITE_FAILED");
+            hdId = adopted.id;
+          }
+          try {
+            await module.saveVault(stagePath, active, provider);
+          } catch {
+            throw failure("WRITE_FAILED");
+          }
+        } catch (error) {
+          if (error instanceof EmbeddedVaultError)
+            throw error;
+          throw failure("WRITE_FAILED");
+        } finally {
+          try {
+            vault?.lock();
+          } catch {}
+        }
+        const receipt = {
+          vaultId: vaultId ?? "",
+          payment: { entryId: paymentId, publicKey: parsed.payPub },
+          ...identityId !== undefined && parsed.identityPub !== undefined ? {
+            identity: {
+              entryId: identityId,
+              publicKey: parsed.identityPub
+            }
+          } : {},
+          ...hdId !== undefined && parsed.expectedXpub !== undefined ? {
+            hd: { entryId: hdId, expectedXpub: parsed.expectedXpub }
+          } : {}
+        };
+        receipt.vaultId = await verifyStaged({
+          module,
+          stagePath,
+          password,
+          vaultId,
+          receipt,
+          parsed,
+          paymentHex: null,
+          originals
+        });
+        await commitStage({
+          stagePath,
+          stageDir: ctx.stageDir,
+          canonical,
+          beforeBytes: ctx.beforeBytes,
+          release: ctx.release,
+          assertOwned: ctx.assertOwned
+        });
+        return receipt;
+      });
+    },
+    async unlock(input) {
+      lockPrevious();
+      const myEpoch = epoch;
+      const password = input?.password;
+      const binding = input?.binding;
+      if (typeof password !== "string" || !password || !binding || typeof binding !== "object" || typeof binding.vaultId !== "string" || !binding.payment || typeof binding.payment !== "object" || typeof binding.payment.entryId !== "string" || typeof binding.payment.publicKey !== "string")
+        throw failure("BINDING_MISMATCH");
+      const pinnedPayment = {
+        entryId: binding.payment.entryId,
+        publicKey: binding.payment.publicKey
+      };
+      let pinnedIdentity;
+      if (binding.identity !== undefined) {
+        const candidate = binding.identity;
+        if (!candidate || typeof candidate !== "object" || typeof candidate.entryId !== "string" || typeof candidate.publicKey !== "string")
+          throw failure("BINDING_MISMATCH");
+        pinnedIdentity = {
+          entryId: candidate.entryId,
+          publicKey: candidate.publicKey
+        };
+      }
+      let pinnedHd;
+      if (binding.hd !== undefined) {
+        const candidate = binding.hd;
+        if (!candidate || typeof candidate !== "object" || typeof candidate.entryId !== "string" || typeof candidate.expectedXpub !== "string" || candidate.expectedXpub.length === 0)
+          throw failure("BINDING_MISMATCH");
+        pinnedHd = {
+          entryId: candidate.entryId,
+          expectedXpub: candidate.expectedXpub
+        };
+      }
+      const pinned = {
+        vaultId: binding.vaultId,
+        payment: pinnedPayment,
+        ...pinnedIdentity !== undefined ? { identity: pinnedIdentity } : {},
+        ...pinnedHd !== undefined ? { hd: pinnedHd } : {}
+      };
+      const module = await loadVaultModule(loadModule);
+      const canonical = resolveCanonical();
+      let vault;
+      try {
+        try {
+          vault = await module.openVault(canonical, new module.PassphraseProvider(password));
+        } catch {
+          throw failure("UNLOCK_FAILED");
+        }
+        const active = vault;
+        try {
+          if (active.toDocument().id !== pinned.vaultId)
+            throw failure("BINDING_MISMATCH");
+          if (!active.toDocument().settings.revealEnabled)
+            throw failure("REVEAL_DISABLED");
+          const readDirectKey = (ref) => {
+            let entry;
+            try {
+              entry = active.get(ref.entryId);
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            if (!KEY_KINDS.has(entry.kind))
+              throw failure("BINDING_MISMATCH");
+            if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(ref.publicKey) || entry.publicKey.toLowerCase() !== ref.publicKey.toLowerCase())
+              throw failure("BINDING_MISMATCH");
+            let revealed;
+            try {
+              revealed = active.reveal(ref.entryId, UNLOCK_REASON);
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            let key;
+            try {
+              key = entry.kind === "private" ? PrivateKey.fromHex(revealed) : PrivateKey.fromWif(revealed);
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            if (key.toPublicKey().toString().toLowerCase() !== ref.publicKey.toLowerCase())
+              throw failure("BINDING_MISMATCH");
+            return key;
+          };
+          const payPk = readDirectKey(pinned.payment);
+          let identityPk;
+          if (pinned.identity !== undefined)
+            identityPk = readDirectKey(pinned.identity);
+          let xprv;
+          if (pinned.hd !== undefined) {
+            let entry;
+            try {
+              entry = active.get(pinned.hd.entryId);
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            if (entry.kind !== "hd-private")
+              throw failure("BINDING_MISMATCH");
+            if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey) || typeof pinned.hd.expectedXpub !== "string" || pinned.hd.expectedXpub.length === 0)
+              throw failure("BINDING_MISMATCH");
+            let revealed;
+            try {
+              revealed = active.reveal(pinned.hd.entryId, UNLOCK_REASON);
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            let xpub;
+            let hdPub;
+            let isPrivate = false;
+            try {
+              const hd = HD.fromString(revealed);
+              isPrivate = hd.isPrivate();
+              xpub = hd.toPublic().toString();
+              hdPub = hd.pubKey.toString();
+            } catch {
+              throw failure("BINDING_MISMATCH");
+            }
+            if (!isPrivate)
+              throw failure("BINDING_MISMATCH");
+            if (xpub !== pinned.hd.expectedXpub)
+              throw failure("BINDING_MISMATCH");
+            if (hdPub.toLowerCase() !== entry.publicKey.toLowerCase())
+              throw failure("BINDING_MISMATCH");
+            xprv = revealed;
+          }
+          if (myEpoch !== epoch) {
+            try {
+              active.lock();
+            } catch {}
+            throw failure("UNLOCK_FAILED");
+          }
+          held = active;
+          vault = undefined;
+          const result = { payPk };
+          if (identityPk !== undefined)
+            result.identityPk = identityPk;
+          if (xprv !== undefined)
+            result.xprv = xprv;
+          return result;
+        } catch (error) {
+          try {
+            active.lock();
+          } catch {}
+          throw error;
+        }
+      } catch (error) {
+        if (vault) {
+          try {
+            vault.lock();
+          } catch {}
+        }
+        if (error instanceof EmbeddedVaultError)
+          throw error;
+        throw failure("UNLOCK_FAILED");
+      }
+    },
+    lock() {
+      lockPrevious();
+    }
+  };
+}
+var EmbeddedVaultError, MESSAGES, failure = (code) => new EmbeddedVaultError(code, MESSAGES[code]), COMPRESSED_PUBKEY, KEY_KINDS, VERIFY_REASON = "Embedded vault verify", UNLOCK_REASON = "Embedded vault unlock", digest = (data) => createHash3("sha256").update(data).digest("hex");
+var init_embeddedVaultIo = __esm(() => {
+  init_mod();
+  EmbeddedVaultError = class EmbeddedVaultError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.name = "EmbeddedVaultError";
+      this.code = code;
+    }
+  };
+  MESSAGES = {
+    INVALID_PATH: "The vault destination path is invalid.",
+    INVALID_PASSWORD: "The vault password must be at least eight characters.",
+    PASSWORD_MISMATCH: "The vault password confirmation does not match.",
+    INVALID_LABEL: "The vault entry label is invalid.",
+    INVALID_KEY: "One or more imported keys are invalid.",
+    VAULT_EXISTS: "The vault destination already exists.",
+    VAULT_BUSY: "The vault destination is busy.",
+    UNLOCK_FAILED: "Cannot unlock the vault.",
+    BINDING_MISMATCH: "The vault binding does not match.",
+    REVEAL_DISABLED: "The vault does not allow key reveal.",
+    VAULT_CHANGED: "The vault destination changed during the write.",
+    WRITE_FAILED: "The vault write did not complete.",
+    VAULT_PACKAGE_INCOMPATIBLE: "The installed vault package is unavailable."
+  };
+  COMPRESSED_PUBKEY = /^(02|03)[0-9a-fA-F]{64}$/;
+  KEY_KINDS = new Set(["private", "wif"]);
+});
+
+// utils/embeddedFirstRunBackend.ts
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { existsSync as existsSync9, constants as fsConstants2, lstatSync as lstatSync4 } from "node:fs";
+import { chmod as chmod3, mkdir as mkdir3, open as open3, readFile as readFile3, rm as rm3 } from "node:fs/promises";
+import { isAbsolute as isAbsolute3, join as join10 } from "node:path";
+function lockPathFor(accountsDirectory, accountName) {
+  return join10(accountsDirectory, `.${accountName}.first-run.lock`);
+}
+function accountPathFor(accountsDirectory, accountName) {
+  return join10(accountsDirectory, accountName);
+}
+function createEmbeddedFirstRunBackend(options) {
+  const requestedVaultPath = options?.vaultPath;
+  const requestedAccountsDirectory = options?.accountsDirectory;
+  const requestedChain = options?.chain ?? "main";
+  const writeAccountImpl = options?.writeAccountImpl ?? writeAccount;
+  if (typeof requestedVaultPath !== "string" || !isAbsolute3(requestedVaultPath)) {
+    throw fail2("FAILED");
+  }
+  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute3(requestedAccountsDirectory))) {
+    throw fail2("FAILED");
+  }
+  if (requestedChain !== "main" && requestedChain !== "test") {
+    throw fail2("FAILED");
+  }
+  const vaultPath = requestedVaultPath;
+  const chain = requestedChain;
+  const resolveAccountsDirectory = () => requestedAccountsDirectory ?? accountsRoot();
+  const validateInput = (input) => {
+    if (!input || typeof input !== "object")
+      throw fail2("FAILED");
+    if (input.confirmation !== FIRST_RUN_CONFIRMATION)
+      throw fail2("CONFIRMATION_REQUIRED");
+    if (!accountNameSchema.safeParse(input.accountName).success)
+      throw fail2("FAILED");
+    const name = input.accountName;
+    if (typeof input.password !== "string" || input.password.length < MIN_PASSWORD_LENGTH)
+      throw fail2("FAILED");
+    if (input.passwordConfirmation !== input.password)
+      throw fail2("FAILED");
+    return { name, password: input.password };
+  };
+  const mapVaultError = (error) => {
+    if (error instanceof EmbeddedFirstRunError)
+      return error;
+    if (error instanceof EmbeddedVaultError) {
+      if (error.code === "VAULT_BUSY")
+        return fail2("BUSY");
+    }
+    return fail2("FAILED");
+  };
+  const withReservation = async (accountsDirectory, name, work) => {
+    const lockPath = lockPathFor(accountsDirectory, name);
+    try {
+      lstatSync4(lockPath);
+      throw fail2("BUSY");
+    } catch (error) {
+      if (error instanceof EmbeddedFirstRunError)
+        throw error;
+      if (error?.code !== "ENOENT")
+        throw fail2("BUSY");
+    }
+    const nonce = randomUUID3();
+    let lockHandle;
+    let heldDev;
+    let heldIno;
+    try {
+      lockHandle = await open3(lockPath, fsConstants2.O_WRONLY | fsConstants2.O_CREAT | fsConstants2.O_EXCL | fsConstants2.O_NOFOLLOW, 384);
+    } catch (error) {
+      if (error?.code === "EEXIST")
+        throw fail2("BUSY");
+      throw fail2("FAILED");
+    }
+    const owned = async () => {
+      try {
+        const raw = await readFile3(lockPath, "utf8");
+        return JSON.parse(raw).nonce === nonce;
+      } catch {
+        return false;
+      }
+    };
+    const sameFile = () => {
+      if (heldDev === undefined || heldIno === undefined)
+        return true;
+      try {
+        const current = lstatSync4(lockPath);
+        return current.dev === heldDev && current.ino === heldIno;
+      } catch {
+        return false;
+      }
+    };
+    const release = async () => {
+      try {
+        await lockHandle?.close();
+      } catch {} finally {
+        lockHandle = undefined;
+      }
+      try {
+        if (!sameFile())
+          return;
+        if (await owned())
+          await rm3(lockPath, { force: true });
+      } catch {}
+    };
+    try {
+      await lockHandle.writeFile(JSON.stringify({ pid: process.pid, nonce }));
+      const handle = lockHandle;
+      try {
+        await handle.sync();
+      } catch {}
+      try {
+        const heldStat = await handle.stat();
+        heldDev = heldStat.dev;
+        heldIno = heldStat.ino;
+      } catch {}
+      return await work();
+    } finally {
+      await release();
+    }
+  };
+  const assertAccountAbsent = (accountsDirectory, name) => {
+    try {
+      lstatSync4(accountPathFor(accountsDirectory, name));
+    } catch (error) {
+      if (error?.code === "ENOENT")
+        return;
+      throw fail2("FAILED");
+    }
+    throw fail2("ACCOUNT_EXISTS");
+  };
+  const create = async (input) => {
+    const { name, password } = validateInput(input);
+    const accountsDirectory = resolveAccountsDirectory();
+    try {
+      await mkdir3(accountsDirectory, { recursive: true, mode: 448 });
+      await chmod3(accountsDirectory, 448);
+    } catch {
+      throw fail2("FAILED");
+    }
+    return await withReservation(accountsDirectory, name, async () => {
+      assertAccountAbsent(accountsDirectory, name);
+      const io = createEmbeddedVaultIo({ vaultPath });
+      try {
+        let receipt;
+        const label = `${name} payment`;
+        const importPayment = async () => {
+          const payWif = PrivateKey.fromRandom().toWif();
+          return io.importKeys({
+            password,
+            label,
+            keys: { payPk: payWif }
+          });
+        };
+        try {
+          if (existsSync9(vaultPath)) {
+            receipt = await importPayment();
+          } else {
+            try {
+              receipt = await io.create({
+                password,
+                passwordConfirmation: input.passwordConfirmation,
+                label
+              });
+            } catch (error) {
+              if (!(error instanceof EmbeddedVaultError) || error.code !== "VAULT_EXISTS")
+                throw error;
+              receipt = await importPayment();
+            }
+          }
+        } catch (error) {
+          throw mapVaultError(error);
+        }
+        const binding = embeddedVaultBindingSchema.safeParse({
+          version: 1,
+          contract: "embedded-roots-v1",
+          vaultId: receipt.vaultId,
+          payment: receipt.payment,
+          ...receipt.identity !== undefined ? { identity: receipt.identity } : {},
+          ...receipt.hd !== undefined ? { hd: receipt.hd } : {}
+        });
+        if (!binding.success)
+          throw fail2("FAILED");
+        let keys;
+        try {
+          keys = await io.unlock({ password, binding: binding.data });
+        } catch (error) {
+          throw mapVaultError(error);
+        }
+        let address;
+        try {
+          const payPk = keys.payPk;
+          if (!(payPk instanceof PrivateKey))
+            throw fail2("FAILED");
+          if (payPk.toPublicKey().toString().toLowerCase() !== binding.data.payment.publicKey.toLowerCase())
+            throw fail2("FAILED");
+          address = payPk.toAddress(chain === "test" ? [111] : [0]);
+        } catch (error) {
+          throw mapVaultError(error);
+        }
+        const config = newAccountConfig(chain, address);
+        config.vaultBinding = binding.data;
+        try {
+          writeAccountImpl(name, config, accountsDirectory, {
+            expectedRevision: null
+          });
+        } catch {
+          throw fail2("FAILED");
+        }
+        return {
+          accountName: name,
+          address,
+          vaultBinding: binding.data
+        };
+      } finally {
+        io.lock();
+      }
+    });
+  };
+  return { create };
+}
+var EmbeddedFirstRunError, EMBEDDED_FIRST_RUN_CODES, MESSAGES2, fail2 = (code) => new EmbeddedFirstRunError(EMBEDDED_FIRST_RUN_CODES[code], MESSAGES2[code]), FIRST_RUN_CONFIRMATION = "CREATE_NEW_CONFIRMED", MIN_PASSWORD_LENGTH = 8;
+var init_embeddedFirstRunBackend = __esm(() => {
+  init_mod();
+  init_accounts();
+  init_embeddedVaultIo();
+  EmbeddedFirstRunError = class EmbeddedFirstRunError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.name = "EmbeddedFirstRunError";
+      this.code = code;
+    }
+  };
+  EMBEDDED_FIRST_RUN_CODES = {
+    CONFIRMATION_REQUIRED: "EMBEDDED_FIRST_RUN_CONFIRMATION_REQUIRED",
+    ACCOUNT_EXISTS: "EMBEDDED_FIRST_RUN_ACCOUNT_EXISTS",
+    BUSY: "EMBEDDED_FIRST_RUN_BUSY",
+    FAILED: "EMBEDDED_FIRST_RUN_FAILED"
+  };
+  MESSAGES2 = {
+    CONFIRMATION_REQUIRED: "A confirmed first-run creation is required.",
+    ACCOUNT_EXISTS: "The selected account already exists.",
+    BUSY: "The selected account is busy.",
+    FAILED: "Could not create your wallet. Check your existing Vault password, if you have one, and try again."
+  };
+});
+
+// utils/embeddedImportBackend.ts
+import { Buffer as Buffer2 } from "node:buffer";
+import { createHash as createHash4 } from "node:crypto";
+import {
+  chmodSync as chmodSync4,
+  existsSync as existsSync10,
+  constants as fsConstants3,
+  lstatSync as lstatSync5,
+  readFileSync as readFileSync4
+} from "node:fs";
+import { copyFile as copyFile2 } from "node:fs/promises";
+import { homedir as homedir5 } from "node:os";
+import { isAbsolute as isAbsolute4, join as join11, resolve as resolve3 } from "node:path";
+function digest2(data) {
+  return createHash4("sha256").update(data).digest("hex");
+}
+function assertConfirmation2(value) {
+  if (value !== IMPORT_CONFIRMATION)
+    throw failure2("CONFIRMATION_REQUIRED", MESSAGES3.CONFIRMATION_REQUIRED);
+}
+function resolveTrustedHome(home) {
+  const candidate = home ?? homedir5();
+  if (typeof candidate !== "string" || !isAbsolute4(candidate))
+    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  return candidate;
+}
+function resolveVaultPath(vaultPath) {
+  if (typeof vaultPath !== "string" || !isAbsolute4(vaultPath))
+    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  return vaultPath;
+}
+function resolveDestRoot(accountsDirectory, home) {
+  const candidate = accountsDirectory ?? join11(home, ".bsv-mcp", "accounts");
+  if (typeof candidate !== "string" || !isAbsolute4(candidate))
+    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  return candidate;
+}
+function trustedSourceDir(home, location2, account) {
+  if (location2 === "account")
+    return join11(home, ".bsv-mcp", "accounts", account);
+  if (location2 === "legacy-root")
+    return join11(home, ".bsv-mcp");
+  return join11(home, ".local", "share", "sigma-brc169-lab");
+}
+function rejectUnsafePath(candidate) {
+  if (typeof candidate !== "string" || candidate.length === 0 || candidate.includes("\x00"))
+    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  try {
+    regularPath(candidate);
+  } catch {
+    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  }
+}
+function rejectUnsafeDir(candidate) {
+  if (typeof candidate !== "string" || candidate.length === 0 || candidate.includes("\x00"))
+    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  try {
+    regularPath(candidate, true);
+  } catch {
+    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  }
+}
+function selectTrustedSource(source, home, destRoot, vaultPath) {
+  const account = typeof source?.account === "string" ? source.account : undefined;
+  const location2 = source?.location;
+  if (account === undefined || accountNameSchema.safeParse(account).success !== true || location2 !== "account" && location2 !== "legacy-root" && location2 !== "sigma-lab")
+    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  let inventory;
+  try {
+    inventory = inspectMigration({
+      home,
+      env: { VAULT_PATH: vaultPath }
+    });
+  } catch {
+    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  }
+  const entry = inventory.sources.find((candidate) => candidate.account === account && candidate.location === location2);
+  if (!entry)
+    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+  const destName = entry.account;
+  if (accountNameSchema.safeParse(destName).success !== true)
+    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+  const sourceDir = trustedSourceDir(home, entry.location, entry.account);
+  const destDir = join11(destRoot, destName);
+  return {
+    entry,
+    sourceDir,
+    destName,
+    destDir,
+    destRoot,
+    home,
+    vaultPath
+  };
+}
+function toOriginalKeys(input) {
+  const payPk = input.payPk;
+  const identityPk = input.identityPk;
+  const xprv = input.xprv;
+  if (!(payPk instanceof PrivateKey))
+    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  let payPub;
+  let payWif;
+  try {
+    payPub = payPk.toPublicKey().toString();
+    payWif = payPk.toWif();
+  } catch {
+    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  }
+  const out = { payWif, payPub };
+  if (identityPk !== undefined) {
+    if (!(identityPk instanceof PrivateKey))
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    try {
+      out.identityPub = identityPk.toPublicKey().toString();
+      out.identityWif = identityPk.toWif();
+    } catch {
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    }
+  }
+  if (xprv !== undefined) {
+    if (typeof xprv !== "string" || xprv.length === 0)
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    try {
+      const hd = HD.fromString(xprv);
+      if (!hd.isPrivate())
+        throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      out.expectedXpub = hd.toPublic().toString();
+      out.xprv = xprv;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    }
+  }
+  return out;
+}
+async function loadSourceKeys(selection, sourcePassphrase) {
+  const { entry, sourceDir } = selection;
+  rejectUnsafeDir(sourceDir);
+  if (!entry.encryptedBackup && !entry.plaintextKeys)
+    throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+  if (entry.location === "sigma-lab" && entry.plaintextKeys) {
+    const file = join11(sourceDir, "root.wif");
+    rejectUnsafePath(file);
+    let wif;
+    try {
+      wif = readFileSync4(file, "utf8").trim();
+    } catch {
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    }
+    try {
+      const payPk = PrivateKey.fromWif(wif);
+      return toOriginalKeys({ payPk });
+    } catch {
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    }
+  }
+  if (entry.encryptedBackup) {
+    if (typeof sourcePassphrase !== "string" || !sourcePassphrase)
+      throw failure2("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
+    try {
+      const manager = new SecureKeyManager({ keyDir: sourceDir });
+      const { keys } = await manager.loadKeys(sourcePassphrase);
+      return toOriginalKeys(keys);
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("UNLOCK_FAILED", MESSAGES3.UNLOCK_FAILED);
+    }
+  }
+  try {
+    const manager = new SecureKeyManager({ keyDir: sourceDir });
+    return toOriginalKeys(manager.loadLegacyKeys());
+  } catch (error) {
+    if (error instanceof EmbeddedImportError)
+      throw error;
+    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  }
+}
+function rootAddressFor(payWif, chain) {
+  try {
+    const key = PrivateKey.fromWif(payWif);
+    return chain === "test" ? key.toAddress([111]) : key.toAddress();
+  } catch {
+    throw failure2("INVALID_KEYS", MESSAGES3.INVALID_KEYS);
+  }
+}
+async function addressMatchesKnown(payWif, chain, prefix, configured) {
+  let key;
+  try {
+    key = PrivateKey.fromWif(payWif);
+  } catch {
+    return false;
+  }
+  try {
+    const root = chain === "test" ? key.toAddress([111]) : key.toAddress();
+    if (root === configured)
+      return true;
+  } catch {
+    return false;
+  }
+  try {
+    const wallet = new ProtoWallet_default(key);
+    const derived = await wallet.getPublicKey({
+      protocolID: P1SAT_PROTOCOL,
+      keyID: `${prefix} 0`,
+      forSelf: true
+    });
+    const address = chain === "test" ? PublicKey.fromString(derived.publicKey).toAddress([111]) : PublicKey.fromString(derived.publicKey).toAddress();
+    return address === configured;
+  } catch {
+    return false;
+  }
+}
+function readExistingConfig(destName, destRoot) {
+  try {
+    rejectUnsafeDir(destRoot);
+    const revisionBefore = readAccountRevision(destName, destRoot);
+    const config = readAccount(destName, destRoot);
+    const revisionAfter = readAccountRevision(destName, destRoot);
+    if (revisionBefore !== revisionAfter)
+      throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+    return { config, revision: revisionAfter };
+  } catch (error) {
+    if (error instanceof EmbeddedImportError)
+      throw error;
+    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+  }
+}
+function assertBindingMatchesExisting(keys, existing) {
+  const pinned = existing?.vaultBinding;
+  if (!pinned)
+    return;
+  if (keys.payPub.toLowerCase() !== pinned.payment.publicKey.toLowerCase())
+    throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+  if (pinned.identity !== undefined) {
+    if (keys.identityPub === undefined || keys.identityPub.toLowerCase() !== pinned.identity.publicKey.toLowerCase())
+      throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+  }
+  if (pinned.hd !== undefined) {
+    if (keys.expectedXpub === undefined || keys.expectedXpub !== pinned.hd.expectedXpub)
+      throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+  }
+}
+function assertStoredMatchesCommitted(stored, expected, binding) {
+  if (stored.chain !== expected.chain || (stored.address ?? undefined) !== (expected.address ?? undefined) || (stored.storageIdentityKey ?? undefined) !== (expected.storageIdentityKey ?? undefined) || (stored.depositPrefix ?? undefined) !== (expected.depositPrefix ?? undefined) || (stored.activeRemote ?? undefined) !== (expected.activeRemote ?? undefined) || JSON.stringify(stored.backups ?? null) !== JSON.stringify(expected.backups ?? null))
+    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+  const storedBinding = stored.vaultBinding;
+  if (!storedBinding || !bindingsMatchCommitted(storedBinding, binding))
+    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+}
+function bindingsMatchCommitted(stored, committed) {
+  if (stored.version !== committed.version || stored.contract !== committed.contract || stored.vaultId !== committed.vaultId || stored.payment.entryId !== committed.payment.entryId || stored.payment.publicKey.toLowerCase() !== committed.payment.publicKey.toLowerCase())
+    return false;
+  if (stored.identity === undefined !== (committed.identity === undefined))
+    return false;
+  if (stored.identity !== undefined && committed.identity !== undefined) {
+    if (stored.identity.entryId !== committed.identity.entryId || stored.identity.publicKey.toLowerCase() !== committed.identity.publicKey.toLowerCase())
+      return false;
+  }
+  if (stored.hd === undefined !== (committed.hd === undefined))
+    return false;
+  if (stored.hd !== undefined && committed.hd !== undefined) {
+    if (stored.hd.entryId !== committed.hd.entryId || stored.hd.expectedXpub !== committed.hd.expectedXpub)
+      return false;
+  }
+  return true;
+}
+function resolveChain(existing, requested) {
+  if (existing && requested !== undefined && requested !== existing.chain)
+    throw failure2("CHAIN_MISMATCH", MESSAGES3.CHAIN_MISMATCH);
+  return existing?.chain ?? requested ?? "main";
+}
+function assertDatabasesCopyable(selection) {
+  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+    return;
+  for (const name of selection.entry.walletDatabases) {
+    if (!DB_NAME_PATTERN.test(name))
+      throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+    for (const suffix of ["-wal", "-shm"]) {
+      const sidecar = join11(selection.sourceDir, `${name}${suffix}`);
+      try {
+        lstatSync5(sidecar);
+        throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+      } catch (error) {
+        if (error instanceof EmbeddedImportError)
+          throw error;
+        const code = error?.code;
+        if (code !== undefined && code !== "ENOENT")
+          throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+      }
+    }
+  }
+}
+function assertNoDestinationDbCollision(selection) {
+  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+    return;
+  for (const name of selection.entry.walletDatabases) {
+    if (!DB_NAME_PATTERN.test(name))
+      throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+    const from = join11(selection.sourceDir, name);
+    const to = join11(selection.destDir, name);
+    let fromBytes = null;
+    let toBytes = null;
+    try {
+      rejectUnsafePath(from);
+      fromBytes = existsSync10(from) ? readFileSync4(from) : null;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    }
+    if (fromBytes === null)
+      continue;
+    try {
+      rejectUnsafePath(to);
+      toBytes = existsSync10(to) ? readFileSync4(to) : null;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    }
+    if (toBytes !== null && digest2(toBytes) !== digest2(fromBytes))
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+  }
+}
+async function copyInventoryDatabases(selection) {
+  if (resolve3(selection.sourceDir) === resolve3(selection.destDir))
+    return;
+  if (selection.entry.walletDatabases.length === 0)
+    return;
+  try {
+    secureDirectory(selection.destDir);
+  } catch {
+    throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+  }
+  for (const name of selection.entry.walletDatabases) {
+    if (!DB_NAME_PATTERN.test(name))
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    const from = join11(selection.sourceDir, name);
+    const to = join11(selection.destDir, name);
+    let fromBytes;
+    try {
+      rejectUnsafePath(from);
+      fromBytes = readFileSync4(from);
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    }
+    let toBytes = null;
+    try {
+      rejectUnsafePath(to);
+      toBytes = existsSync10(to) ? readFileSync4(to) : null;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    }
+    if (toBytes !== null) {
+      if (digest2(toBytes) === digest2(fromBytes))
+        continue;
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    }
+    try {
+      rejectUnsafeDir(selection.destDir);
+      await copyFile2(from, to, fsConstants3.COPYFILE_EXCL);
+      chmodSync4(to, 384);
+      const copied = readFileSync4(to);
+      if (digest2(copied) !== digest2(fromBytes))
+        throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    }
+  }
+}
+async function importKeysToVault(vaultPath, loadModule, input) {
+  let io;
+  try {
+    io = createEmbeddedVaultIo({ vaultPath, loadModule });
+  } catch {
+    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+  }
+  let receipt;
+  try {
+    receipt = await io.importKeys({
+      password: input.password,
+      passwordConfirmation: input.passwordConfirmation,
+      label: input.label,
+      keys: {
+        payPk: input.keys.payWif,
+        ...input.keys.identityWif !== undefined ? { identityPk: input.keys.identityWif } : {},
+        ...input.keys.xprv !== undefined ? { xprv: input.keys.xprv } : {}
+      }
+    });
+  } catch (error) {
+    if (error instanceof EmbeddedImportError)
+      throw error;
+    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+  }
+  try {
+    const unlocked = await io.unlock({
+      password: input.password,
+      binding: receipt
+    });
+    try {
+      if (unlocked.payPk?.toPublicKey().toString().toLowerCase() !== input.keys.payPub.toLowerCase() || unlocked.payPk?.toPublicKey().toString().toLowerCase() !== receipt.payment.publicKey.toLowerCase())
+        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+      if (input.keys.identityPub !== undefined) {
+        if (unlocked.identityPk?.toPublicKey().toString().toLowerCase() !== input.keys.identityPub.toLowerCase() || receipt.identity?.publicKey.toLowerCase() !== input.keys.identityPub.toLowerCase())
+          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+      } else if (receipt.identity !== undefined) {
+        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+      }
+      if (input.keys.xprv !== undefined) {
+        if (unlocked.xprv !== input.keys.xprv)
+          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+        let xpub;
+        try {
+          xpub = HD.fromString(unlocked.xprv).toPublic().toString();
+        } catch {
+          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+        }
+        if (receipt.hd === undefined || xpub !== receipt.hd.expectedXpub || xpub !== input.keys.expectedXpub)
+          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+      } else if (receipt.hd !== undefined) {
+        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+      }
+    } finally {
+      try {
+        io.lock();
+      } catch {}
+    }
+  } catch (error) {
+    if (error instanceof EmbeddedImportError)
+      throw error;
+    try {
+      io.lock();
+    } catch {}
+    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+  }
+  return receipt;
+}
+function bindingFromReceipt(receipt) {
+  try {
+    return embeddedVaultBindingSchema.parse({
+      version: 1,
+      contract: "embedded-roots-v1",
+      vaultId: receipt.vaultId,
+      payment: receipt.payment,
+      ...receipt.identity !== undefined ? { identity: receipt.identity } : {},
+      ...receipt.hd !== undefined ? { hd: receipt.hd } : {}
+    });
+  } catch {
+    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+  }
+}
+function parsePlaintextBackupKeys(backupText) {
+  let raw;
+  try {
+    raw = JSON.parse(backupText);
+  } catch {
+    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+  }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+  const record = raw;
+  const nested = record.bsvMcp !== undefined && typeof record.bsvMcp === "object" && record.bsvMcp !== null ? record.bsvMcp : {};
+  const wif = record.wif ?? record.payPk;
+  const identityPk = nested.identityPk ?? record.identityPk;
+  const xprv = nested.xprv ?? record.xprv;
+  if (typeof wif !== "string" || wif.length === 0)
+    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+  let payPk;
+  try {
+    payPk = PrivateKey.fromWif(wif);
+  } catch {
+    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+  }
+  let identity;
+  if (identityPk !== undefined) {
+    if (typeof identityPk !== "string" || identityPk.length === 0)
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    try {
+      identity = PrivateKey.fromWif(identityPk);
+    } catch {
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    }
+  }
+  let xprvValue;
+  if (xprv !== undefined) {
+    if (typeof xprv !== "string" || xprv.length === 0)
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    try {
+      const hd = HD.fromString(xprv);
+      if (!hd.isPrivate())
+        throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      xprvValue = xprv;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    }
+  }
+  return toOriginalBackupKeys(payPk, identity, xprvValue);
+}
+function toOriginalBackupKeys(payPk, identityPk, xprv) {
+  try {
+    const out = {
+      payWif: payPk.toWif(),
+      payPub: payPk.toPublicKey().toString()
+    };
+    if (identityPk !== undefined) {
+      out.identityWif = identityPk.toWif();
+      out.identityPub = identityPk.toPublicKey().toString();
+    }
+    if (xprv !== undefined) {
+      out.expectedXpub = HD.fromString(xprv).toPublic().toString();
+      out.xprv = xprv;
+    }
+    return out;
+  } catch {
+    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+  }
+}
+async function parseBackupKeys(backupText, sourcePassphrase) {
+  if (typeof sourcePassphrase === "string" && sourcePassphrase.length > 0) {
+    try {
+      const keys = await decodeEncryptedKeys(backupText, sourcePassphrase);
+      if (!keys.payPk)
+        throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      return toOriginalBackupKeys(keys.payPk, keys.identityPk, keys.xprv);
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    }
+  }
+  return parsePlaintextBackupKeys(backupText);
+}
+function createEmbeddedImportBackend(options) {
+  const vaultPath = resolveVaultPath(options?.vaultPath);
+  const home = resolveTrustedHome(options?.home);
+  const destRoot = resolveDestRoot(options?.accountsDirectory, home);
+  const requestedChain = options?.chain;
+  if (requestedChain !== undefined && requestedChain !== "main" && requestedChain !== "test")
+    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  const loadModule = options?.loadModule;
+  async function runImport(input) {
+    if (!input || typeof input !== "object")
+      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    if (typeof input.password !== "string" || input.password.length === 0)
+      throw failure2("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
+    const selection = selectTrustedSource(input.source, home, destRoot, vaultPath);
+    assertConfirmation2(input.confirmation);
+    if (input.passwordConfirmation !== undefined && typeof input.passwordConfirmation !== "string")
+      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    assertDatabasesCopyable(selection);
+    assertNoDestinationDbCollision(selection);
+    const snapshot = readExistingConfig(selection.destName, selection.destRoot);
+    const chain = resolveChain(snapshot.config, requestedChain);
+    const keys = await loadSourceKeys(selection, input.sourcePassphrase);
+    const rechecked = readExistingConfig(selection.destName, selection.destRoot);
+    if (rechecked.revision !== snapshot.revision)
+      throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+    const liveConfig = rechecked.config;
+    const rootAddress = rootAddressFor(keys.payWif, chain);
+    if (liveConfig?.address !== undefined) {
+      const prefix = liveConfig.depositPrefix ?? "mcp";
+      const matches = await addressMatchesKnown(keys.payWif, chain, prefix, liveConfig.address);
+      if (!matches)
+        throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+    }
+    assertBindingMatchesExisting(keys, liveConfig);
+    const receipt = await importKeysToVault(vaultPath, loadModule, {
+      password: input.password,
+      passwordConfirmation: input.passwordConfirmation,
+      label: selection.destName,
+      keys
+    });
+    const binding = bindingFromReceipt(receipt);
+    assertDatabasesCopyable(selection);
+    assertNoDestinationDbCollision(selection);
+    await copyInventoryDatabases(selection);
+    const base = liveConfig ?? {
+      ...newAccountConfig(chain, rootAddress)
+    };
+    const next = liveConfig !== undefined ? {
+      ...liveConfig,
+      vaultBinding: binding,
+      ...liveConfig.address === undefined ? { address: rootAddress } : {}
+    } : { ...base, vaultBinding: binding };
+    let stored;
+    try {
+      writeAccount(selection.destName, next, selection.destRoot, {
+        expectedRevision: snapshot.revision
+      });
+      const reread = readAccount(selection.destName, selection.destRoot);
+      if (!reread)
+        throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+      assertStoredMatchesCommitted(reread, next, binding);
+      stored = reread;
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("ACCOUNT_CONFIG_CHANGED"))
+        throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+    }
+    const address = stored.address ?? rootAddress;
+    return { accountName: selection.destName, address, binding };
+  }
+  async function runImportBackup(input) {
+    if (!input || typeof input !== "object")
+      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    assertConfirmation2(input.confirmation);
+    if (typeof input.backupText !== "string" || input.backupText.length === 0 || typeof input.backupName !== "string" || input.backupName.length === 0 || typeof input.accountName !== "string" || typeof input.destinationPassphrase !== "string" || input.destinationPassphrase.length === 0)
+      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    if (input.passwordConfirmation !== undefined && typeof input.passwordConfirmation !== "string")
+      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    if (accountNameSchema.safeParse(input.accountName).success !== true)
+      throw failure2("ACCOUNT_INVALID", MESSAGES3.ACCOUNT_INVALID);
+    let byteLength = 0;
+    try {
+      byteLength = Buffer2.byteLength(input.backupText, "utf8");
+    } catch {
+      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    }
+    if (byteLength === 0 || byteLength > MAX_BACKUP_BYTES)
+      throw failure2(byteLength > MAX_BACKUP_BYTES ? "BACKUP_TOO_LARGE" : "BACKUP_INVALID", byteLength > MAX_BACKUP_BYTES ? MESSAGES3.BACKUP_TOO_LARGE : MESSAGES3.BACKUP_INVALID);
+    const destName = input.accountName;
+    const destDir = join11(destRoot, destName);
+    const keys = await parseBackupKeys(input.backupText, input.sourcePassphrase);
+    const snapshot = readExistingConfig(destName, destRoot);
+    const chain = resolveChain(snapshot.config, requestedChain);
+    const rootAddress = rootAddressFor(keys.payWif, chain);
+    if (snapshot.config?.address !== undefined) {
+      const prefix = snapshot.config.depositPrefix ?? "mcp";
+      const matches = await addressMatchesKnown(keys.payWif, chain, prefix, snapshot.config.address);
+      if (!matches)
+        throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+    } else if (snapshot.config !== undefined) {
+      throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+    } else {
+      try {
+        rejectUnsafeDir(destRoot);
+        if (existsSync10(destDir)) {
+          rejectUnsafeDir(destDir);
+          for (const name of [
+            "wallet-main.db",
+            "wallet-test.db",
+            "wallet.db"
+          ]) {
+            const candidate = join11(destDir, name);
+            try {
+              const stat = lstatSync5(candidate);
+              if (!stat.isSymbolicLink() && stat.isFile())
+                throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+            } catch (error) {
+              if (error instanceof EmbeddedImportError)
+                throw error;
+              const code = error?.code;
+              if (code !== undefined && code !== "ENOENT")
+                throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof EmbeddedImportError)
+          throw error;
+        throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+      }
+    }
+    assertBindingMatchesExisting(keys, snapshot.config);
+    const receipt = await importKeysToVault(vaultPath, loadModule, {
+      password: input.destinationPassphrase,
+      passwordConfirmation: input.passwordConfirmation,
+      label: destName,
+      keys
+    });
+    const binding = bindingFromReceipt(receipt);
+    const next = snapshot.config !== undefined ? { ...snapshot.config, vaultBinding: binding } : {
+      ...newAccountConfig(chain, rootAddress),
+      vaultBinding: binding
+    };
+    try {
+      writeAccount(destName, next, destRoot, {
+        expectedRevision: snapshot.revision
+      });
+      const reread = readAccount(destName, destRoot);
+      if (!reread)
+        throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+      assertStoredMatchesCommitted(reread, next, binding);
+      return {
+        accountName: destName,
+        address: reread.address ?? rootAddress,
+        binding
+      };
+    } catch (error) {
+      if (error instanceof EmbeddedImportError)
+        throw error;
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("ACCOUNT_CONFIG_CHANGED"))
+        throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+    }
+  }
+  return {
+    import: runImport,
+    importBackup: runImportBackup
+  };
+}
+var IMPORT_CONFIRMATION = "IMPORT_WALLET_CONFIRMED", MAX_BACKUP_BYTES, DB_NAME_PATTERN, EmbeddedImportError, failure2 = (code, message) => new EmbeddedImportError(code, message), MESSAGES3;
+var init_embeddedImportBackend = __esm(() => {
+  init_dist7();
+  init_mod();
+  init_accounts();
+  init_embeddedVaultIo();
+  init_keyManager();
+  init_vaultMigration();
+  MAX_BACKUP_BYTES = 1024 * 1024;
+  DB_NAME_PATTERN = /^wallet(-(main|test))?\.db$/;
+  EmbeddedImportError = class EmbeddedImportError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.name = "EmbeddedImportError";
+      this.code = code;
+    }
+  };
+  MESSAGES3 = {
+    INVALID_OPTIONS: "The embedded import destination is not configured.",
+    INVALID_INPUT: "The embedded import request is invalid.",
+    CONFIRMATION_REQUIRED: "Explicit wallet import confirmation is required before any key is read.",
+    UNKNOWN_SOURCE: "The selected import source was not found in the server inventory.",
+    SOURCE_UNAVAILABLE: "The selected import source has no readable wallet keys.",
+    CREDENTIALS_REQUIRED: "The source passphrase or destination password is missing or too short.",
+    UNLOCK_FAILED: "Cannot unlock the import source; check the passphrase and try again.",
+    INVALID_KEYS: "The imported backup does not contain valid wallet keys.",
+    ADDRESS_MISMATCH: "The imported keys do not match the configured account address.",
+    CHAIN_MISMATCH: "The requested network conflicts with the configured account network.",
+    CONFIG_CONFLICT: "The account configuration changed during import; no overwrite was made.",
+    DB_CONFLICT: "A destination wallet database already exists with different content.",
+    DB_UNSAFE: "The source wallet database cannot be safely copied in its current state.",
+    VAULT_FAILED: "The embedded vault import did not complete; no account was changed.",
+    RECONCILIATION_NEEDED: "The vault import was written but the account configuration was not updated; reconcile before retrying.",
+    BACKUP_INVALID: "The uploaded backup is not a supported wallet backup.",
+    BACKUP_TOO_LARGE: "The uploaded backup exceeds the supported size.",
+    ACCOUNT_INVALID: "The requested account name is invalid.",
+    MATCHING_KEYS_REQUIRED: "The configured account needs a matching-key backup proving its address before keys can be attached."
+  };
+});
+
+// node_modules/@bsv/wallet-toolbox/out/src/utility/index.client.js
+var require_index_client2 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  __exportStar(require_stampLog(), exports);
+  __exportStar(require_ScriptTemplateBRC29(), exports);
+  __exportStar(require_parseTxScriptOffsets(), exports);
+  __exportStar(require_tscProofToMerklePath(), exports);
+  __exportStar(require_utilityHelpers(), exports);
+  __exportStar(require_utilityHelpers_noBuffer(), exports);
+  __exportStar(require_brc114ActionTimeLabels(), exports);
+  __exportStar(require_brc153ReferenceLabels(), exports);
+});
+
+// node_modules/@bsv/wallet-toolbox/out/src/storage/index.client.js
+var require_index_client3 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  __exportStar(require_WalletStorageManager(), exports);
+  __exportStar(require_StorageIdb(), exports);
+  __exportStar(require_StorageProvider(), exports);
+  __exportStar(require_StorageSyncReader(), exports);
+  __exportStar(require_tables(), exports);
+  __exportStar(require_entities(), exports);
+  __exportStar(require_StorageClient(), exports);
+  __exportStar(require_portable(), exports);
+  __exportStar(require_ListActionsSpecOp(), exports);
+  __exportStar(require_ListOutputsSpecOp(), exports);
+  __exportStar(require_managedChange(), exports);
+});
+
+// node_modules/@bsv/wallet-toolbox/out/src/services/chaintracker/index.client.js
+var require_index_client4 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  __exportStar(require_index_client(), exports);
+  __exportStar(require_ChaintracksChainTracker(), exports);
+  __exportStar(require_BHServiceClient(), exports);
+});
+
+// node_modules/@bsv/wallet-toolbox/out/src/index.client.js
+var require_index_client5 = __commonJS(function(exports) {
+  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() {
+        return m[k];
+      } };
+    }
+    Object.defineProperty(o, k2, desc);
+  } : function(o, m, k, k2) {
+    if (k2 === undefined)
+      k2 = k;
+    o[k2] = m[k];
+  });
+  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+  } : function(o, v) {
+    o["default"] = v;
+  });
+  var __importStar = exports && exports.__importStar || function() {
+    var ownKeys = function(o) {
+      ownKeys = Object.getOwnPropertyNames || function(o) {
+        var ar = [];
+        for (var k in o)
+          if (Object.prototype.hasOwnProperty.call(o, k))
+            ar[ar.length] = k;
+        return ar;
+      };
+      return ownKeys(o);
+    };
+    return function(mod) {
+      if (mod && mod.__esModule)
+        return mod;
+      var result = {};
+      if (mod != null) {
+        for (var k = ownKeys(mod), i = 0;i < k.length; i++)
+          if (k[i] !== "default")
+            __createBinding(result, mod, k[i]);
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+  }();
+  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
+    for (var p in m)
+      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
+        __createBinding(exports2, m, p);
+  };
+  Object.defineProperty(exports, "__esModule", { value: true });
+  exports.sdk = undefined;
+  exports.sdk = __importStar(require_sdk());
+  __exportStar(require_index_client2(), exports);
+  __exportStar(require_index_client3(), exports);
+  __exportStar(require_index_client4(), exports);
+  __exportStar(require_SetupClient(), exports);
+  __exportStar(require_SetupWallet(), exports);
+  __exportStar(require_CWIStyleWalletManager(), exports);
+  __exportStar(require_Monitor(), exports);
+  __exportStar(require_PrivilegedKeyManager(), exports);
+  __exportStar(require_Services(), exports);
+  __exportStar(require_createDefaultWalletServicesOptions(), exports);
+  __exportStar(require_WalletSigner(), exports);
+  __exportStar(require_SimpleWalletManager(), exports);
+  __exportStar(require_AuthMethodInteractor(), exports);
+  __exportStar(require_PersonaIDInteractor(), exports);
+  __exportStar(require_TwilioPhoneInteractor(), exports);
+  __exportStar(require_DevConsoleInteractor(), exports);
+  __exportStar(require_WABClient(), exports);
+  __exportStar(require_WABTransport(), exports);
+  __exportStar(require_Wallet(), exports);
+  __exportStar(require_WalletLogger(), exports);
+  __exportStar(require_WalletAuthenticationManager(), exports);
+  __exportStar(require_WalletPermissionsManager(), exports);
+  __exportStar(require_WalletSettingsManager(), exports);
+});
+
+// utils/spendingApproval.ts
+function setSpendingApprovalServerInstance(server) {
+  serverInstance = server;
+}
+function formatSpendingSummary(request) {
+  const spending = request.spending;
+  if (!spending) {
+    return "Requested amount: unknown";
+  }
+  const lines = [`Requested amount: ${spending.satoshis} satoshis`];
+  for (const item of spending.lineItems ?? []) {
+    lines.push(`- ${item.type}: ${item.description} (${item.satoshis} satoshis)`);
+  }
+  return lines.join(`
+`);
+}
+function denialMessage(request, reason) {
+  const amount = request.spending?.satoshis ?? 0;
+  return `Spending authorization refused for ${amount} satoshis: ${reason}.`;
+}
+async function handleSpendingAuthorization(request, permissionsManager, serverOverride, signal) {
+  let approved = false;
+  let denialReason = "approval was not granted";
+  try {
+    signal?.throwIfAborted();
+    if (!request.spending) {
+      denialReason = "the request did not include spending details";
+    } else if (!serverOverride && !serverInstance) {
+      denialReason = "the MCP server is unavailable";
+    } else {
+      const approvalServer = serverOverride ?? serverInstance;
+      if (!approvalServer?.server.getClientCapabilities()?.elicitation?.form) {
+        denialReason = "the MCP client does not support form elicitation";
+        throw new Error(denialReason);
+      }
+      const amount = request.spending.satoshis;
+      if (!Number.isSafeInteger(amount) || amount < 0) {
+        denialReason = "the requested amount is invalid";
+        throw new Error(denialReason);
+      }
+      const response = await approvalServer.server.elicitInput({
+        mode: "form",
+        message: [
+          `Approve spending exactly ${amount} satoshis?`,
+          formatSpendingSummary(request),
+          `If approval is not affirmative, this ${amount}-satoshi request will be refused.`
+        ].join(`
+`),
+        requestedSchema: {
+          type: "object",
+          properties: {
+            approved: {
+              type: "boolean",
+              title: "Approve this spending request",
+              description: `Allow exactly ${amount} satoshis to be spent`
+            }
+          },
+          required: ["approved"]
+        }
+      }, signal ? { signal } : undefined);
+      signal?.throwIfAborted();
+      approved = response.action === "accept" && response.content?.approved === true;
+      if (!approved) {
+        denialReason = response.action === "accept" ? "the user did not approve the requested amount" : response.action === "decline" ? "the user declined the approval request" : "the user canceled the approval request";
+      }
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    denialReason = `the approval prompt failed (${detail})`;
+  }
+  if (approved && request.spending && !signal?.aborted) {
+    await permissionsManager.grantPermission({
+      requestID: request.requestID,
+      amount: request.spending.satoshis,
+      ephemeral: true
+    });
+    return;
+  }
+  console.error(denialMessage(request, denialReason));
+  await permissionsManager.denyPermission(request.requestID);
+}
+var serverInstance = null;
+
+// utils/walletInit.ts
+import { appendFileSync, chmodSync as chmodSync5, mkdirSync as mkdirSync2 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { join as join12 } from "node:path";
+function writeAuditLog(dataDir, entry) {
+  try {
+    mkdirSync2(dataDir, { recursive: true, mode: 448 });
+    const serialized = JSON.stringify(entry, (_, value) => typeof value === "bigint" ? value.toString() : value);
+    appendFileSync(join12(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
+`, { encoding: "utf8", mode: 384 });
+  } catch (error) {
+    console.error("[wallet] failed to write audit log:", error);
+  }
+}
+async function initWallet(privateKeyInput, chain = "main", options = {}) {
+  options.sessionSignal?.throwIfAborted();
+  const config = readAccount(options.accountName);
+  if (options.accountName !== undefined && !config)
+    throw new Error("The selected wallet account is not initialized");
+  if (config && config.chain !== chain)
+    throw new Error("The selected account uses a different network");
+  if (config && process.env.BSV_CHAIN && process.env.BSV_CHAIN !== config.chain)
+    throw new Error("BSV_CHAIN conflicts with the selected account network");
+  const dataDir = accountDir(options.accountName);
+  secureDirectory(dataDir);
+  const filename = join12(dataDir, `wallet-${chain}.db`);
+  regularPath(filename);
+  const oldMask = process.umask(63);
+  const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
+  const nodeWalletConfig = {
+    privateKey: typeof privateKeyInput === "string" ? PrivateKey.fromWif(privateKeyInput) : privateKeyInput,
+    chain,
+    activeRemote: storageConfig.activeRemote,
+    storageIdentityKey: config?.storageIdentityKey ?? "bsv-mcp",
+    storage: { provider: "bun-sqlite", filename },
+    backups: storageConfig.backups,
+    skipInitialMonitor: true,
+    servicesBaseUrl: onesatUrl(chain),
+    autoStoragePayments: false,
+    onStoragePaymentRequired: denyStoragePayment
+  };
+  const result = await createNodeWallet(nodeWalletConfig).finally(() => process.umask(oldMask));
+  try {
+    chmodSync5(filename, 384);
+    const wpm = new import_index_client.WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
+      seekProtocolPermissionsForSigning: false,
+      seekProtocolPermissionsForEncrypting: false,
+      seekProtocolPermissionsForHMAC: false,
+      seekPermissionsForKeyLinkageRevelation: false,
+      seekPermissionsForPublicKeyRevelation: false,
+      seekPermissionsForIdentityKeyRevelation: false,
+      seekPermissionsForIdentityResolution: false,
+      seekBasketInsertionPermissions: false,
+      seekBasketRemovalPermissions: false,
+      seekBasketListingPermissions: false,
+      seekPermissionWhenApplyingActionLabels: false,
+      seekPermissionWhenListingActionsByLabel: false,
+      seekCertificateAcquisitionPermissions: false,
+      seekCertificateRelinquishmentPermissions: false,
+      seekCertificateListingPermissions: false,
+      seekCertificateDisclosurePermissions: false,
+      seekSpendingPermissions: true,
+      seekGroupedPermission: false,
+      differentiatePrivilegedOperations: false,
+      encryptWalletMetadata: true
+    });
+    wpm.bindCallback("onSpendingAuthorizationRequested", (request) => handleSpendingAuthorization(request, wpm, undefined, options.sessionSignal));
+    const wallet = withEmbeddedOwnerDefaultBasketRead(wpm, ADMIN_ORIGINATOR);
+    const ctx = Object.assign(createContext(wallet, {
+      services: result.services,
+      chain,
+      dataDir,
+      isBaseWallet: true,
+      log: (entry) => writeAuditLog(dataDir, entry)
+    }), { [EMBEDDED_OWNER_ORIGINATOR]: ADMIN_ORIGINATOR });
+    const internalCtx = {
+      ...ctx,
+      wallet: withEmbeddedOwnerDerivation(wallet, ADMIN_ORIGINATOR)
+    };
+    const { derivations } = await deriveDepositAddresses.execute(internalCtx, {
+      prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX3
+    });
+    const depositAddress = derivations[0]?.address;
+    if (!depositAddress) {
+      throw new Error("Could not derive a deposit address for the wallet");
+    }
+    options.sessionSignal?.throwIfAborted();
+    if (options.trackActive !== false)
+      activeResult = result;
+    return {
+      wallet,
+      services: result.services,
+      ctx,
+      depositAddress,
+      destroy: result.destroy
+    };
+  } catch (error) {
+    await result.destroy().catch(() => {});
+    throw error;
+  }
+}
+async function initExternalWallet(config, chain = "main") {
+  const httpClient = (input, init) => fetch(input, {
+    ...init,
+    redirect: "error",
+    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(1e4)]) : AbortSignal.timeout(1e4)
+  });
+  const wallet = new HTTPWalletJSON(config.originator, config.url, httpClient);
+  let identityKey;
+  try {
+    const identity = await wallet.getPublicKey({ identityKey: true });
+    if (!/^(02|03)[0-9a-f]{64}$/i.test(identity.publicKey)) {
+      throw new Error("Signer returned an invalid compressed identity public key");
+    }
+    PublicKey.fromString(identity.publicKey);
+    identityKey = identity.publicKey;
+  } catch (error) {
+    throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error });
+  }
+  const services = new OneSatServices(chain, onesatUrl(chain));
+  const dataDir = join12(homedir6(), ".bsv-mcp");
+  const ctx = markExternalWalletContext(createContext(wallet, {
+    services,
+    chain,
+    dataDir,
+    log: (entry) => writeAuditLog(dataDir, entry)
+  }));
+  const destroy = async () => {};
+  activeResult = { destroy };
+  return { wallet, ctx, services, identityKey, destroy };
+}
+async function destroyWallet() {
+  if (activeResult) {
+    await activeResult.destroy();
+    activeResult = null;
+  }
+}
+var import_index_client, ADMIN_ORIGINATOR = "admin.bsv-mcp.internal", MCP_ADDRESS_PREFIX3 = "mcp", activeResult = null;
+var init_walletInit = __esm(() => {
+  init_dist7();
+  init_dist3();
+  init_dist10();
+  init_mod();
+  init_accounts();
+  init_backends();
+  init_embeddedOwnerRead();
+  init_externalWalletConfig();
+  init_redact();
+  import_index_client = __toESM(require_index_client5(), 1);
+});
+
+// utils/embeddedWalletActivation.ts
+function sameBinding(a, b) {
+  if (a.version !== b.version || a.contract !== b.contract || a.vaultId !== b.vaultId || a.payment.entryId !== b.payment.entryId || a.payment.publicKey.toLowerCase() !== b.payment.publicKey.toLowerCase())
+    return false;
+  if (!!a.identity !== !!b.identity || !!a.hd !== !!b.hd)
+    return false;
+  if (a.identity && b.identity) {
+    if (a.identity.entryId !== b.identity.entryId || a.identity.publicKey.toLowerCase() !== b.identity.publicKey.toLowerCase())
+      return false;
+  }
+  if (a.hd && b.hd) {
+    if (a.hd.entryId !== b.hd.entryId || a.hd.expectedXpub !== b.hd.expectedXpub)
+      return false;
+  }
+  return true;
+}
+function asVaultReceipt(binding) {
+  return {
+    vaultId: binding.vaultId,
+    payment: { ...binding.payment },
+    ...binding.identity ? { identity: { ...binding.identity } } : {},
+    ...binding.hd ? { hd: { ...binding.hd } } : {}
+  };
+}
+function addressForKey(key, chain) {
+  return key.toAddress(chain === "test" ? [111] : [0]);
+}
+function safeError(error) {
+  return error instanceof EmbeddedWalletActivationError ? error : failure3("FAILED");
+}
+function createEmbeddedWalletActivation(options) {
+  const io = options.io ?? createEmbeddedVaultIo({ vaultPath: options.vaultPath });
+  const initialize = options.initializeWallet ?? initWallet;
+  let inFlight = false;
+  let active;
+  const activate = async (request) => {
+    if (inFlight || active !== undefined)
+      throw failure3("BUSY");
+    inFlight = true;
+    let initialized;
+    let initializedDestroyed = false;
+    const destroyInitialized = async () => {
+      if (!initialized || initializedDestroyed || typeof initialized.destroy !== "function")
+        return;
+      initializedDestroyed = true;
+      try {
+        await initialized.destroy();
+      } catch {}
+    };
+    let activationError;
+    try {
+      if (!request || typeof request !== "object" || !accountNameSchema.safeParse(request.accountName).success || typeof request.password !== "string" || request.password.length === 0)
+        throw failure3("INVALID_REQUEST");
+      const parsedBinding = embeddedVaultBindingSchema.safeParse(request.binding);
+      if (!parsedBinding.success)
+        throw failure3("INVALID_REQUEST");
+      let account;
+      try {
+        account = readAccount(request.accountName);
+      } catch {
+        throw failure3("FAILED");
+      }
+      if (!account?.vaultBinding || !account.address)
+        throw failure3("BINDING_MISMATCH");
+      if (!sameBinding(account.vaultBinding, parsedBinding.data))
+        throw failure3("BINDING_MISMATCH");
+      const keys = await io.unlock({
+        password: request.password,
+        binding: asVaultReceipt(parsedBinding.data)
+      });
+      const payPk = keys?.payPk;
+      if (!(payPk instanceof PrivateKey))
+        throw failure3("BINDING_MISMATCH");
+      if (payPk.toPublicKey().toString().toLowerCase() !== parsedBinding.data.payment.publicKey.toLowerCase())
+        throw failure3("BINDING_MISMATCH");
+      const rootAddressMatches = addressForKey(payPk, account.chain) === account.address;
+      initialized = await initialize(payPk, account.chain, {
+        accountName: request.accountName
+      });
+      if (!initialized || typeof initialized !== "object" || !initialized.wallet || !initialized.services || !initialized.ctx || typeof initialized.depositAddress !== "string" || typeof initialized.destroy !== "function")
+        throw failure3("FAILED");
+      if (!rootAddressMatches && initialized.depositAddress !== account.address)
+        throw failure3("BINDING_MISMATCH");
+    } catch (error) {
+      await destroyInitialized();
+      activationError = safeError(error);
+    }
+    try {
+      io.lock();
+    } catch {
+      await destroyInitialized();
+      activationError = failure3("FAILED");
+    }
+    inFlight = false;
+    if (activationError)
+      throw activationError;
+    const result = initialized;
+    if (!result)
+      throw failure3("FAILED");
+    let destroyed = false;
+    let trustedResult;
+    const destroy = async () => {
+      if (destroyed)
+        return;
+      destroyed = true;
+      try {
+        await result.destroy();
+      } finally {
+        if (active === trustedResult)
+          active = undefined;
+      }
+    };
+    trustedResult = Object.freeze({
+      wallet: result.wallet,
+      services: result.services,
+      ctx: result.ctx,
+      depositAddress: result.depositAddress,
+      destroy
+    });
+    active = trustedResult;
+    return trustedResult;
+  };
+  return { activate };
+}
+var EmbeddedWalletActivationError, failure3 = (code) => {
+  const message = {
+    INVALID_REQUEST: "The embedded wallet activation request is invalid.",
+    BUSY: "Another embedded wallet activation is already in progress.",
+    BINDING_MISMATCH: "The embedded wallet binding does not match the selected account.",
+    FAILED: "Could not unlock your wallet. Check your Vault password and try again."
+  };
+  return new EmbeddedWalletActivationError(code, message[code]);
+};
+var init_embeddedWalletActivation = __esm(() => {
+  init_mod();
+  init_accounts();
+  init_embeddedVaultIo();
+  init_walletInit();
+  EmbeddedWalletActivationError = class EmbeddedWalletActivationError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.name = "EmbeddedWalletActivationError";
+      this.code = code;
+    }
+  };
+});
+
+// utils/embeddedSetupActions.ts
+function createEmbeddedSetupActions(options) {
+  const creator = createEmbeddedFirstRunBackend({
+    vaultPath: options.vaultPath
+  });
+  const importer = createEmbeddedImportBackend({
+    vaultPath: options.vaultPath
+  });
+  const activation = createEmbeddedWalletActivation({
+    vaultPath: options.vaultPath
+  });
+  let busy = false;
+  let completed = false;
+  async function exclusive(action) {
+    if (busy || completed)
+      throw new Error("This setup session has already completed or is busy. Reopen setup to continue.");
+    busy = true;
+    try {
+      return await action();
+    } finally {
+      busy = false;
+    }
+  }
+  async function activate(accountName, password) {
+    const binding = readAccount(accountName)?.vaultBinding;
+    if (!binding)
+      throw new Error("This wallet has not been saved in your Vault.");
+    const result = await activation.activate({
+      accountName,
+      password,
+      binding
+    });
+    try {
+      await options.onActivated(result, accountName);
+    } catch {
+      await result.destroy();
+      throw new Error("Your wallet is saved, but could not be connected. Reopen setup to unlock it.");
+    }
+    completed = true;
+    return { accountName, address: result.depositAddress, ready: true };
+  }
+  return {
+    create: (body) => exclusive(async () => {
+      const input = createInput.parse(body);
+      const saved = await creator.create(input);
+      return activate(saved.accountName, input.password);
+    }),
+    unlock: (body) => exclusive(async () => {
+      const input = unlockInput.parse(body);
+      return activate(input.accountName, input.password);
+    }),
+    import: (body) => exclusive(async () => {
+      const input = importInput.parse(body);
+      let saved;
+      if (input.backupText !== undefined) {
+        saved = await importer.importBackup({
+          ...input,
+          backupText: input.backupText,
+          backupName: input.backupName ?? "backup"
+        });
+      } else {
+        if (!input.source || input.source.account !== input.accountName)
+          throw new Error("Choose the original account name for this local wallet.");
+        saved = await importer.import({
+          source: input.source,
+          password: input.destinationPassphrase,
+          passwordConfirmation: input.passwordConfirmation,
+          sourcePassphrase: input.sourcePassphrase,
+          confirmation: input.confirmation
+        });
+      }
+      return activate(saved.accountName, input.destinationPassphrase);
+    })
+  };
+}
+var createInput, unlockInput, importInput;
+var init_embeddedSetupActions = __esm(() => {
+  init_zod();
+  init_accounts();
+  init_embeddedFirstRunBackend();
+  init_embeddedImportBackend();
+  init_embeddedWalletActivation();
+  createInput = object2({
+    accountName: accountNameSchema,
+    password: string2().min(8),
+    passwordConfirmation: string2(),
+    confirmation: literal("CREATE_NEW_CONFIRMED")
+  });
+  unlockInput = object2({
+    accountName: accountNameSchema,
+    password: string2().min(1)
+  });
+  importInput = object2({
+    accountName: accountNameSchema,
+    source: object2({
+      account: accountNameSchema,
+      location: _enum(["account", "legacy-root", "sigma-lab"]),
+      encryptedBackup: boolean2().default(false),
+      plaintextKeys: boolean2().default(false),
+      walletDatabases: array(string2()).default([])
+    }).passthrough().optional(),
+    backupText: string2().max(1024 * 1024).optional(),
+    backupName: string2().max(255).optional(),
+    sourcePassphrase: string2().optional(),
+    destinationPassphrase: string2().min(8),
+    passwordConfirmation: string2(),
+    confirmation: literal("IMPORT_WALLET_CONFIRMED")
+  });
+});
+
 // node_modules/jose/dist/webapi/lib/buffer_utils.js
-function concat(...buffers) {
+function concat2(...buffers) {
   const size = buffers.reduce((acc, { length }) => acc + length, 0), buf = new Uint8Array(size);
   let i = 0;
   for (const buffer of buffers)
@@ -288579,7 +296883,7 @@ async function verifySignature(jws, shared, key, encodeUnencodedPayload, parsedP
   const signingPayload = b64 || typeof inputPayload != "string" ? inputPayload : encodeUnencodedPayload(inputPayload);
   let resolvedKey = false;
   typeof key == "function" && (key = await key(parsedProt, jws), resolvedKey = true);
-  const entry = jwsAlgorithm(alg), data = concat(encodedProtected !== undefined ? encode6(encodedProtected) : new Uint8Array, encode6("."), typeof signingPayload == "string" ? shared[2] ??= encodeBase64url(signingPayload, "payload", JWSInvalid) : signingPayload), signature = decodeBase64url(jws.signature, "signature", JWSInvalid), k = await prepareKey(entry, key, "verify"), cryptoKey = await rawKey(k, entry.subtle, "verify");
+  const entry = jwsAlgorithm(alg), data = concat2(encodedProtected !== undefined ? encode6(encodedProtected) : new Uint8Array, encode6("."), typeof signingPayload == "string" ? shared[2] ??= encodeBase64url(signingPayload, "payload", JWSInvalid) : signingPayload), signature = decodeBase64url(jws.signature, "signature", JWSInvalid), k = await prepareKey(entry, key, "verify"), cryptoKey = await rawKey(k, entry.subtle, "verify");
   entry.minRsaBits && checkModulusLength(entry.alg, cryptoKey);
   let verified = false;
   try {
@@ -289089,406 +297393,2101 @@ var init_modernToolPolicy = __esm(() => {
 });
 
 // utils/passphrasePrompt.ts
-import { join as join7 } from "node:path";
+import { join as join13 } from "node:path";
 function setServerInstance(server) {
-  serverInstance = server;
-}
-var LOCK_DIR, LOCK_FILE, serverInstance = null;
-var init_passphrasePrompt = __esm(() => {
-  LOCK_DIR = join7(process.env.HOME || "", ".bsv-mcp");
-  LOCK_FILE = join7(LOCK_DIR, "prompt.lock");
-});
-
-// node_modules/@bsv/wallet-toolbox/out/src/utility/index.client.js
-var require_index_client2 = __commonJS(function(exports) {
-  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() {
-        return m[k];
-      } };
-    }
-    Object.defineProperty(o, k2, desc);
-  } : function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    o[k2] = m[k];
-  });
-  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
-    for (var p in m)
-      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
-        __createBinding(exports2, m, p);
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  __exportStar(require_stampLog(), exports);
-  __exportStar(require_ScriptTemplateBRC29(), exports);
-  __exportStar(require_parseTxScriptOffsets(), exports);
-  __exportStar(require_tscProofToMerklePath(), exports);
-  __exportStar(require_utilityHelpers(), exports);
-  __exportStar(require_utilityHelpers_noBuffer(), exports);
-  __exportStar(require_brc114ActionTimeLabels(), exports);
-  __exportStar(require_brc153ReferenceLabels(), exports);
-});
-
-// node_modules/@bsv/wallet-toolbox/out/src/storage/index.client.js
-var require_index_client3 = __commonJS(function(exports) {
-  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() {
-        return m[k];
-      } };
-    }
-    Object.defineProperty(o, k2, desc);
-  } : function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    o[k2] = m[k];
-  });
-  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
-    for (var p in m)
-      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
-        __createBinding(exports2, m, p);
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  __exportStar(require_WalletStorageManager(), exports);
-  __exportStar(require_StorageIdb(), exports);
-  __exportStar(require_StorageProvider(), exports);
-  __exportStar(require_StorageSyncReader(), exports);
-  __exportStar(require_tables(), exports);
-  __exportStar(require_entities(), exports);
-  __exportStar(require_StorageClient(), exports);
-  __exportStar(require_portable(), exports);
-  __exportStar(require_ListActionsSpecOp(), exports);
-  __exportStar(require_ListOutputsSpecOp(), exports);
-  __exportStar(require_managedChange(), exports);
-});
-
-// node_modules/@bsv/wallet-toolbox/out/src/services/chaintracker/index.client.js
-var require_index_client4 = __commonJS(function(exports) {
-  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() {
-        return m[k];
-      } };
-    }
-    Object.defineProperty(o, k2, desc);
-  } : function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    o[k2] = m[k];
-  });
-  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
-    for (var p in m)
-      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
-        __createBinding(exports2, m, p);
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  __exportStar(require_index_client(), exports);
-  __exportStar(require_ChaintracksChainTracker(), exports);
-  __exportStar(require_BHServiceClient(), exports);
-});
-
-// node_modules/@bsv/wallet-toolbox/out/src/index.client.js
-var require_index_client5 = __commonJS(function(exports) {
-  var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() {
-        return m[k];
-      } };
-    }
-    Object.defineProperty(o, k2, desc);
-  } : function(o, m, k, k2) {
-    if (k2 === undefined)
-      k2 = k;
-    o[k2] = m[k];
-  });
-  var __setModuleDefault = exports && exports.__setModuleDefault || (Object.create ? function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-  } : function(o, v) {
-    o["default"] = v;
-  });
-  var __importStar = exports && exports.__importStar || function() {
-    var ownKeys = function(o) {
-      ownKeys = Object.getOwnPropertyNames || function(o) {
-        var ar = [];
-        for (var k in o)
-          if (Object.prototype.hasOwnProperty.call(o, k))
-            ar[ar.length] = k;
-        return ar;
-      };
-      return ownKeys(o);
-    };
-    return function(mod) {
-      if (mod && mod.__esModule)
-        return mod;
-      var result = {};
-      if (mod != null) {
-        for (var k = ownKeys(mod), i = 0;i < k.length; i++)
-          if (k[i] !== "default")
-            __createBinding(result, mod, k[i]);
-      }
-      __setModuleDefault(result, mod);
-      return result;
-    };
-  }();
-  var __exportStar = exports && exports.__exportStar || function(m, exports2) {
-    for (var p in m)
-      if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports2, p))
-        __createBinding(exports2, m, p);
-  };
-  Object.defineProperty(exports, "__esModule", { value: true });
-  exports.sdk = undefined;
-  exports.sdk = __importStar(require_sdk());
-  __exportStar(require_index_client2(), exports);
-  __exportStar(require_index_client3(), exports);
-  __exportStar(require_index_client4(), exports);
-  __exportStar(require_SetupClient(), exports);
-  __exportStar(require_SetupWallet(), exports);
-  __exportStar(require_CWIStyleWalletManager(), exports);
-  __exportStar(require_Monitor(), exports);
-  __exportStar(require_PrivilegedKeyManager(), exports);
-  __exportStar(require_Services(), exports);
-  __exportStar(require_createDefaultWalletServicesOptions(), exports);
-  __exportStar(require_WalletSigner(), exports);
-  __exportStar(require_SimpleWalletManager(), exports);
-  __exportStar(require_AuthMethodInteractor(), exports);
-  __exportStar(require_PersonaIDInteractor(), exports);
-  __exportStar(require_TwilioPhoneInteractor(), exports);
-  __exportStar(require_DevConsoleInteractor(), exports);
-  __exportStar(require_WABClient(), exports);
-  __exportStar(require_WABTransport(), exports);
-  __exportStar(require_Wallet(), exports);
-  __exportStar(require_WalletLogger(), exports);
-  __exportStar(require_WalletAuthenticationManager(), exports);
-  __exportStar(require_WalletPermissionsManager(), exports);
-  __exportStar(require_WalletSettingsManager(), exports);
-});
-
-// utils/spendingApproval.ts
-function setSpendingApprovalServerInstance(server) {
   serverInstance2 = server;
 }
-function formatSpendingSummary(request) {
-  const spending = request.spending;
-  if (!spending) {
-    return "Requested amount: unknown";
-  }
-  const lines = [`Requested amount: ${spending.satoshis} satoshis`];
-  for (const item of spending.lineItems ?? []) {
-    lines.push(`- ${item.type}: ${item.description} (${item.satoshis} satoshis)`);
-  }
-  return lines.join(`
-`);
-}
-function denialMessage(request, reason) {
-  const amount = request.spending?.satoshis ?? 0;
-  return `Spending authorization refused for ${amount} satoshis: ${reason}.`;
-}
-async function handleSpendingAuthorization(request, permissionsManager, serverOverride) {
-  let approved = false;
-  let denialReason = "approval was not granted";
-  try {
-    if (!request.spending) {
-      denialReason = "the request did not include spending details";
-    } else if (!serverOverride && !serverInstance2) {
-      denialReason = "the MCP server is unavailable";
-    } else {
-      const approvalServer = serverOverride ?? serverInstance2;
-      if (!approvalServer?.server.getClientCapabilities()?.elicitation?.form) {
-        denialReason = "the MCP client does not support form elicitation";
-        throw new Error(denialReason);
-      }
-      const amount = request.spending.satoshis;
-      if (!Number.isSafeInteger(amount) || amount < 0) {
-        denialReason = "the requested amount is invalid";
-        throw new Error(denialReason);
-      }
-      const response = await approvalServer.server.elicitInput({
-        mode: "form",
-        message: [
-          `Approve spending exactly ${amount} satoshis?`,
-          formatSpendingSummary(request),
-          `If approval is not affirmative, this ${amount}-satoshi request will be refused.`
-        ].join(`
-`),
-        requestedSchema: {
-          type: "object",
-          properties: {
-            approved: {
-              type: "boolean",
-              title: "Approve this spending request",
-              description: `Allow exactly ${amount} satoshis to be spent`
-            }
-          },
-          required: ["approved"]
-        }
-      });
-      approved = response.action === "accept" && response.content?.approved === true;
-      if (!approved) {
-        denialReason = response.action === "accept" ? "the user did not approve the requested amount" : response.action === "decline" ? "the user declined the approval request" : "the user canceled the approval request";
-      }
-    }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    denialReason = `the approval prompt failed (${detail})`;
-  }
-  if (approved && request.spending) {
-    await permissionsManager.grantPermission({
-      requestID: request.requestID,
-      amount: request.spending.satoshis,
-      ephemeral: true
-    });
-    return;
-  }
-  console.error(denialMessage(request, denialReason));
-  await permissionsManager.denyPermission(request.requestID);
-}
-var serverInstance2 = null;
+var LOCK_DIR, LOCK_FILE, serverInstance2 = null;
+var init_passphrasePrompt = __esm(() => {
+  LOCK_DIR = join13(process.env.HOME || "", ".bsv-mcp");
+  LOCK_FILE = join13(LOCK_DIR, "prompt.lock");
+});
 
-// utils/walletInit.ts
-import { appendFileSync, chmodSync as chmodSync4, mkdirSync as mkdirSync2 } from "node:fs";
-import { homedir as homedir4 } from "node:os";
-import { join as join8 } from "node:path";
-function writeAuditLog(dataDir, entry) {
+// utils/vaultProfileDerivation.ts
+function fail3(code) {
+  throw new VaultProfileDerivationError(code);
+}
+function assertSession(access) {
   try {
-    mkdirSync2(dataDir, { recursive: true, mode: 448 });
-    const serialized = JSON.stringify(entry, (_, value) => typeof value === "bigint" ? value.toString() : value);
-    appendFileSync(join8(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
-`, { encoding: "utf8", mode: 384 });
-  } catch (error) {
-    console.error("[wallet] failed to write audit log:", error);
+    access.assertActive();
+  } catch {
+    fail3("VAULT_PROFILE_SESSION_UNAVAILABLE");
   }
 }
-async function initWallet(privateKeyWif, chain = "main") {
-  const config = readAccount();
-  if (config && process.env.BSV_CHAIN && process.env.BSV_CHAIN !== config.chain)
-    throw new Error("BSV_CHAIN conflicts with the selected account network");
-  const dataDir = accountDir();
-  secureDirectory(dataDir);
-  const filename = join8(dataDir, `wallet-${chain}.db`);
-  regularPath(filename);
-  const oldMask = process.umask(63);
-  const result = await createNodeWallet({
-    privateKey: PrivateKey.fromWif(privateKeyWif),
-    chain,
-    activeRemote: process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : config?.activeRemote,
-    storageIdentityKey: config?.storageIdentityKey ?? "bsv-mcp",
-    storage: { provider: "bun-sqlite", filename },
-    backups: config?.backups,
-    skipInitialMonitor: true,
-    servicesBaseUrl: onesatUrl(chain)
-  }).finally(() => process.umask(oldMask));
-  chmodSync4(filename, 384);
-  const wpm = new import_index_client.WalletPermissionsManager(result.wallet, ADMIN_ORIGINATOR, {
-    seekProtocolPermissionsForSigning: false,
-    seekProtocolPermissionsForEncrypting: false,
-    seekProtocolPermissionsForHMAC: false,
-    seekPermissionsForKeyLinkageRevelation: false,
-    seekPermissionsForPublicKeyRevelation: false,
-    seekPermissionsForIdentityKeyRevelation: false,
-    seekPermissionsForIdentityResolution: false,
-    seekBasketInsertionPermissions: false,
-    seekBasketRemovalPermissions: false,
-    seekBasketListingPermissions: false,
-    seekPermissionWhenApplyingActionLabels: false,
-    seekPermissionWhenListingActionsByLabel: false,
-    seekCertificateAcquisitionPermissions: false,
-    seekCertificateRelinquishmentPermissions: false,
-    seekCertificateListingPermissions: false,
-    seekCertificateDisclosurePermissions: false,
-    seekSpendingPermissions: true,
-    seekGroupedPermission: false,
-    differentiatePrivilegedOperations: false,
-    encryptWalletMetadata: true
-  });
-  wpm.bindCallback("onSpendingAuthorizationRequested", (request) => handleSpendingAuthorization(request, wpm));
-  const ctx = createContext(wpm, {
-    services: result.services,
-    chain,
-    dataDir,
-    isBaseWallet: true,
-    log: (entry) => writeAuditLog(dataDir, entry)
-  });
-  const { derivations } = await deriveDepositAddresses.execute(ctx, {
-    prefix: config?.depositPrefix ?? MCP_ADDRESS_PREFIX3
-  });
-  const depositAddress = derivations[0]?.address;
-  if (!depositAddress) {
-    await result.destroy();
-    throw new Error("Could not derive a deposit address for the wallet");
+function deriveKey2(access, reference, reason, api) {
+  if (typeof reason !== "string" || !reason.trim() || reason.length > 200)
+    fail3("VAULT_PROFILE_REASON_REQUIRED");
+  if (access.id !== reference.vaultId)
+    fail3("VAULT_PROFILE_VAULT_MISMATCH");
+  assertSession(access);
+  let kind;
+  try {
+    kind = access.get(reference.entryId).kind;
+  } catch {
+    fail3("VAULT_PROFILE_ENTRY_UNAVAILABLE");
   }
-  activeResult = result;
-  return {
-    wallet: wpm,
-    services: result.services,
-    ctx,
-    depositAddress,
-    destroy: result.destroy
+  const descriptor = reference.derivation;
+  if (descriptor.scheme === "brc157" ? kind !== "entropy" && kind !== "mnemonic" : kind !== "hd-private")
+    fail3("VAULT_PROFILE_SOURCE_UNSUPPORTED");
+  const functions = descriptor.scheme === "brc157" ? [
+    api.brc157Profile,
+    api.brc42Derive,
+    ...kind === "mnemonic" ? [api.mnemonicToEntropy] : []
+  ] : [api.bip32Derive];
+  if (functions.some((fn) => typeof fn !== "function"))
+    fail3("VAULT_PROFILE_API_UNAVAILABLE");
+  assertSession(access);
+  let value;
+  try {
+    value = access.reveal(reference.entryId, reason);
+  } catch {
+    fail3("VAULT_PROFILE_REVEAL_DENIED");
+  }
+  let key;
+  try {
+    if (descriptor.scheme === "brc157") {
+      const entropy = kind === "mnemonic" ? api.mnemonicToEntropy(value) : value;
+      const profile = PrivateKey.fromHex(api.brc157Profile(entropy, descriptor.index).toHex());
+      const { protocolID, keyID, counterparty } = descriptor.leaf;
+      key = PrivateKey.fromHex(api.brc42Derive(profile.toWif(), protocolID, keyID, counterparty).toHex());
+    } else {
+      const master = HD.fromString(value);
+      if (master.depth !== 0 || !master.privKey?.isValid())
+        fail3("VAULT_PROFILE_HD_MASTER_REQUIRED");
+      key = HD.fromString(api.bip32Derive(value, descriptor.path)).privKey;
+    }
+    if (!key?.isValid())
+      fail3("VAULT_PROFILE_DERIVATION_FAILED");
+  } catch (error) {
+    if (error instanceof VaultProfileDerivationError)
+      throw error;
+    fail3("VAULT_PROFILE_DERIVATION_FAILED");
+  } finally {
+    value = "";
+  }
+  assertSession(access);
+  return key;
+}
+function resolveVaultProfilePrivateKey(access, input, reason, api) {
+  const parsed = selectionSchema.safeParse(input);
+  if (!parsed.success)
+    fail3("VAULT_PROFILE_DESCRIPTOR_UNSUPPORTED");
+  const key = deriveKey2(access, parsed.data, reason, api);
+  if (key.toPublicKey().toString() !== parsed.data.expectedPublicKey)
+    fail3("VAULT_PROFILE_PUBLIC_KEY_MISMATCH");
+  return key;
+}
+var YOURS_LEGACY_PROFILE_PATHS, identifier, publicKeySchema, vaultProfileLeafSchema, vaultProfileDerivationSchema, referenceSchema, selectionSchema, VaultProfileDerivationError;
+var init_vaultProfileDerivation = __esm(() => {
+  init_mod();
+  init_zod();
+  YOURS_LEGACY_PROFILE_PATHS = [
+    "m/44'/236'/0'/1/0",
+    "m/44'/236'/1'/0/0",
+    "m/0'/236'/0'/0/0"
+  ];
+  identifier = string2().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/);
+  publicKeySchema = string2().regex(/^(02|03)[0-9a-f]{64}$/).refine((value) => {
+    try {
+      const key = PublicKey.fromString(value);
+      return key.validate() && key.toString() === value;
+    } catch {
+      return false;
+    }
+  });
+  vaultProfileLeafSchema = object2({
+    scheme: literal("brc42"),
+    protocolID: tuple([
+      union([literal(0), literal(1), literal(2)]),
+      string2().min(5).max(400).regex(/^[a-z0-9]+(?: [a-z0-9]+)*$/).refine((name) => !name.endsWith(" protocol"))
+    ]),
+    keyID: string2().min(1).max(800),
+    counterparty: union([_enum(["self", "anyone"]), publicKeySchema])
+  }).strict();
+  vaultProfileDerivationSchema = discriminatedUnion("scheme", [
+    object2({
+      scheme: literal("brc157"),
+      index: number2().int().min(0).max(2147483647),
+      leaf: vaultProfileLeafSchema
+    }).strict(),
+    object2({
+      scheme: literal("yours-legacy-bip32"),
+      path: _enum(YOURS_LEGACY_PROFILE_PATHS)
+    }).strict()
+  ]);
+  referenceSchema = object2({
+    vaultId: identifier,
+    entryId: identifier,
+    derivation: vaultProfileDerivationSchema
+  }).strict();
+  selectionSchema = referenceSchema.extend({
+    expectedPublicKey: publicKeySchema
+  });
+  VaultProfileDerivationError = class VaultProfileDerivationError extends Error {
+    code;
+    constructor(code) {
+      super(code);
+      this.code = code;
+      this.name = "VaultProfileDerivationError";
+    }
+  };
+});
+
+// utils/projectRoleBindings.ts
+function freeze(value) {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value))
+      freeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+function parseProjectRoleBindings(input) {
+  return freeze(projectRoleBindingsSchema.parse(input));
+}
+function forProject(input, expectedProjectId) {
+  const config = projectRoleBindingsSchema.parse(input);
+  if (config.projectId !== expectedProjectId)
+    throw new Error("PROJECT_ROLE_PROJECT_MISMATCH");
+  return config;
+}
+function resolveProjectRoleBinding(input, expectedProjectId, role) {
+  const config = forProject(input, expectedProjectId);
+  const checkedRole = projectKeyRoleSchema.parse(role);
+  const binding = config.bindings.find((item) => item.bindingId === config.current[checkedRole]);
+  if (!binding)
+    throw new Error(`PROJECT_ROLE_UNASSIGNED: ${checkedRole}`);
+  return freeze({
+    projectId: config.projectId,
+    revision: config.revision,
+    binding
+  });
+}
+function assertProjectRoleSnapshotCurrent(input, snapshot) {
+  const current = resolveProjectRoleBinding(input, snapshot.projectId, snapshot.binding.role);
+  if (current.revision !== snapshot.revision || JSON.stringify(current.binding) !== JSON.stringify(snapshot.binding))
+    throw new Error("PROJECT_ROLE_SNAPSHOT_STALE");
+}
+function changeProjectRoleBindings(input, batch) {
+  const config = forProject(input, batch.expectedProjectId);
+  if (config.revision !== batch.expectedRevision)
+    throw new Error("PROJECT_ROLE_REVISION_CONFLICT");
+  const changes = array(selectionChangeSchema).parse(batch.changes);
+  if (new Set(changes.map((change) => change.role)).size !== changes.length)
+    throw new Error("PROJECT_ROLE_DUPLICATE_ROLE");
+  const effective = changes.filter((change) => change.binding !== null || config.current[change.role] !== null);
+  if (effective.length === 0)
+    return freeze(config);
+  if (config.revision === Number.MAX_SAFE_INTEGER)
+    throw new Error("PROJECT_ROLE_REVISION_EXHAUSTED");
+  for (const change of effective) {
+    const { role } = change;
+    const previousId = config.current[role];
+    if (change.binding !== null) {
+      const fields = change.binding;
+      if (config.bindings.some((item) => item.bindingId === fields.bindingId))
+        throw new Error("PROJECT_ROLE_BINDING_ID_EXISTS");
+      config.bindings.push(projectRoleBindingSchema.parse({
+        ...fields,
+        role,
+        ...previousId === null ? {} : { previousBindingId: previousId }
+      }));
+      config.current[role] = fields.bindingId;
+    } else {
+      config.current[role] = null;
+    }
+    if (previousId !== null) {
+      let retained = config.retained.find((item) => item.bindingId === previousId);
+      if (!retained) {
+        retained = { bindingId: previousId, uses: [] };
+        config.retained.push(retained);
+      }
+      retained.uses = [
+        ...new Set([...retained.uses, ...requiredRetention[role]])
+      ];
+    }
+  }
+  config.revision += 1;
+  return parseProjectRoleBindings(config);
+}
+var PROJECT_KEY_ROLES2, projectKeyRoleSchema, identifier2, publicKey2, projectBrc42DerivationSchema, projectVaultKeyReferenceSchema, bindingFields, projectRoleBindingSchema, retentionUseSchema, requiredRetention, projectRoleBindingsSchema, selectionChangeSchema;
+var init_projectRoleBindings = __esm(() => {
+  init_mod();
+  init_zod();
+  init_accounts();
+  init_vaultProfileDerivation();
+  PROJECT_KEY_ROLES2 = [
+    "identity-signing",
+    "payments",
+    "one-sat",
+    "encryption"
+  ];
+  projectKeyRoleSchema = _enum(PROJECT_KEY_ROLES2);
+  identifier2 = string2().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/);
+  publicKey2 = string2().regex(/^(02|03)[0-9a-f]{64}$/).refine((value) => {
+    try {
+      const key = PublicKey.fromString(value);
+      return key.validate() && key.toString() === value;
+    } catch {
+      return false;
+    }
+  }, "Expected a valid compressed public key");
+  projectBrc42DerivationSchema = object2({
+    scheme: literal("brc42"),
+    protocolID: tuple([
+      union([literal(0), literal(1), literal(2)]),
+      string2().min(5).max(400).regex(/^[a-z0-9]+(?: [a-z0-9]+)*$/).refine((name) => !name.endsWith(" protocol"))
+    ]),
+    keyID: string2().min(1).max(800),
+    counterparty: union([_enum(["self", "anyone"]), publicKey2])
+  }).strict();
+  projectVaultKeyReferenceSchema = object2({
+    vaultId: identifier2,
+    entryId: identifier2,
+    expectedPublicKey: publicKey2,
+    derivation: union([projectBrc42DerivationSchema, vaultProfileDerivationSchema]).optional()
+  }).strict();
+  bindingFields = object2({
+    bindingId: identifier2,
+    role: projectKeyRoleSchema,
+    accountId: accountNameSchema,
+    key: projectVaultKeyReferenceSchema,
+    keyUseContract: _enum([
+      "direct-v1",
+      "brc42-leaf-v1",
+      "brc157-leaf-v1",
+      "yours-legacy-leaf-v1"
+    ]),
+    createdAt: exports_iso2.datetime({ offset: true }),
+    previousBindingId: identifier2.optional()
+  }).strict();
+  projectRoleBindingSchema = bindingFields.superRefine((binding, ctx) => {
+    const expectedScheme = {
+      "direct-v1": undefined,
+      "brc42-leaf-v1": "brc42",
+      "brc157-leaf-v1": "brc157",
+      "yours-legacy-leaf-v1": "yours-legacy-bip32"
+    }[binding.keyUseContract];
+    if (binding.key.derivation?.scheme !== expectedScheme) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["key", "derivation"],
+        message: "The derivation must match the explicitly selected key-use contract"
+      });
+    }
+  });
+  retentionUseSchema = _enum([
+    "verify-history",
+    "fund-recovery",
+    "asset-recovery",
+    "decrypt-history",
+    "pending-actions"
+  ]);
+  requiredRetention = {
+    "identity-signing": ["verify-history", "pending-actions"],
+    payments: ["fund-recovery", "pending-actions"],
+    "one-sat": ["asset-recovery", "pending-actions"],
+    encryption: ["decrypt-history"]
+  };
+  projectRoleBindingsSchema = object2({
+    schemaVersion: literal(1),
+    projectId: identifier2,
+    revision: number2().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    current: object2({
+      "identity-signing": identifier2.nullable(),
+      payments: identifier2.nullable(),
+      "one-sat": identifier2.nullable(),
+      encryption: identifier2.nullable()
+    }).strict(),
+    bindings: array(projectRoleBindingSchema),
+    retained: array(object2({
+      bindingId: identifier2,
+      uses: array(retentionUseSchema).min(1)
+    }).strict())
+  }).strict().superRefine((config, ctx) => {
+    const fail = (message) => ctx.addIssue({ code: "custom", message });
+    const bindings = new Map;
+    for (const binding of config.bindings) {
+      if (bindings.has(binding.bindingId))
+        fail("Duplicate binding ID");
+      if (binding.previousBindingId !== undefined) {
+        const previous = bindings.get(binding.previousBindingId);
+        if (!previous || previous.role !== binding.role)
+          fail("Predecessor must be an earlier binding for the same role");
+      }
+      bindings.set(binding.bindingId, binding);
+    }
+    const current = new Set;
+    for (const role of PROJECT_KEY_ROLES2) {
+      const id = config.current[role];
+      if (id === null)
+        continue;
+      if (bindings.get(id)?.role !== role)
+        fail("Current binding must exist and match its role");
+      current.add(id);
+    }
+    const retained = new Map;
+    for (const item of config.retained) {
+      if (!bindings.has(item.bindingId))
+        fail("Retained binding is missing");
+      if (retained.has(item.bindingId))
+        fail("Duplicate retention record");
+      if (new Set(item.uses).size !== item.uses.length)
+        fail("Duplicate retention use");
+      retained.set(item.bindingId, new Set(item.uses));
+    }
+    for (const binding of bindings.values()) {
+      if (current.has(binding.bindingId))
+        continue;
+      if (!requiredRetention[binding.role].every((use) => retained.get(binding.bindingId)?.has(use)))
+        fail("Historical binding must retain all role recovery uses");
+    }
+  });
+  selectionChangeSchema = object2({
+    role: projectKeyRoleSchema,
+    binding: bindingFields.omit({ role: true, previousBindingId: true }).nullable()
+  }).strict();
+});
+
+// utils/vaultProfileBinding.ts
+function parseVaultProfileBinding(input) {
+  const result = vaultProfileBindingSchema.safeParse(input);
+  if (!result.success)
+    throw new VaultProfileDerivationError("VAULT_PROFILE_BINDING_UNSUPPORTED");
+  return result.data.key;
+}
+function resolveVaultProfileBindingKey(access, input, reason, api) {
+  return resolveVaultProfilePrivateKey(access, parseVaultProfileBinding(input), reason, api);
+}
+var vaultProfileBindingSchema;
+var init_vaultProfileBinding = __esm(() => {
+  init_zod();
+  init_projectRoleBindings();
+  init_vaultProfileDerivation();
+  vaultProfileBindingSchema = object2({
+    keyUseContract: _enum(["brc157-leaf-v1", "yours-legacy-leaf-v1"]),
+    key: projectVaultKeyReferenceSchema
+  }).strict().superRefine((binding, ctx) => {
+    const expected = binding.keyUseContract === "brc157-leaf-v1" ? "brc157" : "yours-legacy-bip32";
+    if (binding.key.derivation?.scheme !== expected)
+      ctx.addIssue({
+        code: "custom",
+        path: ["key", "derivation"],
+        message: "Profile contract and derivation must match"
+      });
+  });
+});
+
+// utils/vaultWallet.ts
+import { isAbsolute as isAbsolute5 } from "node:path";
+function createOplVaultLoader(module) {
+  return async (path, passphrase) => {
+    let vault;
+    try {
+      vault = await module.openVault(path, new module.PassphraseProvider(passphrase));
+      const id = vault.toDocument().id;
+      const current = () => {
+        if (!vault)
+          throw new VaultWalletError("SESSION_LOCKED", "Vault session is locked.");
+        return vault;
+      };
+      return {
+        id,
+        get: (entryId) => current().get(entryId),
+        unlock: (reason, ttl) => current().unlock(reason, ttl),
+        reveal: (entryId, reason) => current().reveal(entryId, reason),
+        lock: () => {
+          try {
+            vault?.lock();
+          } finally {
+            vault = undefined;
+          }
+        }
+      };
+    } catch {
+      try {
+        vault?.lock();
+      } catch {}
+      vault = undefined;
+      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
+    }
   };
 }
-async function initExternalWallet(config, chain = "main") {
-  const httpClient = (input, init) => fetch(input, {
-    ...init,
-    redirect: "error",
-    signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(1e4)]) : AbortSignal.timeout(1e4)
-  });
-  const wallet = new HTTPWalletJSON(config.originator, config.url, httpClient);
-  let identityKey;
-  try {
-    const identity = await wallet.getPublicKey({ identityKey: true });
-    if (!/^(02|03)[0-9a-f]{64}$/i.test(identity.publicKey)) {
-      throw new Error("Signer returned an invalid compressed identity public key");
+async function openVaultWalletSession(selection, passphrase, dependencies) {
+  const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
+  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute5(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
+    throw new VaultWalletError("INVALID_SELECTION", "Select a valid Vault entry and existing wallet account.");
+  }
+  const ttl = selection.ttlSeconds ?? 300;
+  if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 3600) {
+    throw new VaultWalletError("INVALID_TTL", "Vault wallet sessions must last 1–3600 seconds.");
+  }
+  const binding = parsed.data;
+  if (binding.derivation?.scheme === "brc157") {
+    Object.freeze(binding.derivation.leaf.protocolID);
+    Object.freeze(binding.derivation.leaf);
+  }
+  if (binding.derivation)
+    Object.freeze(binding.derivation);
+  Object.freeze(binding);
+  if (binding.keyUseContract !== "direct-v1" && !dependencies.profileDerivationApi)
+    throw new VaultWalletError("PROFILE_API_UNAVAILABLE", "The installed Vault profile derivation API is unavailable.");
+  const pinned = Object.freeze({ ...selection, binding, ttlSeconds: ttl });
+  const now = dependencies.now ?? Date.now;
+  const controller = new AbortController;
+  let access;
+  let initialized;
+  let key;
+  let state = "ready";
+  let expiresAt = 0;
+  let timer;
+  let closing;
+  const pending = new Set;
+  const close = (reason) => {
+    if (closing)
+      return closing;
+    state = reason;
+    controller.abort(new VaultWalletError("SESSION_LOCKED", "Vault wallet session is no longer active."));
+    clearTimeout(timer);
+    try {
+      access?.lock();
+    } catch {}
+    access = undefined;
+    key = undefined;
+    closing = (async () => {
+      await Promise.allSettled([...pending]);
+      const current = initialized;
+      initialized = undefined;
+      try {
+        await current?.destroy();
+      } catch {
+        throw new VaultWalletError("CLEANUP_FAILED", "Wallet session closed, but resource cleanup failed.");
+      }
+    })();
+    return closing;
+  };
+  const assertActive = () => {
+    if (state === "ready" && now() >= expiresAt) {
+      close("expired").catch(() => {});
     }
-    PublicKey.fromString(identity.publicKey);
-    identityKey = identity.publicKey;
+    if (state !== "ready") {
+      throw new VaultWalletError(state === "expired" ? "SESSION_EXPIRED" : "SESSION_LOCKED", "Unlock the selected Vault wallet again before using it.");
+    }
+  };
+  try {
+    try {
+      access = await dependencies.openVault(pinned.vaultPath, passphrase);
+    } catch {
+      throw new VaultWalletError("UNLOCK_FAILED", "Cannot unlock the selected Vault.");
+    }
+    if (access.id !== binding.vaultId) {
+      throw new VaultWalletError("VAULT_MISMATCH", "The selected Vault does not match this binding.");
+    }
+    let entry;
+    try {
+      entry = access.get(binding.entryId);
+    } catch {
+      throw new VaultWalletError("ENTRY_UNAVAILABLE", "The selected Vault entry is unavailable.");
+    }
+    if (binding.keyUseContract === "direct-v1" && entry.kind !== "private" && entry.kind !== "wif") {
+      throw new VaultWalletError("UNSUPPORTED_ENTRY", "This wallet requires an explicitly selected private-key or WIF entry.");
+    }
+    if (binding.keyUseContract === "direct-v1" && entry.publicKey !== undefined && entry.publicKey.toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
+      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected entry does not match the approved wallet identity.");
+    }
+    expiresAt = now() + ttl * 1000;
+    access.unlock(pinned.reason, ttl);
+    timer = setTimeout(() => {
+      close("expired").catch(() => {});
+    }, Math.max(0, expiresAt - now()));
+    timer.unref?.();
+    try {
+      if (binding.keyUseContract !== "direct-v1") {
+        const profileApi = dependencies.profileDerivationApi;
+        if (!profileApi)
+          throw new Error("Profile API unavailable");
+        const profileAccess = access;
+        key = resolveVaultProfileBindingKey({
+          id: access.id,
+          assertActive,
+          get: (id) => profileAccess.get(id),
+          reveal: (id, reason) => profileAccess.reveal(id, reason)
+        }, {
+          keyUseContract: binding.keyUseContract,
+          key: {
+            vaultId: binding.vaultId,
+            entryId: binding.entryId,
+            expectedPublicKey: binding.expectedPublicKey,
+            derivation: binding.derivation
+          }
+        }, pinned.reason, profileApi);
+      } else {
+        const value = access.reveal(binding.entryId, pinned.reason);
+        key = entry.kind === "private" ? PrivateKey.fromHex(value) : PrivateKey.fromWif(value);
+      }
+    } catch {
+      throw new VaultWalletError("KEY_UNAVAILABLE", "The selected key is invalid or Vault reveal is disabled.");
+    }
+    if (key.toPublicKey().toString().toLowerCase() !== binding.expectedPublicKey.toLowerCase()) {
+      throw new VaultWalletError("IDENTITY_MISMATCH", "The selected key does not match the approved wallet identity.");
+    }
+    assertActive();
+    const initialize = dependencies.initializeWallet ?? ((privateKey, selected, signal) => initWallet(privateKey, selected.chain, {
+      accountName: selected.accountName,
+      trackActive: false,
+      sessionSignal: signal
+    }));
+    initialized = await initialize(key, pinned, controller.signal);
+    key = undefined;
+    if (controller.signal.aborted) {
+      const late = initialized;
+      initialized = undefined;
+      await late.destroy().catch(() => {});
+      throw new VaultWalletError("SESSION_EXPIRED", "Unlock the selected Vault wallet again before using it.");
+    }
+    access.lock();
+    access = undefined;
+    assertActive();
+    const invoke = (name) => {
+      const method = (...args) => {
+        try {
+          assertActive();
+        } catch (error) {
+          return Promise.reject(error);
+        }
+        const current = initialized;
+        if (!current)
+          return Promise.reject(new VaultWalletError("SESSION_LOCKED", "Wallet session is closed."));
+        const call = Promise.resolve().then(() => {
+          assertActive();
+          return Reflect.apply(current.wallet[name], current.wallet, args);
+        });
+        pending.add(call);
+        call.then(() => pending.delete(call), () => pending.delete(call));
+        return call;
+      };
+      return method;
+    };
+    const wallet = Object.freeze({
+      getPublicKey: invoke("getPublicKey"),
+      revealCounterpartyKeyLinkage: invoke("revealCounterpartyKeyLinkage"),
+      revealSpecificKeyLinkage: invoke("revealSpecificKeyLinkage"),
+      encrypt: invoke("encrypt"),
+      decrypt: invoke("decrypt"),
+      createHmac: invoke("createHmac"),
+      verifyHmac: invoke("verifyHmac"),
+      createSignature: invoke("createSignature"),
+      verifySignature: invoke("verifySignature"),
+      createAction: invoke("createAction"),
+      signAction: invoke("signAction"),
+      abortAction: invoke("abortAction"),
+      listActions: invoke("listActions"),
+      internalizeAction: invoke("internalizeAction"),
+      listOutputs: invoke("listOutputs"),
+      relinquishOutput: invoke("relinquishOutput"),
+      acquireCertificate: invoke("acquireCertificate"),
+      listCertificates: invoke("listCertificates"),
+      proveCertificate: invoke("proveCertificate"),
+      relinquishCertificate: invoke("relinquishCertificate"),
+      discoverByIdentityKey: invoke("discoverByIdentityKey"),
+      discoverByAttributes: invoke("discoverByAttributes"),
+      isAuthenticated: invoke("isAuthenticated"),
+      waitForAuthentication: invoke("waitForAuthentication"),
+      getHeight: invoke("getHeight"),
+      getHeaderForHeight: invoke("getHeaderForHeight"),
+      getNetwork: invoke("getNetwork"),
+      getVersion: invoke("getVersion")
+    });
+    const ctx = Object.freeze({ ...initialized.ctx, wallet });
+    const depositAddress = initialized.depositAddress;
+    return Object.freeze({
+      binding,
+      get state() {
+        if (state === "ready" && now() >= expiresAt)
+          close("expired").catch(() => {});
+        return state;
+      },
+      expiresAt,
+      depositAddress,
+      wallet,
+      ctx,
+      lock: () => close("locked")
+    });
   } catch (error) {
-    throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error });
+    await close("locked").catch(() => {});
+    if (error instanceof VaultWalletError)
+      throw error;
+    throw new VaultWalletError("INITIALIZATION_FAILED", "Cannot initialize the selected Vault wallet.");
   }
-  const services = new OneSatServices(chain, onesatUrl(chain));
-  const dataDir = join8(homedir4(), ".bsv-mcp");
-  const ctx = createContext(wallet, {
-    services,
-    chain,
-    dataDir,
-    log: (entry) => writeAuditLog(dataDir, entry)
+}
+var vaultWalletBindingSchema, VaultWalletError;
+var init_vaultWallet = __esm(() => {
+  init_mod();
+  init_zod();
+  init_accounts();
+  init_vaultProfileBinding();
+  init_vaultProfileDerivation();
+  init_walletInit();
+  vaultWalletBindingSchema = object2({
+    projectId: string2().min(1),
+    revision: number2().int().nonnegative(),
+    bindingId: string2().min(1),
+    accountId: string2().min(1),
+    vaultId: string2().min(1),
+    entryId: string2().min(1),
+    expectedPublicKey: string2().regex(/^(02|03)[0-9a-fA-F]{64}$/),
+    keyUseContract: _enum([
+      "direct-v1",
+      "brc157-leaf-v1",
+      "yours-legacy-leaf-v1"
+    ]),
+    derivation: vaultProfileDerivationSchema.optional()
+  }).strict().superRefine((binding, ctx) => {
+    const valid = binding.keyUseContract === "direct-v1" ? binding.derivation === undefined : vaultProfileBindingSchema.safeParse({
+      keyUseContract: binding.keyUseContract,
+      key: {
+        vaultId: binding.vaultId,
+        entryId: binding.entryId,
+        expectedPublicKey: binding.expectedPublicKey,
+        derivation: binding.derivation
+      }
+    }).success;
+    if (!valid)
+      ctx.addIssue({
+        code: "custom",
+        path: ["derivation"],
+        message: "Explicit contract and derivation must match"
+      });
   });
-  const destroy = async () => {};
-  activeResult = { destroy };
-  return { wallet, ctx, services, identityKey, destroy };
+  VaultWalletError = class VaultWalletError extends Error {
+    code;
+    constructor(code, message) {
+      super(message);
+      this.code = code;
+      this.name = "VaultWalletError";
+    }
+  };
+});
+
+// utils/projectRoleBindingsStore.ts
+import { randomUUID as randomUUID4 } from "node:crypto";
+import { constants as constants3 } from "node:fs";
+import {
+  lstat as lstat2,
+  open as open4,
+  realpath,
+  rename as rename3,
+  unlink
+} from "node:fs/promises";
+import { isAbsolute as isAbsolute6, join as join14 } from "node:path";
+function fail4(code, message) {
+  throw new ProjectRoleStoreError(code, message);
 }
-async function destroyWallet() {
-  if (activeResult) {
-    await activeResult.destroy();
-    activeResult = null;
+function isErrno(error, code) {
+  return error instanceof Error && "code" in error && error.code === code;
+}
+function sameFile(a, b) {
+  return a.dev === b.dev && a.ino === b.ino;
+}
+async function projectLocation(projectRoot) {
+  if (!isAbsolute6(projectRoot))
+    fail4("PROJECT_ROLE_ROOT_INVALID", "An explicit absolute project root is required");
+  const requested = await lstat2(projectRoot);
+  if (!requested.isDirectory() || requested.isSymbolicLink())
+    fail4("PROJECT_ROLE_PATH_UNSAFE", "Project root must be a real directory");
+  const root = await realpath(projectRoot);
+  const identity = await lstat2(root);
+  return {
+    root,
+    identity,
+    configPath: join14(root, PROJECT_ROLE_CONFIG_FILENAME),
+    lockPath: join14(root, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`)
+  };
+}
+async function assertRoot(location2) {
+  const current = await lstat2(location2.root);
+  if (!current.isDirectory() || current.isSymbolicLink() || !sameFile(current, location2.identity))
+    fail4("PROJECT_ROLE_PATH_UNSAFE", "Project directory changed during access");
+}
+async function readDocument(location2) {
+  await assertRoot(location2);
+  let file;
+  try {
+    file = await open4(location2.configPath, constants3.O_RDONLY | constants3.O_NOFOLLOW);
+  } catch (error) {
+    if (isErrno(error, "ENOENT"))
+      return { raw: null, document: {} };
+    if (isErrno(error, "ELOOP"))
+      fail4("PROJECT_ROLE_PATH_UNSAFE", "Project config must not be a symlink");
+    throw error;
+  }
+  try {
+    const info = await file.stat();
+    if (!info.isFile())
+      fail4("PROJECT_ROLE_PATH_UNSAFE", "Project config must be a regular file");
+    if (info.size > MAX_CONFIG_BYTES)
+      fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
+    const raw = await file.readFile("utf8");
+    if (Buffer.byteLength(raw, "utf8") > MAX_CONFIG_BYTES)
+      fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
+    let document2;
+    try {
+      document2 = JSON.parse(raw);
+    } catch {
+      fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config must contain valid JSON");
+    }
+    if (document2 === null || typeof document2 !== "object" || Array.isArray(document2))
+      fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config must be a JSON object");
+    return { raw, document: document2 };
+  } finally {
+    await file.close();
   }
 }
-var import_index_client, ADMIN_ORIGINATOR = "admin.bsv-mcp.internal", MCP_ADDRESS_PREFIX3 = "mcp", activeResult = null;
-var init_walletInit = __esm(() => {
-  init_dist7();
-  init_dist3();
-  init_dist10();
+function scopedBindings(input, expectedProjectId) {
+  const config = parseProjectRoleBindings(input);
+  if (config.projectId !== expectedProjectId)
+    fail4("PROJECT_ROLE_PROJECT_MISMATCH", "Config belongs to a different project");
+  return config;
+}
+async function loadProjectRoleBindings(projectRoot, expectedProjectId) {
+  const location2 = await projectLocation(projectRoot);
+  const { document: document2 } = await readDocument(location2);
+  if (!Object.hasOwn(document2, "roleBindings"))
+    return null;
+  return scopedBindings(document2.roleBindings, expectedProjectId);
+}
+function assertHistoryPreserved(previous, next) {
+  if (next.bindings.length < previous.bindings.length || previous.bindings.some((binding, index) => JSON.stringify(binding) !== JSON.stringify(next.bindings[index])))
+    fail4("PROJECT_ROLE_HISTORY_CHANGED", "Existing bindings are immutable and cannot be removed");
+  for (const retained of previous.retained) {
+    const updated = next.retained.find((item) => item.bindingId === retained.bindingId);
+    if (!updated || retained.uses.some((use) => !updated.uses.includes(use)))
+      fail4("PROJECT_ROLE_HISTORY_CHANGED", "Historical recovery uses cannot be removed");
+  }
+  const oldIds = new Set(previous.bindings.map((item) => item.bindingId));
+  for (const role of PROJECT_KEY_ROLES2) {
+    const nextId = next.current[role];
+    if (nextId !== null && nextId !== previous.current[role] && oldIds.has(nextId))
+      fail4("PROJECT_ROLE_HISTORY_CHANGED", "Reselection requires a new binding ID");
+  }
+  for (const binding of next.bindings.slice(previous.bindings.length)) {
+    if (next.current[binding.role] !== binding.bindingId || (binding.previousBindingId ?? null) !== previous.current[binding.role])
+      fail4("PROJECT_ROLE_HISTORY_CHANGED", "New bindings must select a role and retain its predecessor");
+  }
+}
+async function saveProjectRoleBindings(projectRoot, input, options) {
+  const next = scopedBindings(input, options.expectedProjectId);
+  const location2 = await projectLocation(projectRoot);
+  let lock;
+  try {
+    lock = await open4(location2.lockPath, constants3.O_WRONLY | constants3.O_CREAT | constants3.O_EXCL | constants3.O_NOFOLLOW, 384);
+  } catch (error) {
+    if (isErrno(error, "EEXIST") || isErrno(error, "ELOOP")) {
+      const existing = await lstat2(location2.lockPath);
+      if (!existing.isFile() || existing.isSymbolicLink())
+        fail4("PROJECT_ROLE_PATH_UNSAFE", "Project lock must be a regular file");
+      fail4("PROJECT_ROLE_CONFIG_LOCKED", "Another save or abandoned lock requires reconciliation");
+    }
+    throw error;
+  }
+  const lockIdentity = await lock.stat();
+  const assertLock = async () => {
+    const current = await lstat2(location2.lockPath);
+    if (!current.isFile() || !sameFile(current, lockIdentity))
+      fail4("PROJECT_ROLE_LOCK_LOST", "Project lock changed during save");
+  };
+  let temporaryPath;
+  try {
+    await lock.writeFile(JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
+    const before = await readDocument(location2);
+    const previous = Object.hasOwn(before.document, "roleBindings") ? scopedBindings(before.document.roleBindings, options.expectedProjectId) : null;
+    if ((previous?.revision ?? null) !== options.expectedRevision)
+      fail4("PROJECT_ROLE_REVISION_CONFLICT", "Project config changed; reload before saving");
+    if (previous === null) {
+      if (next.revision !== 0)
+        fail4("PROJECT_ROLE_REVISION_CONFLICT", "Initial project revision must be zero");
+    } else {
+      if (JSON.stringify(previous) === JSON.stringify(next))
+        return next;
+      if (previous.revision === Number.MAX_SAFE_INTEGER || next.revision !== previous.revision + 1)
+        fail4("PROJECT_ROLE_REVISION_CONFLICT", "Next revision must increment the current revision once");
+      assertHistoryPreserved(previous, next);
+    }
+    const serialized = `${JSON.stringify({ ...before.document, roleBindings: next }, null, 2)}
+`;
+    if (Buffer.byteLength(serialized, "utf8") > MAX_CONFIG_BYTES)
+      fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
+    temporaryPath = join14(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID4()}.tmp`);
+    const temporary = await open4(temporaryPath, "wx", 384);
+    try {
+      await temporary.writeFile(serialized, "utf8");
+      await temporary.sync();
+    } finally {
+      await temporary.close();
+    }
+    await assertRoot(location2);
+    await assertLock();
+    const latest = await readDocument(location2);
+    if (latest.raw !== before.raw)
+      fail4("PROJECT_ROLE_REVISION_CONFLICT", "Project settings changed during save");
+    await rename3(temporaryPath, location2.configPath);
+    temporaryPath = undefined;
+    return next;
+  } finally {
+    try {
+      if (temporaryPath !== undefined)
+        await unlink(temporaryPath);
+    } finally {
+      await lock.close();
+      await assertLock();
+      await unlink(location2.lockPath);
+    }
+  }
+}
+var PROJECT_ROLE_CONFIG_FILENAME = ".bsv-mcp.json", MAX_CONFIG_BYTES, ProjectRoleStoreError;
+var init_projectRoleBindingsStore = __esm(() => {
+  init_projectRoleBindings();
+  MAX_CONFIG_BYTES = 1024 * 1024;
+  ProjectRoleStoreError = class ProjectRoleStoreError extends Error {
+    code;
+    constructor(code, message) {
+      super(`${code}: ${message}`);
+      this.code = code;
+      this.name = "ProjectRoleStoreError";
+    }
+  };
+});
+
+// utils/vaultWalletController.ts
+import { isAbsolute as isAbsolute7 } from "node:path";
+async function loadInstalledVaultModule(importModule = (specifier) => import(specifier)) {
+  let module;
+  try {
+    module = await importModule(VAULT_PACKAGE);
+  } catch (error) {
+    const missing = error !== null && typeof error === "object" && "code" in error && ["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"].includes(String(error.code));
+    throw new VaultWalletError(missing ? "VAULT_PACKAGE_MISSING" : "VAULT_PACKAGE_LOAD_FAILED", missing ? "The Vault package or a required dependency is not installed in this runtime." : "The installed Vault package could not be loaded.");
+  }
+  if (!module || typeof module !== "object" || !("PassphraseProvider" in module) || typeof module.PassphraseProvider !== "function" || !("openVault" in module) || typeof module.openVault !== "function")
+    throw new VaultWalletError("VAULT_PACKAGE_INCOMPATIBLE", "The installed Vault package does not provide the supported API.");
+  return module;
+}
+function vaultSelectionFromSnapshot(snapshot, options) {
+  const { binding } = snapshot;
+  const selected = vaultWalletBindingSchema.safeParse({
+    projectId: snapshot.projectId,
+    revision: snapshot.revision,
+    bindingId: binding.bindingId,
+    accountId: binding.accountId,
+    vaultId: binding.key.vaultId,
+    entryId: binding.key.entryId,
+    expectedPublicKey: binding.key.expectedPublicKey,
+    keyUseContract: binding.keyUseContract,
+    ...binding.key.derivation ? { derivation: binding.key.derivation } : {}
+  });
+  if (!selected.success)
+    throw new VaultWalletError("UNSUPPORTED_KEY_CONTRACT", "Select a supported explicit Vault key contract.");
+  return {
+    binding: selected.data,
+    accountName: binding.accountId,
+    ...options
+  };
+}
+function createVaultWalletController(options) {
+  if (!isAbsolute7(options.projectRoot) || !options.expectedProjectId)
+    throw new VaultWalletError("PROJECT_REQUIRED", "An explicit absolute project root and project ID are required.");
+  const projectRoot = options.projectRoot;
+  const expectedProjectId = options.expectedProjectId;
+  let active;
+  let generation = 0;
+  const lock = async () => {
+    generation += 1;
+    const previous = active;
+    active = undefined;
+    await previous?.session.lock();
+  };
+  const load = () => (options.loadBindings ?? loadProjectRoleBindings)(projectRoot, expectedProjectId);
+  return Object.freeze({
+    projectRoot,
+    lock,
+    async unlock(role, passphrase, reason, ttlSeconds = 300) {
+      const closing = lock();
+      const attempt = generation;
+      await closing;
+      const snapshot = resolveProjectRoleBinding(await load(), expectedProjectId, role);
+      const account = (options.readSelectedAccount ?? readAccount)(snapshot.binding.accountId);
+      if (!account)
+        throw new VaultWalletError("ACCOUNT_UNAVAILABLE", "The bound wallet account does not exist.");
+      const selection = vaultSelectionFromSnapshot(snapshot, {
+        vaultPath: await options.resolveVaultPath(snapshot.binding.key.vaultId),
+        chain: account.chain,
+        reason,
+        ttlSeconds
+      });
+      const module = await (options.loadVaultModule ?? loadInstalledVaultModule)();
+      if (attempt !== generation)
+        throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
+      const session = await openVaultWalletSession(selection, passphrase, {
+        ...options.walletDependencies,
+        openVault: createOplVaultLoader(module),
+        profileDerivationApi: options.walletDependencies?.profileDerivationApi ?? ([
+          "mnemonicToEntropy",
+          "brc157Profile",
+          "brc42Derive",
+          "bip32Derive"
+        ].every((name) => typeof module[name] === "function") ? module : undefined)
+      });
+      try {
+        if (attempt !== generation)
+          throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
+        assertProjectRoleSnapshotCurrent(await load(), snapshot);
+        if (attempt !== generation)
+          throw new VaultWalletError("UNLOCK_SUPERSEDED", "This unlock attempt was canceled or replaced.");
+        active = { snapshot, session };
+        return Object.freeze({
+          projectId: snapshot.projectId,
+          role,
+          bindingId: snapshot.binding.bindingId,
+          publicKey: snapshot.binding.key.expectedPublicKey,
+          accountId: snapshot.binding.accountId,
+          state: session.state,
+          expiresAt: session.expiresAt,
+          depositAddress: session.depositAddress
+        });
+      } catch (error) {
+        await session.lock();
+        throw error;
+      }
+    },
+    async run(role, operation) {
+      const current = active;
+      if (!current || current.snapshot.binding.role !== role)
+        throw new VaultWalletError("SESSION_LOCKED", "Unlock the explicitly assigned project role first.");
+      try {
+        assertProjectRoleSnapshotCurrent(await load(), current.snapshot);
+      } catch (error) {
+        if (active === current)
+          await lock();
+        throw error;
+      }
+      if (active !== current || current.session.state !== "ready")
+        throw new VaultWalletError("SESSION_LOCKED", "Unlock the explicitly assigned project role again.");
+      return operation(current.session);
+    }
+  });
+}
+var VAULT_PACKAGE = "@opl.dev/vault";
+var init_vaultWalletController = __esm(() => {
+  init_accounts();
+  init_projectRoleBindings();
+  init_projectRoleBindingsStore();
+  init_vaultWallet();
+});
+
+// utils/projectWalletRuntime.ts
+import { isAbsolute as isAbsolute8, resolve as resolve4 } from "node:path";
+function fail5(code, message) {
+  throw new VaultWalletError(code, message);
+}
+function explicitPath(value, name) {
+  if (!value?.trim())
+    fail5("PROJECT_PATH_INVALID", `${name} is required`);
+  if (!isAbsolute8(value))
+    fail5("PROJECT_PATH_INVALID", `${name} must be an absolute path`);
+  return resolve4(value);
+}
+function readProjectWalletConfig(env = process.env, argv = process.argv) {
+  const root = env.BSV_MCP_PROJECT_ROOT;
+  const id = env.BSV_MCP_PROJECT_ID;
+  if (root === undefined && id === undefined)
+    return;
+  if (root === undefined || id === undefined)
+    fail5("PROJECT_CONFIG_INCOMPLETE", "BSV_MCP_PROJECT_ROOT and BSV_MCP_PROJECT_ID must be configured together");
+  if (!(argv.includes("--stdio") || env.TRANSPORT?.toLowerCase() === "stdio"))
+    fail5("PROJECT_STDIO_REQUIRED", "Project-bound wallets are available only through the stdio transport");
+  for (const name of PROJECT_CONFLICTS) {
+    if (env[name] !== undefined)
+      fail5("PROJECT_WALLET_CONFLICT", `Project-bound wallet conflicts with ${name}; select one wallet mode`);
+  }
+  if (!id.trim() || !PROJECT_ID_PATTERN.test(id))
+    fail5("PROJECT_CONFIG_INVALID", "BSV_MCP_PROJECT_ID must match the project role identifier format");
+  return {
+    projectRoot: explicitPath(root, "BSV_MCP_PROJECT_ROOT"),
+    projectId: id
+  };
+}
+function moduleDefaultPath(module, vaultId) {
+  const candidate = module.defaultVaultPath;
+  if (typeof candidate === "function")
+    return Promise.resolve(candidate(vaultId));
+  if (typeof candidate === "string")
+    return Promise.resolve(candidate);
+  return Promise.reject(new VaultWalletError("VAULT_PATH_UNAVAILABLE", "Set VAULT_PATH or install a Vault module with a defaultVaultPath"));
+}
+async function createProjectWalletRuntime(options = {}) {
+  const env = options.env ?? process.env;
+  const argv = options.argv ?? process.argv;
+  const config = readProjectWalletConfig(env, argv);
+  if (!config)
+    fail5("PROJECT_CONFIG_REQUIRED", "Project wallet configuration is missing");
+  const projectRoot = explicitPath(options.projectRoot ?? config.projectRoot, "BSV_MCP_PROJECT_ROOT");
+  const projectId = options.projectId ?? config.projectId;
+  if (!projectId.trim() || !PROJECT_ID_PATTERN.test(projectId))
+    fail5("PROJECT_CONFIG_INVALID", "BSV_MCP_PROJECT_ID must match the project role identifier format");
+  const passphrase = options.passphrase ?? env.BSV_MCP_PASSWORD;
+  if (!passphrase?.trim())
+    fail5("PROJECT_PASSWORD_REQUIRED", "Project-bound wallets require BSV_MCP_PASSWORD at runtime");
+  const loadModule = options.loadVaultModule ?? (() => loadInstalledVaultModule());
+  let modulePromise;
+  const module = () => modulePromise ??= loadModule();
+  const selectedPath = options.vaultPath ?? env.VAULT_PATH;
+  const resolveVaultPath = async (vaultId) => {
+    if (selectedPath !== undefined)
+      return explicitPath(selectedPath, "VAULT_PATH");
+    return explicitPath(await moduleDefaultPath(await module(), vaultId), "Vault defaultVaultPath");
+  };
+  const controller = createVaultWalletController({
+    ...options.controllerOptions ?? {},
+    projectRoot,
+    expectedProjectId: projectId,
+    resolveVaultPath,
+    loadVaultModule: module
+  });
+  const status = await controller.unlock(PROJECT_WALLET_ROLE, passphrase, options.reason ?? "BSV MCP project payments session", options.ttlSeconds);
+  let guardedContext;
+  await controller.run(PROJECT_WALLET_ROLE, async (session) => {
+    const wallet = createGuardedWallet(controller, PROJECT_WALLET_ROLE, session.wallet);
+    guardedContext = createGuardedContext(session.ctx, wallet);
+  });
+  if (!guardedContext)
+    fail5("PROJECT_CONTEXT_UNAVAILABLE", "Project wallet context could not be initialized");
+  let timer;
+  let cleaned = false;
+  const now = options.now ?? Date.now;
+  const clearSchedule = options.clearSchedule ?? ((timer) => {
+    if (timer !== undefined && timer !== null)
+      clearTimeout(timer);
+  });
+  const terminate = options.terminate ?? (() => {
+    process.kill(process.pid, "SIGTERM");
+  });
+  const lockTimeoutMs = options.lockTimeoutMs ?? 5000;
+  const expire = () => {
+    if (cleaned)
+      return;
+    (async () => {
+      let lockFinished = false;
+      try {
+        await Promise.race([
+          controller.lock().then(() => {
+            lockFinished = true;
+          }),
+          new Promise((resolveTimeout) => setTimeout(resolveTimeout, lockTimeoutMs))
+        ]);
+      } finally {
+        if (!lockFinished)
+          console.error("Project wallet cleanup exceeded its timeout; terminating child");
+        await terminate();
+      }
+    })().catch((error) => console.error("Project wallet expiry cleanup failed:", error instanceof Error ? error.message : String(error)));
+  };
+  timer = (options.schedule ?? setTimeout)(expire, Math.max(0, status.expiresAt - now()));
+  const cleanup = async () => {
+    if (cleaned)
+      return;
+    cleaned = true;
+    if (timer !== undefined)
+      clearSchedule(timer);
+    await controller.lock();
+  };
+  return Object.freeze({
+    projectRoot,
+    projectId,
+    role: PROJECT_WALLET_ROLE,
+    ctx: guardedContext,
+    wallet: guardedContext.wallet,
+    services: guardedContext.services,
+    depositAddress: status.depositAddress,
+    expiresAt: status.expiresAt,
+    controller,
+    cleanup
+  });
+}
+function createGuardedWallet(controller, role, initial) {
+  return new Proxy(Object.create(null), {
+    get(_target, property) {
+      const value = Reflect.get(initial, property, initial);
+      if (typeof value !== "function")
+        return value;
+      return (...args) => controller.run(role, async (session) => {
+        const current = Reflect.get(session.wallet, property, session.wallet);
+        if (typeof current !== "function")
+          throw new VaultWalletError("WALLET_METHOD_UNAVAILABLE", "The selected wallet operation is unavailable");
+        return Reflect.apply(current, session.wallet, args);
+      });
+    }
+  });
+}
+function createGuardedContext(initial, wallet) {
+  const descriptors = Object.getOwnPropertyDescriptors(initial);
+  Reflect.deleteProperty(descriptors, "wallet");
+  const context = Object.create(Object.getPrototypeOf(initial));
+  Object.defineProperties(context, descriptors);
+  Object.defineProperty(context, "wallet", {
+    value: wallet,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  return context;
+}
+var PROJECT_WALLET_ROLE = "payments", PROJECT_CONFLICTS, PROJECT_ID_PATTERN;
+var init_projectWalletRuntime = __esm(() => {
+  init_vaultWallet();
+  init_vaultWalletController();
+  PROJECT_CONFLICTS = [
+    "BRC100_WALLET_URL",
+    "BRC100_WALLET_ORIGINATOR",
+    "PRIVATE_KEY_WIF",
+    "IDENTITY_KEY_WIF",
+    "USE_DROPLIT_API",
+    "DROPLIT_API_URL",
+    "DROPLIT_FAUCET_NAME",
+    "BSV_MCP_ACCOUNT",
+    "BSV_CHAIN",
+    "REMOTE_STORAGE_URL",
+    "BSV_MCP_PASSPHRASE"
+  ];
+  PROJECT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/;
+});
+
+// utils/projectRoleSelection.ts
+function candidatesById(candidates) {
+  const map = new Map;
+  for (const candidate of candidates) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(candidate.candidateId) || map.has(candidate.candidateId))
+      throw new Error("PROJECT_ROLE_INVALID_CANDIDATE_ID");
+    map.set(candidate.candidateId, candidate);
+  }
+  return map;
+}
+function unavailable(candidate, role, supportedContracts = ["direct-v1"]) {
+  if (candidate.unavailableReason)
+    return candidate.unavailableReason;
+  if (!candidate.supportedRoles.includes(role))
+    return "This key does not support this role";
+  if (!candidate.keyUseContract || !supportedContracts.includes(candidate.keyUseContract))
+    return "Derived key profiles are not supported by this controller";
+  if (!candidate.accountId || !candidate.key)
+    return "Verified account and public key references are required";
+  return;
+}
+function prepareProjectRoleSelection(current, candidates, requestInput, metadata) {
+  const request = projectRoleSelectionRequestSchema.parse(requestInput);
+  const initial = current === null;
+  if (initial && (!metadata.expectedProjectId || metadata.expectedProjectId !== request.expectedProjectId))
+    throw new Error("PROJECT_ROLE_PROJECT_MISMATCH");
+  const config = parseProjectRoleBindings(initial ? {
+    schemaVersion: 1,
+    projectId: metadata.expectedProjectId,
+    revision: 0,
+    current: {
+      "identity-signing": null,
+      payments: null,
+      "one-sat": null,
+      encryption: null
+    },
+    bindings: [],
+    retained: []
+  } : current);
+  if (config.projectId !== request.expectedProjectId)
+    throw new Error("PROJECT_ROLE_PROJECT_MISMATCH");
+  if ((initial ? null : config.revision) !== request.expectedRevision)
+    throw new Error("PROJECT_ROLE_REVISION_CONFLICT");
+  const inventory = candidatesById(candidates);
+  const changes = [];
+  for (const role of PROJECT_KEY_ROLES2) {
+    const selection = request.roleAssignments[role];
+    if (selection === "unassigned") {
+      changes.push({ role, binding: null });
+      continue;
+    }
+    if (selection.startsWith("keep:")) {
+      if (config.current[role] !== selection.slice(5))
+        throw new Error("PROJECT_ROLE_SELECTION_STALE");
+      continue;
+    }
+    const candidate = inventory.get(selection.slice(7));
+    if (!candidate || unavailable(candidate, role, metadata.supportedContracts))
+      throw new Error("PROJECT_ROLE_CANDIDATE_UNAVAILABLE");
+    const binding = projectRoleBindingSchema.parse({
+      bindingId: metadata.createBindingId(role),
+      role,
+      accountId: candidate.accountId,
+      key: candidate.key,
+      keyUseContract: candidate.keyUseContract,
+      createdAt: metadata.now
+    });
+    const { role: _role, ...fields } = binding;
+    changes.push({ role, binding: fields });
+  }
+  if (initial) {
+    const bindings = changes.flatMap(({ role, binding }) => binding ? [{ ...binding, role }] : []);
+    return parseProjectRoleBindings({
+      ...config,
+      current: Object.fromEntries(PROJECT_KEY_ROLES2.map((role) => [
+        role,
+        bindings.find((binding) => binding.role === role)?.bindingId ?? null
+      ])),
+      bindings
+    });
+  }
+  return changeProjectRoleBindings(config, {
+    expectedProjectId: request.expectedProjectId,
+    expectedRevision: config.revision,
+    changes
+  });
+}
+var choice, projectRoleAssignmentsSchema, projectRoleSelectionRequestSchema;
+var init_projectRoleSelection = __esm(() => {
+  init_zod();
+  init_projectRoleBindings();
+  choice = string2().regex(/^(unassigned|(?:keep|select):[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127})$/);
+  projectRoleAssignmentsSchema = object2({
+    "identity-signing": choice,
+    payments: choice,
+    "one-sat": choice,
+    encryption: choice
+  }).strict();
+  projectRoleSelectionRequestSchema = object2({
+    expectedProjectId: string2().min(1),
+    expectedRevision: number2().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+    roleAssignments: projectRoleAssignmentsSchema
+  }).strict();
+});
+
+// utils/vaultMigrationJournal.ts
+import { randomUUID as randomUUID5 } from "node:crypto";
+import { existsSync as existsSync11, lstatSync as lstatSync6, readFileSync as readFileSync5, realpathSync as realpathSync3 } from "node:fs";
+import { open as open5, rename as rename4, rm as rm4 } from "node:fs/promises";
+import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute9, join as join15, resolve as resolve5 } from "node:path";
+function canonicalMigrationPath(input) {
+  if (!isAbsolute9(input))
+    throw new VaultWalletError("INVALID_PATH", "Migration paths must be absolute.");
+  let parent = resolve5(input);
+  const tail = [];
+  while (!existsSync11(parent)) {
+    const next = dirname5(parent);
+    if (next === parent)
+      throw new VaultWalletError("INVALID_PATH", "Migration path could not be resolved.");
+    tail.unshift(basename2(parent));
+    parent = next;
+  }
+  return join15(realpathSync3(parent), ...tail);
+}
+function migrationJournalPaths(vaultPath, sessionId) {
+  const id = uuid2().parse(sessionId);
+  return {
+    journal: join15(dirname5(vaultPath), `.vault-migration-${id}.json`),
+    stageDirectory: join15(dirname5(vaultPath), `.vault-migration-${id}`)
+  };
+}
+async function writeMigrationJournal(journal) {
+  const checked = migrationJournalSchema.parse(journal);
+  const path = migrationJournalPaths(checked.vaultPath, checked.sessionId).journal;
+  regularPath(path);
+  const temporary = `${path}.${randomUUID5()}.tmp`;
+  const handle = await open5(temporary, "wx", 384);
+  try {
+    await handle.writeFile(JSON.stringify(checked));
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename4(temporary, path);
+    const directory = await open5(dirname5(path), "r");
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
+  } finally {
+    await rm4(temporary, { force: true });
+  }
+}
+function readMigrationJournal(context) {
+  const path = migrationJournalPaths(context.vaultPath, context.sessionId).journal;
+  regularPath(path);
+  if (!existsSync11(path))
+    return;
+  let journal;
+  try {
+    journal = migrationJournalSchema.parse(JSON.parse(readFileSync5(path, "utf8")));
+  } catch {
+    throw new VaultWalletError("MIGRATION_JOURNAL_INVALID", "Migration recovery metadata is invalid; preserve the encrypted files for manual recovery.");
+  }
+  if (canonicalMigrationPath(journal.projectRoot) !== canonicalMigrationPath(context.projectRoot) || journal.projectId !== context.projectId || canonicalMigrationPath(journal.vaultPath) !== canonicalMigrationPath(context.vaultPath) || journal.accountName !== context.accountName || journal.sessionId !== context.sessionId)
+    throw new VaultWalletError("MIGRATION_JOURNAL_MISMATCH", "This recovery record belongs to a different project, account or Vault.");
+  return journal;
+}
+var digestSchema, databaseName, migrationJournalSchema;
+var init_vaultMigrationJournal = __esm(() => {
+  init_zod();
+  init_accounts();
+  init_projectRoleBindings();
+  init_vaultWallet();
+  digestSchema = string2().regex(/^[0-9a-f]{64}$/);
+  databaseName = string2().regex(/^wallet(?:-(?:main|test))?\.db(?:-wal|-shm)?$/);
+  migrationJournalSchema = object2({
+    version: literal(1),
+    sessionId: uuid2(),
+    projectRoot: string2(),
+    projectId: string2(),
+    vaultPath: string2(),
+    accountName: accountNameSchema,
+    phase: _enum([
+      "prepared",
+      "stage-verified",
+      "activation-pending",
+      "vault-activated",
+      "bindings-committed",
+      "complete"
+    ]),
+    sourceHashes: record(union([literal("keys.bep"), literal("config.json"), databaseName]), digestSchema),
+    beforeVaultHash: digestSchema.nullable(),
+    stagedVaultHash: digestSchema.optional(),
+    beforeConfigHash: digestSchema.nullable(),
+    nextProjectConfig: projectRoleBindingsSchema.optional(),
+    preserved: object2({
+      identity: literal(true),
+      addresses: boolean2(),
+      databases: array(databaseName),
+      vaultEntries: array(string2())
+    }).strict()
+  }).strict();
+});
+
+// utils/vaultMigrationBackend.ts
+import { createHash as createHash5, randomUUID as randomUUID6 } from "node:crypto";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync6 } from "node:fs";
+import {
+  chmod as chmod4,
+  copyFile as copyFile3,
+  link,
+  mkdir as mkdir4,
+  open as open6,
+  readFile as readFile4,
+  rename as rename5,
+  rm as rm5
+} from "node:fs/promises";
+import { dirname as dirname6, isAbsolute as isAbsolute10, join as join16, sep as sep2 } from "node:path";
+function roleCandidates(prepared) {
+  return Object.entries(prepared.entries).flatMap(([candidateId, entry]) => entry?.publicKey ? [
+    {
+      candidateId,
+      label: candidateId === "payment" ? "Imported payment key" : "Imported identity key",
+      accountId: prepared.accountName,
+      key: {
+        vaultId: prepared.vault.toDocument().id,
+        entryId: entry.id,
+        expectedPublicKey: entry.publicKey
+      },
+      keyUseContract: "direct-v1",
+      supportedRoles: candidateId === "payment" ? ["payments", "one-sat"] : ["identity-signing", "encryption"]
+    }
+  ] : []);
+}
+async function syncFile2(path) {
+  const file = await open6(path, "r");
+  try {
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+}
+async function syncDirectory2(path) {
+  const directory = await open6(path, "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+function sameDestination(prepared, destination) {
+  return destination.accountName === prepared.accountName && canonicalMigrationPath(destination.vaultPath) === prepared.session.vaultPath && destination.vaultEntryId === prepared.session.vaultEntryId && (destination.expectedPublicKey === undefined || destination.expectedPublicKey === prepared.session.publicKey);
+}
+async function createAccountVaultMigrationBackend(options) {
+  if (!isAbsolute10(options.projectRoot) || !isAbsolute10(options.vaultPath) || !options.expectedProjectId)
+    throw failure4("PROJECT_REQUIRED", "Configure an explicit project root, project ID and absolute Vault path.");
+  const projectRoot = canonicalMigrationPath(options.projectRoot);
+  const expectedProjectId = options.expectedProjectId;
+  const roleAssignments = Object.freeze({ ...options.roleAssignments });
+  const vaultPath = canonicalMigrationPath(options.vaultPath);
+  const root = canonicalMigrationPath(options.accountsDirectory ?? accountsRoot());
+  if (!isAbsolute10(root))
+    throw failure4("PROJECT_REQUIRED", "The account directory must be an explicit absolute path.");
+  const now = options.now ?? Date.now;
+  if (vaultPath === root || vaultPath === dirname6(vaultPath) || vaultPath.startsWith(`${root}${sep2}`))
+    throw failure4("INVALID_DESTINATION", "The Vault destination must be outside the original account directory tree.");
+  let module;
+  try {
+    const candidate = await (options.loadModule ?? loadInstalledVaultModule)();
+    if (!candidate || typeof candidate !== "object" || ![
+      "PassphraseProvider",
+      "Vault",
+      "createVaultDocument",
+      "openVault",
+      "createVault",
+      "saveVault"
+    ].every((name) => (name in candidate) && typeof candidate[name] === "function"))
+      throw failure4("VAULT_PACKAGE_INCOMPATIBLE", "The installed Vault package does not provide encrypted migration support.");
+    module = candidate;
+  } catch (error) {
+    const safe = noSecrets(error);
+    return {
+      available: false,
+      unavailableReason: safe.message,
+      beginUnlock: async () => {
+        throw safe;
+      },
+      preview: async () => {
+        throw safe;
+      },
+      cutover: async () => {
+        throw safe;
+      },
+      lock: async () => {}
+    };
+  }
+  const sessions = new Map;
+  const outcomes = new Map;
+  const close = async (id) => {
+    const prepared = sessions.get(id);
+    if (!prepared)
+      return;
+    sessions.delete(id);
+    clearTimeout(prepared.timer);
+    prepared.password = "";
+    prepared.vault.lock();
+  };
+  const current = (id) => {
+    const prepared = sessions.get(id);
+    if (!prepared || now() >= prepared.session.expiresAt) {
+      close(id);
+      throw failure4("SESSION_EXPIRED", "Unlock the account and Vault again before migrating.");
+    }
+    return prepared;
+  };
+  const checkSource = (prepared) => {
+    for (const [name, hash] of prepared.sourceHashes) {
+      const path = join16(prepared.sourceDir, name);
+      regularPath(path);
+      if (!existsSync12(path) || digest3(readFileSync6(path)) !== hash)
+        throw failure4("SOURCE_CHANGED", "The account changed since preview. Close its wallet and unlock again before migration.");
+    }
+  };
+  const assertRequest = (prepared, input) => {
+    if (input.source.location !== "account" || input.source.account !== prepared.accountName || !sameDestination(prepared, input.destination))
+      throw failure4("INVALID_SELECTION", "Migration must preserve the explicitly selected existing account and Vault destination.");
+  };
+  return {
+    available: true,
+    async beginUnlock(input) {
+      let vault;
+      try {
+        const credentials = input;
+        if (typeof credentials.sourcePassphrase !== "string" || !credentials.sourcePassphrase || typeof credentials.destinationPassphrase !== "string" || credentials.destinationPassphrase.length < 8)
+          throw failure4("CREDENTIALS_REQUIRED", "Enter the account passphrase and a Vault passphrase of at least eight characters separately.");
+        const name = accountNameSchema.parse(input.accountName);
+        if (input.source.location !== "account" || input.source.account !== name)
+          throw failure4("SOURCE_UNSUPPORTED", "Choose the same existing encrypted named account as source and destination.");
+        if (canonicalMigrationPath(input.vaultPath) !== vaultPath)
+          throw failure4("INVALID_DESTINATION", "Choose the locally configured Vault destination.");
+        const ttl = input.ttlMs ?? 300000;
+        if (!Number.isSafeInteger(ttl) || ttl < 1000 || ttl > 3600000)
+          throw failure4("INVALID_TTL", "Migration unlock duration must be between one second and one hour.");
+        regularPath(root, true);
+        const sourceDir = accountDir(name, root);
+        regularPath(sourceDir, true);
+        const configPath = join16(sourceDir, "config.json");
+        regularPath(configPath);
+        const configBytes = readFileSync6(configPath);
+        const config = readAccount(name, root);
+        if (!config)
+          throw failure4("ACCOUNT_UNAVAILABLE", "The selected existing account configuration is unavailable.");
+        const sourcePath = join16(sourceDir, "keys.bep");
+        regularPath(sourcePath);
+        const sourceBytes = readFileSync6(sourcePath);
+        const keys = await decodeEncryptedKeys(sourceBytes.toString("utf8"), credentials.sourcePassphrase);
+        if (!keys.payPk)
+          throw failure4("SOURCE_UNSUPPORTED", "The encrypted account has no payment key.");
+        const paymentPublicKey = keys.payPk.toPublicKey().toString();
+        if (input.expectedPublicKey && input.expectedPublicKey !== paymentPublicKey)
+          throw failure4("IDENTITY_MISMATCH", "The account payment key does not match the approved public key.");
+        regularPath(dirname6(vaultPath), true);
+        regularPath(vaultPath);
+        const vaultBefore = existsSync12(vaultPath) ? readFileSync6(vaultPath) : null;
+        vault = vaultBefore ? await module.openVault(vaultPath, new module.PassphraseProvider(credentials.destinationPassphrase)) : new module.Vault(module.createVaultDocument({ revealEnabled: true }));
+        if (!vault.toDocument().settings.revealEnabled)
+          throw failure4("REVEAL_DISABLED", "Enable Vault reveal locally before choosing in-memory wallet use.");
+        const originalEntries = vault.list();
+        vault.unlock("Review encrypted account migration", Math.ceil(ttl / 1000));
+        if (input.vaultEntryId !== "new")
+          throw failure4("DESTINATION_UNSUPPORTED", "Choose a new Vault entry; existing entries are retained without replacement.");
+        const payment = vault.importPlain({ wif: keys.payPk.toWif() }, `${name} payment`)[0];
+        if (!payment)
+          throw failure4("IMPORT_FAILED", "Vault did not create the payment entry.");
+        const identity = keys.identityPk ? vault.importPlain({ wif: keys.identityPk.toWif() }, `${name} identity`)[0] : undefined;
+        if (keys.xprv) {
+          const at = new Date(now()).toISOString();
+          vault.adoptEntry({
+            id: randomUUID6(),
+            kind: "hd-private",
+            label: `${name} retained HD identity`,
+            tags: [],
+            createdAt: at,
+            updatedAt: at,
+            value: keys.xprv,
+            publicKey: HD.fromString(keys.xprv).pubKey.toString(),
+            metadata: { purpose: "legacy identity recovery" }
+          }, "Preserve encrypted legacy HD identity");
+        }
+        for (const source of Object.values(roleAssignments)) {
+          if (source !== "payment" && source !== "identity")
+            throw failure4("ROLE_SELECTION_REQUIRED", "Choose explicit supported project key roles.");
+          if (source === "identity" && !identity)
+            throw failure4("IDENTITY_UNAVAILABLE", "This account has no standalone identity key for the selected role.");
+        }
+        const projectConfig = await loadProjectRoleBindings(projectRoot, expectedProjectId);
+        const sourceHashes = new Map;
+        for (const file of readdirSync5(sourceDir)) {
+          if (file === "keys.bep" || file === "config.json" || /^wallet(?:-(main|test))?\.db(?:-wal|-shm)?$/.test(file)) {
+            const path = join16(sourceDir, file);
+            regularPath(path);
+            sourceHashes.set(file, digest3(readFileSync6(path)));
+          }
+        }
+        if (digest3(sourceBytes) !== sourceHashes.get("keys.bep") || digest3(configBytes) !== sourceHashes.get("config.json"))
+          throw failure4("SOURCE_CHANGED", "The source changed while unlocking. Try again.");
+        const session = {
+          sessionId: randomUUID6(),
+          expiresAt: now() + ttl,
+          vaultPath,
+          vaultEntryId: "new",
+          publicKey: paymentPublicKey,
+          expectedPublicKey: input.expectedPublicKey
+        };
+        const timer = setTimeout(() => {
+          close(session.sessionId);
+        }, ttl);
+        timer.unref?.();
+        sessions.set(session.sessionId, {
+          session,
+          accountName: name,
+          vault,
+          password: credentials.destinationPassphrase,
+          vaultBefore,
+          sourceBytes,
+          sourceDir,
+          sourceHashes,
+          config,
+          projectConfig,
+          projectRevision: projectConfig?.revision ?? null,
+          entries: { payment, identity },
+          originalEntries,
+          timer,
+          busy: false
+        });
+        return { ...session };
+      } catch (error) {
+        vault?.lock();
+        throw noSecrets(error);
+      }
+    },
+    async preview(input) {
+      const prepared = current(input.sessionId);
+      assertRequest(prepared, input);
+      checkSource(prepared);
+      const addresses = prepared.config.address ? [prepared.config.address] : [];
+      const databases = [...prepared.sourceHashes.keys()].filter((name) => name.includes(".db"));
+      const preview = {
+        projectRoles: {
+          current: prepared.projectConfig,
+          projectId: expectedProjectId,
+          candidates: roleCandidates(prepared)
+        },
+        source: {
+          account: prepared.accountName,
+          location: "account",
+          identity: prepared.session.publicKey,
+          addresses,
+          databaseFiles: databases
+        },
+        destination: {
+          accountName: prepared.accountName,
+          vaultPath,
+          vaultEntryId: prepared.session.vaultEntryId,
+          identity: prepared.session.publicKey,
+          addresses,
+          existingVaultEntries: prepared.originalEntries.map((entry) => ({
+            entryId: String(entry.id),
+            publicKey: typeof entry.publicKey === "string" ? entry.publicKey : undefined,
+            label: String(entry.label)
+          }))
+        },
+        preservation: {
+          identity: "match",
+          addresses: addresses.length ? "match" : "unknown",
+          databases,
+          vaultEntries: "retain"
+        },
+        conflicts: []
+      };
+      return preview;
+    },
+    async cutover(input, onProgress) {
+      const priorOutcome = outcomes.has(input.sessionId);
+      let prepared;
+      try {
+        prepared = current(input.sessionId);
+        assertRequest(prepared, input);
+        if (input.confirmation !== "MIGRATE_AND_SWITCH")
+          throw failure4("CONFIRMATION_REQUIRED", "Confirm migration before writing the encrypted destination.");
+        if (prepared.busy)
+          throw failure4("MIGRATION_BUSY", "This migration is already running.");
+        const selectionRequest = input.roleSelection;
+        if (!selectionRequest && Object.keys(roleAssignments).length === 0)
+          throw failure4("ROLE_SELECTION_REQUIRED", "Choose explicit project key roles before cutover.");
+        if (selectionRequest)
+          prepareProjectRoleSelection(prepared.projectConfig, roleCandidates(prepared), selectionRequest, {
+            createBindingId: () => randomUUID6(),
+            now: new Date(now()).toISOString(),
+            expectedProjectId
+          });
+      } catch (error) {
+        const known = sessions.get(input.sessionId);
+        if (known && !known.busy && !priorOutcome)
+          throw Object.assign(noSecrets(error), { noEffect: true });
+        throw noSecrets(error);
+      }
+      prepared.busy = true;
+      const outcome = { activationAttempted: false };
+      outcomes.set(input.sessionId, outcome);
+      let durableWriteAttempted = false;
+      let stageDirectory;
+      const journal = {
+        version: 1,
+        sessionId: input.sessionId,
+        projectRoot,
+        projectId: expectedProjectId,
+        vaultPath,
+        accountName: prepared.accountName,
+        phase: "prepared",
+        sourceHashes: Object.fromEntries(prepared.sourceHashes),
+        beforeVaultHash: prepared.vaultBefore ? digest3(prepared.vaultBefore) : null,
+        beforeConfigHash: prepared.projectConfig === null ? null : digest3(JSON.stringify(prepared.projectConfig)),
+        preserved: {
+          identity: true,
+          addresses: true,
+          databases: [...prepared.sourceHashes.keys()].filter((name) => name.includes(".db")),
+          vaultEntries: prepared.originalEntries.map((entry) => String(entry.id))
+        }
+      };
+      let lockHandle;
+      const lockPath = `${vaultPath}.lock`;
+      const progress = (stage, completed, message) => onProgress?.({ stage, completed, total: 5, message });
+      try {
+        checkSource(prepared);
+        current(input.sessionId);
+        durableWriteAttempted = true;
+        await mkdir4(dirname6(vaultPath), { recursive: true, mode: 448 });
+        regularPath(dirname6(vaultPath), true);
+        regularPath(lockPath);
+        lockHandle = await open6(lockPath, "wx", 384);
+        await lockHandle.writeFile(JSON.stringify({
+          pid: process.pid,
+          at: now(),
+          sessionId: input.sessionId
+        }));
+        await lockHandle.sync();
+        await writeMigrationJournal(journal);
+        regularPath(vaultPath);
+        const actual = existsSync12(vaultPath) ? await readFile4(vaultPath) : null;
+        if (actual === null !== (prepared.vaultBefore === null) || actual && prepared.vaultBefore && digest3(actual) !== digest3(prepared.vaultBefore))
+          throw failure4("VAULT_CHANGED", "The destination Vault changed after preview. Unlock again to preserve its current entries.");
+        progress("backup", 0, "Preserving the original encrypted account and destination.");
+        stageDirectory = migrationJournalPaths(vaultPath, input.sessionId).stageDirectory;
+        await mkdir4(stageDirectory, { mode: 448 });
+        await chmod4(stageDirectory, 448);
+        const backup = join16(stageDirectory, "source-keys.bep");
+        const backupHandle = await open6(backup, "wx", 384);
+        try {
+          await backupHandle.writeFile(prepared.sourceBytes);
+          await backupHandle.sync();
+        } finally {
+          await backupHandle.close();
+        }
+        const stage = join16(stageDirectory, "destination.bep");
+        if (prepared.vaultBefore) {
+          const previousBackup = join16(stageDirectory, "previous-vault.bep");
+          await copyFile3(vaultPath, previousBackup);
+          await chmod4(previousBackup, 384);
+          await syncFile2(previousBackup);
+          await copyFile3(vaultPath, stage);
+          await chmod4(stage, 384);
+        } else {
+          const empty = await module.createVault(stage, [
+            new module.PassphraseProvider(prepared.password)
+          ]);
+          empty.lock();
+        }
+        current(input.sessionId);
+        progress("import", 1, "Writing only encrypted Vault data.");
+        await module.saveVault(stage, prepared.vault, new module.PassphraseProvider(prepared.password));
+        await syncFile2(stage);
+        await syncDirectory2(stageDirectory);
+        current(input.sessionId);
+        progress("verify", 2, "Reopening the encrypted destination to verify all imported and retained entries.");
+        const verified = await module.openVault(stage, new module.PassphraseProvider(prepared.password));
+        try {
+          if (JSON.stringify(verified.toDocument().entries) !== JSON.stringify(prepared.vault.toDocument().entries))
+            throw failure4("VERIFICATION_FAILED", "The encrypted destination did not preserve every Vault entry.");
+          verified.unlock("Verify migrated payment identity", 30);
+          if (PrivateKey.fromWif(verified.reveal(prepared.entries.payment.id, "Verify migrated payment identity")).toPublicKey().toString() !== prepared.session.publicKey)
+            throw failure4("VERIFICATION_FAILED", "The encrypted payment identity could not be verified.");
+        } finally {
+          verified.lock();
+        }
+        checkSource(prepared);
+        current(input.sessionId);
+        const base = prepared.projectConfig === null ? {
+          schemaVersion: 1,
+          projectId: expectedProjectId,
+          revision: 0,
+          current: {
+            "identity-signing": null,
+            payments: null,
+            "one-sat": null,
+            encryption: null
+          },
+          bindings: [],
+          retained: []
+        } : prepared.projectConfig;
+        const changes = Object.entries(roleAssignments).map(([role, source]) => {
+          const entry = prepared.entries[source];
+          if (!entry?.publicKey)
+            throw failure4("VERIFICATION_FAILED", "A selected project role has no verified public key.");
+          return {
+            role,
+            binding: {
+              bindingId: randomUUID6(),
+              accountId: prepared.accountName,
+              key: {
+                vaultId: prepared.vault.toDocument().id,
+                entryId: entry.id,
+                expectedPublicKey: entry.publicKey
+              },
+              keyUseContract: "direct-v1",
+              createdAt: new Date(now()).toISOString()
+            }
+          };
+        });
+        const selection = input.roleSelection;
+        const next = selection ? prepareProjectRoleSelection(prepared.projectConfig, roleCandidates(prepared), selection, {
+          createBindingId: () => randomUUID6(),
+          now: new Date(now()).toISOString(),
+          expectedProjectId
+        }) : changeProjectRoleBindings(base, {
+          expectedProjectId,
+          expectedRevision: base.revision,
+          changes
+        });
+        journal.nextProjectConfig = projectRoleBindingsSchema.parse(prepared.projectRevision === null ? { ...next, revision: 0 } : next);
+        journal.stagedVaultHash = digest3(await readFile4(stage));
+        journal.phase = "stage-verified";
+        await writeMigrationJournal(journal);
+        const latest = await loadProjectRoleBindings(projectRoot, expectedProjectId);
+        if ((latest?.revision ?? null) !== prepared.projectRevision)
+          throw failure4("PROJECT_CHANGED", "Project roles changed after preview. Unlock again before cutover.");
+        current(input.sessionId);
+        progress("cutover", 3, "Activating the verified encrypted Vault; original account files stay in place.");
+        outcome.activationAttempted = true;
+        journal.phase = "activation-pending";
+        await writeMigrationJournal(journal);
+        if (prepared.vaultBefore)
+          await rename5(stage, vaultPath);
+        else {
+          await link(stage, vaultPath);
+          await rm5(stage);
+        }
+        await syncDirectory2(dirname6(vaultPath));
+        journal.phase = "vault-activated";
+        await writeMigrationJournal(journal);
+        current(input.sessionId);
+        await saveProjectRoleBindings(projectRoot, prepared.projectRevision === null ? { ...next, revision: 0 } : next, {
+          expectedProjectId,
+          expectedRevision: prepared.projectRevision
+        });
+        journal.phase = "bindings-committed";
+        await writeMigrationJournal(journal);
+        if (digest3(await readFile4(vaultPath)) !== journal.stagedVaultHash || JSON.stringify(await loadProjectRoleBindings(projectRoot, expectedProjectId)) !== JSON.stringify(journal.nextProjectConfig))
+          throw failure4("POST_COMMIT_CHANGED", "Migration state changed after activation. Preserve the recovery files and reconcile before retrying.");
+        checkSource(prepared);
+        journal.phase = "complete";
+        await writeMigrationJournal(journal);
+        await rm5(stageDirectory, { recursive: true });
+        await syncDirectory2(dirname6(vaultPath));
+        const result = {
+          completed: true,
+          verified: true,
+          accountName: prepared.accountName,
+          preserved: {
+            identity: true,
+            addresses: true,
+            databases: [...prepared.sourceHashes.keys()].filter((name) => name.includes(".db")),
+            vaultEntries: prepared.originalEntries.map((entry) => String(entry.id))
+          }
+        };
+        outcome.result = result;
+        progress("complete", 5, "Encrypted migration verified. Restart or unlock the configured project wallet to use the new bindings.");
+        await close(input.sessionId);
+        return result;
+      } catch (error) {
+        const safe = noSecrets(error);
+        if (!durableWriteAttempted && !priorOutcome)
+          throw Object.assign(safe, { noEffect: true });
+        throw safe;
+      } finally {
+        prepared.busy = false;
+        if (lockHandle) {
+          await lockHandle.close();
+          await rm5(lockPath, { force: true });
+        }
+      }
+    },
+    async reconcile(input) {
+      const outcome = outcomes.get(input.sessionId);
+      if (outcome?.result)
+        return { status: "complete", result: outcome.result };
+      const prepared = sessions.get(input.sessionId);
+      if (prepared?.busy)
+        return { status: "unknown" };
+      if (prepared)
+        assertRequest(prepared, input);
+      if (input.source.location !== "account" || input.source.account !== input.destination.accountName || canonicalMigrationPath(input.destination.vaultPath) !== vaultPath || input.destination.vaultEntryId !== "new")
+        throw failure4("INVALID_SELECTION", "Recovery must use the same project, account and Vault destination.");
+      const recovered = readMigrationJournal({
+        projectRoot,
+        projectId: expectedProjectId,
+        vaultPath,
+        sessionId: input.sessionId,
+        accountName: input.source.account
+      });
+      if (!recovered)
+        return { status: "unknown" };
+      const sourceDir = accountDir(recovered.accountName, root);
+      regularPath(sourceDir, true);
+      for (const [name, hash] of Object.entries(recovered.sourceHashes)) {
+        const path = join16(sourceDir, name);
+        regularPath(path);
+        if (!existsSync12(path) || digest3(readFileSync6(path)) !== hash)
+          return { status: "unknown" };
+      }
+      regularPath(vaultPath);
+      const actualVaultHash = existsSync12(vaultPath) ? digest3(readFileSync6(vaultPath)) : null;
+      const config = await loadProjectRoleBindings(projectRoot, expectedProjectId);
+      if (recovered.stagedVaultHash && actualVaultHash === recovered.stagedVaultHash && recovered.nextProjectConfig && JSON.stringify(config) === JSON.stringify(recovered.nextProjectConfig))
+        return {
+          status: "complete",
+          result: {
+            completed: true,
+            verified: true,
+            accountName: recovered.accountName,
+            preserved: recovered.preserved
+          }
+        };
+      const actualConfigHash = config === null ? null : digest3(JSON.stringify(config));
+      if (!existsSync12(`${vaultPath}.lock`) && actualVaultHash === recovered.beforeVaultHash && actualConfigHash === recovered.beforeConfigHash && ["prepared", "stage-verified"].includes(recovered.phase))
+        return { status: "safe-to-retry" };
+      return { status: "unknown" };
+    },
+    lock: close
+  };
+}
+var digest3 = (data) => createHash5("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
+var init_vaultMigrationBackend = __esm(() => {
   init_mod();
   init_accounts();
-  init_backends();
+  init_keyManager();
+  init_projectRoleBindings();
+  init_projectRoleBindingsStore();
+  init_projectRoleSelection();
+  init_vaultMigrationJournal();
+  init_vaultWallet();
+  init_vaultWalletController();
+});
+
+// utils/vaultSetupBootstrap.ts
+import { homedir as homedir7 } from "node:os";
+import { isAbsolute as isAbsolute11, join as join17 } from "node:path";
+function unavailable2(reason) {
+  const fail = async () => {
+    throw new Error(reason);
+  };
+  return {
+    available: false,
+    unavailableReason: reason,
+    beginUnlock: fail,
+    preview: fail,
+    cutover: fail,
+    lock: async () => {}
+  };
+}
+async function createConfiguredVaultSetupBackend(env = process.env, dependencies = {}) {
+  const projectRoot = env.BSV_MCP_PROJECT_ROOT;
+  const projectId = env.BSV_MCP_PROJECT_ID;
+  if (!projectRoot || !projectId || !isAbsolute11(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
+    return unavailable2("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
+  const vaultPath = env.VAULT_PATH ?? join17(dependencies.home ?? homedir7(), ".bsv", "vault.bep");
+  if (!vaultPath || !isAbsolute11(vaultPath))
+    return unavailable2("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
+  try {
+    return await (dependencies.createBackend ?? createAccountVaultMigrationBackend)({
+      projectRoot,
+      expectedProjectId: projectId,
+      vaultPath,
+      roleAssignments: {},
+      ...dependencies.backendOptions
+    });
+  } catch {
+    return unavailable2("The configured project or Vault destination is unavailable. Check the local setup configuration.");
+  }
+}
+async function runConfiguredVaultSetup(options = {}) {
+  const migrationBackend = await (options.createBackend ?? createConfiguredVaultSetupBackend)(options.env ?? process.env);
+  const log = options.log ?? ((message) => process.stderr.write(`${message}
+`));
+  await (options.run ?? runVaultSetupCommand)({
+    start: () => {
+      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join17(homedir7(), ".bsv", "vault.bep");
+      return (options.start ?? startVaultSetup)({
+        migrationBackend,
+        embeddedActions: options.embeddedActions ?? createEmbeddedSetupActions({
+          vaultPath,
+          onActivated: async (result) => {
+            await result.destroy();
+          }
+        }),
+        flow: migrationBackend.available && (options.env ?? process.env).BSV_MCP_PROJECT_ROOT ? "project" : options.embeddedActions ? "embedded" : "standalone",
+        ...isAbsolute11(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
+      });
+    },
+    open: options.open,
+    log: (message) => log(message.startsWith("Vault setup preview is read-only.") ? migrationBackend.available ? "Local Vault migration setup is ready. Review and confirm before encrypted import and project role changes; restart or unlock afterward to use them." : "Local wallet setup is ready. Create, import, or unlock your wallet in the browser." : message)
+  });
+}
+var init_vaultSetupBootstrap = __esm(() => {
+  init_embeddedSetupActions();
+  init_vaultMigrationBackend();
+  init_vaultSetup();
+  init_vaultSetupCommand();
+});
+
+// utils/walletOnboarding.ts
+function createWalletSetupLauncher(options = {}) {
+  const runSetup = options.runSetup ?? runConfiguredVaultSetup;
+  const innerStart = options.start ?? startVaultSetup;
+  const baseLog = options.log ?? ((message) => process.stderr.write(`${message}
+`));
+  const sanitizeText = (value) => {
+    const redacted = redactKeyMaterial(value);
+    return redacted.replace(/https?:\/\/[^\s"'`]+/g, "[REDACTED-URL]").replace(/#[^\s"'`]+/g, "[REDACTED-FRAGMENT]");
+  };
+  const safeLog = (message) => {
+    try {
+      baseLog(sanitizeText(message));
+    } catch {}
+  };
+  const WALLET_SETUP_START_FAILURE = "Wallet setup could not be started. Retry wallet onboarding.";
+  let activeCallback;
+  let activeLifecycle;
+  return function openWalletSetup() {
+    if (activeCallback)
+      return activeCallback;
+    let resolveStarted;
+    let rejectStarted;
+    const started = new Promise((resolve, reject) => {
+      resolveStarted = resolve;
+      rejectStarted = reject;
+    });
+    activeCallback = started;
+    let setupHandle;
+    const startWrapper = async (backendOptions) => {
+      try {
+        const setup = await innerStart(backendOptions);
+        setupHandle = setup;
+        return setup;
+      } catch {
+        const failure = new Error(WALLET_SETUP_START_FAILURE);
+        rejectStarted(failure);
+        throw failure;
+      }
+    };
+    const runOptions = {
+      start: startWrapper,
+      embeddedActions: options.embeddedActions,
+      log: (message) => safeLog(message)
+    };
+    if (options.run !== undefined)
+      runOptions.run = options.run;
+    runOptions.open = async (url) => {
+      try {
+        await (options.open ?? openLocalBrowser)(url);
+        resolveStarted();
+      } catch {
+        const failure = new Error(WALLET_SETUP_START_FAILURE);
+        rejectStarted(failure);
+        await setupHandle?.close();
+        throw failure;
+      }
+    };
+    if (options.env !== undefined)
+      runOptions.env = options.env;
+    if (options.createBackend !== undefined)
+      runOptions.createBackend = options.createBackend;
+    let lifecycle;
+    const runLifecycle = async () => {
+      try {
+        await runSetup(runOptions);
+      } catch {
+        safeLog(WALLET_SETUP_START_FAILURE);
+        rejectStarted(new Error(WALLET_SETUP_START_FAILURE));
+      } finally {
+        if (activeLifecycle === lifecycle) {
+          activeCallback = undefined;
+          activeLifecycle = undefined;
+        }
+      }
+    };
+    lifecycle = runLifecycle();
+    activeLifecycle = lifecycle;
+    lifecycle.catch(() => {});
+    return started;
+  };
+}
+var init_walletOnboarding = __esm(() => {
   init_redact();
-  import_index_client = __toESM(require_index_client5(), 1);
+  init_vaultSetup();
+  init_vaultSetupBootstrap();
+  init_vaultSetupCommand();
 });
 
 // server.ts
-import { readFile } from "node:fs/promises";
-import path4, { dirname as dirname2, join as join9 } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFile as readFile5 } from "node:fs/promises";
+import { homedir as homedir8 } from "node:os";
+import path4, { dirname as dirname7, join as join18 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 function createConfiguredServer(opts) {
   const nativeServer = new McpServer({ name: package_default.name, version: package_default.version }, {
     supportedProtocolVersions: SUPPORTED_MCP_PROTOCOL_VERSIONS,
@@ -289508,20 +299507,43 @@ function createConfiguredServer(opts) {
 				Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first.
 			`
   });
-  const srv = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
-  registerAllTools(srv, opts.toolsConfig);
-  if (resolveToolCatalogProfile(opts.toolsConfig) === "full") {
-    registerMcpAppTools(srv, {
-      ...opts.toolsConfig,
-      wallet: opts.wallet ?? opts.toolsConfig.wallet,
-      ctx: opts.ctx ?? opts.toolsConfig.ctx,
-      droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true
-    });
-  }
-  if (opts.loadPrompts)
-    registerAllPrompts(srv);
-  if (opts.loadResources)
-    registerResources(srv);
+  const policyServer = withModernToolPolicy(nativeServer, opts.era ?? "legacy");
+  const registrations = [];
+  const srv = new Proxy(policyServer, {
+    get(target, property, receiver) {
+      if (!["registerTool", "registerResource", "registerPrompt"].includes(String(property)))
+        return Reflect.get(target, property, receiver);
+      return (...args) => {
+        const method = Reflect.get(target, property);
+        const registration = Reflect.apply(method, target, args);
+        registrations.push(registration);
+        return registration;
+      };
+    }
+  });
+  const registerCatalog = (opts) => {
+    registerAllTools(srv, opts.toolsConfig);
+    if (resolveToolCatalogProfile(opts.toolsConfig) === "full") {
+      registerMcpAppTools(srv, {
+        ...opts.toolsConfig,
+        wallet: opts.wallet ?? opts.toolsConfig.wallet,
+        ctx: opts.ctx ?? opts.toolsConfig.ctx,
+        walletScope: opts.toolsConfig.walletScope,
+        droplitMode: opts.toolsConfig.integratedWallet?.isDroplitMode === true
+      });
+    }
+    if (opts.loadPrompts)
+      registerAllPrompts(srv);
+    if (opts.loadResources)
+      registerResources(srv);
+  };
+  registerCatalog(opts);
+  refreshConfiguredCatalog.set(srv, (nextOptions) => {
+    for (const registration of registrations.splice(0))
+      registration.remove();
+    registerCatalog(nextOptions);
+    srv.sendToolListChanged();
+  });
   return srv;
 }
 function shouldAdvertiseLocalAccount(keySource, externalWallet, useDroplitApi) {
@@ -289533,8 +299555,10 @@ function registerMcpAppTools(server, config) {
   const walletToolsEnabled = process.env.DISABLE_TOOLS !== "true" && process.env.DISABLE_WALLET_TOOLS !== "true" && config.enableWalletTools !== false;
   const appServices = config.ctx?.services ?? config.services;
   const walletAvailable = !config.droplitMode && Boolean(config.ctx || config.wallet);
-  const sweepPrepareAvailable = Boolean(config.ctx && appServices && typeof config.ctx.wallet.createAction === "function");
-  const sweepCompleteAvailable = Boolean(config.ctx && appServices && typeof config.ctx.wallet.signAction === "function");
+  const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
+  const wholeWalletBalanceAvailable = walletAvailable && !externalWallet && config.walletScope !== "payments";
+  const sweepPrepareAvailable = Boolean(config.walletScope !== "payments" && config.ctx && appServices && typeof config.ctx.wallet.createAction === "function");
+  const sweepCompleteAvailable = Boolean(config.walletScope !== "payments" && config.ctx && appServices && typeof config.ctx.wallet.signAction === "function");
   const broadcastingEnabled = process.env.DISABLE_BROADCASTING !== "true" && config.disableBroadcasting !== true;
   const ctx = config.ctx;
   const wallet = config.wallet;
@@ -289681,7 +299705,7 @@ function registerMcpAppTools(server, config) {
       }
     });
   }
-  if (walletToolsEnabled && walletAvailable) {
+  if (walletToolsEnabled && wholeWalletBalanceAvailable) {
     registerAppTool(server, "app_wallet_data", {
       title: "Wallet Data",
       description: "App-only: fetches wallet balance, UTXOs, and address.",
@@ -290102,10 +300126,10 @@ function registerMcpAppTools(server, config) {
   registerAppResource(server, "BSV Dashboard", APP_RESOURCE_URI, {
     description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs"
   }, async () => {
-    const distPath = __appDirname.endsWith("dist") ? join9(__appDirname, "app.html") : join9(__appDirname, "dist", "app.html");
+    const distPath = __appDirname.endsWith("dist") ? join18(__appDirname, "app.html") : join18(__appDirname, "dist", "app.html");
     let html;
     try {
-      html = await readFile(distPath, "utf-8");
+      html = await readFile5(distPath, "utf-8");
     } catch {
       html = "<html><body><p>Dashboard not built. Run <code>bun run build:view</code> to enable it.</p></body></html>";
     }
@@ -290133,6 +300157,13 @@ function registerMcpAppTools(server, config) {
 }
 async function main() {
   const args = process.argv.slice(2);
+  if (args[0] === "vault-setup") {
+    if (args.length !== 1)
+      throw new Error("vault-setup does not accept arguments; configure the explicit project and Vault through environment settings");
+    await Promise.resolve().then(() => init_vaultSetupBootstrap());
+    await runConfiguredVaultSetup();
+    return;
+  }
   if (await runAccountCommand(args))
     return;
   if (args.includes("--help") || args.includes("-h") || args.includes("help")) {
@@ -290151,6 +300182,9 @@ Environment Variables:
   PORT               HTTP server port (default: 3000)
   BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
+  BSV_MCP_PROJECT_ROOT  Explicit absolute project root for project stdio mode
+  BSV_MCP_PROJECT_ID    Paired project identifier for project stdio mode
+  VAULT_PATH            Optional project Vault file path (absolute)
   PRIVATE_KEY_WIF    Legacy payment key input; prefer Vault
   DISABLE_TOOLS      Disable all tools (default: false)
   MCP_TOOL_CATALOG   Tool catalog: 'full' or 'compact' (default: full; invalid values fail startup)
@@ -290183,16 +300217,18 @@ Authentication:
     console.log(`${package_default.name} v${package_default.version}`);
     process.exit(0);
   }
-  const externalWallet = readExternalWalletConfig();
-  const sponsorConfig = CONFIG.useDroplitApi ? undefined : readDroplitSponsorConfig();
+  const projectConfig = readProjectWalletConfig();
+  const projectRuntime = projectConfig ? await createProjectWalletRuntime() : undefined;
+  const externalWallet = projectRuntime ? undefined : readExternalWalletConfig();
+  const sponsorConfig = projectRuntime ? undefined : CONFIG.useDroplitApi ? undefined : readDroplitSponsorConfig();
   let vaultMigration = {
-    available: !externalWallet,
+    available: !externalWallet && !projectRuntime,
     required: false,
     sources: 0,
     environmentKeys: { payment: false, identity: false },
-    nextStep: externalWallet ? "An external signer is selected; local key migration is not applicable." : "No legacy key source was detected. Vault migration is still pending."
+    nextStep: projectRuntime ? "An explicit project Vault role is selected; local account migration is not applicable." : externalWallet ? "An external signer is selected; local key migration is not applicable." : "No legacy key source was detected. Vault migration is still pending."
   };
-  if (!externalWallet) {
+  if (!externalWallet && !projectRuntime) {
     try {
       const migration = inspectMigration();
       vaultMigration = {
@@ -290219,12 +300255,53 @@ Authentication:
       logFunc2("\x1B[33mWARN: BSV MCP could not verify the local key layout. Run bsv-mcp vault-setup locally before using wallet tools.\x1B[0m");
     }
   }
-  const keys = await initializeKeysForWalletMode(externalWallet, async () => CONFIG.loadTools && CONFIG.loadWalletTools && !CONFIG.useDroplitApi ? initializeKeys() : {
-    payPk: undefined,
-    identityPk: undefined,
-    xprv: undefined,
-    source: "none"
-  });
+  let walletSetupNeeded = false;
+  let walletSetupReason;
+  let openWalletSetup;
+  let keys;
+  try {
+    if (CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && readAccount()?.vaultBinding) {
+      walletSetupReason = "locked";
+      throw new MissingWalletKeysError("Unlock your wallet in local setup.");
+    }
+    if (CONFIG.transportMode === "stdio" && CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && process.env.PRIVATE_KEY_WIF === undefined && !process.env.BSV_MCP_PASSWORD && inspectMigration().sources.some((source) => source.location === "account" && source.account === accountName() && source.encryptedBackup)) {
+      throw new LegacyWalletMigrationRequiredError("Import your encrypted account through local wallet setup.");
+    }
+    keys = projectRuntime ? {
+      payPk: undefined,
+      identityPk: undefined,
+      xprv: undefined,
+      source: "none"
+    } : await initializeKeysForWalletMode(externalWallet, async () => CONFIG.loadTools && CONFIG.loadWalletTools && !CONFIG.useDroplitApi ? initializeKeys() : {
+      payPk: undefined,
+      identityPk: undefined,
+      xprv: undefined,
+      source: "none"
+    });
+  } catch (error) {
+    const missing = isMissingWalletKeysError(error);
+    const legacy = isLegacyWalletMigrationRequiredError(error);
+    const embeddedMode = CONFIG.transportMode === "stdio" && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi;
+    if (!missing && !legacy || !embeddedMode)
+      throw error;
+    const selectedAccount = readAccount();
+    if (walletSetupReason === "locked") {} else if (legacy) {
+      walletSetupReason = "migration-required";
+    } else {
+      let reason = "no-wallet";
+      const inventory = inspectMigration();
+      if (inventory.migrationRequired && !selectedAccount)
+        reason = "migration-required";
+      walletSetupReason = reason;
+    }
+    walletSetupNeeded = true;
+    keys = {
+      payPk: undefined,
+      identityPk: undefined,
+      xprv: undefined,
+      source: "none"
+    };
+  }
   const {
     payPk,
     identityPk,
@@ -290248,7 +300325,46 @@ Authentication:
   const hasPersistentIdentityKey = !!identityPk && keySource === "encrypted";
   const hasXprv = !!xprv && keySource === "encrypted";
   const effectiveConfig = { ...CONFIG, bapPublicOnly: CONFIG.useDroplitApi };
-  if (externalWallet) {
+  if (walletSetupNeeded) {
+    effectiveConfig.loadWalletTools = false;
+    effectiveConfig.loadMneeTools = false;
+    effectiveConfig.bapPublicOnly = true;
+    effectiveConfig.disableBroadcasting = true;
+    openWalletSetup = createWalletSetupLauncher({
+      embeddedActions: createEmbeddedSetupActions({
+        vaultPath: process.env.VAULT_PATH ?? join18(homedir8(), ".bsv", "vault.bep"),
+        onActivated: async (result, selectedAccountName) => {
+          const refresh = server ? refreshConfiguredCatalog.get(server) : undefined;
+          if (!refresh)
+            throw new Error("The MCP connection is unavailable.");
+          remoteCtx = result.ctx;
+          remoteServices = result.services;
+          process.env.BSV_MCP_ACCOUNT = selectedAccountName;
+          Object.assign(toolsConfig, {
+            ctx: result.ctx,
+            services: result.services,
+            walletSetupNeeded: false,
+            openWalletSetup: undefined,
+            localAccountAvailable: true,
+            enableAccountTools: true,
+            enableWalletTools: CONFIG.loadWalletTools,
+            enableOrdinalsTools: CONFIG.loadOrdinalsTools,
+            disableBroadcasting: CONFIG.disableBroadcasting
+          });
+          serverFactoryOpts.ctx = result.ctx;
+          refresh(serverFactoryOpts);
+          walletSetupNeeded = false;
+          walletSetupReason = undefined;
+        }
+      })
+    });
+    logFunc2(`Embedded wallet setup required (${walletSetupReason ?? "no-wallet"}). Public tools remain available; invoke wallet onboarding to configure locally.`);
+  } else if (projectRuntime) {
+    effectiveConfig.bapPublicOnly = true;
+    effectiveConfig.loadOrdinalsTools = false;
+    effectiveConfig.loadMneeTools = false;
+    effectiveConfig.loadBapTools = false;
+  } else if (externalWallet) {
     effectiveConfig.bapPublicOnly = true;
     effectiveConfig.loadBsocialTools = false;
     effectiveConfig.loadMneeTools = false;
@@ -290264,8 +300380,8 @@ Environment Variables:`);
   if (CONFIG.transportMode === "http") {
     logFunc2(`  PORT:                 ${process.env.PORT || "Not Set (3000 default)"}`);
   }
-  logFunc2(`  PRIVATE_KEY_WIF:      ${externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`);
-  logFunc2(`  IDENTITY_KEY_WIF:     ${externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`);
+  logFunc2(`  PRIVATE_KEY_WIF:      ${projectRuntime ? "Unused (project Vault role)" : externalWallet ? "Unused (external signer)" : process.env.PRIVATE_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`);
+  logFunc2(`  IDENTITY_KEY_WIF:     ${projectRuntime ? "Unused (project Vault role)" : externalWallet ? "Unused (external signer)" : process.env.IDENTITY_KEY_WIF ? "Set (using env key)" : "Not Set (using selected account)"}`);
   if (!externalWallet && keySource === "env") {
     logFunc2("\x1B[33mWARN: Environment WIF keys are a legacy compatibility path. Move them into Vault and remove PRIVATE_KEY_WIF and IDENTITY_KEY_WIF when migration is complete.\x1B[0m");
   }
@@ -290319,11 +300435,11 @@ Effective Component Status:`);
     const mneeStatus = effectiveConfig.loadMneeTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m";
     const bapStatus = effectiveConfig.loadBapTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m";
     let payKeyNote = "";
-    if (!externalWallet && !hasPersistentPayKey) {
+    if (!projectRuntime && !externalWallet && !hasPersistentPayKey) {
       payKeyNote = " \x1B[33m(Using generated payPk)\x1B[0m";
     }
     let identityKeyNote = "";
-    if (!externalWallet && !hasPersistentIdentityKey) {
+    if (!projectRuntime && !externalWallet && !hasPersistentIdentityKey) {
       identityKeyNote = " \x1B[33m(Using generated identityPk)\x1B[0m";
     }
     logFunc2(`    Wallet:       ${walletStatus}${payKeyNote}`);
@@ -290344,7 +300460,11 @@ Effective Component Status:`);
   let remoteCtx;
   let remoteServices;
   if (CONFIG.loadTools) {
-    if (externalWallet) {
+    if (projectRuntime) {
+      remoteCtx = projectRuntime.ctx;
+      remoteServices = projectRuntime.services;
+      logFunc2(`Project payments wallet ready for ${projectRuntime.projectId}. Deposit address: ${projectRuntime.depositAddress}`);
+    } else if (externalWallet) {
       const chain = process.env.BSV_CHAIN ?? "main";
       if (chain !== "main" && chain !== "test")
         throw new Error("BSV_CHAIN must be main or test");
@@ -290427,14 +300547,16 @@ Effective Component Status:`);
     toolCatalog: CONFIG.toolCatalog,
     vaultMigration,
     localAccountAvailable: shouldAdvertiseLocalAccount(keySource, !!externalWallet, CONFIG.useDroplitApi),
-    enableAccountTools: !externalWallet && !CONFIG.useDroplitApi,
+    externalWallet: !!externalWallet,
+    enableAccountTools: walletSetupNeeded ? false : !externalWallet && !projectRuntime && !CONFIG.useDroplitApi,
     enableBsvTools: effectiveConfig.loadBsvTools,
-    enableOrdinalsTools: effectiveConfig.loadOrdinalsTools,
+    enableOrdinalsTools: !projectRuntime && effectiveConfig.loadOrdinalsTools,
     enableUtilsTools: effectiveConfig.loadUtilsTools,
-    enableBapTools: effectiveConfig.loadBapTools,
+    enableBapTools: !projectRuntime && effectiveConfig.loadBapTools,
     enableBsocialTools: effectiveConfig.loadBsocialTools,
     enableWalletTools: effectiveConfig.loadWalletTools,
-    enableMneeTools: effectiveConfig.loadMneeTools,
+    enableMneeTools: !projectRuntime && effectiveConfig.loadMneeTools,
+    walletScope: projectRuntime ? "payments" : "full",
     identityPk,
     payPk,
     xprv,
@@ -290444,7 +300566,8 @@ Effective Component Status:`);
     disableBroadcasting: effectiveConfig.disableBroadcasting,
     ctx: remoteCtx,
     services: remoteServices,
-    droplitClient
+    droplitClient,
+    ...walletSetupNeeded ? { walletSetupNeeded: true, openWalletSetup } : {}
   } : {
     toolCatalog: CONFIG.toolCatalog,
     enableBsvTools: false,
@@ -290465,7 +300588,7 @@ Effective Component Status:`);
   };
   for (const sig of ["SIGINT", "SIGTERM"]) {
     process.once(sig, () => {
-      destroyWallet().catch(() => {});
+      Promise.allSettled([projectRuntime?.cleanup(), destroyWallet()]).catch(() => {});
     });
   }
   if (CONFIG.transportMode === "stdio") {
@@ -290696,7 +300819,7 @@ ${error.stack}`);
     logFunc2("  OAuth Discovery: /.well-known/oauth-protected-resource");
   }
 }
-var server, CONFIG, SUPPORTED_MCP_PROTOCOL_VERSIONS, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
+var server, refreshConfiguredCatalog, CONFIG, SUPPORTED_MCP_PROTOCOL_VERSIONS, logFunc2, KEY_FILE_PATH, initializeKeys, APP_RESOURCE_URI = "ui://bsv-mcp/app.html", __appDirname;
 var init_server2 = __esm(() => {
   init_stdioGuard();
   init_server();
@@ -290715,13 +300838,18 @@ var init_server2 = __esm(() => {
   init_accounts();
   init_backends();
   init_droplit();
+  init_embeddedSetupActions();
+  init_externalWalletConfig();
   init_jwtValidator();
   init_keyManager();
   init_mcpAppRegistration();
   init_modernToolPolicy();
   init_passphrasePrompt();
+  init_projectWalletRuntime();
   init_vaultMigration();
   init_walletInit();
+  init_walletOnboarding();
+  refreshConfiguredCatalog = new WeakMap;
   CONFIG = {
     loadPrompts: process.env.DISABLE_PROMPTS !== "true",
     loadResources: process.env.DISABLE_RESOURCES !== "true",
@@ -290751,7 +300879,7 @@ var init_server2 = __esm(() => {
   logFunc2 = console.error;
   KEY_FILE_PATH = path4.join(accountDir(), "keys.bep");
   initializeKeys = initializeSecureKeys;
-  __appDirname = dirname2(fileURLToPath(import.meta.url));
+  __appDirname = dirname7(fileURLToPath3(import.meta.url));
 });
 
 // utils/stdioGuard.ts

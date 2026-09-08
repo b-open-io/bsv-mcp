@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { startVaultSetup } from "./vaultSetup";
 
-function openLocalBrowser(url: string): Promise<void> {
+export function openLocalBrowser(url: string): Promise<void> {
 	const command =
 		process.platform === "darwin"
 			? "open"

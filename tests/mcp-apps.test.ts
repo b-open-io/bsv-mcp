@@ -375,16 +375,11 @@ test("v2 resources/list and resources/read expose the MCP App HTML resource", as
 		// absent. Require the built view's stable shell markers so this test
 		// proves the advertised resource is actually renderable.
 		expect(text).not.toContain("Dashboard not built. Run");
-		expect(text).toContain("<title>BSV Dashboard</title>");
-		for (const marker of [
-			'id="app"',
-			'id="explorer-panel"',
-			'id="wallet-panel"',
-			'id="ordinals-panel"',
-			'id="sweep-panel"',
-		]) {
-			expect(text).toContain(marker);
-		}
+		expect(text).toContain("<title>BSV MCP</title>");
+		expect(text).toContain('id="root"');
+		expect(text).toContain('<script type="module"');
+		expect(text).toContain("app_explorer_data");
+		expect(text).toContain("app_wallet_data");
 
 		const resourceMeta = (content as { _meta?: UiResourceMeta })._meta;
 		expect(resourceMeta?.ui?.csp?.resourceDomains).toEqual([

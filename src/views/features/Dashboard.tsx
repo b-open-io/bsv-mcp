@@ -707,7 +707,7 @@ function Sweep({ call }: { call: Caller }) {
 									onKeyDown={(event) => {
 										if (event.key === "Enter") void scanKey();
 									}}
-									autoComplete="off"
+									autoComplete="new-password"
 									spellCheck={false}
 								/>
 							</label>

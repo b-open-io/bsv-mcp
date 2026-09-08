@@ -3,9 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { signerRequestAllowed } from "./signer";
-import type { MigrationSource } from "./vaultMigration";
+import type { MigrationInventory, MigrationSource } from "./vaultMigration";
 import type {
-	MigrationInventory,
 	MigrationPreview,
 	MigrationProgress,
 	MigrationReconciliation,

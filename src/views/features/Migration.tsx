@@ -24,6 +24,12 @@ import {
 	Surface,
 } from "../components/LocalShell";
 
+import {
+	SETUP_STEPS,
+	type SetupStep,
+	useSetupNavigation,
+} from "../hooks/useSetupNavigation";
+
 type Json = Record<string, unknown>;
 type Inventory = {
 	migrationRequired: boolean;
@@ -60,11 +66,18 @@ function errorText(reason: unknown) {
 	return reason instanceof Error ? reason.message : String(reason);
 }
 
-export function Migration({ token }: { token: string }) {
+export function Migration({
+	token,
+	onWelcome,
+}: {
+	token: string;
+	onWelcome?: () => void;
+}) {
 	const [inventory, setInventory] = useState<Inventory>();
 	const [backend, setBackend] = useState<{
 		available: boolean;
 		reason?: string;
+		destinationDefaults?: { vaultPath: string };
 	}>();
 	const [source, setSource] = useState<MigrationSource>();
 	const [destination, setDestination] = useState<VaultMigrationDestination>();
@@ -79,7 +92,32 @@ export function Migration({ token }: { token: string }) {
 	const [status, setStatus] = useState("Inspecting local setup…");
 	const [error, setError] = useState<string>();
 	const [errorNoEffect, setErrorNoEffect] = useState(false);
-	const [busy, setBusy] = useState(false);
+	const [pending, setPending] = useState<string>();
+	const [unlockValidationError, setUnlockValidationError] = useState<string>();
+	const maxStep = preview
+		? "review"
+		: destination
+			? "unlock"
+			: source
+				? "destination"
+				: "source";
+	const { step, goToStep } = useSetupNavigation({
+		maxStep,
+		busy: pending !== undefined,
+	});
+	const [requestedStep, setRequestedStep] = useState<SetupStep>();
+	useEffect(() => {
+		if (!requestedStep || pending !== undefined) return;
+		goToStep(requestedStep);
+		setRequestedStep(undefined);
+	}, [requestedStep, pending, goToStep]);
+	function goBack() {
+		setSourcePassphrase("");
+		setDestinationPassphrase("");
+		setUnlockValidationError(undefined);
+		const index = SETUP_STEPS.indexOf(step);
+		if (index > 0) goToStep(SETUP_STEPS[index - 1]);
+	}
 
 	const api = useCallback(
 		async (path: string, init: RequestInit = {}) => {
@@ -132,30 +170,32 @@ export function Migration({ token }: { token: string }) {
 	}, [api, token]);
 
 	function chooseSource(next: MigrationSource) {
-		if (busy) return;
+		if (pending !== undefined) return;
 		setSource(next);
+		setRequestedStep("destination");
 		setDestination(undefined);
 		setSession(undefined);
 		setPreview(undefined);
 		setRoles({});
 		setConfirmation("");
 		setError(undefined);
+		setUnlockValidationError(undefined);
 		setStatus(`Source selected: ${next.account}. Choose a Vault destination.`);
 	}
 	function submitDestination(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
-		const form = new FormData(event.currentTarget);
+		if (!source || !backend?.destinationDefaults) return;
 		setDestination({
-			accountName: String(form.get("accountName") ?? ""),
-			vaultPath: String(form.get("vaultPath") ?? ""),
-			vaultEntryId: String(form.get("vaultEntryId") ?? ""),
-			expectedPublicKey:
-				String(form.get("expectedPublicKey") ?? "") || undefined,
+			accountName: source.account,
+			vaultPath: backend.destinationDefaults.vaultPath,
+			vaultEntryId: "new",
 		});
+		setRequestedStep("unlock");
 		setConfirmation("");
 		setPreview(undefined);
 		setRoles({});
 		setError(undefined);
+		setUnlockValidationError(undefined);
 		setStatus(
 			"Destination selected. Unlock the Vault locally to preview preservation.",
 		);
@@ -164,14 +204,22 @@ export function Migration({ token }: { token: string }) {
 	async function unlock(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (!source || !destination || !backend?.available) return;
-		setBusy(true);
-		setError(undefined);
-		setErrorNoEffect(false);
 		const sourceSecret = sourcePassphrase;
 		const destinationSecret = destinationPassphrase;
 		setSourcePassphrase("");
 		setDestinationPassphrase("");
 		setConfirmation("");
+		if (!sourceSecret.trim() && !destinationSecret.trim()) {
+			setUnlockValidationError(
+				"Enter the source backup passphrase or the destination Vault passphrase to unlock locally.",
+			);
+			setStatus("Action needs attention. Enter at least one passphrase.");
+			return;
+		}
+		setUnlockValidationError(undefined);
+		setPending("unlock");
+		setError(undefined);
+		setErrorNoEffect(false);
 		setStatus("Unlocking locally…");
 		try {
 			const value = await api("/api/migration/unlock", {
@@ -184,6 +232,7 @@ export function Migration({ token }: { token: string }) {
 				}),
 			});
 			setSession(value.session as Session);
+			setRequestedStep("review");
 			setPreview(value.preview as MigrationPreview);
 			setRoles(defaultRoles(value.preview as MigrationPreview));
 			setStatus("Preview ready. Review preservation before cutover.");
@@ -192,7 +241,7 @@ export function Migration({ token }: { token: string }) {
 		} finally {
 			setSourcePassphrase("");
 			setDestinationPassphrase("");
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 
@@ -206,11 +255,12 @@ export function Migration({ token }: { token: string }) {
 		setSourcePassphrase("");
 		setDestinationPassphrase("");
 		setConfirmation("");
+		setUnlockValidationError(undefined);
 		if (!session) {
 			setStatus("Unlock fields cleared.");
 			return;
 		}
-		setBusy(true);
+		setPending("lock");
 		try {
 			await api("/api/migration/lock", {
 				method: "POST",
@@ -223,12 +273,12 @@ export function Migration({ token }: { token: string }) {
 		} catch (reason) {
 			showError(reason);
 		} finally {
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 	async function refreshPreview() {
 		if (!session) return;
-		setBusy(true);
+		setPending("refresh");
 		try {
 			const value = await api("/api/migration/preview", {
 				method: "POST",
@@ -244,7 +294,7 @@ export function Migration({ token }: { token: string }) {
 		} catch (reason) {
 			showError(reason);
 		} finally {
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 	async function resolveConflict(conflictId: string, resolution: string) {
@@ -253,7 +303,7 @@ export function Migration({ token }: { token: string }) {
 			!["keep-existing", "import-source", "skip"].includes(resolution)
 		)
 			return;
-		setBusy(true);
+		setPending(`resolve:${conflictId}`);
 		try {
 			const value = await api("/api/migration/resolve", {
 				method: "POST",
@@ -274,12 +324,12 @@ export function Migration({ token }: { token: string }) {
 		} catch (reason) {
 			showError(reason);
 		} finally {
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 	async function reconcile() {
 		if (!session) return;
-		setBusy(true);
+		setPending("reconcile");
 		try {
 			const value = await api("/api/migration/reconcile", {
 				method: "POST",
@@ -303,13 +353,13 @@ export function Migration({ token }: { token: string }) {
 		} catch (reason) {
 			showError(reason);
 		} finally {
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 	async function cutover() {
 		if (!session || !preview || !canCutover(preview, roles, confirmation))
 			return;
-		setBusy(true);
+		setPending("cutover");
 		setError(undefined);
 		setStatus("Preparing a recoverable backup…");
 		try {
@@ -331,17 +381,40 @@ export function Migration({ token }: { token: string }) {
 		} catch (reason) {
 			showError(reason);
 		} finally {
-			setBusy(false);
+			setPending(undefined);
 		}
 	}
 
 	return (
 		<LocalShell navigation={false}>
 			<PageHeader
-				eyebrow="vault migration"
-				title="Move an existing identity into local Vault"
-				description="Review first, unlock only through the local process, and switch after preservation is verified."
+				eyebrow={`Step ${SETUP_STEPS.indexOf(step) + 1} of ${SETUP_STEPS.length}`}
+				title="Set up your wallet"
+				description="Bring an existing wallet into your local encrypted Vault."
 			/>
+			{step === "source" && onWelcome ? (
+				<div className="form-actions">
+					<Button
+						variant="secondary"
+						onClick={onWelcome}
+						disabled={pending !== undefined}
+					>
+						Back
+					</Button>
+				</div>
+			) : null}
+			{step !== "source" ? (
+				<div className="form-actions">
+					<Button
+						variant="secondary"
+						onClick={goBack}
+						disabled={pending !== undefined}
+					>
+						Back
+					</Button>
+					<span className="dim">Wallet: {source?.account}</span>
+				</div>
+			) : null}
 			{error ? (
 				<Surface>
 					<div className="surface-body">
@@ -354,55 +427,75 @@ export function Migration({ token }: { token: string }) {
 						<div className="form-actions">
 							<Button
 								variant="secondary"
-								disabled={busy || !session}
+								disabled={pending !== undefined || !session}
+								aria-busy={pending !== undefined || undefined}
 								onClick={errorNoEffect ? refreshPreview : reconcile}
 							>
-								{errorNoEffect ? "Retry preview" : "Reconcile cutover"}
+								{pending !== undefined
+									? errorNoEffect
+										? "Retrying preview…"
+										: "Reconciling cutover…"
+									: errorNoEffect
+										? "Retry preview"
+										: "Reconcile cutover"}
 							</Button>
 						</div>
 					</div>
 				</Surface>
 			) : null}
-			<InventoryStep
-				inventory={inventory}
-				source={source}
-				onSelect={chooseSource}
-				disabled={busy}
-			/>
-			<DestinationStep
-				source={source}
-				destination={destination}
-				onSubmit={submitDestination}
-				disabled={busy}
-			/>
-			<UnlockStep
-				source={source}
-				destination={destination}
-				backend={backend}
-				sourcePassphrase={sourcePassphrase}
-				destinationPassphrase={destinationPassphrase}
-				setSourcePassphrase={setSourcePassphrase}
-				setDestinationPassphrase={setDestinationPassphrase}
-				onSubmit={unlock}
-				onLock={lock}
-				busy={busy}
-			/>
-			<PreviewStep
-				preview={preview}
-				roles={roles}
-				setRoles={setRoles}
-				confirmation={confirmation}
-				setConfirmation={setConfirmation}
-				onRefresh={refreshPreview}
-				onResolve={resolveConflict}
-				onCutover={cutover}
-				canCutover={Boolean(
-					preview && canCutover(preview, roles, confirmation),
-				)}
-				busy={busy}
-				status={status}
-			/>
-			<RecoveryNote status={status} inventory={inventory} />
+			{step === "source" ? (
+				<InventoryStep
+					inventory={inventory}
+					source={source}
+					onSelect={chooseSource}
+					disabled={pending !== undefined}
+				/>
+			) : null}
+			{step === "destination" ? (
+				<DestinationStep
+					source={source}
+					destination={destination}
+					defaults={backend?.destinationDefaults}
+					onSubmit={submitDestination}
+					pending={pending}
+				/>
+			) : null}
+			{step === "unlock" ? (
+				<UnlockStep
+					source={source}
+					destination={destination}
+					backend={backend}
+					sourcePassphrase={sourcePassphrase}
+					destinationPassphrase={destinationPassphrase}
+					setSourcePassphrase={setSourcePassphrase}
+					setDestinationPassphrase={setDestinationPassphrase}
+					validationError={unlockValidationError}
+					onSubmit={unlock}
+					onLock={lock}
+					pending={pending}
+				/>
+			) : null}
+			{step === "review" ? (
+				<PreviewStep
+					preview={preview}
+					roles={roles}
+					setRoles={setRoles}
+					confirmation={confirmation}
+					setConfirmation={setConfirmation}
+					onRefresh={refreshPreview}
+					onResolve={resolveConflict}
+					onCutover={cutover}
+					canCutover={Boolean(
+						preview && canCutover(preview, roles, confirmation),
+					)}
+					pending={pending}
+					status={status}
+				/>
+			) : null}
+			<p role="status" aria-live="polite" className="dim migration-footnote">
+				{status}
+			</p>
+			<RecoveryNote inventory={inventory} />
 		</LocalShell>
 	);
 }
@@ -418,65 +511,91 @@ function InventoryStep({
 	onSelect: (source: MigrationSource) => void;
 	disabled: boolean;
 }) {
+	const origins = {
+		"legacy-root": "Earlier BSV MCP wallet",
+		account: "BSV MCP account",
+		"sigma-lab": "Sigma development wallet",
+	};
 	return (
 		<Surface>
 			<div className="surface-header">
-				<div>
-					<p className="section-label">01 / inventory</p>
-					<h2>Review local sources</h2>
-				</div>
+				<h2>Choose a wallet to bring into Vault</h2>
 			</div>
 			<div className="surface-body">
+				<p>
+					These files were found on this computer. Choose the wallet you want to
+					keep using.
+				</p>
 				{!inventory ? (
-					<Spinner label="Inspecting local setup" />
+					<Spinner label="Finding local wallets" />
 				) : inventory.sources.length ? (
-					inventory.sources.map((item) => (
-						<div
-							className="source-row"
-							key={`${item.location}:${item.account}`}
-						>
-							<div className="source-meta">
-								<span className="source-title">{item.account}</span>
-								<span className="source-detail">
-									{item.location} ·{" "}
-									{[
-										item.encryptedBackup && "encrypted backup",
-										item.plaintextKeys && "plaintext keys",
-										item.walletDatabases?.length
-											? `${item.walletDatabases.length} database(s)`
-											: "",
+					inventory.sources.map((item) => {
+						const selected =
+							source?.account === item.account &&
+							source.location === item.location;
+						const hasKeys = item.encryptedBackup || item.plaintextKeys;
+						const files = [
+							...(item.encryptedBackup
+								? ["keys.bep — encrypted key backup"]
+								: []),
+							...(item.plaintextKeys
+								? [
+										`${item.location === "sigma-lab" ? "root.wif" : "keys.json"} — unencrypted key file`,
 									]
-										.filter(Boolean)
-										.join(" · ") || "source detected"}
-								</span>
-							</div>
-							<Button
-								variant={
-									source?.account === item.account &&
-									source.location === item.location
-										? "secondary"
-										: "primary"
-								}
-								disabled={disabled}
-								onClick={() => onSelect(item)}
+								: []),
+							...item.walletDatabases.map(
+								(name) => `${name} — wallet database`,
+							),
+						];
+						return (
+							<div
+								className="source-row"
+								key={`${item.location}:${item.account}`}
 							>
-								{source?.account === item.account &&
-								source.location === item.location
-									? "Selected"
-									: "Select"}
-							</Button>
-						</div>
-					))
+								<div className="source-meta">
+									<span className="source-title">{item.account}</span>
+									<span className="source-detail">
+										{origins[item.location]}
+									</span>
+									<p className="source-detail">
+										{item.encryptedBackup
+											? "An encrypted key backup was found. You’ll need its password."
+											: item.plaintextKeys
+												? "An unencrypted key file was found. Importing will add an encrypted copy to Vault."
+												: "Wallet data was found, but no key backup. This source cannot be imported on its own."}
+									</p>
+									<div className="source-location">{item.directory}</div>
+									<details className="source-files">
+										<summary>Files found ({files.length})</summary>
+										<ul className="file-list">
+											{files.map((file) => (
+												<li key={file}>{file}</li>
+											))}
+										</ul>
+									</details>
+								</div>
+								{hasKeys ? (
+									<Button
+										variant={selected ? "secondary" : "primary"}
+										disabled={disabled}
+										onClick={() => onSelect(item)}
+									>
+										{selected ? "Selected" : "Use this wallet"}
+									</Button>
+								) : (
+									<span className="source-detail">Key backup needed</span>
+								)}
+							</div>
+						);
+					})
 				) : (
-					<Notice tone="info">
-						No eligible legacy source files were found.
-					</Notice>
+					<Notice tone="info">No existing wallet files were found.</Notice>
 				)}
 				{inventory ? (
 					<p className="dim">
 						{inventory.vaultExists
-							? "An existing Vault was found; its entries will be preserved."
-							: "No Vault file was found."}
+							? "A Vault file was found. Its contents can be checked after you unlock it."
+							: "No Vault file was found on this computer."}
 					</p>
 				) : null}
 			</div>
@@ -487,73 +606,56 @@ function InventoryStep({
 function DestinationStep({
 	source,
 	destination,
+	defaults,
 	onSubmit,
-	disabled,
+	pending,
 }: {
 	source?: MigrationSource;
 	destination?: VaultMigrationDestination;
+	defaults?: { vaultPath: string };
 	onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-	disabled: boolean;
+	pending?: string;
 }) {
 	return (
 		<Surface className="stack-surface">
 			<div className="surface-header">
-				<div>
-					<p className="section-label">02 / destination</p>
-					<h2>Choose a Vault destination</h2>
-				</div>
+				<h2>Where your wallet will be saved</h2>
 			</div>
 			<div className="surface-body">
-				<form
-					key={`${source?.location ?? "none"}:${source?.account ?? "none"}`}
-					onSubmit={onSubmit}
-				>
-					<label className="field-label">
-						Account name
-						<input
-							className="field"
-							name="accountName"
-							defaultValue={destination?.accountName}
-							pattern="[a-z0-9][a-z0-9_-]{0,63}"
-							required
-							disabled={!source || disabled}
-						/>
-					</label>
-					<label className="field-label">
-						Vault file path
-						<input
-							className="field"
-							name="vaultPath"
-							defaultValue={destination?.vaultPath}
-							required
-							disabled={!source || disabled}
-						/>
-					</label>
-					<label className="field-label">
-						Vault entry ID
-						<input
-							className="field"
-							name="vaultEntryId"
-							defaultValue={destination?.vaultEntryId}
-							required
-							disabled={!source || disabled}
-						/>
-					</label>
-					<label className="field-label">
-						Expected public key (optional)
-						<input
-							className="field"
-							name="expectedPublicKey"
-							defaultValue={destination?.expectedPublicKey}
-							disabled={!source || disabled}
-						/>
-					</label>
-					<div className="form-actions">
-						<Button type="submit" disabled={!source || disabled}>
-							Use destination
-						</Button>
-					</div>
-				</form>
+				<p>
+					Your wallet will be added to the local encrypted Vault. Its existing
+					keys and address will be checked before anything is switched.
+				</p>
+				{defaults && source ? (
+					<form onSubmit={onSubmit}>
+						<dl className="stack-surface">
+							<div>
+								<dt className="field-label">Wallet</dt>
+								<dd>{source.account}</dd>
+							</div>
+							<div>
+								<dt className="field-label">Vault location</dt>
+								<dd style={{ overflowWrap: "anywhere" }}>
+									{destination?.vaultPath ?? defaults.vaultPath}
+								</dd>
+							</div>
+						</dl>
+						<p className="dim">
+							A new entry will be created for this wallet. Existing Vault
+							entries are kept.
+						</p>
+						<div className="form-actions">
+							<Button type="submit" disabled={pending !== undefined}>
+								Continue
+							</Button>
+						</div>
+					</form>
+				) : (
+					<Notice tone="info">
+						The local server has not provided a Vault destination. Reopen setup
+						after its configuration is complete.
+					</Notice>
+				)}
 			</div>
 		</Surface>
 	);
@@ -567,9 +669,10 @@ function UnlockStep({
 	destinationPassphrase,
 	setSourcePassphrase,
 	setDestinationPassphrase,
+	validationError,
 	onSubmit,
 	onLock,
-	busy,
+	pending,
 }: {
 	source?: MigrationSource;
 	destination?: VaultMigrationDestination;
@@ -578,10 +681,32 @@ function UnlockStep({
 	destinationPassphrase: string;
 	setSourcePassphrase: (value: string) => void;
 	setDestinationPassphrase: (value: string) => void;
+	validationError?: string;
 	onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 	onLock: () => void;
-	busy: boolean;
+	pending?: string;
 }) {
+	if (!backend?.available)
+		return (
+			<Surface>
+				<div className="surface-header">
+					<h2>Setup is not ready to continue</h2>
+				</div>
+				<div className="surface-body">
+					<p>
+						The local server cannot import this wallet yet. Your existing files
+						have not been changed.
+					</p>
+					{backend?.reason ? (
+						<details>
+							<summary>Connection details</summary>
+							<p>{backend.reason}</p>
+						</details>
+					) : null}
+				</div>
+			</Surface>
+		);
+
 	return (
 		<Surface className="stack-surface">
 			<div className="surface-header">
@@ -609,7 +734,18 @@ function UnlockStep({
 							value={sourcePassphrase}
 							onChange={(event) => setSourcePassphrase(event.target.value)}
 							autoComplete="current-password"
-							disabled={!backend?.available || !source || !destination || busy}
+							pattern=".*\S.*"
+							title="Use at least one non-whitespace character."
+							aria-invalid={validationError ? true : undefined}
+							aria-describedby={
+								validationError ? "unlock-validation-error" : undefined
+							}
+							disabled={
+								!backend?.available ||
+								!source ||
+								!destination ||
+								pending !== undefined
+							}
 						/>
 					</label>
 					<label className="field-label">
@@ -620,18 +756,46 @@ function UnlockStep({
 							value={destinationPassphrase}
 							onChange={(event) => setDestinationPassphrase(event.target.value)}
 							autoComplete="new-password"
-							disabled={!backend?.available || !source || !destination || busy}
+							pattern=".*\S.*"
+							title="Use at least one non-whitespace character."
+							aria-invalid={validationError ? true : undefined}
+							aria-describedby={
+								validationError ? "unlock-validation-error" : undefined
+							}
+							disabled={
+								!backend?.available ||
+								!source ||
+								!destination ||
+								pending !== undefined
+							}
 						/>
 					</label>
+					{validationError ? (
+						<div id="unlock-validation-error">
+							<Notice tone="error">{validationError}</Notice>
+						</div>
+					) : null}
 					<div className="form-actions">
 						<Button
 							type="submit"
-							disabled={!backend?.available || !source || !destination || busy}
+							aria-busy={pending === "unlock" || undefined}
+							disabled={
+								!backend?.available ||
+								!source ||
+								!destination ||
+								pending !== undefined
+							}
 						>
-							Unlock locally
+							{pending === "unlock" ? "Unlocking…" : "Unlock locally"}
 						</Button>
-						<Button variant="secondary" onClick={onLock} disabled={busy}>
-							Lock session
+						<Button
+							type="button"
+							variant="secondary"
+							onClick={onLock}
+							aria-busy={pending === "lock" || undefined}
+							disabled={pending !== undefined}
+						>
+							{pending === "lock" ? "Locking…" : "Lock session"}
 						</Button>
 					</div>
 				</form>
@@ -654,7 +818,7 @@ function PreviewStep({
 	onResolve,
 	onCutover,
 	canCutover,
-	busy,
+	pending,
 	status,
 }: {
 	preview?: MigrationPreview;
@@ -668,7 +832,7 @@ function PreviewStep({
 	onResolve: (conflictId: string, resolution: string) => void;
 	onCutover: () => void;
 	canCutover: boolean;
-	busy: boolean;
+	pending?: string;
 	status: string;
 }) {
 	if (!preview) return null;
@@ -681,8 +845,13 @@ function PreviewStep({
 					<p className="section-label">04 / verify</p>
 					<h2>Review preservation</h2>
 				</div>
-				<Button variant="secondary" onClick={onRefresh} disabled={busy}>
-					Refresh preview
+				<Button
+					variant="secondary"
+					onClick={onRefresh}
+					aria-busy={pending === "refresh" || undefined}
+					disabled={pending !== undefined}
+				>
+					{pending === "refresh" ? "Refreshing preview…" : "Refresh preview"}
 				</Button>
 			</div>
 			<div className="surface-body">
@@ -726,20 +895,29 @@ function PreviewStep({
 						assignments={assignments}
 						roles={roles}
 						setRoles={setRoles}
+						onRefresh={onRefresh}
+						pending={pending}
 					/>
 				) : null}
 				{preview.conflicts.length ? (
 					<div className="conflict-list">
 						{preview.conflicts.map((conflict) => (
 							<div className="role-row" key={conflict.id}>
-								<span className="role-label">{conflict.message}</span>
+								<label
+									className="role-label"
+									htmlFor={`conflict-resolution-${conflict.id}`}
+								>
+									{conflict.message}
+								</label>
 								<select
+									id={`conflict-resolution-${conflict.id}`}
 									className="select"
+									aria-label={`Resolve conflict: ${conflict.message}`}
 									value={conflict.resolution ?? ""}
 									onChange={(event) =>
 										onResolve(conflict.id, event.target.value)
 									}
-									disabled={busy}
+									disabled={pending !== undefined}
 								>
 									<option value="">Choose a resolution</option>
 									<option value="keep-existing">
@@ -761,12 +939,18 @@ function PreviewStep({
 						value={confirmation}
 						onChange={(event) => setConfirmation(event.target.value)}
 						autoComplete="off"
-						disabled={busy}
+						disabled={pending !== undefined}
 					/>
 				</label>
 				<div className="form-actions">
-					<Button onClick={onCutover} disabled={!canCutover || busy}>
-						Import and switch to Vault
+					<Button
+						onClick={onCutover}
+						aria-busy={pending === "cutover" || undefined}
+						disabled={!canCutover || pending !== undefined}
+					>
+						{pending === "cutover"
+							? "Migrating to Vault…"
+							: "Import and switch to Vault"}
 					</Button>
 				</div>
 			</div>
@@ -786,6 +970,8 @@ function RoleSelector({
 	assignments,
 	roles,
 	setRoles,
+	onRefresh,
+	pending,
 }: {
 	projectRoles: NonNullable<MigrationPreview["projectRoles"]>;
 	assignments: Json;
@@ -793,8 +979,11 @@ function RoleSelector({
 	setRoles: Dispatch<
 		SetStateAction<Partial<Record<ProjectKeyRole, ProjectRoleChoice>>>
 	>;
+	onRefresh: () => void;
+	pending?: string;
 }) {
 	const publicView = asJson(projectRoles).presentation;
+	const items = projectRoles.candidates;
 	const publicRoles = Array.isArray(publicView && (publicView as Json).roles)
 		? ((publicView as Json).roles as unknown[]).filter((entry): entry is Json =>
 				Boolean(entry && typeof entry === "object"),
@@ -832,6 +1021,26 @@ function RoleSelector({
 				Only candidate IDs are sent when you continue. Key material and paths
 				stay in the trusted backend.
 			</p>
+			{items.length === 0 ? (
+				<div className="stack-surface">
+					<Notice tone="info">
+						No verified keys are available for project roles. Refresh the
+						preview to check again.
+					</Notice>
+					<div className="form-actions">
+						<Button
+							variant="secondary"
+							onClick={onRefresh}
+							aria-busy={pending === "refresh" || undefined}
+							disabled={pending !== undefined}
+						>
+							{pending === "refresh"
+								? "Refreshing preview…"
+								: "Refresh preview"}
+						</Button>
+					</div>
+				</div>
+			) : null}
 			<div className="role-grid">
 				{rows.map((row) => {
 					const role = row.role as ProjectKeyRole;
@@ -851,6 +1060,7 @@ function RoleSelector({
 							<select
 								className="select"
 								value={value}
+								disabled={pending !== undefined}
 								onChange={(event) =>
 									setRoles((previous) => ({
 										...previous,
@@ -872,7 +1082,7 @@ function RoleSelector({
 												{String(choice.label ?? choice.value)}
 											</option>
 										))
-									: projectRoles.candidates.map((candidate) => (
+									: items.map((candidate) => (
 											<option
 												key={candidate.candidateId}
 												value={`select:${candidate.candidateId}`}
@@ -899,18 +1109,12 @@ function RoleSelector({
 	);
 }
 
-function RecoveryNote({
-	status,
-	inventory,
-}: {
-	status: string;
-	inventory?: Inventory;
-}) {
+function RecoveryNote({ inventory }: { inventory?: Inventory }) {
+	if (!inventory?.migrationRequired) return null;
 	return (
 		<p className="dim migration-footnote">
-			{inventory?.migrationRequired
-				? "No source is erased and the running wallet is not switched until explicit cutover completes and verifies."
-				: status}
+			No source is erased and the running wallet is not switched until explicit
+			cutover completes and verifies.
 		</p>
 	);
 }

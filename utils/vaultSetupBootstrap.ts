@@ -1,11 +1,12 @@
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { createEmbeddedSetupActions } from "./embeddedSetupActions";
 import {
 	type AccountVaultMigrationOptions,
 	createAccountVaultMigrationBackend,
 } from "./vaultMigrationBackend";
 import type { VaultMigrationBackend } from "./vaultMigrationWizard";
-import { startVaultSetup } from "./vaultSetup";
+import { type EmbeddedSetupActions, startVaultSetup } from "./vaultSetup";
 import { runVaultSetupCommand } from "./vaultSetupCommand";
 
 function unavailable(reason: string): VaultMigrationBackend {
@@ -71,6 +72,7 @@ export async function createConfiguredVaultSetupBackend(
 export async function runConfiguredVaultSetup(
 	options: {
 		env?: Record<string, string | undefined>;
+		embeddedActions?: EmbeddedSetupActions;
 		createBackend?: typeof createConfiguredVaultSetupBackend;
 		run?: typeof runVaultSetupCommand;
 		start?: typeof startVaultSetup;
@@ -84,14 +86,39 @@ export async function runConfiguredVaultSetup(
 	const log =
 		options.log ?? ((message: string) => process.stderr.write(`${message}\n`));
 	await (options.run ?? runVaultSetupCommand)({
-		start: () => (options.start ?? startVaultSetup)({ migrationBackend }),
+		start: () => {
+			const vaultPath =
+				(options.env ?? process.env).VAULT_PATH ??
+				join(homedir(), ".bsv", "vault.bep");
+			return (options.start ?? startVaultSetup)({
+				migrationBackend,
+				embeddedActions:
+					options.embeddedActions ??
+					createEmbeddedSetupActions({
+						vaultPath,
+						onActivated: async (result) => {
+							await result.destroy();
+						},
+					}),
+				flow:
+					migrationBackend.available &&
+					(options.env ?? process.env).BSV_MCP_PROJECT_ROOT
+						? "project"
+						: options.embeddedActions
+							? "embedded"
+							: "standalone",
+				...(isAbsolute(vaultPath)
+					? { destinationDefaults: { vaultPath } }
+					: {}),
+			});
+		},
 		open: options.open,
 		log: (message) =>
 			log(
 				message.startsWith("Vault setup preview is read-only.")
 					? migrationBackend.available
 						? "Local Vault migration setup is ready. Review and confirm before encrypted import and project role changes; restart or unlock afterward to use them."
-						: `Local Vault migration is unavailable: ${migrationBackend.unavailableReason}`
+						: "Local wallet setup is ready. Create, import, or unlock your wallet in the browser."
 					: message,
 			),
 	});

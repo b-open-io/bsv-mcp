@@ -35,6 +35,7 @@ test("inventory detects old and named accounts without reading or changing secre
 	expect(inventory.sources).toEqual([
 		{
 			account: "default",
+			directory: root,
 			location: "legacy-root",
 			encryptedBackup: false,
 			plaintextKeys: true,
@@ -42,6 +43,7 @@ test("inventory detects old and named accounts without reading or changing secre
 		},
 		{
 			account: "alice",
+			directory: account,
 			location: "account",
 			encryptedBackup: true,
 			plaintextKeys: false,
@@ -135,6 +137,7 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 	expect(result.sources).toEqual([
 		{
 			account: "default",
+			directory: legacy,
 			location: "legacy-root",
 			encryptedBackup: true,
 			plaintextKeys: false,
@@ -142,6 +145,7 @@ test("inventory includes Sigma lab keys and legacy wallet databases without read
 		},
 		{
 			account: "sigma-lab",
+			directory: lab,
 			location: "sigma-lab",
 			encryptedBackup: false,
 			plaintextKeys: true,

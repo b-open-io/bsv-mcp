@@ -12,6 +12,13 @@ import type { ToolsConfig } from "./index";
 import { registerOrdinalsTools } from "./ordinals";
 import { registerUtilsTools } from "./utils";
 import { registerTool, type ToolResponse } from "./utils/toolRegistration";
+import {
+	executeWalletOnboarding,
+	isWalletOnboardingAvailable,
+	WALLET_ONBOARDING_ANNOTATIONS,
+	WALLET_ONBOARDING_TOOL_NAME,
+	walletOnboardingInputSchema,
+} from "./wallet/onboarding";
 import { registerWalletTools } from "./wallet/tools";
 
 /** The server-selected tool catalog. The default is deliberately full. */
@@ -76,6 +83,7 @@ export const COMPACT_OPERATION_LEGACY_NAMES = {
 		"wallet_waitForAuthentication",
 	],
 	utility: ["utils_convertData"],
+	wallet_setup: ["wallet_onboarding"],
 } as const;
 
 export type CompactFamilyName = keyof typeof COMPACT_OPERATION_LEGACY_NAMES;
@@ -228,6 +236,10 @@ function categoryEnabled(
 			return isEnabled(config.enableUtilsTools, "DISABLE_UTILS_TOOLS");
 		case "wallet_read":
 			return isEnabled(config.enableWalletTools, "DISABLE_WALLET_TOOLS");
+		case "wallet_setup":
+			// Availability is controlled only by the caller-provided
+			// walletSetupNeeded/openWalletSetup pair, not by category flags.
+			return true;
 	}
 }
 
@@ -271,6 +283,36 @@ function walletAvailability({ config }: CatalogContext): Availability {
 				available: false,
 				reason: "BRC-100 wallet context not available",
 			};
+}
+
+/**
+ * The onboarding setup action is mutating, so it must not live in a
+ * read-only family. It gets a dedicated family with truthful mutating
+ * annotations. Availability comes only from the caller-provided
+ * walletSetupNeeded/openWalletSetup pair.
+ */
+function buildWalletSetupFamily(config: ToolsConfig): CompactFamily | null {
+	if (!isWalletOnboardingAvailable(config) || !config.openWalletSetup)
+		return null;
+	const openWalletSetup = config.openWalletSetup;
+	const operations = new Map<string, CompactOperation>([
+		[
+			WALLET_ONBOARDING_TOOL_NAME,
+			{
+				id: WALLET_ONBOARDING_TOOL_NAME,
+				schema: walletOnboardingInputSchema,
+				handler: () => executeWalletOnboarding(openWalletSetup),
+				annotations: { ...WALLET_ONBOARDING_ANNOTATIONS },
+			},
+		],
+	]);
+	return {
+		name: "wallet_setup",
+		description:
+			"Wallet setup operation. Select operation and pass that operation's arguments in args.",
+		operations,
+		annotations: { ...WALLET_ONBOARDING_ANNOTATIONS },
+	};
 }
 
 /**
@@ -344,6 +386,9 @@ export function buildCompactFamilies(config: ToolsConfig): CompactFamily[] {
 			),
 		);
 	}
+
+	const walletSetupFamily = buildWalletSetupFamily(config);
+	if (walletSetupFamily) families.push(walletSetupFamily);
 
 	return families.filter((family) => family.operations.size > 0);
 }
@@ -461,8 +506,18 @@ export function getCompactCapabilityMetadata(
 			...(family === "wallet_read" && !registered.has(legacyName)
 				? { reason: walletCapabilityReason(config, legacyName) }
 				: {}),
+			...(family === "wallet_setup" && !registered.has(legacyName)
+				? { reason: walletSetupCapabilityReason(config) }
+				: {}),
 		})),
 	);
+}
+
+function walletSetupCapabilityReason(config: ToolsConfig): string {
+	if (config.walletSetupNeeded !== true) return "wallet setup is not needed";
+	if (typeof config.openWalletSetup !== "function")
+		return "wallet setup opener is not configured";
+	return "operation is unavailable";
 }
 
 function walletCapabilityReason(

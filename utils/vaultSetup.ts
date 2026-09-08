@@ -25,13 +25,29 @@ function unavailableMigrationBackend(): VaultMigrationBackend {
 	};
 }
 
+export interface EmbeddedSetupActions {
+	unlock?(
+		body: Record<string, unknown>,
+	): Promise<{ accountName: string; address: string; ready: boolean }>;
+	create(
+		body: Record<string, unknown>,
+	): Promise<{ accountName: string; address: string; ready: boolean }>;
+	import(
+		body: Record<string, unknown>,
+	): Promise<{ accountName: string; address: string; ready: boolean }>;
+}
+
 /** Local setup flow. Inventory is read-only; cutover requires an explicit backend. */
 export async function startVaultSetup(
 	options: {
 		inspect?: () => MigrationInventory;
+		flow?: "embedded" | "standalone" | "project";
+		embeddedActions?: EmbeddedSetupActions;
 		timeoutMs?: number;
 		/** Trusted local asset directory override for packaging tests and embedders. */
 		assetsDirectory?: string;
+		/** Trusted bootstrap defaults, visible only to the authenticated setup browser. */
+		destinationDefaults?: { vaultPath: string };
 		/** Explicit adapter used by tests and embedders. */
 		migrationBackend?: VaultMigrationBackend;
 		/** Trusted local bootstrap; evaluated before the server starts listening. */
@@ -73,12 +89,22 @@ export async function startVaultSetup(
 			return;
 		}
 		const requestPath = req.url?.split("?", 1)[0];
-		if (requestPath === "/" || requestPath?.startsWith("/assets/")) {
+		const setupRoute = /^\/setup\/(source|destination|unlock|review)$/.test(
+			requestPath ?? "",
+		);
+		if (
+			requestPath === "/" ||
+			setupRoute ||
+			requestPath?.startsWith("/assets/")
+		) {
 			if (req.method !== "GET" && req.method !== "HEAD") {
 				res.writeHead(405, { Allow: "GET, HEAD" }).end();
 				return;
 			}
-			const asset = readLocalUiAsset(req.url ?? "/", assetsDirectory);
+			const asset = readLocalUiAsset(
+				setupRoute ? "/" : (req.url ?? "/"),
+				assetsDirectory,
+			);
 			if (!asset) {
 				res
 					.writeHead(requestPath === "/" ? 503 : 404, {
@@ -102,7 +128,8 @@ export async function startVaultSetup(
 		const apiPath = req.url?.split("?", 1)[0];
 		if (
 			apiPath !== "/api/inventory" &&
-			!apiPath?.startsWith("/api/migration/")
+			!apiPath?.startsWith("/api/migration/") &&
+			!apiPath?.startsWith("/api/embedded/")
 		) {
 			res.writeHead(404).end();
 			return;
@@ -124,6 +151,7 @@ export async function startVaultSetup(
 			res.writeHead(200, { "Content-Type": "application/json" }).end(
 				JSON.stringify({
 					available: migrationBackend?.available === true,
+					destinationDefaults: options.destinationDefaults,
 					reason:
 						migrationBackend?.available === true
 							? undefined
@@ -134,6 +162,54 @@ export async function startVaultSetup(
 			return;
 		}
 		try {
+			if (apiPath?.startsWith("/api/embedded/")) {
+				if (req.method !== "POST") {
+					res.writeHead(405, { Allow: "POST" }).end();
+					return;
+				}
+				const action =
+					apiPath === "/api/embedded/create"
+						? "create"
+						: apiPath === "/api/embedded/import"
+							? "import"
+							: apiPath === "/api/embedded/unlock"
+								? "unlock"
+								: undefined;
+				if (!action) {
+					res.writeHead(404).end();
+					return;
+				}
+				const embeddedAction = options.embeddedActions?.[action];
+				if (!embeddedAction) {
+					res.writeHead(503, { "Content-Type": "application/json" }).end(
+						JSON.stringify({
+							error:
+								"Wallet setup is not connected. Reopen setup from the MCP client.",
+						}),
+					);
+					return;
+				}
+				try {
+					const body = await readJson(req, 8 * 1024 * 1024);
+					const result = await embeddedAction(body);
+					return writeJson(res, result);
+				} catch (error) {
+					const safeNames = [
+						"EmbeddedFirstRunError",
+						"EmbeddedVaultError",
+						"EmbeddedWalletActivationError",
+						"EmbeddedImportError",
+					];
+					const message =
+						error instanceof Error && safeNames.includes(error.name)
+							? error.message
+							: "Wallet setup could not complete. Check your selection and passwords, then try again.";
+					res
+						.writeHead(400, { "Content-Type": "application/json" })
+						.end(JSON.stringify({ error: message }));
+					return;
+				}
+			}
 			if (apiPath === "/api/inventory") {
 				if (req.method !== "GET") {
 					res.writeHead(405, { Allow: "GET" }).end();
@@ -350,7 +426,11 @@ export async function startVaultSetup(
 		void close();
 	}, options.timeoutMs ?? 300_000);
 	timer.unref();
-	return { url: `${origin}/#${token}`, close, closed };
+	return {
+		url: `${origin}/${options.flow && options.flow !== "embedded" ? `?flow=${options.flow}` : ""}#${token}`,
+		close,
+		closed,
+	};
 }
 
 function writeJson(
@@ -383,13 +463,14 @@ function writeWizardError(
 
 async function readJson(
 	request: import("node:http").IncomingMessage,
+	maximumBytes = 64 * 1024,
 ): Promise<Record<string, unknown>> {
 	let size = 0;
 	const chunks: Buffer[] = [];
 	for await (const chunk of request) {
 		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 		size += buffer.length;
-		if (size > 64 * 1024) throw new Error("Migration request is too large");
+		if (size > maximumBytes) throw new Error("Migration request is too large");
 		chunks.push(buffer);
 	}
 	if (chunks.length === 0) return {};

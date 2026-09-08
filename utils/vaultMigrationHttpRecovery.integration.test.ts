@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
 	readdirSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 	statSync,
@@ -15,13 +15,10 @@ import { HD, PrivateKey } from "@bsv/sdk";
 import { writeAccount } from "./accounts";
 import { SecureKeyManager } from "./keyManager";
 import { loadProjectRoleBindings } from "./projectRoleBindingsStore";
+import type { MigrationInventory, MigrationSource } from "./vaultMigration";
 import { createAccountVaultMigrationBackend } from "./vaultMigrationBackend";
+import type { VaultMigrationDestination } from "./vaultMigrationWizard";
 import { startVaultSetup } from "./vaultSetup";
-import type {
-	MigrationInventory,
-	MigrationSource,
-	VaultMigrationDestination,
-} from "./vaultMigration";
 
 // The real adapter is exercised when the locally installed Vault package is
 // available. The fixture uses deterministic synthetic keys and passphrases.
@@ -31,7 +28,8 @@ const vaultModule = await import(vaultModuleSpecifier).catch(() => undefined);
 const roots: string[] = [];
 
 afterEach(() => {
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+	for (const root of roots.splice(0))
+		rmSync(root, { recursive: true, force: true });
 });
 
 const source: MigrationSource = {
@@ -64,7 +62,9 @@ const roleSelection = {
 };
 
 async function fixture() {
-	const root = realpathSync(mkdtempSync(join(tmpdir(), "vault-http-recovery-")));
+	const root = realpathSync(
+		mkdtempSync(join(tmpdir(), "vault-http-recovery-")),
+	);
 	roots.push(root);
 	const accountsDirectory = join(root, "accounts");
 	const sourceDirectory = join(accountsDirectory, source.account);
@@ -118,11 +118,7 @@ function auth(setup: { url: string }) {
 	};
 }
 
-async function post(
-	setup: { url: string },
-	path: string,
-	body: unknown,
-) {
+async function post(setup: { url: string }, path: string, body: unknown) {
 	const { url, headers } = auth(setup);
 	return fetch(`${url.origin}${path}`, {
 		method: "POST",
@@ -131,151 +127,160 @@ async function post(
 	});
 }
 
-describe.skipIf(!vaultModule)("real encrypted migration adapter over HTTP", () => {
-	it("keeps the encrypted source recoverable when the local flow is cancelled", async () => {
-		const f = await fixture();
-		const setup = await startVaultSetup({
-			inspect: () => inventory,
-			migrationBackend: f.backend,
-		});
-		try {
-			const unlocked = await post(setup, "/api/migration/unlock", {
-				source,
-				destination: { ...destination, vaultPath: f.vaultPath },
-				sourcePassphrase: "source-password",
-				destinationPassphrase: "destination-password",
+describe.skipIf(!vaultModule)(
+	"real encrypted migration adapter over HTTP",
+	() => {
+		it("keeps the encrypted source recoverable when the local flow is cancelled", async () => {
+			const f = await fixture();
+			const setup = await startVaultSetup({
+				inspect: () => inventory,
+				migrationBackend: f.backend,
 			});
-			expect(unlocked.status).toBe(200);
-			const unlockBody = await unlocked.json();
-			expect(JSON.stringify(unlockBody)).not.toContain("source-password");
-			expect(JSON.stringify(unlockBody)).not.toContain("destination-password");
-			const sessionId = unlockBody.session.sessionId;
+			try {
+				const unlocked = await post(setup, "/api/migration/unlock", {
+					source,
+					destination: { ...destination, vaultPath: f.vaultPath },
+					sourcePassphrase: "source-password",
+					destinationPassphrase: "destination-password",
+				});
+				expect(unlocked.status).toBe(200);
+				const unlockBody = await unlocked.json();
+				expect(JSON.stringify(unlockBody)).not.toContain("source-password");
+				expect(JSON.stringify(unlockBody)).not.toContain(
+					"destination-password",
+				);
+				const sessionId = unlockBody.session.sessionId;
 
-			const locked = await post(setup, "/api/migration/lock", { sessionId });
-			expect(locked.status).toBe(200);
-			const cutover = await post(setup, "/api/migration/cutover", {
-				sessionId,
-				confirmation: "MIGRATE_AND_SWITCH",
-			});
-			expect(cutover.status).toBe(409);
-			expect(await cutover.json()).toEqual({
-				error: "The local unlock session is no longer active.",
+				const locked = await post(setup, "/api/migration/lock", { sessionId });
+				expect(locked.status).toBe(200);
+				const cutover = await post(setup, "/api/migration/cutover", {
+					sessionId,
+					confirmation: "MIGRATE_AND_SWITCH",
+				});
+				expect(cutover.status).toBe(409);
+				expect(await cutover.json()).toEqual({
+					error: "The local unlock session is no longer active.",
+				});
+				for (const [name, bytes] of Object.entries(f.sourceFiles))
+					expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
+				expect(() => statSync(f.vaultPath)).toThrow();
+				expect(
+					await loadProjectRoleBindings(f.projectRoot, "project"),
+				).toBeNull();
+			} finally {
+				await setup.close();
+			}
 		});
-			for (const [name, bytes] of Object.entries(f.sourceFiles))
-				expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
-			expect(() => statSync(f.vaultPath)).toThrow();
-			expect(await loadProjectRoleBindings(f.projectRoot, "project")).toBeNull();
-		} finally {
-			await setup.close();
-		}
-	});
 
-	it("switches only after the real backend reports durable encrypted verification", async () => {
-		const f = await fixture();
-		const setup = await startVaultSetup({
-			inspect: () => inventory,
-			migrationBackend: f.backend,
+		it("switches only after the real backend reports durable encrypted verification", async () => {
+			const f = await fixture();
+			const setup = await startVaultSetup({
+				inspect: () => inventory,
+				migrationBackend: f.backend,
+			});
+			try {
+				const unlocked = await post(setup, "/api/migration/unlock", {
+					source,
+					destination: { ...destination, vaultPath: f.vaultPath },
+					sourcePassphrase: "source-password",
+					destinationPassphrase: "destination-password",
+				});
+				expect(unlocked.status).toBe(200);
+				const sessionId = (await unlocked.json()).session.sessionId;
+				const result = await post(setup, "/api/migration/cutover", {
+					sessionId,
+					confirmation: "MIGRATE_AND_SWITCH",
+					roleSelection,
+				});
+				expect(result.status).toBe(200);
+				expect(await result.json()).toMatchObject({
+					completed: true,
+					verified: true,
+					accountName: source.account,
+				});
+				for (const [name, bytes] of Object.entries(f.sourceFiles))
+					expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
+				const encryptedDestination = readFileSync(f.vaultPath, "utf8");
+				expect(encryptedDestination).not.toContain("source-password");
+				expect(encryptedDestination).not.toContain("destination-password");
+				expect(
+					(await loadProjectRoleBindings(f.projectRoot, "project"))?.bindings,
+				).toHaveLength(4);
+			} finally {
+				await setup.close();
+			}
 		});
-		try {
-			const unlocked = await post(setup, "/api/migration/unlock", {
-				source,
-				destination: { ...destination, vaultPath: f.vaultPath },
-				sourcePassphrase: "source-password",
-				destinationPassphrase: "destination-password",
-			});
-			expect(unlocked.status).toBe(200);
-			const sessionId = (await unlocked.json()).session.sessionId;
-			const result = await post(setup, "/api/migration/cutover", {
-				sessionId,
-				confirmation: "MIGRATE_AND_SWITCH",
-				roleSelection,
-			});
-			expect(result.status).toBe(200);
-			expect(await result.json()).toMatchObject({
-				completed: true,
-				verified: true,
-				accountName: source.account,
-			});
-			for (const [name, bytes] of Object.entries(f.sourceFiles))
-				expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
-			const encryptedDestination = readFileSync(f.vaultPath, "utf8");
-			expect(encryptedDestination).not.toContain("source-password");
-			expect(encryptedDestination).not.toContain("destination-password");
-			expect(
-				(await loadProjectRoleBindings(f.projectRoot, "project"))?.bindings,
-			).toHaveLength(4);
-		} finally {
-			await setup.close();
-		}
-	});
 
-	it("requires real backend reconciliation before retrying an uncertain HTTP cutover", async () => {
-		const f = await fixture();
-		const setup = await startVaultSetup({
-			inspect: () => inventory,
-			migrationBackend: f.backend,
-		});
-		try {
-			const unlocked = await post(setup, "/api/migration/unlock", {
-				source,
-				destination: { ...destination, vaultPath: f.vaultPath },
-				sourcePassphrase: "source-password",
-				destinationPassphrase: "destination-password",
+		it("requires real backend reconciliation before retrying an uncertain HTTP cutover", async () => {
+			const f = await fixture();
+			const setup = await startVaultSetup({
+				inspect: () => inventory,
+				migrationBackend: f.backend,
 			});
-			expect(unlocked.status).toBe(200);
-			const sessionId = (await unlocked.json()).session.sessionId;
+			try {
+				const unlocked = await post(setup, "/api/migration/unlock", {
+					source,
+					destination: { ...destination, vaultPath: f.vaultPath },
+					sourcePassphrase: "source-password",
+					destinationPassphrase: "destination-password",
+				});
+				expect(unlocked.status).toBe(200);
+				const sessionId = (await unlocked.json()).session.sessionId;
 
-			// A project config appearing after preview forces the real adapter to
-			// stop after durable staging, before activation. Restore the original
-			// precondition before asking the backend to reconcile the journal.
-			writeFileSync(
-				join(f.projectRoot, ".bsv-mcp.json"),
-				JSON.stringify({
-					roleBindings: {
-						schemaVersion: 1,
-						projectId: "project",
-						revision: 0,
-						current: {
-							"identity-signing": null,
-							payments: null,
-							"one-sat": null,
-							encryption: null,
+				// A project config appearing after preview forces the real adapter to
+				// stop after durable staging, before activation. Restore the original
+				// precondition before asking the backend to reconcile the journal.
+				writeFileSync(
+					join(f.projectRoot, ".bsv-mcp.json"),
+					JSON.stringify({
+						roleBindings: {
+							schemaVersion: 1,
+							projectId: "project",
+							revision: 0,
+							current: {
+								"identity-signing": null,
+								payments: null,
+								"one-sat": null,
+								encryption: null,
+							},
+							bindings: [],
+							retained: [],
 						},
-						bindings: [],
-						retained: [],
-					},
-				}),
-			);
-			const failed = await post(setup, "/api/migration/cutover", {
-				sessionId,
-				confirmation: "MIGRATE_AND_SWITCH",
-				roleSelection,
-			});
-			expect(failed.status).toBe(409);
-			expect(failed.headers.get("content-type")).toContain("application/json");
-			for (const [name, bytes] of Object.entries(f.sourceFiles))
-				expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
-			expect(() => statSync(f.vaultPath)).toThrow();
+					}),
+				);
+				const failed = await post(setup, "/api/migration/cutover", {
+					sessionId,
+					confirmation: "MIGRATE_AND_SWITCH",
+					roleSelection,
+				});
+				expect(failed.status).toBe(409);
+				expect(failed.headers.get("content-type")).toContain(
+					"application/json",
+				);
+				for (const [name, bytes] of Object.entries(f.sourceFiles))
+					expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
+				expect(() => statSync(f.vaultPath)).toThrow();
 
-			const replay = await post(setup, "/api/migration/cutover", {
-				sessionId,
-				confirmation: "MIGRATE_AND_SWITCH",
-				roleSelection,
-			});
-			expect(replay.status).toBe(409);
-			expect(failed.status).toBe(replay.status);
-			for (const [name, bytes] of Object.entries(f.sourceFiles))
-				expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
+				const replay = await post(setup, "/api/migration/cutover", {
+					sessionId,
+					confirmation: "MIGRATE_AND_SWITCH",
+					roleSelection,
+				});
+				expect(replay.status).toBe(409);
+				expect(failed.status).toBe(replay.status);
+				for (const [name, bytes] of Object.entries(f.sourceFiles))
+					expect(readFileSync(join(f.sourceDirectory, name))).toEqual(bytes);
 
-			rmSync(join(f.projectRoot, ".bsv-mcp.json"), { force: true });
-			const reconciled = await post(setup, "/api/migration/reconcile", {
-				sessionId,
-			});
-			expect(reconciled.status).toBe(200);
-			expect(await reconciled.json()).toEqual({ phase: "destination" });
-			expect(() => statSync(f.vaultPath)).toThrow();
-		} finally {
-			await setup.close();
-		}
-	});
-});
+				rmSync(join(f.projectRoot, ".bsv-mcp.json"), { force: true });
+				const reconciled = await post(setup, "/api/migration/reconcile", {
+					sessionId,
+				});
+				expect(reconciled.status).toBe(200);
+				expect(await reconciled.json()).toEqual({ phase: "destination" });
+				expect(() => statSync(f.vaultPath)).toThrow();
+			} finally {
+				await setup.close();
+			}
+		});
+	},
+);

@@ -12,7 +12,7 @@ export function LocalShell({
 	navigation?: boolean;
 }) {
 	return (
-		<div className="local-shell">
+		<div className={navigation ? "local-shell" : "local-shell setup-shell"}>
 			<header className="local-header">
 				<div className="brand-mark">
 					<span className="brand-symbol">₿</span>
@@ -97,12 +97,14 @@ export function Button({
 	variant = "primary",
 	disabled,
 	onClick,
+	"aria-busy": ariaBusy,
 }: {
 	children: ReactNode;
 	type?: "button" | "submit";
 	variant?: "primary" | "secondary" | "danger";
 	disabled?: boolean;
 	onClick?: () => void;
+	"aria-busy"?: boolean;
 }) {
 	return (
 		<button
@@ -110,6 +112,7 @@ export function Button({
 			className={`button button-${variant}`}
 			disabled={disabled}
 			onClick={onClick}
+			aria-busy={ariaBusy}
 		>
 			{children}
 		</button>

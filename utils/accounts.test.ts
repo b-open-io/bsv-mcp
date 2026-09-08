@@ -276,7 +276,7 @@ test("signer boundary rejects wrong origin/token/method and strips key credentia
 	expect(JSON.stringify(child)).not.toContain("secret");
 });
 
-test("actual cold stdio startup fails without writing a wallet directory", async () => {
+test("actual cold stdio startup exposes setup without writing a wallet directory", async () => {
 	const home = mkdtempSync(join(tmpdir(), "bsv-cold-"));
 	try {
 		const child = Bun.spawn(
@@ -297,10 +297,55 @@ test("actual cold stdio startup fails without writing a wallet directory", async
 			new Response(child.stdout).text(),
 			new Response(child.stderr).text(),
 		]);
-		expect(code).toBe(1);
+		expect(code).toBe(0);
 		expect(out).toBe("");
-		expect(err).toContain(join(home, ".bsv-mcp/accounts/default/keys.bep"));
+		expect(err).toContain("Embedded wallet setup required");
 		expect(readdirSync(home)).toEqual([]);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+test("selected encrypted account opens migration setup without reading its secret backup", async () => {
+	const home = mkdtempSync(join(tmpdir(), "bsv-cold-encrypted-"));
+	try {
+		const directory = join(home, ".bsv-mcp", "accounts", "existing");
+		mkdirSync(directory, { recursive: true });
+		const sentinel =
+			"opaque encrypted backup must not be decoded during startup";
+		writeFileSync(join(directory, "keys.bep"), sentinel);
+		const child = Bun.spawn(
+			[
+				process.execPath,
+				"--no-env-file",
+				join(import.meta.dir, "../index.ts"),
+				"--stdio",
+			],
+			{
+				cwd: home,
+				env: {
+					PATH: process.env.PATH ?? "",
+					HOME: home,
+					BSV_MCP_ACCOUNT: "existing",
+					BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0",
+				},
+				stdout: "pipe",
+				stderr: "pipe",
+			},
+		);
+		const [code, out, err] = await Promise.all([
+			child.exited,
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+		]);
+		expect(code).toBe(0);
+		expect(out).toBe("");
+		expect(err).toContain(
+			"Embedded wallet setup required (migration-required)",
+		);
+		expect(err).not.toContain(sentinel);
+		expect(readFileSync(join(directory, "keys.bep"), "utf8")).toBe(sentinel);
+		expect(readdirSync(directory)).toEqual(["keys.bep"]);
 	} finally {
 		rmSync(home, { recursive: true, force: true });
 	}

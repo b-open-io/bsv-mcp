@@ -1,21 +1,61 @@
-import { useMemo } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Dashboard } from "../features/Dashboard";
+import { FirstRun } from "../features/FirstRun";
 import { Migration } from "../features/Migration";
 
-export function LocalApp() {
-	const { mode, token } = useMemo(() => {
+type LocalState = {
+	mode: string | null;
+	token: string;
+	flow: string | null;
+};
+
+const serverSnapshot: LocalState = { mode: null, token: "", flow: null };
+let clientSnapshot: LocalState | null = null;
+
+function getServerSnapshot(): LocalState {
+	return serverSnapshot;
+}
+
+function getClientSnapshot(): LocalState {
+	if (!clientSnapshot) {
 		const hash = window.location.hash.slice(1);
-		const nextMode = new URLSearchParams(window.location.search).get("mode");
-		if (hash)
+		const nextMode = window.location.pathname.startsWith("/setup/")
+			? "migration"
+			: new URLSearchParams(window.location.search).get("mode");
+		clientSnapshot = {
+			mode: nextMode,
+			token: hash,
+			flow: new URLSearchParams(window.location.search).get("flow"),
+		};
+	}
+	return clientSnapshot;
+}
+
+function subscribe(): () => void {
+	return () => {};
+}
+
+export function LocalApp() {
+	const { mode, token, flow } = useSyncExternalStore(
+		subscribe,
+		getClientSnapshot,
+		getServerSnapshot,
+	);
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+		if (token)
 			window.history.replaceState(
 				null,
 				"",
-				`${window.location.pathname}?mode=${nextMode ?? "migration"}`,
+				`${window.location.pathname}?mode=${mode ?? "migration"}${flow === "project" || flow === "standalone" ? `&flow=${flow}` : ""}`,
 			);
-		return { mode: nextMode, token: hash };
-	}, []);
+	}, [mode, token, flow]);
 	return mode === "migration" || token.length > 0 ? (
-		<Migration token={token} />
+		flow === "project" ? (
+			<Migration token={token} />
+		) : (
+			<FirstRun token={token} standalone={flow === "standalone"} />
+		)
 	) : (
 		<Dashboard />
 	);

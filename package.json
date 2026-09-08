@@ -27,7 +27,8 @@
 		"LICENSE",
 		"README.md",
 		"CHANGELOG.md",
-		"smithery.yaml"
+		"smithery.yaml",
+		"dist/local-ui/**/*"
 	],
 	"bin": {
 		"bsv-mcp": "./dist/index.js",
@@ -85,11 +86,13 @@
 		"satoshi-token": "^0.0.7",
 		"schema-dts": "^2.0.0",
 		"shiki": "^4.4.3",
-		"zod": "4.5.4"
+		"zod": "4.5.4",
+		"@opl.dev/vault": "0.0.1",
+		"@bsv/message-box-client": "2.4.2"
 	},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
-		"build:view": "vite build",
+		"build:view": "vite build && vite build --mode mcp",
 		"build:all": "bun run build:view && bun run build",
 		"dev": "next dev",
 		"build:next": "next build",
