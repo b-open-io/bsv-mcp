@@ -4,6 +4,9 @@
 
 ### Added
 
+- Import multiple wallets into one Vault and choose global payment, identity,
+  and ordinals keys, with independent overrides in native project MCP settings.
+
 - Create, import, and unlock an embedded wallet through private local browser
   setup. Activation refreshes the connected MCP session immediately; the ready
   screen shows an interactive tool cloud generated from its enabled catalog.
@@ -17,6 +20,11 @@
   `wallet_createOrdinals` requests `signWithBAP`.
 
 ### Changed
+
+- Restrict the hosted Next.js MCP route to public reads, regardless of key
+  environment variables, and answer unauthenticated CORS preflight at both
+  the root endpoint and `/api/mcp`.
+- Discover custom wallet locations only from explicit local settings.
 
 - Retire static tutorial prompts and BRC/BitCom resource entries. Changelog,
   JungleBus, and MCP App resources remain available.

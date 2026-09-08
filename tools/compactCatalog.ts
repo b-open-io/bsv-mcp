@@ -287,6 +287,7 @@ function captureConfig(config: ToolsConfig) {
 			? captureRegistrations((server) =>
 					registerWalletTools(server, config.wallet, {
 						ctx: config.ctx,
+						roleContexts: config.roleContexts,
 						allowWholeWalletBalance: !externalWallet,
 						scope: config.walletScope,
 					}),

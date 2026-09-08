@@ -1,6 +1,6 @@
 # Wallet setup verification
 
-Verified September 8, 2026 against the bundled executable in the canonical checkout. Browser scenarios used computer use against the local wizard, disposable home directories, and synthetic keys. Successful MCP scenarios were followed by a real SDK client tool-list refresh and wallet address request over stdio.
+Initial scenarios verified September 8, 2026 against the bundled executable in the canonical checkout. Browser scenarios used computer use against the local wizard, disposable home directories, and synthetic keys. Successful MCP scenarios were followed by a real SDK client tool-list refresh and wallet address request over stdio.
 
 | Browser scenario | Result |
 | --- | --- |
@@ -32,3 +32,22 @@ against commit `0fed5be` negotiated `2025-06-18` and completed initialization,
 tool discovery, and a dashboard call with `ready: true`. Its server artifact
 SHA-256 was `3ffa3a7ee8af8f6ed31bc104bccc274a98895e18dbfefbbb4d65f4da5389491d`.
 Modern Codex negotiation was not observed.
+
+The role-defaults follow-up saves newly created and imported wallets before
+activation. A browser-created synthetic wallet reached the role selector,
+saved its defaults, unlocked, and refreshed the real stdio connection to 78
+tools; the address read succeeded. An isolated integration test imported two
+wallets in one setup session and verified that payment and identity operations
+used distinct public keys. Custom discovery now uses explicit local settings;
+the earlier Sigma-lab fixture is not an automatically scanned location.
+
+Final local checks: 679 tests passed, 4 opt-in tests skipped, 0 failures
+(3,640 assertions across 97 files). TypeScript, production bundles, and the
+Next.js production build passed. The package dry run contains 12 files.
+Hosted route tests cover read-only registration even with key-like environment
+values, unauthenticated CORS preflight, and OAuth challenges. A local production
+Next.js process returned 204 with CORS at both MCP URLs and 401 with CORS and
+resource metadata for an unauthenticated POST. Synthetic signed JWTs also
+verified live Bun session isolation across two independently valid principals.
+These checks do not establish deployed OAuth login or current MCP App host
+acceptance.

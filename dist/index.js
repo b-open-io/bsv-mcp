@@ -112369,6 +112369,7 @@ function captureConfig(config) {
   const utility = categoryEnabled(config, "utility") ? captureRegistrations((server) => registerUtilsTools(server)) : new Map;
   const wallet = categoryEnabled(config, "wallet_read") && !config.integratedWallet?.isDroplitMode && (config.wallet || config.ctx) ? captureRegistrations((server) => registerWalletTools(server, config.wallet, {
     ctx: config.ctx,
+    roleContexts: config.roleContexts,
     allowWholeWalletBalance: !externalWallet,
     scope: config.walletScope
   })) : new Map;
