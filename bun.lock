@@ -56,6 +56,10 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@1sat/wallet-node@0.0.73": "patches/@1sat%2Fwallet-node@0.0.73.patch",
+    "@1sat/wallet@0.0.106": "patches/@1sat%2Fwallet@0.0.106.patch",
+  },
   "overrides": {
     "zod": "4.5.4",
   },

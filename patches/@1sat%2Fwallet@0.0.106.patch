@@ -1,0 +1,61 @@
+diff --git a/dist/factory.d.ts b/dist/factory.d.ts
+index 7d1c808872728d01e299745d4509770d08700006..c5981134f9c7a74e447681f24355fc61976c4dfd 100644
+--- a/dist/factory.d.ts
++++ b/dist/factory.d.ts
+@@ -51,6 +51,14 @@ export interface WalletCoreConfig {
+     };
+     activeRemote?: string;
+     backups?: string[];
++    /**
++     * Allow automatic storage payments after HTTP 507 responses. Defaults to
++     * true. Set false to retain remote storage and backup sync without funding
++     * either active remotes or backups automatically, including remotes added
++     * later. Failed operations retain their original errors; no payment retry
++     * or consent hook runs. This does not disable explicitly requested payments.
++     */
++    autoStoragePayments?: boolean;
+     connectionTimeout?: number;
+     onTransactionBroadcasted?: (txid: string) => void;
+     onTransactionProven?: (txid: string, blockHeight: number) => void;
+diff --git a/dist/factory.js b/dist/factory.js
+index ebb7ac9150a15710a2dd03be5d241b91caf7962a..4000b4de740a2e688d9e95155db4f287d01ba934 100644
+--- a/dist/factory.js
++++ b/dist/factory.js
+@@ -27,11 +27,13 @@ export async function createWalletCore(config, localStorage, toolbox) {
+     const remoteClients = [];
+     const connectRemote = async (url) => {
+         const client = new toolbox.StorageClient(wallet, url);
+-        installStorageClientPaymentAutoRetry({
+-            client,
+-            wallet: wallet,
+-            storage: storage,
+-        });
++        if (config.autoStoragePayments !== false) {
++            installStorageClientPaymentAutoRetry({
++                client,
++                wallet: wallet,
++                storage: storage,
++            });
++        }
+         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`Remote storage connection timeout: ${url}`)), timeout));
+         await Promise.race([
+             storage.addWalletStorageProvider(client),
+@@ -123,11 +125,13 @@ export async function createWalletCore(config, localStorage, toolbox) {
+             return undefined;
+         }
+     };
+-    installStoragePaymentAutoRetry({
+-        wallet: wallet,
+-        getActiveRemoteUrl,
+-        onStoragePaymentRequired: config.onStoragePaymentRequired,
+-    });
++    if (config.autoStoragePayments !== false) {
++        installStoragePaymentAutoRetry({
++            wallet: wallet,
++            getActiveRemoteUrl,
++            onStoragePaymentRequired: config.onStoragePaymentRequired,
++        });
++    }
+     // Monitor only exists when the caller supplied a Monitor class in the
+     // toolbox. wallet-node and wallet-browser do; wallet-remote doesn't
+     // (server owns chain monitoring). When present, the task loop is still

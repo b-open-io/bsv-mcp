@@ -98,5 +98,9 @@
 		"lint:fix": "biome check . --write",
 		"prepack": "bun run build:all",
 		"tools:manifest": "bun run ./scripts/generate-tool-manifest.ts"
+	},
+	"patchedDependencies": {
+		"@1sat/wallet@0.0.106": "patches/@1sat%2Fwallet@0.0.106.patch",
+		"@1sat/wallet-node@0.0.73": "patches/@1sat%2Fwallet-node@0.0.73.patch"
 	}
 }
