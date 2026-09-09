@@ -78,7 +78,6 @@
 		"@opl.dev/vault": "0.0.1",
 		"better-auth": "1.7.3",
 		"bitcoin-backup": "^0.1.0",
-		"bmap-api-types": "0.0.9",
 		"bsv-bap": "^0.3.7",
 		"jose": "^6.2.12",
 		"js-1sat-ord": "^0.1.91",

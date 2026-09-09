@@ -152,10 +152,7 @@ for (const name of [
 	"ordinals_marketListings",
 	"ordinals_marketSales",
 	"ordinals_getTokenByIdOrTicker",
-	"bsocial_readPosts",
-	"bmap_readPosts",
-	"bmap_readLikes",
-	"bmap_readFollows",
+	"bsocial_read",
 	"utils_convertData",
 	"x402_request",
 	"mnee_parseTx",
@@ -387,19 +384,11 @@ add(
 	}),
 );
 add(
-	policy("bap_friend", ["identity-signing", "payments"], {
+	policy("bsocial_publish", ["identity-signing", "payments"], {
 		feeRole: "payments",
 		vaultSupport: "unsupported",
 		unsupportedReason:
-			"BAP friend requests require an HD master key and the legacy Wallet adapter.",
-	}),
-);
-add(
-	policy("bsocial_createPost", ["payments"], {
-		feeRole: "payments",
-		vaultSupport: "unsupported",
-		unsupportedReason:
-			"The legacy social writer signs and funds with its process-local payment key.",
+			"The legacy project Vault dispatcher has no social action adapter. Use the selected BRC-100 identity context.",
 	}),
 );
 

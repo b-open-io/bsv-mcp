@@ -126,6 +126,24 @@ export function registerAllTools(
 		process.env.DISABLE_BSOCIAL_TOOLS !== "true" &&
 		config.enableBsocialTools !== false;
 
+	// Social is already consolidated; use the same tools in both catalogs.
+	if (enableBsocialTools) {
+		registerBsocialTools(server, {
+			wallet:
+				config.roleContexts || config.walletScope === "payments"
+					? undefined
+					: config.wallet,
+			identityKey: config.identityPk,
+			identityContext:
+				config.walletScope === "payments"
+					? undefined
+					: config.roleContexts
+						? config.roleContexts.identity
+						: config.ctx,
+			disableBroadcasting: config.disableBroadcasting,
+		});
+	}
+
 	if (profile === "compact") {
 		registerCompactCatalog(server, config);
 		return;
@@ -179,18 +197,6 @@ export function registerAllTools(
 		} else {
 			registerBapGetIdTool(server, config.identityPk);
 		}
-	}
-
-	// Register BSocial tools. Public reads do not require a wallet; the
-	// registration family keeps the post-writing tool wallet-gated.
-	if (enableBsocialTools) {
-		registerBsocialTools(server, {
-			wallet: config.wallet,
-			identityContext: config.roleContexts
-				? config.roleContexts.identity
-				: config.ctx,
-			disableBroadcasting: config.disableBroadcasting,
-		});
 	}
 
 	// Register Wallet tools themselves

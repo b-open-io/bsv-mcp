@@ -19,7 +19,6 @@
         "@opl.dev/vault": "0.0.1",
         "better-auth": "1.7.3",
         "bitcoin-backup": "^0.1.0",
-        "bmap-api-types": "0.0.9",
         "bsv-bap": "^0.3.7",
         "jose": "^6.2.12",
         "js-1sat-ord": "^0.1.91",
@@ -533,8 +532,6 @@
     "bip39": ["bip39@3.1.0", "", { "dependencies": { "@noble/hashes": "^1.2.0" } }, "sha512-c9kiwdk45Do5GL0vJMe7tS95VjCii65mYAH7DfWl3uW8AVzXKQVUm64i3hzVybBDMp9r7j9iNxR85+ul8MdN/A=="],
 
     "bitcoin-backup": ["bitcoin-backup@0.1.0", "", { "dependencies": { "@1sat/vault": "^0.0.8", "@1sat/wallet-mac": "^0.0.5", "@msgpack/msgpack": "^3.1.3", "commander": "^15.0.0", "fflate": "^0.8.3" }, "peerDependencies": { "@bsv/sdk": "^2.0.0" }, "bin": { "bbackup": "dist/cli/bbackup.js" } }, "sha512-uG1E+9cuDXGACe12iszilZTr8J+2MpRIicbYeNdTrqhPk/sZXxlN5rJr7VuHEkYuSJVhBfqlO8b/STHSKotS3g=="],
-
-    "bmap-api-types": ["bmap-api-types@0.0.9", "", {}, "sha512-roR00JPdrRqjUvGjxc2raHKIhh2bVdvDgpO4pkmQ1UMgoqQYEVZdeUKO5ilwwA9owjP2MTfIw32wKR9Ro2lh7A=="],
 
     "body-parser": ["body-parser@2.3.0", "", { "dependencies": { "bytes": "^3.1.2", "content-type": "^2.0.0", "debug": "^4.4.3", "http-errors": "^2.0.1", "iconv-lite": "^0.7.2", "on-finished": "^2.4.1", "qs": "^6.15.2", "raw-body": "^3.0.2", "type-is": "^2.1.0" } }, "sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw=="],
 

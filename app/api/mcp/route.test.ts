@@ -116,7 +116,7 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 	const FORBIDDEN_PREFIXES = ["wallet_", "bap_", "mnee_", "x402_", "droplit_"];
 	const FORBIDDEN_EXACT = [
 		"wallet_list",
-		"bsocial_createPost",
+		"bsocial_publish",
 		"utils_installAgentMaster",
 	];
 
@@ -153,7 +153,12 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 			const callsBefore = fromWifSpy.mock.calls.length;
 			const response = await openRoute.POST(
 				post(
-					{ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: modernEnvelope } },
+					{
+						jsonrpc: "2.0",
+						id: 1,
+						method: "tools/list",
+						params: { _meta: modernEnvelope },
+					},
 					MODERN_HEADERS,
 				),
 			);
@@ -172,10 +177,7 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 				"ordinals_marketListings",
 				"ordinals_marketSales",
 				"ordinals_getTokenByIdOrTicker",
-				"bsocial_readPosts",
-				"bmap_readPosts",
-				"bmap_readLikes",
-				"bmap_readFollows",
+				"bsocial_read",
 				"utils_convertData",
 				"utils_find_skills",
 			]) {
@@ -252,7 +254,11 @@ if (process.env.BSV_HOSTED_ROUTE_TEST_CHILD !== "1") {
 							_meta: modernEnvelope,
 						},
 					},
-					{ ...MODERN_HEADERS, "Mcp-Method": "tools/call", "Mcp-Name": "wallet_sendBsv" },
+					{
+						...MODERN_HEADERS,
+						"Mcp-Method": "tools/call",
+						"Mcp-Name": "wallet_sendBsv",
+					},
 				),
 			);
 			expect(response.status).toBe(200);

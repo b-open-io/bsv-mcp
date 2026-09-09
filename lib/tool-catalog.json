@@ -410,34 +410,6 @@
 			]
 		},
 		{
-			"name": "bap_friend",
-			"variants": [
-				{
-					"definition": {
-						"name": "bap_friend",
-						"description": "Initiates a friend request to another BAP ID by broadcasting an on-chain MAP transaction.",
-						"inputSchema": {
-							"type": "object",
-							"properties": {
-								"targetBapId": {
-									"type": "string",
-									"minLength": 1
-								}
-							},
-							"required": [
-								"targetBapId"
-							],
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
-						}
-					},
-					"modes": [
-						"legacy-identity"
-					],
-					"profile": "full"
-				}
-			]
-		},
-		{
 			"name": "bap_generate",
 			"variants": [
 				{
@@ -672,250 +644,499 @@
 			]
 		},
 		{
-			"name": "bmap_readFollows",
+			"name": "bsocial_publish",
 			"variants": [
 				{
 					"definition": {
-						"name": "bmap_readFollows",
-						"description": "Read follow relationships from the BMAP API. Shows who a user is following or who follows them.",
+						"name": "bsocial_publish",
+						"description": "Publish a signed Bitcoin Schema social action: post/reply, repost, like/unlike, follow/unfollow, friend/unfriend, message, or video. Posts/messages support context, tags and attachments. Content is public and permanent; recipient context does NOT encrypt a message. Friend records require your communication public key from an established key-agreement workflow. Requires the selected BAP identity wallet or explicit legacy identity key and funding. Use preview to inspect unsigned outputs without spending.",
 						"inputSchema": {
 							"type": "object",
 							"properties": {
-								"bapId": {
-									"type": "string",
-									"description": "BAP identity key to get follow relationships for"
-								},
-								"type": {
-									"default": "following",
-									"description": "Type of relationship to query",
-									"type": "string",
-									"enum": [
-										"followers",
-										"following"
+								"action": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "post"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"content": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 400000
+												},
+												"contentType": {
+													"default": "text/plain",
+													"type": "string",
+													"maxLength": 128,
+													"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+												},
+												"encoding": {
+													"default": "utf8",
+													"description": "Input encoding. Base64 is decoded to binary B content.",
+													"type": "string",
+													"enum": [
+														"utf8",
+														"base64"
+													]
+												},
+												"filename": {
+													"type": "string",
+													"maxLength": 255
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"tags": {
+													"maxItems": 50,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 100
+													}
+												},
+												"attachments": {
+													"maxItems": 8,
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"content": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 400000
+															},
+															"contentType": {
+																"default": "text/plain",
+																"type": "string",
+																"maxLength": 128,
+																"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+															},
+															"encoding": {
+																"default": "utf8",
+																"description": "Input encoding. Base64 is decoded to binary B content.",
+																"type": "string",
+																"enum": [
+																	"utf8",
+																	"base64"
+																]
+															},
+															"filename": {
+																"type": "string",
+																"maxLength": 255
+															}
+														},
+														"required": [
+															"content"
+														],
+														"additionalProperties": false
+													}
+												},
+												"replyTo": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												}
+											},
+											"required": [
+												"type",
+												"content"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "repost"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"like",
+														"unlike"
+													]
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"emoji": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 32
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"follow",
+														"unfollow",
+														"unfriend"
+													]
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												}
+											},
+											"required": [
+												"type",
+												"bapId"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "friend"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"publicKey": {
+													"type": "string",
+													"pattern": "^(02|03)[a-f0-9]{64}$",
+													"description": "Your communication public key, from the existing wallet/key-agreement workflow. This record does not establish encryption by itself."
+												}
+											},
+											"required": [
+												"type",
+												"bapId",
+												"publicKey"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "message"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"content": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 400000
+												},
+												"contentType": {
+													"default": "text/plain",
+													"type": "string",
+													"maxLength": 128,
+													"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+												},
+												"encoding": {
+													"default": "utf8",
+													"description": "Input encoding. Base64 is decoded to binary B content.",
+													"type": "string",
+													"enum": [
+														"utf8",
+														"base64"
+													]
+												},
+												"filename": {
+													"type": "string",
+													"maxLength": 255
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"tags": {
+													"maxItems": 50,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 100
+													}
+												},
+												"attachments": {
+													"maxItems": 8,
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"content": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 400000
+															},
+															"contentType": {
+																"default": "text/plain",
+																"type": "string",
+																"maxLength": 128,
+																"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+															},
+															"encoding": {
+																"default": "utf8",
+																"description": "Input encoding. Base64 is decoded to binary B content.",
+																"type": "string",
+																"enum": [
+																	"utf8",
+																	"base64"
+																]
+															},
+															"filename": {
+																"type": "string",
+																"maxLength": 255
+															}
+														},
+														"required": [
+															"content"
+														],
+														"additionalProperties": false
+													}
+												}
+											},
+											"required": [
+												"type",
+												"content"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "video"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"provider": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"videoID": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 512
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"duration": {
+													"type": "number",
+													"minimum": 0
+												},
+												"start": {
+													"type": "number",
+													"minimum": 0
+												}
+											},
+											"required": [
+												"type",
+												"provider",
+												"videoID"
+											],
+											"additionalProperties": false
+										}
 									]
 								},
-								"limit": {
-									"default": 20,
-									"description": "Maximum number of follows to return",
-									"type": "number",
-									"minimum": 1,
-									"maximum": 100
-								},
-								"page": {
-									"default": 1,
-									"description": "Page number for pagination (1-based)",
-									"type": "number",
-									"minimum": 1
-								}
-							},
-							"required": [
-								"bapId"
-							],
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
-						}
-					},
-					"modes": [
-						"walletless",
-						"legacy",
-						"legacy-identity",
-						"broadcast-disabled",
-						"embedded",
-						"payments-role",
-						"sponsored",
-						"droplit"
-					],
-					"profile": "full"
-				}
-			]
-		},
-		{
-			"name": "bmap_readLikes",
-			"variants": [
-				{
-					"definition": {
-						"name": "bmap_readLikes",
-						"description": "Read likes and reactions for a specific post from the BMAP API. Shows who liked the post and what emoji reactions were used.",
-						"inputSchema": {
-							"type": "object",
-							"properties": {
-								"txid": {
-									"type": "string",
-									"description": "Transaction ID of the post to get likes for"
-								},
-								"limit": {
-									"default": 20,
-									"description": "Maximum number of likes to return",
-									"type": "number",
-									"minimum": 1,
-									"maximum": 100
-								},
-								"page": {
-									"default": 1,
-									"description": "Page number for pagination (1-based)",
-									"type": "number",
-									"minimum": 1
-								}
-							},
-							"required": [
-								"txid"
-							],
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
-						}
-					},
-					"modes": [
-						"walletless",
-						"legacy",
-						"legacy-identity",
-						"broadcast-disabled",
-						"embedded",
-						"payments-role",
-						"sponsored",
-						"droplit"
-					],
-					"profile": "full"
-				}
-			]
-		},
-		{
-			"name": "bmap_readPosts",
-			"variants": [
-				{
-					"definition": {
-						"name": "bmap_readPosts",
-						"description": "Read social posts from the BMAP API (query layer). Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-						"inputSchema": {
-							"type": "object",
-							"properties": {
-								"bapId": {
-									"description": "BAP identity key to filter posts by author",
-									"type": "string"
-								},
-								"txid": {
-									"description": "Specific transaction ID to fetch",
-									"type": "string"
-								},
-								"limit": {
-									"default": 20,
-									"description": "Maximum number of posts to return",
-									"type": "number",
-									"minimum": 1,
-									"maximum": 100
-								},
-								"page": {
-									"default": 1,
-									"description": "Page number for pagination (1-based)",
-									"type": "number",
-									"minimum": 1
-								},
-								"feed": {
+								"preview": {
 									"default": false,
-									"description": "Whether to fetch feed (posts from followed users)",
+									"description": "Return unsigned output scripts without signing, funding, or broadcasting.",
 									"type": "boolean"
-								},
-								"address": {
-									"description": "Bitcoin address to filter posts by",
-									"type": "string"
-								}
-							},
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
-						}
-					},
-					"modes": [
-						"walletless",
-						"legacy",
-						"legacy-identity",
-						"broadcast-disabled",
-						"embedded",
-						"payments-role",
-						"sponsored",
-						"droplit"
-					],
-					"profile": "full"
-				}
-			]
-		},
-		{
-			"name": "bsocial_createPost",
-			"variants": [
-				{
-					"definition": {
-						"name": "bsocial_createPost",
-						"description": "Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
-						"inputSchema": {
-							"type": "object",
-							"properties": {
-								"content": {
-									"type": "string",
-									"description": "The content of the post"
-								},
-								"contentType": {
-									"default": "text/plain",
-									"description": "Content type of the post",
-									"type": "string",
-									"enum": [
-										"text/plain",
-										"text/markdown"
-									]
-								},
-								"app": {
-									"default": "bsv-mcp",
-									"description": "Application name creating the post",
-									"type": "string"
-								},
-								"additionalMapData": {
-									"description": "Additional MAP protocol key-value pairs as a JSON object string, e.g. '{\"key\": \"value\"}'",
-									"type": "string"
 								}
 							},
 							"required": [
-								"content"
-							],
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
-						}
-					},
-					"modes": [
-						"legacy",
-						"legacy-identity"
-					],
-					"profile": "full"
-				},
-				{
-					"definition": {
-						"name": "bsocial_createPost",
-						"description": "Publish a BSocial post with an AIP signature from the selected BAP identity wallet. Requires a published identity. The identity wallet funds the transaction; content becomes public on chain.",
-						"inputSchema": {
-							"type": "object",
-							"properties": {
-								"content": {
-									"type": "string",
-									"minLength": 1,
-									"maxLength": 100000
-								},
-								"contentType": {
-									"default": "text/plain",
-									"type": "string",
-									"enum": [
-										"text/plain",
-										"text/markdown"
-									]
-								},
-								"app": {
-									"default": "bsv-mcp",
-									"type": "string",
-									"minLength": 1,
-									"maxLength": 100
-								},
-								"tags": {
-									"maxItems": 50,
-									"type": "array",
-									"items": {
-										"type": "string",
-										"maxLength": 100
-									}
-								}
-							},
-							"required": [
-								"content"
+								"action"
 							],
 							"$schema": "https://json-schema.org/draft/2020-12/schema",
 							"additionalProperties": false
@@ -928,52 +1149,867 @@
 						}
 					},
 					"modes": [
+						"legacy",
+						"legacy-identity",
 						"broadcast-disabled",
 						"embedded",
 						"sponsored"
 					],
 					"profile": "full"
+				},
+				{
+					"definition": {
+						"name": "bsocial_publish",
+						"description": "Publish a signed Bitcoin Schema social action: post/reply, repost, like/unlike, follow/unfollow, friend/unfriend, message, or video. Posts/messages support context, tags and attachments. Content is public and permanent; recipient context does NOT encrypt a message. Friend records require your communication public key from an established key-agreement workflow. Requires the selected BAP identity wallet or explicit legacy identity key and funding. Use preview to inspect unsigned outputs without spending.",
+						"inputSchema": {
+							"type": "object",
+							"properties": {
+								"action": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "post"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"content": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 400000
+												},
+												"contentType": {
+													"default": "text/plain",
+													"type": "string",
+													"maxLength": 128,
+													"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+												},
+												"encoding": {
+													"default": "utf8",
+													"description": "Input encoding. Base64 is decoded to binary B content.",
+													"type": "string",
+													"enum": [
+														"utf8",
+														"base64"
+													]
+												},
+												"filename": {
+													"type": "string",
+													"maxLength": 255
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"tags": {
+													"maxItems": 50,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 100
+													}
+												},
+												"attachments": {
+													"maxItems": 8,
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"content": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 400000
+															},
+															"contentType": {
+																"default": "text/plain",
+																"type": "string",
+																"maxLength": 128,
+																"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+															},
+															"encoding": {
+																"default": "utf8",
+																"description": "Input encoding. Base64 is decoded to binary B content.",
+																"type": "string",
+																"enum": [
+																	"utf8",
+																	"base64"
+																]
+															},
+															"filename": {
+																"type": "string",
+																"maxLength": 255
+															}
+														},
+														"required": [
+															"content"
+														],
+														"additionalProperties": false
+													}
+												},
+												"replyTo": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												}
+											},
+											"required": [
+												"type",
+												"content"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "repost"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"like",
+														"unlike"
+													]
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"emoji": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 32
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"follow",
+														"unfollow",
+														"unfriend"
+													]
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												}
+											},
+											"required": [
+												"type",
+												"bapId"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "friend"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"publicKey": {
+													"type": "string",
+													"pattern": "^(02|03)[a-f0-9]{64}$",
+													"description": "Your communication public key, from the existing wallet/key-agreement workflow. This record does not establish encryption by itself."
+												}
+											},
+											"required": [
+												"type",
+												"bapId",
+												"publicKey"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "message"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"content": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 400000
+												},
+												"contentType": {
+													"default": "text/plain",
+													"type": "string",
+													"maxLength": 128,
+													"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+												},
+												"encoding": {
+													"default": "utf8",
+													"description": "Input encoding. Base64 is decoded to binary B content.",
+													"type": "string",
+													"enum": [
+														"utf8",
+														"base64"
+													]
+												},
+												"filename": {
+													"type": "string",
+													"maxLength": 255
+												},
+												"context": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"subcontext": {
+													"type": "object",
+													"properties": {
+														"key": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 64,
+															"pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$"
+														},
+														"value": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 2048
+														}
+													},
+													"required": [
+														"key",
+														"value"
+													],
+													"additionalProperties": false
+												},
+												"tags": {
+													"maxItems": 50,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 100
+													}
+												},
+												"attachments": {
+													"maxItems": 8,
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"content": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 400000
+															},
+															"contentType": {
+																"default": "text/plain",
+																"type": "string",
+																"maxLength": 128,
+																"pattern": "^[\\w.+-]+\\/[\\w.+-]+(?:;[^\\r\\n]*)?$"
+															},
+															"encoding": {
+																"default": "utf8",
+																"description": "Input encoding. Base64 is decoded to binary B content.",
+																"type": "string",
+																"enum": [
+																	"utf8",
+																	"base64"
+																]
+															},
+															"filename": {
+																"type": "string",
+																"maxLength": 255
+															}
+														},
+														"required": [
+															"content"
+														],
+														"additionalProperties": false
+													}
+												}
+											},
+											"required": [
+												"type",
+												"content"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "video"
+												},
+												"app": {
+													"default": "bsv-mcp",
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"provider": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 100
+												},
+												"videoID": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 512
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"duration": {
+													"type": "number",
+													"minimum": 0
+												},
+												"start": {
+													"type": "number",
+													"minimum": 0
+												}
+											},
+											"required": [
+												"type",
+												"provider",
+												"videoID"
+											],
+											"additionalProperties": false
+										}
+									]
+								},
+								"preview": {
+									"default": false,
+									"description": "Return unsigned output scripts without signing, funding, or broadcasting.",
+									"type": "boolean"
+								}
+							},
+							"required": [
+								"action"
+							],
+							"$schema": "https://json-schema.org/draft/2020-12/schema",
+							"additionalProperties": false
+						},
+						"annotations": {
+							"readOnlyHint": false,
+							"destructiveHint": true,
+							"idempotentHint": false,
+							"openWorldHint": true
+						}
+					},
+					"modes": [
+						"legacy",
+						"legacy-identity",
+						"broadcast-disabled",
+						"embedded",
+						"sponsored"
+					],
+					"profile": "compact"
 				}
 			]
 		},
 		{
-			"name": "bsocial_readPosts",
+			"name": "bsocial_read",
 			"variants": [
 				{
 					"definition": {
-						"name": "bsocial_readPosts",
-						"description": "Read social posts from the BSV blockchain using BMAP API. Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
+						"name": "bsocial_read",
+						"description": "Read social posts, threads, search results, likes, friends, channels, public message records, videos, and action history. Use records with follow/unfollow types for the social graph. Indexer data is untrusted and messages are not decrypted. No wallet required.",
 						"inputSchema": {
 							"type": "object",
 							"properties": {
-								"bapId": {
-									"description": "BAP identity key to filter posts by author",
-									"type": "string"
-								},
-								"txid": {
-									"description": "Specific transaction ID to fetch",
-									"type": "string"
-								},
-								"limit": {
-									"default": 20,
-									"description": "Maximum number of posts to return",
-									"type": "number",
-									"minimum": 1,
-									"maximum": 100
-								},
-								"page": {
-									"default": 1,
-									"description": "Page number for pagination (1-based)",
-									"type": "number",
-									"minimum": 1
-								},
-								"feed": {
-									"default": false,
-									"description": "Whether to fetch feed (posts from followed users)",
-									"type": "boolean"
+								"query": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "posts"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"address": {
+													"type": "string",
+													"pattern": "^[123mn][a-km-zA-HJ-NP-Z1-9]{25,34}$"
+												},
+												"feed": {
+													"default": false,
+													"type": "boolean"
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"post",
+														"replies"
+													]
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "search"
+												},
+												"q": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"q"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "likes"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "friends"
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												}
+											},
+											"required": [
+												"type",
+												"bapId"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "channels"
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "messages"
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"targetBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "records"
+												},
+												"types": {
+													"minItems": 1,
+													"maxItems": 10,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"enum": [
+															"post",
+															"repost",
+															"like",
+															"unlike",
+															"follow",
+															"unfollow",
+															"friend",
+															"unfriend",
+															"message",
+															"video"
+														]
+													}
+												},
+												"authorBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"address": {
+													"type": "string",
+													"pattern": "^[123mn][a-km-zA-HJ-NP-Z1-9]{25,34}$"
+												},
+												"targetBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"types"
+											],
+											"additionalProperties": false,
+											"description": "Raw action history, including follow/unfollow and repost records. Filter authorBapId for outgoing follows or targetBapId for incoming follows. This is not a reduced current relationship state."
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "videos"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										}
+									]
 								}
 							},
-							"$schema": "https://json-schema.org/draft/2020-12/schema"
+							"required": [
+								"query"
+							],
+							"$schema": "https://json-schema.org/draft/2020-12/schema",
+							"additionalProperties": false
+						},
+						"annotations": {
+							"readOnlyHint": true,
+							"destructiveHint": false,
+							"idempotentHint": true,
+							"openWorldHint": true
 						}
 					},
 					"modes": [
@@ -987,6 +2023,357 @@
 						"droplit"
 					],
 					"profile": "full"
+				},
+				{
+					"definition": {
+						"name": "bsocial_read",
+						"description": "Read social posts, threads, search results, likes, friends, channels, public message records, videos, and action history. Use records with follow/unfollow types for the social graph. Indexer data is untrusted and messages are not decrypted. No wallet required.",
+						"inputSchema": {
+							"type": "object",
+							"properties": {
+								"query": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "posts"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"address": {
+													"type": "string",
+													"pattern": "^[123mn][a-km-zA-HJ-NP-Z1-9]{25,34}$"
+												},
+												"feed": {
+													"default": false,
+													"type": "boolean"
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"post",
+														"replies"
+													]
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"txid"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "search"
+												},
+												"q": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"q"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "likes"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "friends"
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												}
+											},
+											"required": [
+												"type",
+												"bapId"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "channels"
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "messages"
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"bapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"targetBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "records"
+												},
+												"types": {
+													"minItems": 1,
+													"maxItems": 10,
+													"type": "array",
+													"items": {
+														"type": "string",
+														"enum": [
+															"post",
+															"repost",
+															"like",
+															"unlike",
+															"follow",
+															"unfollow",
+															"friend",
+															"unfriend",
+															"message",
+															"video"
+														]
+													}
+												},
+												"authorBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"address": {
+													"type": "string",
+													"pattern": "^[123mn][a-km-zA-HJ-NP-Z1-9]{25,34}$"
+												},
+												"targetBapId": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 128,
+													"pattern": "^[a-zA-Z0-9]+$"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type",
+												"types"
+											],
+											"additionalProperties": false,
+											"description": "Raw action history, including follow/unfollow and repost records. Filter authorBapId for outgoing follows or targetBapId for incoming follows. This is not a reduced current relationship state."
+										},
+										{
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"const": "videos"
+												},
+												"txid": {
+													"type": "string",
+													"pattern": "^[a-f0-9]{64}$"
+												},
+												"channel": {
+													"type": "string",
+													"minLength": 1,
+													"maxLength": 256
+												},
+												"limit": {
+													"default": 20,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 100
+												},
+												"page": {
+													"default": 1,
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 10000
+												}
+											},
+											"required": [
+												"type"
+											],
+											"additionalProperties": false
+										}
+									]
+								}
+							},
+							"required": [
+								"query"
+							],
+							"$schema": "https://json-schema.org/draft/2020-12/schema",
+							"additionalProperties": false
+						},
+						"annotations": {
+							"readOnlyHint": true,
+							"destructiveHint": false,
+							"idempotentHint": true,
+							"openWorldHint": true
+						}
+					},
+					"modes": [
+						"walletless",
+						"legacy",
+						"legacy-identity",
+						"broadcast-disabled",
+						"embedded",
+						"payments-role",
+						"sponsored",
+						"droplit"
+					],
+					"profile": "compact"
 				}
 			]
 		},

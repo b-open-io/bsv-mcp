@@ -1,5 +1,24 @@
 # BSV MCP Server Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Consolidate social tools into `bsocial_read` and `bsocial_publish` in both tool
+  profiles. Replace `bsocial_readPosts`, `bsocial_createPost`, `bmap_readPosts`,
+  `bmap_readLikes`, `bmap_readFollows`, and `bap_friend`; clients must refresh tools.
+- Add canonical social actions, replies, reactions, relationships, messages,
+  media, tags, and unsigned previews with one shared schema and signing path.
+- Document action-specific inputs and BMAP backend configuration. Messages are
+  public records; publishing does not encrypt them.
+
+### Fixed
+
+- Use social API routes and retain structured indexer records without claiming
+  independent signature verification or derived relationship state.
+- Sign legacy social records with an explicit identity key, fund with the payment
+  key, estimate unsigned transaction fees, and report broadcast failures.
+
 ## [0.5.1] - 2026-09-08
 
 ### Changed

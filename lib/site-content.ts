@@ -55,7 +55,7 @@ export const toolCategories: ToolCategory[] = [
 	{
 		key: "social",
 		name: "Social",
-		prefixes: ["bsocial", "bmap"],
+		prefixes: ["bsocial"],
 		description:
 			"Post, like, and follow on BSocial. Your agent can publish to the open social graph.",
 	},

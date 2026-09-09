@@ -111,6 +111,21 @@ protocol support guide](docs/mcp-client-protocol-support.md) for the per-family
 operation bounds, endpoint contracts, MCP Apps compatibility, and validation
 status.
 
+## Social
+
+Two tools cover social operations in both full and compact catalogs:
+
+- `bsocial_read`: posts, replies, search, likes, friends, channels, messages, videos, and raw action history.
+- `bsocial_publish`: posts/replies, reposts, likes/unlikes, follows/unfollows, friend/unfriend records, messages, and video records. Tags and attachments use separate, independently signed outputs.
+
+```json
+{"action":{"type":"post","content":"Hello Bitcoin","tags":["bitcoin"]},"preview":true}
+```
+
+Preview returns unsigned outputs without using keys or spending. Remove `preview` to publish through the selected identity wallet's existing permissions. Messages are public unless their content was encrypted beforehand; a recipient context does not encrypt them. Friend records advertise a communication public key from an established key-agreement workflow.
+
+See the [social guide](https://bsvmcp.com/docs#social) for examples and migration from the old tool names. `PUBLIC_BMAP_URL` is the indexer server root (with `/social` and `/q` routes), not a wallet or identity API. Raw follow/unfollow records are event history, not a claim about current relationship state.
+
 ## Local wallet modes
 
 External mode connects to an existing BRC-100 signer. The signer keeps the

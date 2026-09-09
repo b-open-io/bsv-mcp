@@ -8,6 +8,7 @@ import {
 	categoryForTool,
 	compactOperations,
 	getTool,
+	inputAlternatives,
 	inputFields,
 } from "./tool-catalog";
 import { renderToolMarkdown } from "./tool-reference-markdown";
@@ -50,7 +51,7 @@ test("reference records conditional transaction tools and external restrictions"
 	expect(modes("x402_payQuote")).toContain("embedded");
 	expect(modes("x402_payQuote")).not.toContain("broadcast-disabled");
 	expect(modes("wallet_signBsm")).not.toContain("payments-role");
-	expect(modes("bap_friend")).toContain("legacy-identity");
+	expect(modes("bsocial_publish")).toContain("legacy-identity");
 });
 
 test("nested inputs, defaults and required fields remain visible", () => {
@@ -75,4 +76,17 @@ test("guide topic anchors are unique and linkable", () => {
 	expect(ids.every(Boolean)).toBe(true);
 	expect(new Set(ids).size).toBe(ids.length);
 	expect(ids).toContain("tasks");
+});
+
+test("social operations expose their conditional fields in the reference", () => {
+	const schema =
+		getTool("bsocial_publish")?.variants[0].definition.inputSchema ?? {};
+	expect(
+		inputAlternatives(schema).some((branch) =>
+			branch.fields.some((field) => field.name === "action.replyTo"),
+		),
+	).toBe(true);
+	expect(renderToolMarkdown("bsocial_publish")).toContain(
+		"action.attachments[].contentType",
+	);
 });

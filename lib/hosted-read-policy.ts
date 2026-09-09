@@ -1,9 +1,6 @@
 import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { registerBmapReadFollowsTool } from "../tools/bsocial/bmapFollow";
-import { registerBmapReadLikesTool } from "../tools/bsocial/bmapLikes";
-import { registerBmapReadPostsTool } from "../tools/bsocial/bmapReadPosts";
-import { registerReadPostsTool } from "../tools/bsocial/readPosts";
+import { registerSocialReadTool } from "../tools/bsocial/read";
 import { registerBsvTools } from "../tools/bsv";
 import { registerStatusTool } from "../tools/bsv/status";
 import { registerOrdinalsTools } from "../tools/ordinals";
@@ -36,10 +33,7 @@ export const HOSTED_READ_TOOL_ALLOWLIST: readonly string[] = Object.freeze([
 	"ordinals_marketListings",
 	"ordinals_marketSales",
 	"ordinals_getTokenByIdOrTicker",
-	"bsocial_readPosts",
-	"bmap_readPosts",
-	"bmap_readLikes",
-	"bmap_readFollows",
+	"bsocial_read",
 	"utils_convertData",
 	"utils_find_skills",
 	"bsv_read",
@@ -128,10 +122,7 @@ export function registerHostedReadTools(server: McpServer): void {
 	registerBsvTools(server);
 	registerStatusTool(server, {});
 	registerOrdinalsTools(server);
-	registerReadPostsTool(server);
-	registerBmapReadPostsTool(server);
-	registerBmapReadLikesTool(server);
-	registerBmapReadFollowsTool(server);
+	registerSocialReadTool(server);
 	server.registerTool(
 		"utils_convertData",
 		{

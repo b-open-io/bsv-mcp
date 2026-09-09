@@ -18,7 +18,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { McpApprovalFlow } from "../../utils/mcpApprovalFlow";
 import { withMcpToolExecution } from "../../utils/mcpToolExecution";
 import { initExternalWallet } from "../../utils/walletInit";
-import { registerContextSocialPost } from "../bsocial/context";
+import { registerSocialPublishTool } from "../bsocial/publish";
 import { registerContextBapTools } from "./context";
 
 function result(value: CallToolResult): Record<string, unknown> {
@@ -126,7 +126,7 @@ for (const mode of ["embedded", "external"] as const)
 					flow,
 				);
 				registerContextBapTools(server, ctx);
-				registerContextSocialPost(server, ctx);
+				registerSocialPublishTool(server, { identityContext: ctx });
 				return server;
 			},
 			{ transport: serverTransport, legacy: "reject" },
@@ -161,9 +161,12 @@ for (const mode of ["embedded", "external"] as const)
 				"@type": "Person",
 				name: "Synthetic identity",
 			});
-			await call("bsocial_createPost", {
-				content: "Synthetic public post",
-				tags: ["test"],
+			await call("bsocial_publish", {
+				action: {
+					type: "post",
+					content: "Synthetic public post",
+					tags: ["test"],
+				},
 			});
 			expect(transactions).toHaveLength(5);
 			for (const [index, outputs] of transactions.entries()) {

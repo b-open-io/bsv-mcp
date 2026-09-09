@@ -175,6 +175,53 @@ const sections: DocSection[] = [
 		],
 	},
 	{
+		id: "social",
+		title: "Social",
+		paragraphs: [
+			"One reader and one publisher cover Bitcoin Schema social data. Both full and compact catalogs use the same tools. BMAP is the indexer behind reads; it is not a second social network.",
+		],
+		links: [
+			{ label: "Read tool reference", href: "/docs/tools/bsocial_read" },
+			{ label: "Publish tool reference", href: "/docs/tools/bsocial_publish" },
+			{
+				label: "Bitcoin Schema social specification",
+				href: "https://github.com/opldotdev/BRCs/blob/master/apps/0187.md",
+			},
+		],
+		topics: [
+			{
+				title: "Read posts and conversations",
+				paragraphs: [
+					"Choose query.type: posts, post, replies, search, likes, friends, channels, messages, videos, or records. Use records with types follow and unfollow for relationship history; targetBapId filters incoming records and authorBapId filters outgoing records. Results are indexer data, not independently verified authorship or universally agreed current state.",
+				],
+				code: '{"query":{"type":"search","q":"bitcoin","limit":10}}',
+			},
+			{
+				title: "Publish and reply",
+				paragraphs: [
+					"Choose action.type: post, repost, like, unlike, follow, unfollow, friend, unfriend, message, or video. A reply is a post with replyTo set to the parent transaction ID. General context and subcontext each take a key and value. unfriend and video are indexer extensions to the core social vocabulary.",
+					"Use preview to inspect unsigned output scripts without signing, funding, or broadcasting. Publishing requires the selected identity wallet; its transaction and signing permissions apply. Legacy mode requires an explicit identity key plus a funding key, and never signs as the payment key by default.",
+				],
+				code: '{"action":{"type":"post","content":"Hello Bitcoin","contentType":"text/markdown","tags":["bitcoin"]},"preview":true}',
+			},
+			{
+				title: "Media and messages",
+				paragraphs: [
+					"Posts and messages accept a content type, utf8 or base64 input encoding, and up to eight attachments with the same fields. Base64 is decoded to binary B content. Total unsigned output size is limited to 300 KB. Tags and attachments are separate outputs signed by the same current identity key.",
+					"All published content is public and permanent. A message with context key bapID names a recipient but does not encrypt the content. Publish already-encrypted content when using an established secure messaging workflow. A friend record needs your communication publicKey from that workflow; it does not prove a reciprocal friendship or establish encryption by itself.",
+				],
+				code: '{"action":{"type":"message","content":"Hello channel","context":{"key":"channel","value":"bitcoin"}},"preview":true}',
+			},
+			{
+				title: "Migration and indexer setup",
+				paragraphs: [
+					"bsocial_read replaces bsocial_readPosts and bmap_readPosts (query.type posts or post), bmap_readLikes (likes), and bmap_readFollows (records with follow/unfollow types). bsocial_publish replaces bsocial_createPost and bap_friend. Old names are removed; refresh the client tool list. The publish input schema is the same across wallet modes.",
+					"PUBLIC_BMAP_URL must point to a BMAP server root exposing /social and /q. The adapter uses the routes in b-open-io/bmap-api. An unavailable indexer returns an error rather than an empty feed. Publication broadcasts through the wallet; it does not guarantee immediate indexing. Never retry a publication solely because it has not appeared in a feed.",
+				],
+			},
+		],
+	},
+	{
 		id: "tasks",
 		title: "Common tasks",
 		paragraphs: [
