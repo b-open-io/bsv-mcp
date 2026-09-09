@@ -2,9 +2,11 @@ import { SITE_URL } from "./site";
 import {
 	catalogTools,
 	compactOperations,
+	displayVariants,
 	getTool,
 	inputAlternatives,
 	inputFields,
+	isDeveloperTool,
 	modeLabel,
 	toolNavigation,
 	toolSummary,
@@ -13,7 +15,10 @@ import { referenceNote } from "./tool-reference-notes";
 
 const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\n/g, " ");
 export function renderToolIndexMarkdown(): string {
-	return `# BSV MCP tool reference\n\nThis catalog combines supported wallet configurations. Your server lists only enabled tools.\n\n${toolNavigation.map((group) => `## ${group.name}\n\n${group.tools.map((tool) => `- [${tool.name}](${SITE_URL}/docs/tools/${tool.name}): ${tool.description}`).join("\n")}`).join("\n\n")}`;
+	return `# BSV MCP tool reference\n\nThis catalog combines supported wallet configurations. Your server lists only enabled tools.\n\n${toolNavigation.map((group) => `## ${group.name}\n\n${group.tools.map((tool) => `- [${tool.name}](${SITE_URL}/docs/tools/${tool.name}): ${tool.description}`).join("\n")}`).join("\n\n")}\n\n## Developer reference\n\n${catalogTools
+		.filter(isDeveloperTool)
+		.map((t) => `- [${t.name}](${SITE_URL}/docs/tools/${t.name})`)
+		.join("\n")}`;
 }
 export function renderToolMarkdown(name: string): string | undefined {
 	const tool = getTool(name);
@@ -23,6 +28,11 @@ export function renderToolMarkdown(name: string): string | undefined {
 	return [
 		`# ${name}`,
 		toolSummary(tool),
+		...(note.example
+			? [
+					`## Example\n\n\`\`\`json\n${JSON.stringify(note.example, null, 2)}\n\`\`\``,
+				]
+			: []),
 		`## Result\n\n${note.result}`,
 		`## Permissions\n\n${note.approval}`,
 		...(note.details ? [note.details] : []),
@@ -31,7 +41,7 @@ export function renderToolMarkdown(name: string): string | undefined {
 					`## Compact operations\n\nPass the full tool name as operation and its inputs as args.\n\n${operations.map((op) => `- [${op}](${SITE_URL}/docs/tools/${op})`).join("\n")}`,
 				]
 			: []),
-		...tool.variants.map((variant, index) => {
+		...displayVariants(tool).map((variant, index) => {
 			const fields = inputFields(variant.definition.inputSchema);
 			return [
 				`## Definition ${index + 1} (${variant.profile})`,

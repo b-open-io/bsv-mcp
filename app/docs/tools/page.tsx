@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ReferenceLayout } from "@/components/docs/ReferenceLayout";
-import { catalog, fullToolNames, toolNavigation } from "@/lib/tool-catalog";
+import {
+	catalog,
+	catalogTools,
+	isDeveloperTool,
+	toolNavigation,
+} from "@/lib/tool-catalog";
 
 export const metadata: Metadata = {
 	title: "All tools",
@@ -15,14 +20,11 @@ export default function ToolsPage() {
 			<p className="mb-3 font-mono text-sm text-primary">Tool reference</p>
 			<h1 className="text-4xl font-bold tracking-tight">All tools</h1>
 			<p className="mt-5 text-lg leading-8 text-muted-foreground">
-				{fullToolNames.length} full-catalog tools, plus compact families. Find a
-				tool by name or purpose, then open its inputs and wallet requirements.
+				Find a tool by what you want to do. Open its reference for inputs,
+				results and wallet requirements.
 			</p>
 			<p className="mt-4 leading-7">
-				This reference combines supported registration configurations. Your
-				running server lists only the tools enabled for its wallet, roles and
-				settings. A registered legacy tool can still require wallet setup before
-				it can run.
+				Your available tools depend on your wallet and settings.
 			</p>
 			<div className="mt-5 flex gap-5 text-sm">
 				<Link href="/docs#tasks" className="text-primary underline">
@@ -72,6 +74,28 @@ export default function ToolsPage() {
 					</ul>
 				</section>
 			))}
+			<details className="my-8 rounded border p-4">
+				<summary className="cursor-pointer font-medium">
+					Developer reference: wallet API, compact aliases and dashboard tools
+				</summary>
+				<p className="my-3">
+					Compact mode exposes a smaller set of operations and omits most write
+					tools. Wallet API tools expose low-level signing and transaction
+					methods. Dashboard tools are called by the app.
+				</p>
+				<ul className="space-y-2">
+					{catalogTools.filter(isDeveloperTool).map((t) => (
+						<li key={t.name}>
+							<Link
+								className="font-mono text-sm text-primary underline"
+								href={`/docs/tools/${t.name}`}
+							>
+								{t.name}
+							</Link>
+						</li>
+					))}
+				</ul>
+			</details>
 		</ReferenceLayout>
 	);
 }

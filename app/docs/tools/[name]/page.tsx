@@ -6,6 +6,7 @@ import {
 	catalogTools,
 	categoryForTool,
 	compactOperations,
+	displayVariants,
 	getTool,
 	inputAlternatives,
 	inputFields,
@@ -35,6 +36,7 @@ export default async function ToolPage({ params }: Props) {
 	const category = categoryForTool(name);
 	const note = referenceNote(name);
 	const operations = compactOperations(tool);
+	const variants = displayVariants(tool);
 	const families = catalogTools.filter((t) =>
 		compactOperations(t).includes(name),
 	);
@@ -58,6 +60,14 @@ export default async function ToolPage({ params }: Props) {
 			>
 				Read as Markdown
 			</a>
+			{note.example && (
+				<section className="mt-8">
+					<h2 className="text-xl font-semibold">Example</h2>
+					<pre className="mt-3 overflow-x-auto rounded border p-4 text-sm">
+						{JSON.stringify(note.example, null, 2)}
+					</pre>
+				</section>
+			)}
 			<section className="mt-8 space-y-3">
 				<h2 className="text-xl font-semibold">Result</h2>
 				<p className="leading-7">{note.result}</p>
@@ -104,28 +114,32 @@ export default async function ToolPage({ params }: Props) {
 					in compact mode.
 				</p>
 			)}
-			{tool.variants.map((variant, index) => {
+			{variants.map((variant, index) => {
 				const fields = inputFields(variant.definition.inputSchema);
 				return (
-					<section
+					<details
+						open={index === 0}
 						key={`${variant.profile}-${variant.modes.join("-")}`}
 						className="mt-10 border-t pt-6"
 					>
-						<h2 className="text-xl font-semibold">
-							{tool.variants.length > 1
+						<summary className="cursor-pointer text-xl font-semibold">
+							{variants.length > 1
 								? `Definition ${index + 1}`
 								: "Inputs and availability"}
-						</h2>
+						</summary>
 						<p className="mt-3 text-sm leading-7">
-							<strong>
-								{variant.profile === "full"
-									? "Full catalog"
-									: "Compact catalog"}
-							</strong>{" "}
-							· {variant.modes.map(modeLabel).join("; ")}
+							<strong>{`${variant.profile} catalog`}</strong> ·{" "}
+							{variant.modes.map(modeLabel).join("; ")}
 						</p>
 						{variant.definition.description !== toolSummary(tool) && (
-							<p className="mt-3 leading-7">{variant.definition.description}</p>
+							<details className="mt-3">
+								<summary className="cursor-pointer text-sm text-muted-foreground">
+									Full tool description
+								</summary>
+								<p className="mt-3 leading-7">
+									{variant.definition.description}
+								</p>
+							</details>
 						)}
 						{!fields.length ? (
 							<p className="mt-5">No input fields. Pass an empty object.</p>
@@ -167,7 +181,7 @@ export default async function ToolPage({ params }: Props) {
 								</pre>
 							</details>
 						)}
-					</section>
+					</details>
 				);
 			})}
 		</ReferenceLayout>
