@@ -5,6 +5,7 @@ import {
 	OP,
 	P2PKH,
 	type PrivateKey,
+	SatoshisPerKilobyte,
 	Script,
 	Transaction,
 } from "@bsv/sdk";
@@ -82,13 +83,14 @@ export async function buildAndSendTransaction(
 
 	// Select UTXOs and add inputs
 	let totalInputSatoshis = 0;
-	const selectedUtxos: Utxo[] = [];
+	const feeModel = new SatoshisPerKilobyte(feePerByte * 1000);
+	tx.addOutput({ lockingScript: p2pkh.lock(changeAddress), satoshis: 0 });
+	let estimatedFee = 0;
 
-	// Sort UTXOs by value (ascending) to minimize the number of inputs
-	const sortedUtxos = [...utxos].sort((a, b) => a.satoshis - b.satoshis);
+	// Select larger UTXOs first to limit the number of inputs
+	const sortedUtxos = [...utxos].sort((a, b) => b.satoshis - a.satoshis);
 
 	for (const utxo of sortedUtxos) {
-		selectedUtxos.push(utxo);
 		totalInputSatoshis += utxo.satoshis;
 
 		tx.addInput(
@@ -105,35 +107,31 @@ export async function buildAndSendTransaction(
 		);
 
 		// Estimate fee with current inputs
-		const estimatedSize = tx.toHex().length / 2 + 150; // rough estimate for unsigned tx
-		const estimatedFee = Math.ceil(estimatedSize * feePerByte);
+		estimatedFee = await feeModel.computeFee(tx);
 
 		// Check if we have enough to cover outputs + fee + potential change
-		if (totalInputSatoshis >= totalOutputSatoshis + estimatedFee + DUST_LIMIT) {
+		if (totalInputSatoshis >= totalOutputSatoshis + estimatedFee) {
 			break;
 		}
 	}
 
-	// Calculate final fee
-	const estimatedSize = tx.toHex().length / 2 + 35; // more accurate with all inputs
-	const fee = Math.ceil(estimatedSize * feePerByte);
-
-	// Check if we have enough funds
-	if (totalInputSatoshis < totalOutputSatoshis + fee) {
+	let change = totalInputSatoshis - totalOutputSatoshis - estimatedFee;
+	if (change < DUST_LIMIT) {
+		tx.outputs.pop();
+		estimatedFee = await feeModel.computeFee(tx);
+		change = totalInputSatoshis - totalOutputSatoshis - estimatedFee;
+	} else {
+		tx.outputs[tx.outputs.length - 1].satoshis = change;
+	}
+	if (change < 0) {
 		return {
 			success: false,
-			error: `Insufficient funds. Have ${totalInputSatoshis} sats, need ${totalOutputSatoshis + fee} sats`,
+			error: `Insufficient funds. Have ${totalInputSatoshis} sats, need ${totalOutputSatoshis + estimatedFee} sats`,
 		};
 	}
-
-	// Add change output if needed
-	const change = totalInputSatoshis - totalOutputSatoshis - fee;
-	if (change >= DUST_LIMIT) {
-		tx.addOutput({
-			lockingScript: p2pkh.lock(changeAddress),
-			satoshis: change,
-		});
-	}
+	const fee =
+		totalInputSatoshis -
+		tx.outputs.reduce((sum, output) => sum + (output.satoshis ?? 0), 0);
 
 	// Sign the transaction
 	await tx.sign();
@@ -166,7 +164,7 @@ export async function buildAndSendTransaction(
 		}
 		if (isBroadcastFailure(broadcastResult)) {
 			return {
-				success: true,
+				success: false,
 				txid,
 				rawTx,
 				fee,
@@ -174,7 +172,7 @@ export async function buildAndSendTransaction(
 			};
 		}
 		return {
-			success: true,
+			success: false,
 			txid,
 			rawTx,
 			fee,
@@ -182,7 +180,7 @@ export async function buildAndSendTransaction(
 		};
 	} catch (error) {
 		return {
-			success: true,
+			success: false,
 			txid,
 			rawTx,
 			fee,

@@ -300,7 +300,9 @@ describe("project tool role routing", () => {
 		expect(() => assertProjectToolSupported(policy)).toThrow(
 			"PROJECT_TOOL_VAULT_UNSUPPORTED",
 		);
-		expect(PROJECT_TOOL_POLICIES.bap_friend?.vaultSupport).toBe("unsupported");
+		expect(PROJECT_TOOL_POLICIES.bsocial_publish?.vaultSupport).toBe(
+			"unsupported",
+		);
 		expect(() => new ProjectToolRoleError("TEST", "test")).toThrow("TEST");
 	});
 });

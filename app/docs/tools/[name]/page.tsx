@@ -7,6 +7,7 @@ import {
 	categoryForTool,
 	compactOperations,
 	getTool,
+	inputAlternatives,
 	inputFields,
 	modeLabel,
 	toolSummary,
@@ -129,41 +130,20 @@ export default async function ToolPage({ params }: Props) {
 						{!fields.length ? (
 							<p className="mt-5">No input fields. Pass an empty object.</p>
 						) : (
-							<div className="mt-5 overflow-x-auto">
-								<table className="w-full text-left text-sm">
-									<thead>
-										<tr className="border-b">
-											<th className="p-3 pl-0">Field</th>
-											<th className="p-3">Type / required</th>
-											<th className="p-3">Description</th>
-										</tr>
-									</thead>
-									<tbody>
-										{fields.map((field) => (
-											<tr className="border-b align-top" key={field.name}>
-												<th className="p-3 pl-0 font-mono font-medium break-words">
-													{field.name}
-												</th>
-												<td className="min-w-32 p-3 break-words">
-													{field.type}
-													<br />
-													<span className="text-muted-foreground">
-														{field.required ? "Required" : "Optional"}
-													</span>
-												</td>
-												<td className="min-w-48 p-3 leading-6">
-													{field.description || "See schema for details."}
-													{field.constraints && (
-														<p className="mt-1 font-mono text-xs text-muted-foreground">
-															{field.constraints}
-														</p>
-													)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-							</div>
+							<InputTable fields={fields} />
+						)}
+						{inputAlternatives(variant.definition.inputSchema).map(
+							(alternative) => (
+								<details
+									key={alternative.label}
+									className="mt-4 rounded border p-4"
+								>
+									<summary className="cursor-pointer font-mono text-sm">
+										{alternative.label}
+									</summary>
+									<InputTable fields={alternative.fields} />
+								</details>
+							),
 						)}
 						<p className="mt-3 text-xs text-muted-foreground">
 							Nested fields are required only when their parent object or array
@@ -191,5 +171,45 @@ export default async function ToolPage({ params }: Props) {
 				);
 			})}
 		</ReferenceLayout>
+	);
+}
+
+function InputTable({ fields }: { fields: ReturnType<typeof inputFields> }) {
+	return (
+		<div className="mt-5 overflow-x-auto">
+			<table className="w-full text-left text-sm">
+				<thead>
+					<tr className="border-b">
+						<th className="p-3 pl-0">Field</th>
+						<th className="p-3">Type / required</th>
+						<th className="p-3">Description</th>
+					</tr>
+				</thead>
+				<tbody>
+					{fields.map((field) => (
+						<tr className="border-b align-top" key={field.name}>
+							<th className="p-3 pl-0 font-mono font-medium break-words">
+								{field.name}
+							</th>
+							<td className="min-w-32 p-3 break-words">
+								{field.type}
+								<br />
+								<span className="text-muted-foreground">
+									{field.required ? "Required" : "Optional"}
+								</span>
+							</td>
+							<td className="min-w-48 p-3 leading-6">
+								{field.description || "See schema for details."}
+								{field.constraints && (
+									<p className="mt-1 font-mono text-xs text-muted-foreground">
+										{field.constraints}
+									</p>
+								)}
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
 	);
 }

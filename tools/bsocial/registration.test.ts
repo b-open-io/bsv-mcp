@@ -6,12 +6,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import type { ToolsConfig } from "../index";
 import { Wallet } from "../wallet/wallet";
 
-const publicSocialReadTools = [
-	"bmap_readFollows",
-	"bmap_readLikes",
-	"bmap_readPosts",
-	"bsocial_readPosts",
-];
+const publicSocialReadTools = ["bsocial_read"];
 
 async function registeredSocialTools(config: Partial<ToolsConfig> = {}) {
 	const { registerAllTools } = await import("../index");
@@ -66,12 +61,12 @@ test("registers BRC-100 social posting for an external identity context", async 
 		await registeredSocialTools({
 			ctx: createContext(new WalletClient()),
 		}),
-	).toEqual([...publicSocialReadTools, "bsocial_createPost"].sort());
+	).toEqual([...publicSocialReadTools, "bsocial_publish"].sort());
 });
 
 test("keeps post writing available only with a custom wallet", async () => {
 	expect(await registeredSocialTools({ wallet: new Wallet() })).toEqual(
-		[...publicSocialReadTools, "bsocial_createPost"].sort(),
+		[...publicSocialReadTools, "bsocial_publish"].sort(),
 	);
 });
 
@@ -79,4 +74,17 @@ test("excludes the complete social category when disabled", async () => {
 	expect(await registeredSocialTools({ enableBsocialTools: false })).toEqual(
 		[],
 	);
+});
+
+test("social writers cannot borrow an unassigned identity or a payments-only context", async () => {
+	const ctx = createContext(new WalletClient());
+	for (const config of [
+		{ ctx, walletScope: "payments" as const },
+		{
+			ctx,
+			wallet: new Wallet(),
+			roleContexts: { payments: ctx, identity: undefined },
+		},
+	])
+		expect(await registeredSocialTools(config)).toEqual(publicSocialReadTools);
 });

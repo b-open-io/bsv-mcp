@@ -1,7 +1,6 @@
 import type { PrivateKey } from "@bsv/sdk";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { Wallet } from "../wallet/wallet";
-import { registerBapFriendTool } from "./friend";
 import { registerBapGenerateTool } from "./generate";
 import { registerBapGetCurrentAddressTool } from "./getCurrentAddress";
 import { registerBapGetIdTool } from "./getId";
@@ -34,7 +33,6 @@ export function registerBapTools(
 		identityPk, // Server's main configured identity (from keys.json or IDENTITY_KEY_WIF)
 		masterXprv, // Server's master BAP key (from keys.json)
 		localAccountAvailable,
-		wallet,
 		disableBroadcasting = false,
 	} = config || {};
 
@@ -83,31 +81,4 @@ export function registerBapTools(
 	// Always register bap_getId as it can operate on user-provided idKey too.
 	// If server identityPk is available, it can use it as default.
 	registerBapGetIdTool(server, identityPk);
-
-	// --- Register tools requiring the master HD key (xprv) ---
-	if (masterXprv) {
-		try {
-			// No need to parse HD key here if tools don't need the HD object itself
-			// const masterHdKey = HD.fromString(masterXprv);
-
-			// Register bap_friend if wallet is also available
-			if (wallet) {
-				logFunc(
-					"INFO: Registering bap_friend tool (requires wallet & masterXprv).",
-				);
-				registerBapFriendTool(server, wallet, masterXprv, {
-					disableBroadcasting,
-				});
-			} else {
-				logFunc("WARN: Wallet not available, bap_friend tool not registered.");
-			}
-
-			// Add other tools that specifically require masterXprv here...
-		} catch (e) {
-			// Catch potential HD.fromString errors if parsing is done here
-			console.error(
-				`ERROR: Failed during masterXprv tool registration: ${e instanceof Error ? e.message : String(e)}`,
-			);
-		}
-	}
 }

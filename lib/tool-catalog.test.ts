@@ -151,13 +151,15 @@ test("configured stdio startup exposes the selected compact catalog", async () =
 	}
 });
 
-test("compact advertises bounded read families without app tools", async () => {
+test("compact advertises bounded families and consolidated social tools without app tools", async () => {
 	const { client, server } = await listCompactTools();
 	try {
 		const first = await client.listTools();
 		const second = await client.listTools();
 		const names = first.tools.map((tool) => tool.name);
 		expect(names).toEqual([
+			"bsocial_read",
+			"bsocial_publish",
 			"bsv_read",
 			"ordinals_read",
 			"wallet_read",
@@ -167,7 +169,9 @@ test("compact advertises bounded read families without app tools", async () => {
 		expect(new Set(names).size).toBe(names.length);
 		expect(names).not.toContain("bsv_dashboard");
 
-		for (const tool of first.tools) {
+		for (const tool of first.tools.filter(
+			(tool) => !tool.name.startsWith("bsocial_"),
+		)) {
 			const schema = tool.inputSchema as {
 				properties?: {
 					operation?: { enum?: string[] };

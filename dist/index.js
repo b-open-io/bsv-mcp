@@ -25873,7 +25873,7 @@ var init_package = __esm(() => {
     name: "bsv-mcp",
     module: "dist/index.js",
     type: "module",
-    version: "0.5.1",
+    version: "0.6.0",
     license: "MIT",
     author: "satchmo",
     description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -25949,7 +25949,6 @@ var init_package = __esm(() => {
       "@opl.dev/vault": "0.0.1",
       "better-auth": "1.7.3",
       "bitcoin-backup": "^0.1.0",
-      "bmap-api-types": "0.0.9",
       "bsv-bap": "^0.3.7",
       jose: "^6.2.12",
       "js-1sat-ord": "^0.1.91",
@@ -84144,17 +84143,6 @@ function createSuccessResponse(data) {
     isError: false
   };
 }
-function createResponse(result) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(result, null, 2)
-      }
-    ],
-    isError: !result.success
-  };
-}
 
 // tools/utils/logger.ts
 var init_logger2 = () => {};
@@ -84168,32 +84156,6 @@ function numArrayToBuffer(numArray) {
 }
 
 // utils/broadcaster.ts
-class BsocialBroadcaster {
-  async broadcast(transaction) {
-    const response = await fetch(`${BSOCIAL_API_URL}/submit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "X-BSV-TOPIC": "tm_bsocial,tm_bap"
-      },
-      body: numArrayToBuffer(transaction.toBEEF())
-    });
-    if (!response.ok) {
-      return {
-        status: "error",
-        code: response.statusText,
-        txid: transaction.id("hex"),
-        description: response.statusText
-      };
-    }
-    return {
-      status: "success",
-      txid: transaction.id("hex"),
-      message: "Transaction broadcasted successfully"
-    };
-  }
-}
-
 class V5Broadcaster {
   async broadcast(transaction) {
     const response = await fetch(`${V5_API_URL}/submit`, {
@@ -84263,33 +84225,33 @@ async function buildAndSendTransaction(config, broadcast = true) {
   }
   const totalOutputSatoshis = outputs.reduce((sum, out) => sum + out.satoshis, 0);
   let totalInputSatoshis = 0;
-  const selectedUtxos = [];
-  const sortedUtxos = [...utxos].sort((a, b) => a.satoshis - b.satoshis);
+  const feeModel = new SatoshisPerKilobyte(feePerByte * 1000);
+  tx.addOutput({ lockingScript: p2pkh.lock(changeAddress), satoshis: 0 });
+  let estimatedFee = 0;
+  const sortedUtxos = [...utxos].sort((a, b) => b.satoshis - a.satoshis);
   for (const utxo of sortedUtxos) {
-    selectedUtxos.push(utxo);
     totalInputSatoshis += utxo.satoshis;
     tx.addInput(fromUtxo(utxo, p2pkh.unlock(paymentKey, "all", false, utxo.satoshis, Script.fromHex(utxo.script))));
-    const estimatedSize = tx.toHex().length / 2 + 150;
-    const estimatedFee = Math.ceil(estimatedSize * feePerByte);
-    if (totalInputSatoshis >= totalOutputSatoshis + estimatedFee + DUST_LIMIT) {
+    estimatedFee = await feeModel.computeFee(tx);
+    if (totalInputSatoshis >= totalOutputSatoshis + estimatedFee) {
       break;
     }
   }
-  const estimatedSize = tx.toHex().length / 2 + 35;
-  const fee = Math.ceil(estimatedSize * feePerByte);
-  if (totalInputSatoshis < totalOutputSatoshis + fee) {
+  let change = totalInputSatoshis - totalOutputSatoshis - estimatedFee;
+  if (change < DUST_LIMIT) {
+    tx.outputs.pop();
+    estimatedFee = await feeModel.computeFee(tx);
+    change = totalInputSatoshis - totalOutputSatoshis - estimatedFee;
+  } else {
+    tx.outputs[tx.outputs.length - 1].satoshis = change;
+  }
+  if (change < 0) {
     return {
       success: false,
-      error: `Insufficient funds. Have ${totalInputSatoshis} sats, need ${totalOutputSatoshis + fee} sats`
+      error: `Insufficient funds. Have ${totalInputSatoshis} sats, need ${totalOutputSatoshis + estimatedFee} sats`
     };
   }
-  const change = totalInputSatoshis - totalOutputSatoshis - fee;
-  if (change >= DUST_LIMIT) {
-    tx.addOutput({
-      lockingScript: p2pkh.lock(changeAddress),
-      satoshis: change
-    });
-  }
+  const fee = totalInputSatoshis - tx.outputs.reduce((sum, output) => sum + (output.satoshis ?? 0), 0);
   await tx.sign();
   const rawTx = tx.toHex();
   const txid = tx.id("hex");
@@ -84314,7 +84276,7 @@ async function buildAndSendTransaction(config, broadcast = true) {
     }
     if (isBroadcastFailure(broadcastResult)) {
       return {
-        success: true,
+        success: false,
         txid,
         rawTx,
         fee,
@@ -84322,7 +84284,7 @@ async function buildAndSendTransaction(config, broadcast = true) {
       };
     }
     return {
-      success: true,
+      success: false,
       txid,
       rawTx,
       fee,
@@ -84330,7 +84292,7 @@ async function buildAndSendTransaction(config, broadcast = true) {
     };
   } catch (error) {
     return {
-      success: true,
+      success: false,
       txid,
       rawTx,
       fee,
@@ -113044,298 +113006,6 @@ var init_compactCatalog = __esm(() => {
   ORDINALS_READS = COMPACT_OPERATION_LEGACY_NAMES.ordinals_read;
 });
 
-// utils/keys.ts
-var friendPrivateKeyFromMemberIdKey = (memberIdKey, targetBapId) => {
-  return memberIdKey.deriveChild(memberIdKey.toPublicKey(), targetBapId);
-};
-var init_keys2 = () => {};
-
-// tools/wallet/utxo.ts
-async function getBeefTransactionById(txid) {
-  const url = `${junglebusUrl()}/transaction/beef/${txid}`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.warn(`Failed to fetch transaction ${txid} from Junglebus: ${response.status} ${response.statusText}`);
-      return null;
-    }
-    const rawTxBuffer = await response.arrayBuffer();
-    if (!rawTxBuffer) {
-      console.warn(`Empty raw transaction buffer for ${txid} from Junglebus`);
-      return null;
-    }
-    const uint8Array = arrayBufferToUint8Array(rawTxBuffer);
-    const tx = Transaction.fromBEEF(uint8Array, txid);
-    return tx;
-  } catch (error) {
-    console.warn(`Error fetching or parsing transaction ${txid}: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
-}
-var init_utxo = __esm(() => {
-  init_mod();
-  init_backends();
-});
-
-// tools/wallet/fetchPaymentUtxos.ts
-async function fetchPaymentUtxos(address) {
-  if (!address) {
-    console.error("fetchPaymentUtxos: No address provided");
-    return;
-  }
-  try {
-    const response = await explorerFetch(`${explorerUrl()}/address/${address}/unspent`);
-    if (!response.ok) {
-      console.error(`explorer API error: ${response.status} ${response.statusText}`);
-      return;
-    }
-    const data = await response.json();
-    if (!Array.isArray(data)) {
-      console.error("Invalid response format from explorer API");
-      return;
-    }
-    const utxos = await Promise.all(data.map(async (utxo) => {
-      const tx = await getBeefTransactionById(utxo.tx_hash);
-      const script = tx?.outputs[utxo.tx_pos]?.lockingScript.toHex();
-      if (!script) {
-        console.error(`Could not get script for UTXO: ${utxo.tx_hash}:${utxo.tx_pos}`);
-        return null;
-      }
-      return {
-        txid: utxo.tx_hash,
-        vout: utxo.tx_pos,
-        satoshis: utxo.value,
-        script
-      };
-    }));
-    const validUtxos = utxos.filter((utxo) => utxo !== null);
-    return validUtxos;
-  } catch (error) {
-    console.error("Error fetching payment UTXOs:", error);
-    return;
-  }
-}
-async function fetchPaymentUtxosFromV5(address) {
-  try {
-    const url = `${V5_API_URL}/own/${address}/utxos?refresh=true&txo=true&script=true&limit=250&tags=p2pkh`;
-    console.error(`Fetching UTXOs from V5: ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error(`V5 UTXO fetch failed: ${response.status} ${response.statusText}`);
-      return;
-    }
-    const data = await response.json();
-    if (!Array.isArray(data)) {
-      console.error(`V5 UTXO response was not an array: ${typeof data}`);
-      return;
-    }
-    const utxos = [];
-    for (const utxo of data) {
-      if (!utxo.data.p2pkh) {
-        continue;
-      }
-      const [txid, vout] = utxo.outpoint.split("_");
-      if (!txid || !vout) {
-        console.error(`Invalid outpoint: ${utxo.outpoint}`);
-        continue;
-      }
-      utxos.push({
-        txid,
-        vout: Number.parseInt(vout, 10),
-        satoshis: utxo.satoshis,
-        script: toHex6(toArray9(utxo.script, "base64"))
-      });
-    }
-    return utxos;
-  } catch (error) {
-    console.error("Error fetching payment UTXOs from V5:", error);
-    return;
-  }
-}
-var toHex6, toArray9;
-var init_fetchPaymentUtxos = __esm(() => {
-  init_mod();
-  init_backends();
-  init_constants2();
-  init_utxo();
-  ({ toHex: toHex6, toArray: toArray9 } = exports_utils);
-});
-
-// tools/bap/friend.ts
-function registerBapFriendTool(server, wallet, xprv, config) {
-  server.registerTool("bap_friend", {
-    description: "Initiates a friend request to another BAP ID by broadcasting an on-chain MAP transaction.",
-    inputSchema: bapFriendArgsSchema
-  }, async ({ targetBapId }, _extra) => {
-    const _logFunc = console.error;
-    try {
-      if (!xprv) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: "Server does not have a BAP master key (xprv). Cannot derive friend public key."
-            }
-          ]
-        };
-      }
-      const payPk = wallet.getPaymentKey();
-      const identityPk = wallet.getIdentityKey();
-      if (!identityPk || !payPk) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: !payPk ? "Wallet private key not available. Cannot fund friend request transaction." : "Wallet identity key not available. Cannot derive friend public key."
-            }
-          ]
-        };
-      }
-      const bap = new a(xprv);
-      const idpk = bap.newId().getAccountKey();
-      const paymentAddress = payPk.toAddress();
-      const friendPubKey = friendPrivateKeyFromMemberIdKey(identityPk, targetBapId).toPublicKey().toString();
-      const payloadParts = [
-        MAP_PREFIX2,
-        "SET",
-        "app",
-        APP_DOMAIN,
-        "type",
-        "friend",
-        "bapID",
-        targetBapId,
-        "publicKey",
-        friendPubKey
-      ];
-      const payloadBuffers = payloadParts.map((part) => toArray10(part));
-      const { signedData } = await signOpReturnWithAIP(payloadBuffers, idpk, idpk.toAddress());
-      const opReturnScript = buildOpReturnScript(signedData);
-      const tx = new Transaction;
-      tx.addOutput({ lockingScript: opReturnScript, satoshis: 0 });
-      const utxos = await fetchPaymentUtxosFromV5(paymentAddress);
-      if (!utxos || utxos.length === 0) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: `No UTXOs available for payment address ${paymentAddress}. Cannot send friend request.`
-            }
-          ]
-        };
-      }
-      const feeModel = new SatoshisPerKilobyte(10);
-      let totalInput = 0n;
-      let estFee = await feeModel.computeFee(tx);
-      for (const utxo of utxos) {
-        if (totalInput >= BigInt(estFee))
-          break;
-        const unlockTemplate = new P2PKH().unlock(payPk, "all", false, utxo.satoshis, Script.fromBinary(toArray10(utxo.script, "hex")));
-        const input = fromUtxo(utxo, unlockTemplate);
-        tx.addInput(input);
-        totalInput += BigInt(utxo.satoshis);
-        estFee = await feeModel.computeFee(tx);
-      }
-      if (totalInput < BigInt(estFee)) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: `Not enough funds to cover fee. Needed ${estFee}, have ${totalInput}.`
-            }
-          ]
-        };
-      }
-      const change = totalInput - BigInt(estFee);
-      if (change > 0n) {
-        tx.addOutput({
-          lockingScript: new P2PKH().lock(paymentAddress),
-          satoshis: Number(change),
-          change: true
-        });
-      }
-      await tx.fee(feeModel);
-      await tx.sign();
-      const txHex = tx.toHex();
-      const txid = tx.id("hex");
-      if (config?.disableBroadcasting) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                success: true,
-                disabledBroadcast: true,
-                txid,
-                rawTx: txHex,
-                message: `Broadcasting disabled. Friend request transaction built for ${targetBapId}.`
-              })
-            }
-          ]
-        };
-      }
-      const broadcaster = new BsocialBroadcaster;
-      const broadcastResult = await tx.broadcast(broadcaster);
-      let success = true;
-      let errorMsg;
-      let resultTxid = txid;
-      if (isBroadcastResponse(broadcastResult)) {
-        resultTxid = broadcastResult.txid;
-      } else if (isBroadcastFailure(broadcastResult)) {
-        success = false;
-        const failure = broadcastResult;
-        errorMsg = `Broadcast failed: ${failure.description} (Code: ${failure.code})`;
-        if (failure.txid)
-          resultTxid = failure.txid;
-      }
-      return {
-        isError: !success,
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              success,
-              txid: resultTxid,
-              rawTx: txHex,
-              message: success ? `Friend request sent to ${targetBapId}.` : errorMsg ?? "Broadcast failed"
-            })
-          }
-        ]
-      };
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: `Failed to send friend request: ${errMsg}`
-          }
-        ]
-      };
-    }
-  });
-}
-var toArray10, APP_DOMAIN = "bsv-mcp", bapFriendArgsSchema;
-var init_friend = __esm(() => {
-  init_mod();
-  init_index_modern();
-  init_zod();
-  init_broadcaster();
-  init_keys2();
-  init_constants2();
-  init_aip();
-  init_transactionBuilder();
-  init_fetchPaymentUtxos();
-  ({ toArray: toArray10 } = exports_utils);
-  bapFriendArgsSchema = object2({
-    targetBapId: string2().min(1, "targetBapId is required.")
-  });
-});
-
 // utils/accounts.ts
 import { createHash as createHash2, randomBytes } from "node:crypto";
 import {
@@ -113760,7 +113430,7 @@ function isSigmaSeedBackup(value) {
   return true;
 }
 async function deriveKey(passphrase, salt, iterations = RECOMMENDED_PBKDF2_ITERATIONS) {
-  const passphraseBytes = Uint8Array.from(toArray11(passphrase, "utf8"));
+  const passphraseBytes = Uint8Array.from(toArray9(passphrase, "utf8"));
   const keyMaterial = await globalThis.crypto.subtle.importKey("raw", passphraseBytes, { name: "PBKDF2" }, false, ["deriveKey"]);
   return globalThis.crypto.subtle.deriveKey({
     name: "PBKDF2",
@@ -113857,7 +113527,7 @@ function isValidPayload(payload) {
 async function decryptData(encryptedBackup, passphrase, attemptIterations) {
   let combinedBytesNumbers;
   try {
-    combinedBytesNumbers = toArray11(encryptedBackup, "base64");
+    combinedBytesNumbers = toArray9(encryptedBackup, "base64");
   } catch (error) {
     console.error("Failed to decode base64 string (toArray threw):", error);
     throw new Error("Decryption failed: Invalid Base64 input.");
@@ -114608,7 +114278,7 @@ var __create3, __getProtoOf3, __defProp5, __getOwnPropNames3, __hasOwnProp3, __t
   if (canCache)
     cache.set(mod, to);
   return to;
-}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray11, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, toArray22, toBase6422, INFO = "se-vault-v1", toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
+}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray9, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, toArray22, toBase6422, INFO = "se-vault-v1", toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
 var init_dist9 = __esm(() => {
   init_mod();
   init_mod();
@@ -116240,7 +115910,7 @@ var init_dist9 = __esm(() => {
     "label"
   ]);
   profileFields2 = new Set(["index", "bapId", "metadata"]);
-  ({ toArray: toArray11, toBase64: toBase644 } = exports_utils);
+  ({ toArray: toArray9, toBase64: toBase644 } = exports_utils);
   ({ toArray: toArray22, toBase64: toBase6422 } = exports_utils);
   ({ toArray: toArray32, toBase64: toBase6432 } = exports_utils);
   MAGIC_BYTES = [66, 69, 80, 50];
@@ -116403,6 +116073,117 @@ var init_keyManager = __esm(() => {
   keyManager = new SecureKeyManager;
 });
 
+// tools/wallet/utxo.ts
+async function getBeefTransactionById(txid) {
+  const url = `${junglebusUrl()}/transaction/beef/${txid}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to fetch transaction ${txid} from Junglebus: ${response.status} ${response.statusText}`);
+      return null;
+    }
+    const rawTxBuffer = await response.arrayBuffer();
+    if (!rawTxBuffer) {
+      console.warn(`Empty raw transaction buffer for ${txid} from Junglebus`);
+      return null;
+    }
+    const uint8Array = arrayBufferToUint8Array(rawTxBuffer);
+    const tx = Transaction.fromBEEF(uint8Array, txid);
+    return tx;
+  } catch (error) {
+    console.warn(`Error fetching or parsing transaction ${txid}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+var init_utxo = __esm(() => {
+  init_mod();
+  init_backends();
+});
+
+// tools/wallet/fetchPaymentUtxos.ts
+async function fetchPaymentUtxos(address) {
+  if (!address) {
+    console.error("fetchPaymentUtxos: No address provided");
+    return;
+  }
+  try {
+    const response = await explorerFetch(`${explorerUrl()}/address/${address}/unspent`);
+    if (!response.ok) {
+      console.error(`explorer API error: ${response.status} ${response.statusText}`);
+      return;
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      console.error("Invalid response format from explorer API");
+      return;
+    }
+    const utxos = await Promise.all(data.map(async (utxo) => {
+      const tx = await getBeefTransactionById(utxo.tx_hash);
+      const script = tx?.outputs[utxo.tx_pos]?.lockingScript.toHex();
+      if (!script) {
+        console.error(`Could not get script for UTXO: ${utxo.tx_hash}:${utxo.tx_pos}`);
+        return null;
+      }
+      return {
+        txid: utxo.tx_hash,
+        vout: utxo.tx_pos,
+        satoshis: utxo.value,
+        script
+      };
+    }));
+    const validUtxos = utxos.filter((utxo) => utxo !== null);
+    return validUtxos;
+  } catch (error) {
+    console.error("Error fetching payment UTXOs:", error);
+    return;
+  }
+}
+async function fetchPaymentUtxosFromV5(address) {
+  try {
+    const url = `${V5_API_URL}/own/${address}/utxos?refresh=true&txo=true&script=true&limit=250&tags=p2pkh`;
+    console.error(`Fetching UTXOs from V5: ${url}`);
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`V5 UTXO fetch failed: ${response.status} ${response.statusText}`);
+      return;
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      console.error(`V5 UTXO response was not an array: ${typeof data}`);
+      return;
+    }
+    const utxos = [];
+    for (const utxo of data) {
+      if (!utxo.data.p2pkh) {
+        continue;
+      }
+      const [txid, vout] = utxo.outpoint.split("_");
+      if (!txid || !vout) {
+        console.error(`Invalid outpoint: ${utxo.outpoint}`);
+        continue;
+      }
+      utxos.push({
+        txid,
+        vout: Number.parseInt(vout, 10),
+        satoshis: utxo.satoshis,
+        script: toHex6(toArray10(utxo.script, "base64"))
+      });
+    }
+    return utxos;
+  } catch (error) {
+    console.error("Error fetching payment UTXOs from V5:", error);
+    return;
+  }
+}
+var toHex6, toArray10;
+var init_fetchPaymentUtxos = __esm(() => {
+  init_mod();
+  init_backends();
+  init_constants2();
+  init_utxo();
+  ({ toHex: toHex6, toArray: toArray10 } = exports_utils);
+});
+
 // tools/bap/generate.ts
 async function generateBapKeys(args) {
   if (!process.env.BSV_MCP_PASSWORD || process.env.BSV_MCP_PASSWORD.length < 8)
@@ -116488,11 +116269,11 @@ async function generateBapKeys(args) {
     await keyManager.saveKeys(updatedKeys);
     console.error(`INFO: Identity saved encrypted to ${KEY_DIR}/keys.bep`);
     const idPayload = [
-      toArray12(BAP_PREFIX, "utf8"),
-      toArray12("ID"),
-      toArray12(generatedIdentityKey),
-      toArray12(bapId.rootAddress),
-      toArray12(bapId.rootAddress)
+      toArray11(BAP_PREFIX, "utf8"),
+      toArray11("ID"),
+      toArray11(generatedIdentityKey),
+      toArray11(bapId.rootAddress),
+      toArray11(bapId.rootAddress)
     ];
     const { signedData: signedIdPayload } = await signOpReturnWithAIP(idPayload, identityKey, bapId.rootAddress);
     const idScript = buildOpReturnScript(signedIdPayload);
@@ -116504,10 +116285,10 @@ async function generateBapKeys(args) {
       url: `bitcoin:${paymentAddress}`
     };
     const aliasPayload = [
-      toArray12(BAP_PREFIX, "utf8"),
-      toArray12("ALIAS"),
-      toArray12(generatedIdentityKey),
-      toArray12(JSON.stringify(aliasData))
+      toArray11(BAP_PREFIX, "utf8"),
+      toArray11("ALIAS"),
+      toArray11(generatedIdentityKey),
+      toArray11(JSON.stringify(aliasData))
     ];
     const { signedData: signedAliasPayload } = await signOpReturnWithAIP(aliasPayload, identityKey, bapId.rootAddress);
     const aliasScript = buildOpReturnScript(signedAliasPayload);
@@ -116640,7 +116421,7 @@ function registerBapGenerateTool(server, config) {
     }
   });
 }
-var toArray12, KEY_DIR, bapGenerateArgsSchema;
+var toArray11, KEY_DIR, bapGenerateArgsSchema;
 var init_generate = __esm(() => {
   init_dist7();
   init_mod();
@@ -116653,7 +116434,7 @@ var init_generate = __esm(() => {
   init_aip();
   init_transactionBuilder();
   init_fetchPaymentUtxos();
-  ({ toArray: toArray12 } = exports_utils);
+  ({ toArray: toArray11 } = exports_utils);
   KEY_DIR = accountDir();
   bapGenerateArgsSchema = object2({
     alternateName: string2().optional().describe("Alternate name for the BAP identity profile"),
@@ -116834,7 +116615,6 @@ function registerBapTools(server, config) {
     identityPk,
     masterXprv,
     localAccountAvailable,
-    wallet,
     disableBroadcasting = false
   } = config || {};
   const envIdentityKeyWif = process.env.IDENTITY_KEY_WIF;
@@ -116857,24 +116637,9 @@ function registerBapTools(server, config) {
     logFunc("INFO: BAP tools requiring established identity not registered (no identityPk or IDENTITY_KEY_WIF).");
   }
   registerBapGetIdTool(server, identityPk);
-  if (masterXprv) {
-    try {
-      if (wallet) {
-        logFunc("INFO: Registering bap_friend tool (requires wallet & masterXprv).");
-        registerBapFriendTool(server, wallet, masterXprv, {
-          disableBroadcasting
-        });
-      } else {
-        logFunc("WARN: Wallet not available, bap_friend tool not registered.");
-      }
-    } catch (e) {
-      console.error(`ERROR: Failed during masterXprv tool registration: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
 }
 var logFunc;
 var init_bap3 = __esm(() => {
-  init_friend();
   init_generate();
   init_getCurrentAddress();
   init_getId();
@@ -116941,626 +116706,528 @@ var init_context = __esm(() => {
   init_zod();
 });
 
-// tools/bsocial/bmapFollow.ts
-async function readBmapFollows(args) {
-  try {
-    const { bapId, type, limit, page } = args;
-    const params = new URLSearchParams;
-    params.append("limit", limit.toString());
-    params.append("page", page.toString());
-    const endpoint = type === "followers" ? "followers" : "following";
-    const response = await fetch(`${BMAP_URL}/bap/${bapId}/${endpoint}?${params}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `BMAP API request failed: ${response.status} ${errorText}`
-      };
-    }
-    const data = await response.json();
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error reading BMAP follows:", errorMessage);
-    return {
-      success: false,
-      error: errorMessage
-    };
+// tools/bsocial/schema.ts
+function contentFields(input) {
+  let bytes;
+  if (input.encoding === "base64") {
+    const decoded = Buffer.from(input.content, "base64");
+    if (decoded.toString("base64") !== input.content)
+      throw new Error("Content must be canonical base64");
+    bytes = Array.from(decoded);
+  } else
+    bytes = toArray2(input.content, "utf8");
+  return [
+    toArray2(B_PREFIX),
+    bytes,
+    toArray2(input.contentType),
+    toArray2(input.encoding === "base64" ? "binary" : "utf-8"),
+    toArray2(input.filename ?? "")
+  ];
+}
+function socialOutputs(input) {
+  const action = socialActionSchema.parse(input);
+  const map = [
+    MAP_PREFIX2,
+    "SET",
+    "app",
+    action.app,
+    "type",
+    action.type
+  ];
+  if ("txid" in action)
+    map.push("tx", action.txid);
+  if ("bapId" in action)
+    map.push("bapID", action.bapId);
+  if (action.type === "friend")
+    map.push("publicKey", action.publicKey);
+  if ("emoji" in action && action.emoji)
+    map.push("emoji", action.emoji);
+  if (action.type === "post" && action.replyTo)
+    map.push("context", "tx", "tx", action.replyTo);
+  if ("context" in action && action.context)
+    map.push("context", action.context.key, action.context.key, action.context.value);
+  if ("subcontext" in action && action.subcontext)
+    map.push("subcontext", action.subcontext.key, action.subcontext.key, action.subcontext.value);
+  if (action.type === "video") {
+    map.push("context", "videoID", "videoID", action.videoID, "subcontext", "provider", "provider", action.provider);
+    if (action.channel)
+      map.push("channel", action.channel);
+    if (action.duration !== undefined)
+      map.push("duration", String(action.duration));
+    if (action.start !== undefined)
+      map.push("start", String(action.start));
   }
+  const primary = map.map((field) => toArray2(field, "utf8"));
+  if ("content" in action)
+    primary.unshift(...contentFields(action), toArray2("|"));
+  const outputs = [primary];
+  if ("tags" in action && action.tags?.length)
+    outputs.push([MAP_PREFIX2, "ADD", "tags", ...new Set(action.tags)].map((field) => toArray2(field, "utf8")));
+  if ("attachments" in action)
+    for (const attachment of action.attachments ?? [])
+      outputs.push(contentFields(attachment));
+  const scripts = outputs.map((fields) => buildOpReturnScript(fields));
+  if (scripts.reduce((size, script) => size + script.toBinary().length, 0) > 300000)
+    throw new Error("Social content and attachments exceed 300 KB total");
+  return { action, outputs, scripts };
 }
-function registerBmapReadFollowsTool(server) {
-  server.registerTool("bmap_readFollows", {
-    description: "Read follow relationships from the BMAP API. Shows who a user is following or who follows them.",
-    inputSchema: bmapReadFollowsArgsSchema
-  }, async ({ bapId, type, limit, page }) => {
-    try {
-      const result = await readBmapFollows({ bapId, type, limit, page });
-      if (result.success) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result.data, null, 2)
-            }
-          ],
-          isError: false
-        };
-      }
-      return {
-        content: [
-          {
-            type: "text",
-            text: result.error || "Unknown error occurred"
-          }
-        ],
-        isError: true
-      };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{ type: "text", text: `Error: ${msg}` }],
-        isError: true
-      };
-    }
-  });
-}
-var bmapReadFollowsArgsSchema;
-var init_bmapFollow = __esm(() => {
+var txidSchema, bapIdSchema, contextKey, context, contexts, content, contentSchema, supplements, common, socialActionSchema;
+var init_schema = __esm(() => {
+  init_mod();
   init_zod();
   init_constants2();
-  bmapReadFollowsArgsSchema = object2({
-    bapId: string2().describe("BAP identity key to get follow relationships for"),
-    type: _enum(["followers", "following"]).default("following").describe("Type of relationship to query"),
-    limit: number2().min(1).max(100).default(20).describe("Maximum number of follows to return"),
-    page: number2().min(1).default(1).describe("Page number for pagination (1-based)")
+  init_transactionBuilder();
+  txidSchema = string2().regex(/^[a-f0-9]{64}$/i);
+  bapIdSchema = string2().min(1).max(128).regex(/^[a-zA-Z0-9]+$/);
+  contextKey = string2().min(1).max(64).regex(/^[a-zA-Z][a-zA-Z0-9_.-]*$/).refine((key) => ![
+    "app",
+    "type",
+    "context",
+    "subcontext",
+    "publicKey",
+    "__proto__",
+    "constructor",
+    "prototype"
+  ].includes(key), "Reserved context key");
+  context = strictObject({
+    key: contextKey,
+    value: string2().min(1).max(2048)
   });
-});
-
-// tools/bsocial/bmapLikes.ts
-async function readBmapLikes(args) {
-  try {
-    const { txid, limit, page } = args;
-    const params = new URLSearchParams;
-    params.append("limit", limit.toString());
-    params.append("page", page.toString());
-    const response = await fetch(`${BMAP_URL}/post/${txid}/like?${params}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `BMAP API request failed: ${response.status} ${errorText}`
-      };
-    }
-    const data = await response.json();
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error reading BMAP likes:", errorMessage);
-    return {
-      success: false,
-      error: errorMessage
-    };
-  }
-}
-function registerBmapReadLikesTool(server) {
-  server.registerTool("bmap_readLikes", {
-    description: "Read likes and reactions for a specific post from the BMAP API. Shows who liked the post and what emoji reactions were used.",
-    inputSchema: bmapReadLikesArgsSchema
-  }, async ({ txid, limit, page }) => {
-    try {
-      const result = await readBmapLikes({ txid, limit, page });
-      if (result.success) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result.data, null, 2)
-            }
-          ],
-          isError: false
-        };
-      }
-      return {
-        content: [
-          {
-            type: "text",
-            text: result.error || "Unknown error occurred"
-          }
-        ],
-        isError: true
-      };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{ type: "text", text: `Error: ${msg}` }],
-        isError: true
-      };
-    }
-  });
-}
-var bmapReadLikesArgsSchema;
-var init_bmapLikes = __esm(() => {
-  init_zod();
-  init_constants2();
-  bmapReadLikesArgsSchema = object2({
-    txid: string2().describe("Transaction ID of the post to get likes for"),
-    limit: number2().min(1).max(100).default(20).describe("Maximum number of likes to return"),
-    page: number2().min(1).default(1).describe("Page number for pagination (1-based)")
-  });
-});
-
-// tools/bsocial/bmapReadPosts.ts
-async function readBmapPosts(args) {
-  try {
-    const { bapId, txid, limit, page, feed, address } = args;
-    if (txid) {
-      const response = await fetch(`${BMAP_URL}/post/${txid}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `BMAP API request failed: ${response.status} ${errorText}`
-        };
-      }
-      const data = await response.json();
-      return {
-        success: true,
-        data
-      };
-    }
-    const params = new URLSearchParams;
-    if (bapId)
-      params.append("bapId", bapId);
-    if (address)
-      params.append("address", address);
-    params.append("limit", limit.toString());
-    params.append("page", page.toString());
-    if (feed)
-      params.append("feed", "true");
-    const response = await fetch(`${BMAP_URL}/posts?${params}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `BMAP API request failed: ${response.status} ${errorText}`
-      };
-    }
-    const data = await response.json();
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error reading BMAP posts:", errorMessage);
-    return {
-      success: false,
-      error: errorMessage
-    };
-  }
-}
-function registerBmapReadPostsTool(server) {
-  server.registerTool("bmap_readPosts", {
-    description: "Read social posts from the BMAP API (query layer). Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-    inputSchema: bmapReadPostsArgsSchema
-  }, async ({
-    bapId,
-    txid,
-    limit,
-    page,
-    feed,
-    address
-  }) => {
-    try {
-      const result = await readBmapPosts({
-        bapId,
-        txid,
-        limit,
-        page,
-        feed,
-        address
-      });
-      if (result.success) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result.data, null, 2)
-            }
-          ],
-          isError: false
-        };
-      }
-      return {
-        content: [
-          {
-            type: "text",
-            text: result.error || "Unknown error occurred"
-          }
-        ],
-        isError: true
-      };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{ type: "text", text: `Error: ${msg}` }],
-        isError: true
-      };
-    }
-  });
-}
-var bmapReadPostsArgsSchema;
-var init_bmapReadPosts = __esm(() => {
-  init_zod();
-  init_constants2();
-  bmapReadPostsArgsSchema = object2({
-    bapId: string2().optional().describe("BAP identity key to filter posts by author"),
-    txid: string2().optional().describe("Specific transaction ID to fetch"),
-    limit: number2().min(1).max(100).default(20).describe("Maximum number of posts to return"),
-    page: number2().min(1).default(1).describe("Page number for pagination (1-based)"),
-    feed: boolean2().default(false).describe("Whether to fetch feed (posts from followed users)"),
-    address: string2().optional().describe("Bitcoin address to filter posts by")
-  });
-});
-
-// tools/bsocial/context.ts
-function registerContextSocialPost(server, ctx, disableBroadcasting = false) {
-  server.registerTool("bsocial_createPost", {
-    description: "Publish a BSocial post with an AIP signature from the selected BAP identity wallet. Requires a published identity. The identity wallet funds the transaction; content becomes public on chain.",
-    inputSchema: strictObject({
-      content: string2().min(1).max(1e5),
-      contentType: _enum(["text/plain", "text/markdown"]).default("text/plain"),
-      app: string2().min(1).max(100).default("bsv-mcp"),
-      tags: array(string2().max(100)).max(50).optional()
+  contexts = {
+    context: context.optional(),
+    subcontext: context.optional()
+  };
+  content = {
+    content: string2().min(1).max(400000),
+    contentType: string2().max(128).regex(/^[\w.+-]+\/[\w.+-]+(?:;[^\r\n]*)?$/).default("text/plain"),
+    encoding: _enum(["utf8", "base64"]).default("utf8").describe("Input encoding. Base64 is decoded to binary B content."),
+    filename: string2().max(255).optional()
+  };
+  contentSchema = strictObject(content);
+  supplements = {
+    tags: array(string2().min(1).max(100)).max(50).optional(),
+    attachments: array(contentSchema).max(8).optional()
+  };
+  common = { app: string2().min(1).max(100).default("bsv-mcp") };
+  socialActionSchema = discriminatedUnion("type", [
+    strictObject({
+      type: literal("post"),
+      ...common,
+      ...content,
+      ...contexts,
+      ...supplements,
+      replyTo: txidSchema.optional()
     }),
+    strictObject({
+      type: literal("repost"),
+      ...common,
+      txid: txidSchema,
+      ...contexts
+    }),
+    strictObject({
+      type: _enum(["like", "unlike"]),
+      ...common,
+      txid: txidSchema,
+      emoji: string2().min(1).max(32).optional()
+    }),
+    strictObject({
+      type: _enum(["follow", "unfollow", "unfriend"]),
+      ...common,
+      bapId: bapIdSchema
+    }),
+    strictObject({
+      type: literal("friend"),
+      ...common,
+      bapId: bapIdSchema,
+      publicKey: string2().regex(/^(02|03)[a-f0-9]{64}$/i).refine((key) => {
+        try {
+          return PublicKey.fromString(key).validate();
+        } catch {
+          return false;
+        }
+      }, "Invalid public key").describe("Your communication public key, from the existing wallet/key-agreement workflow. This record does not establish encryption by itself.")
+    }),
+    strictObject({
+      type: literal("message"),
+      ...common,
+      ...content,
+      ...contexts,
+      ...supplements
+    }),
+    strictObject({
+      type: literal("video"),
+      ...common,
+      provider: string2().min(1).max(100),
+      videoID: string2().min(1).max(512),
+      channel: string2().min(1).max(256).optional(),
+      duration: number2().nonnegative().optional(),
+      start: number2().nonnegative().optional()
+    })
+  ]).superRefine((action, ctx) => {
+    if ("subcontext" in action && action.subcontext && !action.context)
+      ctx.addIssue({
+        code: "custom",
+        message: "subcontext requires context",
+        path: ["subcontext"]
+      });
+    if ("context" in action && action.context) {
+      if ("subcontext" in action && action.subcontext?.key === action.context.key)
+        ctx.addIssue({
+          code: "custom",
+          message: "context and subcontext must use different keys"
+        });
+      for (const item of [action.context, action.subcontext]) {
+        if (item?.key === "tx" && (!txidSchema.safeParse(item.value).success || action.type === "repost" && item.value !== action.txid))
+          ctx.addIssue({
+            code: "custom",
+            message: "tx context requires a valid transaction ID matching any repost target"
+          });
+      }
+    }
+    if (action.type === "post" && action.replyTo && (action.context || action.subcontext))
+      ctx.addIssue({
+        code: "custom",
+        message: "Use replyTo or explicit context, not both"
+      });
+  });
+});
+
+// tools/bsocial/publish.ts
+async function publishSocial(input, config) {
+  const { action, preview } = socialPublishSchema.parse(input);
+  if (!preview)
+    assertBroadcastAllowed("bsocial_publish", config.disableBroadcasting);
+  const { scripts, outputs } = socialOutputs(action);
+  if (preview)
+    return {
+      preview: true,
+      type: action.type,
+      outputs: scripts.map((script) => ({
+        lockingScript: script.toHex(),
+        satoshis: 0
+      })),
+      notice: "Unsigned public on-chain data. No transaction has been funded or broadcast."
+    };
+  if (config.identityContext) {
+    const ctx = config.identityContext;
+    const keyID = await resolveCurrentKeyId(ctx);
+    const signed = [];
+    for (const script of scripts)
+      signed.push(await applyBapAip(ctx, script, keyID));
+    const result = await executeTrackedAction(ctx.wallet, {
+      description: `BSocial ${action.type}`,
+      outputs: signed.map((script, index) => ({
+        lockingScript: script.toHex(),
+        satoshis: 0,
+        outputDescription: index === 0 ? `BSocial ${action.type}` : "BSocial supplement",
+        basket: "bsocial",
+        tags: [`app:${action.app}`, `type:${action.type}`]
+      })),
+      options: { acceptDelayedBroadcast: false, randomizeOutputs: false }
+    });
+    if (result.error)
+      throw new Error(result.error);
+    if (!result.txid)
+      throw new Error("Wallet did not return a transaction ID; inspect wallet activity before retrying");
+    return { type: action.type, txid: result.txid, outputCount: signed.length };
+  }
+  const wallet = config.wallet;
+  const identityKey = config.identityKey ?? wallet?.getIdentityKey();
+  if (!wallet || !identityKey)
+    throw new Error("Social publishing requires an identity wallet or explicit legacy identity key. A payment key is not an author identity.");
+  const paymentKey = wallet.getPaymentKey();
+  if (!paymentKey)
+    throw new Error("Payment key is unavailable for transaction fees");
+  const signed = [];
+  for (const fields of outputs) {
+    const { signedData } = await signOpReturnWithAIP(fields, identityKey, identityKey.toAddress());
+    signed.push(buildOpReturnScript(signedData));
+  }
+  const { paymentUtxos } = await wallet.getUtxos();
+  const result = await buildAndSendTransaction({
+    outputs: signed.map((script) => ({ script, satoshis: 0 })),
+    utxos: paymentUtxos,
+    changeAddress: paymentKey.toAddress(),
+    paymentKey
+  });
+  if (!result.success)
+    throw new Error(result.error ?? "Social transaction failed");
+  return { type: action.type, txid: result.txid, outputCount: signed.length };
+}
+function registerSocialPublishTool(server, config) {
+  registerTool(server, {
+    name: "bsocial_publish",
+    schema: socialPublishSchema,
+    description: "Publish a signed Bitcoin Schema social action: post/reply, repost, like/unlike, follow/unfollow, friend/unfriend, message, or video. Posts/messages support context, tags and attachments. Content is public and permanent; recipient context does NOT encrypt a message. Friend records require your communication public key from an established key-agreement workflow. Requires the selected BAP identity wallet or explicit legacy identity key and funding. Use preview to inspect unsigned outputs without spending.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
       openWorldHint: true
-    }
-  }, async (input) => {
-    try {
-      assertBroadcastAllowed("bsocial_createPost", disableBroadcasting);
-      const result = await createSocialPost.execute(ctx, input);
+    },
+    handler: async (input) => {
+      const result = await publishSocial(input, config);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
-        ...result.error ? { isError: true } : {}
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: error instanceof Error ? error.message : String(error)
-          }
-        ],
-        isError: true
+        structuredContent: result
       };
     }
   });
 }
-var init_context2 = __esm(() => {
+var socialPublishSchema;
+var init_publish = __esm(() => {
   init_dist7();
   init_zod();
-});
-
-// tools/bsocial/createPost.ts
-async function createSocialPost2(args, wallet) {
-  try {
-    const { content, contentType, app, additionalMapData } = args;
-    const paymentKey = wallet.getPaymentKey();
-    if (!paymentKey) {
-      return {
-        success: false,
-        error: "Payment key not available in wallet"
-      };
-    }
-    const address = paymentKey.toAddress();
-    const fileExtension = contentType === "text/markdown" ? "md" : "txt";
-    const fileName = `post.${fileExtension}`;
-    const bData = [
-      toArray13(B_PREFIX, "utf8"),
-      toArray13(content, "utf8"),
-      toArray13(contentType, "utf8"),
-      toArray13("utf-8", "utf8"),
-      toArray13(fileName, "utf8")
-    ];
-    const mapData = [
-      toArray13(MAP_PREFIX2, "utf8"),
-      toArray13("SET", "utf8"),
-      toArray13("app", "utf8"),
-      toArray13(app, "utf8"),
-      toArray13("type", "utf8"),
-      toArray13("post", "utf8")
-    ];
-    if (additionalMapData) {
-      const parsedMapData = JSON.parse(additionalMapData);
-      for (const [key, value] of Object.entries(parsedMapData)) {
-        mapData.push(toArray13(key, "utf8"), toArray13(value, "utf8"));
-      }
-    }
-    const pipeData = toArray13("|", "utf8");
-    const dataToSign = [...bData, pipeData, ...mapData];
-    const { signedData } = await signOpReturnWithAIP(dataToSign, paymentKey, address);
-    const script = buildOpReturnScript(signedData);
-    const { paymentUtxos } = await wallet.getUtxos();
-    return await buildAndSendTransaction({
-      outputs: [{ script, satoshis: 0 }],
-      utxos: paymentUtxos,
-      changeAddress: address,
-      paymentKey
-    });
-  } catch (error) {
-    console.error("Error creating social post:", formatError2(error));
-    return {
-      success: false,
-      error: formatError2(error)
-    };
-  }
-}
-function registerCreatePostTool(server, wallet) {
-  server.registerTool("bsocial_createPost", {
-    description: "Create a social post on the BSV blockchain using B:// and MAP protocols. Posts are stored permanently on-chain and can include plain text or markdown content.",
-    inputSchema: createPostArgsSchema
-  }, async ({
-    content,
-    contentType,
-    app,
-    additionalMapData
-  }) => {
-    const result = await createSocialPost2({ content, contentType, app, additionalMapData }, wallet);
-    return createResponse(result);
-  });
-}
-var toArray13, createPostArgsSchema;
-var init_createPost = __esm(() => {
-  init_mod();
-  init_zod();
-  init_constants2();
   init_aip();
   init_transactionBuilder();
-  ({ toArray: toArray13 } = exports_utils);
-  createPostArgsSchema = object2({
-    content: string2().describe("The content of the post"),
-    contentType: _enum(["text/plain", "text/markdown"]).default("text/plain").describe("Content type of the post"),
-    app: string2().default("bsv-mcp").describe("Application name creating the post"),
-    additionalMapData: string2().optional().describe(`Additional MAP protocol key-value pairs as a JSON object string, e.g. '{"key": "value"}'`)
+  init_schema();
+  socialPublishSchema = strictObject({
+    action: socialActionSchema,
+    preview: boolean2().default(false).describe("Return unsigned output scripts without signing, funding, or broadcasting.")
   });
 });
 
-// tools/bsocial/readPosts.ts
-async function readSocialPosts(args) {
+// tools/bsocial/read.ts
+async function request(path, params) {
+  const root = BMAP_URL.replace(/\/$/, "");
+  const url = `${root}${path}${params ? `?${new URLSearchParams(params)}` : ""}`;
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok)
+    throw new Error(`Social indexer returned HTTP ${response.status}. Check PUBLIC_BMAP_URL (BMAP server root); expected /social and /q routes.`);
+  if (!response.body)
+    throw new Error("Social indexer returned an empty response");
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
   try {
-    const { bapId, txid, limit, page, feed } = args;
-    if (txid) {
-      const response = await fetch(`${BMAP_URL}/post/${txid}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        }
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `BMAP API request failed: ${response.status} ${errorText}`
-        };
-      }
-      const data = await response.json();
-      if (data.status !== "success") {
-        return {
-          success: false,
-          error: data.error || "Unknown API error"
-        };
-      }
-      return {
-        success: true,
-        posts: [data.data.post],
-        signers: data.data.signers,
-        meta: [data.data.meta]
-      };
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done)
+        break;
+      size += value.byteLength;
+      if (size > 4 * 1024 * 1024)
+        throw new Error("Social indexer response exceeds 4 MB; reduce the query limit");
+      chunks.push(value);
     }
-    const params = new URLSearchParams;
-    if (bapId)
-      params.append("bapId", bapId);
-    params.append("limit", limit.toString());
-    params.append("page", page.toString());
-    if (feed)
-      params.append("feed", "true");
-    const response = await fetch(`${BMAP_URL}/posts?${params}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
+  } finally {
+    await reader.cancel();
+  }
+  const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  if (data === null || typeof data !== "object")
+    throw new Error("Social indexer returned invalid JSON data");
+  if (data && typeof data === "object" && (("error" in data) && data.error || ("success" in data) && data.success === false || ("status" in data) && data.status === "error" || ("status" in data) && data.status === "failed" || ("code" in data) && data.code === "INTERNAL_SERVER_ERROR"))
+    throw new Error("Social indexer reported an error");
+  return "status" in data && data.status === "success" && "data" in data ? data.data : data;
+}
+async function readSocial(input) {
+  const { query: q } = socialReadSchema.parse(input);
+  const params = "page" in q ? { page: String(q.page), limit: String(q.limit) } : undefined;
+  let path;
+  let data;
+  switch (q.type) {
+    case "posts":
+      path = q.address ? `/post/address/${segment(q.address)}` : q.bapId && !q.feed ? `/post/bap/${segment(q.bapId)}` : `/feed${q.bapId ? `/${segment(q.bapId)}` : ""}`;
+      break;
+    case "post":
+      path = `/post/${q.txid}`;
+      break;
+    case "replies":
+      path = `/post/${q.txid}/reply`;
+      break;
+    case "search":
+      path = "/post/search";
+      break;
+    case "likes":
+      path = q.txid ? `/post/${q.txid}/like` : `/bap/${segment(bapIdSchema.parse(q.bapId))}/like`;
+      break;
+    case "friends":
+      path = `/friend/${segment(q.bapId)}`;
+      break;
+    case "channels":
+      path = "/channels";
+      break;
+    case "messages":
+      path = q.channel ? `/channels/${segment(q.channel)}/messages` : `/@/${segment(bapIdSchema.parse(q.bapId))}/messages${q.targetBapId ? `/${segment(q.targetBapId)}` : ""}`;
+      break;
+    case "videos":
+      path = q.txid ? `/video/${q.txid}` : "/video";
+      break;
+    case "records":
+      data = await readRecords(q);
+      path = "";
+      break;
+  }
+  if (path)
+    data = await request(`/social${path}`, {
+      ...q.type === "search" ? {
+        q: q.q,
+        limit: String(q.limit),
+        offset: String((q.page - 1) * q.limit)
+      } : params,
+      ...q.type === "videos" && q.channel ? { channel: q.channel } : {}
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `BMAP API request failed: ${response.status} ${errorText}`
-      };
-    }
-    const data = await response.json();
-    if (data.status !== "success") {
-      return {
-        success: false,
-        error: data.error || "Unknown API error"
-      };
-    }
-    return {
-      success: true,
-      posts: data.data.results,
-      signers: data.data.signers,
-      meta: data.data.meta,
-      pagination: {
-        page: data.data.page,
-        limit: data.data.limit,
-        count: data.data.count
-      }
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error reading social posts:", errorMessage);
-    return {
-      success: false,
-      error: errorMessage
-    };
-  }
+  return {
+    source: BMAP_URL,
+    operation: q.type,
+    data,
+    ...q.type === "records" ? {
+      interpretation: "Raw indexed events; not current relationship state or independently verified authorship."
+    } : {}
+  };
 }
-function formatPost(post, index, signer, meta) {
-  const lines = [
-    `Post ${index + 1}:`,
-    `  TX ID: ${post.tx.h}`,
-    `  Content: ${post.B[0]?.content || "[No Content]"}`,
-    `  Content Type: ${post.B[0]?.["content-type"] || "text/plain"}`,
-    `  Timestamp: ${new Date(post.timestamp * 1000).toISOString()}`
+async function readRecords(q) {
+  const match = {};
+  if (q.address)
+    match["AIP.address"] = q.address;
+  if (q.authorBapId) {
+    const identity = await fetchProfile(q.authorBapId);
+    const addresses = array(union([
+      string2(),
+      object2({ address: string2() }).transform((a) => a.address)
+    ])).min(1).max(1000).parse(identity?.addresses);
+    match["AIP.address"] = { $in: addresses };
+  }
+  if (q.targetBapId)
+    match["MAP.bapID"] = q.targetBapId;
+  if (q.txid)
+    match["MAP.tx"] = q.txid;
+  const [first, ...rest] = [...new Set(q.types)];
+  const recent = [
+    { $match: match },
+    { $sort: { timestamp: -1 } },
+    { $limit: q.page * q.limit },
+    { $project: { in: 0, out: 0 } }
   ];
-  if (signer) {
-    lines.push(`  Author: ${signer.displayName || signer.idKey}`);
-    if (signer.paymail) {
-      lines.push(`  Paymail: ${signer.paymail}`);
-    }
-  }
-  const mapData = post.MAP.find((m) => m.type === "post");
-  if (mapData?.app) {
-    lines.push(`  App: ${mapData.app}`);
-  }
-  if (meta) {
-    if (meta.likes > 0) {
-      lines.push(`  Likes: ${meta.likes}`);
-    }
-    if (meta.replies > 0) {
-      lines.push(`  Replies: ${meta.replies}`);
-    }
-    if (meta.reactions.length > 0) {
-      const reactions = meta.reactions.map((r) => `${r.emoji}(${r.count})`).join(" ");
-      lines.push(`  Reactions: ${reactions}`);
-    }
-  }
-  return lines.join(`
-`);
+  const aggregate = [
+    ...recent,
+    ...rest.map((coll) => ({
+      $unionWith: { coll, pipeline: recent }
+    })),
+    { $sort: { timestamp: -1 } },
+    { $skip: (q.page - 1) * q.limit },
+    { $limit: q.limit },
+    { $project: { in: 0, out: 0 } }
+  ];
+  const encoded = segment(Buffer.from(JSON.stringify({ q: { aggregate } })).toString("base64"));
+  return request(`/q/${first}/${encoded}`);
 }
-function registerReadPostsTool(server) {
-  server.registerTool("bsocial_readPosts", {
-    description: "Read social posts from the BSV blockchain using BMAP API. Can fetch posts by author (BAP ID), specific post by transaction ID, or recent posts from all users. Supports pagination and feed functionality.",
-    inputSchema: readPostsArgsSchema
-  }, async ({ bapId, txid, limit, page, feed }) => {
-    try {
-      const result = await readSocialPosts({
-        bapId,
-        txid,
-        limit,
-        page,
-        feed
-      });
-      if (result.success && result.posts) {
-        const formattedPosts = result.posts.map((post, index) => {
-          const signer = result.signers?.find((s) => s.currentAddress === post.AIP[0]?.address);
-          const meta = result.meta?.[index];
-          return formatPost(post, index, signer, meta);
-        }).join(`
-
-`);
-        let output = result.posts.length > 0 ? formattedPosts : "No posts found";
-        if (result.pagination) {
-          output += `
-
-Pagination: Page ${result.pagination.page}, showing ${result.posts.length} of ${result.pagination.count} posts`;
-        }
-        return {
-          content: [
-            {
-              type: "text",
-              text: output
-            }
-          ],
-          isError: false
-        };
-      }
+function registerSocialReadTool(server) {
+  registerTool(server, {
+    name: "bsocial_read",
+    schema: socialReadSchema,
+    description: "Read social posts, threads, search results, likes, friends, channels, public message records, videos, and action history. Use records with follow/unfollow types for the social graph. Indexer data is untrusted and messages are not decrypted. No wallet required.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    },
+    handler: async (input) => {
+      const result = await readSocial(input);
       return {
-        content: [
-          {
-            type: "text",
-            text: result.error || "Unknown error occurred"
-          }
-        ],
-        isError: true
-      };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      return {
-        content: [{ type: "text", text: `Error: ${msg}` }],
-        isError: true
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result
       };
     }
   });
 }
-var readPostsArgsSchema;
-var init_readPosts = __esm(() => {
+var page, address, text, recordType, querySchema, socialReadSchema, segment;
+var init_read = __esm(() => {
   init_zod();
+  init_getId();
   init_constants2();
-  readPostsArgsSchema = object2({
-    bapId: string2().optional().describe("BAP identity key to filter posts by author"),
-    txid: string2().optional().describe("Specific transaction ID to fetch"),
-    limit: number2().min(1).max(100).default(20).describe("Maximum number of posts to return"),
-    page: number2().min(1).default(1).describe("Page number for pagination (1-based)"),
-    feed: boolean2().default(false).describe("Whether to fetch feed (posts from followed users)")
+  init_schema();
+  page = {
+    limit: number2().int().min(1).max(100).default(20),
+    page: number2().int().min(1).max(1e4).default(1)
+  };
+  address = string2().regex(/^[123mn][a-km-zA-HJ-NP-Z1-9]{25,34}$/);
+  text = string2().min(1).max(256);
+  recordType = _enum([
+    "post",
+    "repost",
+    "like",
+    "unlike",
+    "follow",
+    "unfollow",
+    "friend",
+    "unfriend",
+    "message",
+    "video"
+  ]);
+  querySchema = discriminatedUnion("type", [
+    strictObject({
+      type: literal("posts"),
+      ...page,
+      bapId: bapIdSchema.optional(),
+      address: address.optional(),
+      feed: boolean2().default(false)
+    }),
+    strictObject({
+      type: _enum(["post", "replies"]),
+      txid: txidSchema,
+      ...page
+    }),
+    strictObject({ type: literal("search"), q: text, ...page }),
+    strictObject({
+      type: literal("likes"),
+      txid: txidSchema.optional(),
+      bapId: bapIdSchema.optional(),
+      ...page
+    }),
+    strictObject({ type: literal("friends"), bapId: bapIdSchema }),
+    strictObject({ type: literal("channels") }),
+    strictObject({
+      type: literal("messages"),
+      channel: text.optional(),
+      bapId: bapIdSchema.optional(),
+      targetBapId: bapIdSchema.optional(),
+      ...page
+    }),
+    strictObject({
+      type: literal("records"),
+      types: array(recordType).min(1).max(10),
+      authorBapId: bapIdSchema.optional(),
+      address: address.optional(),
+      targetBapId: bapIdSchema.optional(),
+      txid: txidSchema.optional(),
+      ...page
+    }).describe("Raw action history, including follow/unfollow and repost records. Filter authorBapId for outgoing follows or targetBapId for incoming follows. This is not a reduced current relationship state."),
+    strictObject({
+      type: literal("videos"),
+      txid: txidSchema.optional(),
+      channel: text.optional(),
+      ...page
+    })
+  ]).superRefine((q, ctx) => {
+    const invalid = (message) => ctx.addIssue({ code: "custom", message });
+    if (q.type === "posts" && (q.bapId && q.address || q.feed && (!q.bapId || q.address)))
+      invalid("Choose author bapId, address, or feed with bapId");
+    if (q.type === "likes" && Boolean(q.txid) === Boolean(q.bapId))
+      invalid("Provide exactly one of txid or bapId");
+    if (q.type === "messages" && (Boolean(q.channel) === Boolean(q.bapId) || q.targetBapId && !q.bapId))
+      invalid("Choose channel or bapId, optionally with targetBapId");
+    if (q.type === "records" && q.authorBapId && q.address)
+      invalid("Choose authorBapId or address");
+    if (q.type === "videos" && q.txid && q.channel)
+      invalid("Choose txid or channel");
   });
+  socialReadSchema = strictObject({ query: querySchema });
+  segment = encodeURIComponent;
 });
 
 // tools/bsocial/index.ts
 function registerBsocialTools(server, config = {}) {
-  registerReadPostsTool(server);
-  console.error("✅ Registered bsocial_readPosts tool");
-  registerBmapReadPostsTool(server);
-  console.error("✅ Registered bmap_readPosts tool");
-  registerBmapReadLikesTool(server);
-  console.error("✅ Registered bmap_readLikes tool");
-  registerBmapReadFollowsTool(server);
-  console.error("✅ Registered bmap_readFollows tool");
-  if (config.identityContext) {
-    registerContextSocialPost(server, config.identityContext, config.disableBroadcasting);
-  } else if (config.wallet) {
-    registerCreatePostTool(server, config.wallet);
-    console.error("✅ Registered bsocial_createPost tool");
-  } else {
-    console.error("⚠️ bsocial_createPost tool not registered (no wallet available)");
-  }
+  registerSocialReadTool(server);
+  if (config.identityContext || config.wallet)
+    registerSocialPublishTool(server, config);
 }
 var init_bsocial2 = __esm(() => {
-  init_bmapFollow();
-  init_bmapLikes();
-  init_bmapReadPosts();
-  init_context2();
-  init_createPost();
-  init_readPosts();
+  init_publish();
+  init_read();
 });
 
 // utils/x402-auth.ts
@@ -120296,7 +119963,7 @@ class BaseHash2 {
     throw new Error("Not implemented");
   }
   update(msg, enc) {
-    msg = toArray14(msg, enc);
+    msg = toArray12(msg, enc);
     if (this.pending == null) {
       this.pending = msg;
     } else {
@@ -120373,7 +120040,7 @@ function isSurrogatePair(msg, i) {
   }
   return (msg.charCodeAt(i + 1) & 64512) === 56320;
 }
-function toArray14(msg, enc) {
+function toArray12(msg, enc) {
   if (Array.isArray(msg)) {
     return msg.slice();
   }
@@ -120587,7 +120254,7 @@ class SHA2562 {
     this.h = new FastSHA2562;
   }
   update(msg, enc) {
-    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray14(msg, enc));
+    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray12(msg, enc));
     this.h.update(data);
     return this;
   }
@@ -120604,11 +120271,11 @@ class SHA256HMAC2 {
   blockSize = 64;
   outSize = 32;
   constructor(key) {
-    const k = key instanceof Uint8Array ? key : Uint8Array.from(toArray14(key, typeof key === "string" ? "hex" : undefined));
+    const k = key instanceof Uint8Array ? key : Uint8Array.from(toArray12(key, typeof key === "string" ? "hex" : undefined));
     this.h = new HMAC2(sha256Fast2, k);
   }
   update(msg, enc) {
-    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray14(msg, enc));
+    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray12(msg, enc));
     this.h.update(data);
     return this;
   }
@@ -120625,11 +120292,11 @@ class SHA512HMAC2 {
   blockSize = 128;
   outSize = 32;
   constructor(key) {
-    const k = key instanceof Uint8Array ? key : Uint8Array.from(toArray14(key, typeof key === "string" ? "hex" : undefined));
+    const k = key instanceof Uint8Array ? key : Uint8Array.from(toArray12(key, typeof key === "string" ? "hex" : undefined));
     this.h = new HMAC2(sha512Fast2, k);
   }
   update(msg, enc) {
-    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray14(msg, enc));
+    const data = msg instanceof Uint8Array ? msg : Uint8Array.from(toArray12(msg, enc));
     this.h.update(data);
     return this;
   }
@@ -122548,8 +122215,8 @@ var BufferCtor7, CAN_USE_BUFFER5, HEX_DIGITS3 = "0123456789abcdef", HEX_BYTE_STR
 }, toUint8Array2 = (msg, enc) => {
   if (msg instanceof Uint8Array)
     return msg;
-  return new Uint8Array(toArray15(msg, enc));
-}, toArray15 = (msg, enc) => {
+  return new Uint8Array(toArray13(msg, enc));
+}, toArray13 = (msg, enc) => {
   if (Array.isArray(msg))
     return msg.slice();
   if (msg === undefined)
@@ -122977,7 +122644,7 @@ var init_Point2 = __esm(() => {
       throw new Error("Unknown point format");
     }
     static fromString(str) {
-      const bytes = toArray15(str, "hex");
+      const bytes = toArray13(str, "hex");
       return Point2._assertOnCurve(Point2.fromDER(bytes));
     }
     static fromX(x, odd) {
@@ -123666,7 +123333,7 @@ class Curve2 {
     };
   }
   static parseBytes(bytes) {
-    return typeof bytes === "string" ? toArray15(bytes, "hex") : bytes;
+    return typeof bytes === "string" ? toArray13(bytes, "hex") : bytes;
   }
   static intFromLE(bytes) {
     return new BigNumber2(bytes, "hex", "le");
@@ -124697,7 +124364,7 @@ class Signature2 {
         this.place = 0;
       }
     }
-    data = toArray15(data, enc);
+    data = toArray13(data, enc);
     const p = new Position;
     if (data[p.place++] !== 48) {
       throw new Error("Signature DER must start with 0x30");
@@ -124737,7 +124404,7 @@ class Signature2 {
     return new Signature2(new BigNumber2(r), new BigNumber2(s));
   }
   static fromCompact(data, enc) {
-    data = toArray15(data, enc);
+    data = toArray13(data, enc);
     if (data.length !== 65) {
       throw new Error("Invalid Compact Signature");
     }
@@ -124881,8 +124548,8 @@ class DRBG2 {
   K;
   V;
   constructor(entropy, nonce) {
-    const entropyBytes = toArray15(entropy, "hex");
-    const nonceBytes = toArray15(nonce, "hex");
+    const entropyBytes = toArray13(entropy, "hex");
+    const nonceBytes = toArray13(nonce, "hex");
     if (entropyBytes.length !== 32) {
       throw new Error("Entropy must be exactly 32 bytes (256 bits)");
     }
@@ -125141,7 +124808,7 @@ var init_PublicKey2 = __esm(() => {
       } else {
         sharedSecret = this.deriveSharedSecret(privateKey);
       }
-      const invoiceNumberBin = toArray15(invoiceNumber, "utf8");
+      const invoiceNumberBin = toArray13(invoiceNumber, "utf8");
       const hmac = sha256hmac2(sharedSecret.encode(true), invoiceNumberBin);
       const curve = new Curve2;
       const point = curve.g.mul(new BigNumber2(hmac));
@@ -125149,7 +124816,7 @@ var init_PublicKey2 = __esm(() => {
       return new PublicKey2(finalPoint.x, finalPoint.y);
     }
     static fromMsgHashAndCompactSignature(msgHash, signature, enc) {
-      const data = toArray15(signature, enc);
+      const data = toArray13(signature, enc);
       if (data.length !== 65) {
         throw new Error("Invalid Compact Signature");
       }
@@ -125430,7 +125097,7 @@ var init_PrivateKey2 = __esm(() => {
       } else {
         sharedSecret = this.deriveSharedSecret(publicKey);
       }
-      const invoiceNumberBin = toArray15(invoiceNumber, "utf8");
+      const invoiceNumberBin = toArray13(invoiceNumber, "utf8");
       const hmac = sha256hmac2(sharedSecret.encode(true), invoiceNumberBin);
       const curve = new Curve2;
       return new PrivateKey2(this.add(new BigNumber2(hmac)).mod(curve.n).toArray());
@@ -125832,7 +125499,7 @@ var init_TransactionSignature2 = __esm(() => {
             }
             writer.write(input.sourceTransaction.hash());
           } else {
-            writer.writeReverse(toArray15(input.sourceTXID, "hex"));
+            writer.writeReverse(toArray13(input.sourceTXID, "hex"));
           }
           writer.writeUInt32LE(input.sourceOutputIndex);
         }
@@ -125916,7 +125583,7 @@ var init_TransactionSignature2 = __esm(() => {
       writer.writeInt32LE(params.transactionVersion);
       writer.write(hashPrevouts);
       writer.write(hashSequence);
-      writer.writeReverse(toArray15(params.sourceTXID, "hex"));
+      writer.writeReverse(toArray13(params.sourceTXID, "hex"));
       writer.writeUInt32LE(params.sourceOutputIndex);
       const subscriptBin = params.subscript.toUint8Array();
       writer.writeVarIntNum(subscriptBin.length);
@@ -126230,7 +125897,7 @@ class Script2 {
         if (hex.length % 2 !== 0) {
           hex = "0" + hex;
         }
-        const arr = toArray15(hex, "hex");
+        const arr = toArray13(hex, "hex");
         if (encode5(arr, "hex") !== hex) {
           throw new Error("invalid hex string in script");
         }
@@ -126251,7 +125918,7 @@ class Script2 {
         i = i + 1;
       } else if (opCodeNum === OP_default2.OP_PUSHDATA1 || opCodeNum === OP_default2.OP_PUSHDATA2 || opCodeNum === OP_default2.OP_PUSHDATA4) {
         chunks.push({
-          data: toArray15(tokens[i + 2], "hex"),
+          data: toArray13(tokens[i + 2], "hex"),
           op: opCodeNum
         });
         i = i + 3;
@@ -126273,7 +125940,7 @@ class Script2 {
     if (!/^[0-9a-fA-F]+$/.test(hex)) {
       throw new Error("Some elements in this string are not hex encoded.");
     }
-    const bin = toArray15(hex, "hex");
+    const bin = toArray13(hex, "hex");
     const rawBytes = Uint8Array.from(bin);
     return new Script2([], rawBytes, hex.toLowerCase(), false);
   }
@@ -128316,7 +127983,7 @@ class MerklePath2 {
   blockHeight;
   path;
   static fromHex(hex) {
-    return MerklePath2.fromBinary(toArray15(hex, "hex"));
+    return MerklePath2.fromBinary(toArray13(hex, "hex"));
   }
   static fromReader(reader, legalOffsetsOnly = true) {
     const blockHeight = reader.readVarIntNum();
@@ -128408,7 +128075,7 @@ class MerklePath2 {
         }
         writer.writeUInt8(flags);
         if ((flags & 1) === 0) {
-          writer.write(toArray15(leaf.hash, "hex").reverse());
+          writer.write(toArray13(leaf.hash, "hex").reverse());
         }
       }
     }
@@ -128448,7 +128115,7 @@ class MerklePath2 {
     if (typeof index !== "number") {
       throw new Error(`This proof does not contain the txid: ${txid ?? "undefined"}`);
     }
-    const hash = (m) => toHex7(hash2562(toArray15(m, "hex").reverse()).reverse());
+    const hash = (m) => toHex7(hash2562(toArray13(m, "hex").reverse()).reverse());
     let workingHash = txid;
     if (this.path.length === 1 && this.path[0].length === 1)
       return workingHash;
@@ -128470,7 +128137,7 @@ class MerklePath2 {
     return workingHash;
   }
   findOrComputeLeaf(height, offset) {
-    const hash = (m) => toHex7(hash2562(toArray15(m, "hex").reverse()).reverse());
+    const hash = (m) => toHex7(hash2562(toArray13(m, "hex").reverse()).reverse());
     let leaf = this.path[height].find((l) => l.offset === offset);
     if (leaf != null)
       return leaf;
@@ -128697,7 +128364,7 @@ class BeefTx2 {
       if (this._txid == null) {
         throw new Error("Transaction ID (_txid) is undefined");
       }
-      writer.writeReverse(toArray15(this._txid, "hex"));
+      writer.writeReverse(toArray13(this._txid, "hex"));
     };
     const writeTx = () => {
       const bytes = this.rawTxUint8Array;
@@ -128819,7 +128486,7 @@ class Beef3 {
     }
     const writer = new WriterUint8Array2;
     writer.writeUInt32LE(ATOMIC_BEEF2);
-    writer.writeReverse(toArray15(txid, "hex"));
+    writer.writeReverse(toArray13(txid, "hex"));
     return { beef, writer };
   }
   findTxid(txid) {
@@ -129334,7 +129001,7 @@ ${t.inputTxids.map((it) => `      '${it}'`).join(`,
     return log;
   }
   addComputedLeaves() {
-    const hash = (m) => toHex7(hash2562(toArray15(m, "hex").reverse()).reverse());
+    const hash = (m) => toHex7(hash2562(toArray13(m, "hex").reverse()).reverse());
     for (const bump of this.bumps) {
       for (let row = 1;row < bump.path.length; row++) {
         for (const leafL of bump.path[row - 1]) {
@@ -129551,7 +129218,7 @@ class Transaction2 {
     return Transaction2.fromEF(toUint8Array2(hex, "hex"));
   }
   static fromHexBEEF(hex, txid) {
-    return Transaction2.fromBEEF(toArray15(hex, "hex"), txid);
+    return Transaction2.fromBEEF(toArray13(hex, "hex"), txid);
   }
   constructor(version = 1, inputs = [], outputs = [], lockTime = 0, metadata = new Map, merklePath) {
     this.version = version;
@@ -129740,7 +129407,7 @@ class Transaction2 {
           throw new Error("sourceTransaction is undefined");
         }
       } else {
-        writer.writeReverse(toArray15(i.sourceTXID, "hex"));
+        writer.writeReverse(toArray13(i.sourceTXID, "hex"));
       }
       writer.writeUInt32LE(i.sourceOutputIndex);
       if (i.unlockingScript == null) {
@@ -129788,7 +129455,7 @@ class Transaction2 {
       if (typeof i.sourceTXID === "undefined") {
         writer.write(i.sourceTransaction.hash());
       } else {
-        writer.write(toArray15(i.sourceTXID, "hex").reverse());
+        writer.write(toArray13(i.sourceTXID, "hex").reverse());
       }
       writer.writeUInt32LE(i.sourceOutputIndex);
       if (i.unlockingScript == null) {
@@ -130193,7 +129860,7 @@ class HD2 {
     if (bytes.length > 512 / 8) {
       throw new Error("More than 512 bits of entropy is nonstandard");
     }
-    const hash = sha512hmac2(toArray15("Bitcoin seed", "utf8"), bytes);
+    const hash = sha512hmac2(toArray13("Bitcoin seed", "utf8"), bytes);
     this.depth = 0;
     this.parentFingerPrint = [0, 0, 0, 0];
     this.childIndex = 0;
@@ -132410,7 +132077,7 @@ class Mnemonic2 {
   toBinary() {
     const bw = new Writer2;
     if (this.mnemonic !== "") {
-      const buf = toArray15(this.mnemonic, "utf8");
+      const buf = toArray13(this.mnemonic, "utf8");
       bw.writeVarIntNum(buf.length);
       bw.write(buf);
     } else {
@@ -132538,10 +132205,10 @@ class Mnemonic2 {
     }
     mnemonic = mnemonic.normalize("NFKD");
     passphrase = passphrase.normalize("NFKD");
-    const mbuf = toArray15(mnemonic, "utf8");
+    const mbuf = toArray13(mnemonic, "utf8");
     const pbuf = [
-      ...toArray15("mnemonic", "utf8"),
-      ...toArray15(passphrase, "utf8")
+      ...toArray13("mnemonic", "utf8"),
+      ...toArray13(passphrase, "utf8")
     ];
     this.seed = pbkdf23(mbuf, pbuf, 2048, 64, "sha512");
     return this;
@@ -156241,12 +155908,12 @@ class F7 {
       i.push(...o.sigResponses);
     }
     for (const r of i)
-      e.inputs[r.inputIndex].unlockingScript = new Script2().writeBin(toArray15(r.sig, "hex")).writeBin(toArray15(r.pubKey, "hex"));
+      e.inputs[r.inputIndex].unlockingScript = new Script2().writeBin(toArray13(r.sig, "hex")).writeBin(toArray13(r.pubKey, "hex"));
     return {};
   }
   applySignatures(e, r) {
     for (const s of r)
-      e.inputs[s.inputIndex].unlockingScript = new Script2().writeBin(toArray15(s.sig, "hex")).writeBin(toArray15(s.pubKey, "hex"));
+      e.inputs[s.inputIndex].unlockingScript = new Script2().writeBin(toArray13(s.sig, "hex")).writeBin(toArray13(s.pubKey, "hex"));
     return e;
   }
   async buildUnsignedMneeTransaction(t) {
@@ -156635,7 +156302,7 @@ var f11, v7 = (t) => Buffer.from(t).toString("hex"), w4 = (t, r, s, n = false) =
   const n = e.senders.includes(r) ? "send" : "receive", i = e.height > 0 ? "confirmed" : "unconfirmed";
   if (!e.rawtx)
     return null;
-  const a = toArray15(e.rawtx, "base64"), c = toHex7(a), u = Transaction2.fromHex(c).outputs.map((t) => t.lockingScript), d = S7(u), h = u.map(T5), l = d.map((t) => t.address), f = l.indexOf(s.feeAddress), p = e.senders[0];
+  const a = toArray13(e.rawtx, "base64"), c = toHex7(a), u = Transaction2.fromHex(c).outputs.map((t) => t.lockingScript), d = S7(u), h = u.map(T5), l = d.map((t) => t.address), f = l.indexOf(s.feeAddress), p = e.senders[0];
   let m = 0;
   const g = new Map;
   h.forEach((e, n) => {
@@ -157775,6 +157442,14 @@ function registerAllTools(server, config = {}) {
   const enableWalletTools = process.env.DISABLE_WALLET_TOOLS !== "true" && config.enableWalletTools !== false;
   const enableMneeTools = process.env.DISABLE_MNEE_TOOLS !== "true" && config.enableMneeTools !== false;
   const enableBsocialTools = process.env.DISABLE_BSOCIAL_TOOLS !== "true" && config.enableBsocialTools !== false;
+  if (enableBsocialTools) {
+    registerBsocialTools(server, {
+      wallet: config.roleContexts || config.walletScope === "payments" ? undefined : config.wallet,
+      identityKey: config.identityPk,
+      identityContext: config.walletScope === "payments" ? undefined : config.roleContexts ? config.roleContexts.identity : config.ctx,
+      disableBroadcasting: config.disableBroadcasting
+    });
+  }
   if (profile === "compact") {
     registerCompactCatalog(server, config);
     return;
@@ -157810,13 +157485,6 @@ function registerAllTools(server, config = {}) {
     } else {
       registerBapGetIdTool(server, config.identityPk);
     }
-  }
-  if (enableBsocialTools) {
-    registerBsocialTools(server, {
-      wallet: config.wallet,
-      identityContext: config.roleContexts ? config.roleContexts.identity : config.ctx,
-      disableBroadcasting: config.disableBroadcasting
-    });
   }
   if (enableWalletTools) {
     const externalWallet = config.externalWallet ?? (isExternalWalletContext(config.ctx) || config.ctx?.isBaseWallet === false);
@@ -260731,7 +260399,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/.codex/worktrees/consolidate-social/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -261438,7 +261106,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/.codex/worktrees/consolidate-social/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();

@@ -73,7 +73,9 @@ export interface InputField {
 }
 export function schemaType(schema: JsonSchema): string {
 	if (schema.anyOf || schema.oneOf)
-		return (schema.anyOf ?? schema.oneOf ?? []).map(schemaType).join(" | ");
+		return [
+			...new Set((schema.anyOf ?? schema.oneOf ?? []).map(schemaType)),
+		].join(" | ");
 	if (schema.enum) return schema.enum.map((v) => JSON.stringify(v)).join(" | ");
 	if (schema.type === "array")
 		return `array of ${schema.items ? schemaType(schema.items) : "values"}`;
@@ -128,3 +130,20 @@ export const toolNavigation = toolCategories.map((category) => ({
 			compact: tool.variants.every((v) => v.profile === "compact"),
 		})),
 }));
+
+/** Describe the object alternatives of a discriminated input without hiding them in raw JSON. */
+export function inputAlternatives(schema: JsonSchema) {
+	return Object.entries(schema.properties ?? {}).flatMap(([field, property]) =>
+		(property.oneOf ?? property.anyOf ?? [])
+			.filter((branch) => branch.properties)
+			.map((branch, index) => {
+				const discriminator = Object.entries(branch.properties ?? {}).find(
+					([, value]) => value.const !== undefined || value.enum,
+				);
+				const label = discriminator
+					? `${field}.${discriminator[0]} = ${discriminator[1].const !== undefined ? JSON.stringify(discriminator[1].const) : discriminator[1].enum?.map((v) => JSON.stringify(v)).join(" | ")}`
+					: `${field}: option ${index + 1}`;
+				return { label, fields: inputFields(branch, field) };
+			}),
+	);
+}

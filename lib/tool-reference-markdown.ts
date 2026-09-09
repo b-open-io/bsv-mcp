@@ -3,6 +3,7 @@ import {
 	catalogTools,
 	compactOperations,
 	getTool,
+	inputAlternatives,
 	inputFields,
 	modeLabel,
 	toolNavigation,
@@ -39,6 +40,10 @@ export function renderToolMarkdown(name: string): string | undefined {
 				fields.length
 					? `| Field | Type | Required | Description | Constraints |\n| --- | --- | --- | --- | --- |\n${fields.map((f) => `| ${cell(f.name)} | ${cell(f.type)} | ${f.required ? "Yes" : "No"} | ${cell(f.description)} | ${cell(f.constraints)} |`).join("\n")}`
 					: "No input fields. Pass an empty object.",
+				...inputAlternatives(variant.definition.inputSchema).map(
+					(alternative) =>
+						`### ${alternative.label}\n\n${alternative.fields.map((f) => `- ${f.name} (${f.type}${f.required ? "; required" : ""}): ${f.description} ${f.constraints}`).join("\n")}`,
+				),
 				"Nested requirements apply when their parent is supplied.",
 				`### Input schema\n\n\`\`\`json\n${JSON.stringify(variant.definition.inputSchema, null, 2)}\n\`\`\``,
 				...(variant.definition.outputSchema

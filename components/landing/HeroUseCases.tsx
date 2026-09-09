@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 
 const useCases = [
-	"Send BSV across borders",
-	"Pay for APIs with BSV",
+	"Publish social posts and replies",
+	"Send MNEE stablecoins",
+	"Follow people and like posts",
 	"Create and collect ordinals",
 	"Trade tokens and collectibles",
 	"Encrypt private data",
 	"Sign and verify messages",
-	"Publish signed posts",
-	"Put files on the blockchain",
+	"Store files on the blockchain",
+	"Pay for APIs with BSV",
 ];
 
 export function HeroUseCases() {

@@ -5,6 +5,21 @@ export interface ReferenceNote {
 	details?: string;
 }
 export const toolReferenceNotes: Record<string, ReferenceNote> = {
+	bsocial_read: {
+		result:
+			"Structured source, operation and indexer data, also returned as JSON text.",
+		approval: "Public read; no wallet or signing permission required.",
+		details:
+			"Choose query.type. records reads raw action history, including follow/unfollow; it does not claim current relationship state or independently verified authorship. PUBLIC_BMAP_URL is the server root exposing /social and /q routes. Messages are not decrypted.",
+	},
+	bsocial_publish: {
+		result:
+			"Transaction ID, action type and output count; preview returns unsigned output scripts without spending.",
+		approval:
+			"The selected identity wallet signs and funds through its existing permissions. Legacy wallets require a separate identity key plus a payment key. Broadcasting must be enabled unless preview is true.",
+		details:
+			"Choose action.type. Replies are posts with replyTo. Tags and attachments have separately signed outputs. A message recipient is routing metadata, not encryption. Friend records advertise a supplied communication public key and do not establish a secure messaging protocol. unfriend and video are indexer extensions.",
+	},
 	wallet_sendBsv: {
 		result:
 			"JSON text with status, transaction ID and recipient amounts in satoshis, or an error.",
@@ -150,10 +165,6 @@ const publicReads: Record<string, string> = {
 		"Completed sales and nextFrom, as JSON text and structured content.",
 	bap_getId:
 		"A BAP identity record as JSON text, or a not-found message. Supply idKey when no identity is configured.",
-	bmap_readPosts: "Matching BMAP posts as JSON text.",
-	bmap_readLikes: "Matching BMAP likes as JSON text.",
-	bmap_readFollows: "Matching BMAP follows as JSON text.",
-	bsocial_readPosts: "Matching posts in the selected output format.",
 	droplit_discover:
 		"The sponsor catalog returned by the configured Droplit API.",
 	utils_find_skills:

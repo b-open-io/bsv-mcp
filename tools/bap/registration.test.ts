@@ -107,7 +107,7 @@ describe("BAP registration capabilities", () => {
 					wallet: fakeWallet,
 					xprv: "test-master-xprv",
 				},
-				expected: ["bap_getId", "bap_getCurrentAddress", "bap_friend"],
+				expected: ["bap_getId", "bap_getCurrentAddress"],
 				absent: [],
 			},
 			{
