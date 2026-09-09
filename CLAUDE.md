@@ -12,7 +12,8 @@ the remote MCP endpoint.
 
 These decisions supersede older OAuth and architecture proposals.
 
-- Local stdio MCP is the active product. It requires no Sigma sign-in.
+- Local stdio MCP is the default and active product. It requires no Sigma sign-in.
+- Keep existing MCP HTTP transport opt-in and leave the deployed endpoint unchanged. Do not retire either as part of local installation or documentation work.
 - Hosted MCP, its authorization server, and HTTP spending approval are deferred.
   Existing HTTP code is legacy implementation, not an instruction to finish it.
 - Sigma Connect is optional and requires explicit user consent. It is separate
@@ -54,7 +55,7 @@ For a local MCP connection:
 bunx bsv-mcp@latest --stdio
 ```
 
-The server must never write protocol data to stdout in stdio mode. Keep the
+The server must write only protocol data to stdout in stdio mode. Keep the
 stdio guard as the first loaded module and send diagnostics to stderr.
 
 ## Repository layout

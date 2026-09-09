@@ -16,9 +16,13 @@
  * Only stdio mode is affected. HTTP transport mode is unchanged.
  */
 
+// With no CLI command, startup defaults to stdio. Keep help and account-command
+// output on their normal streams unless stdio was explicitly requested.
 const isStdio =
 	process.argv.includes("--stdio") ||
-	process.env.TRANSPORT?.toLowerCase() === "stdio";
+	(
+		process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")
+	).toLowerCase() === "stdio";
 
 if (isStdio) {
 	// Redirect every console method that writes to stdout → stderr.

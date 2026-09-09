@@ -31,3 +31,27 @@ Production OAuth acceptance found a blocking provider issue: native dynamic clie
 ## Public release 0.5.0
 
 Published to npm on 2026-09-08 after browser confirmation. The registry verifier succeeded, and a new `bun add bsv-mcp@0.5.0` consumer install passed dashboard, tool-list and resource-list smoke tests over both 2025-11-25 and 2026-07-28. Source and plugin changes are on `master` at `d828b47`. The earlier no-publication statements above describe the initial 0.4.0 acceptance pass.
+
+## Local-first correction 0.5.1
+
+The correction defaults an omitted transport to stdio and keeps explicit HTTP
+and the deployed hosted endpoint unchanged. The Codex plugin launches the local
+npm executable. The executable requires Bun; npx also requires Node.js.
+
+Validation on 2026-09-08: 727 tests passed (4,578 assertions, 113 files), including
+both protocol eras, HTTP authentication, wallet modes, role routing and Vault
+regressions. TypeScript and Next production build passed. The generated reference
+contains 106 full tools and six compact families. Isolated registration captures
+match the committed definitions and preserve conditional/schema variants.
+
+A clean tarball install resolved 257 packages. Launching its actual npm binary
+through npx, without a transport flag, passed tool/resource discovery, dashboard
+opening and HTML resource reading over 2025-11-25 and 2026-07-28. Stdout contained
+only JSON-RPC. Browser checks covered homepage navigation, tool search and no
+results, direct URLs, Markdown, 404s, and layouts at 390px and 1440px without
+horizontal page overflow.
+
+Repository-wide lint still reports 58 errors already present at baseline
+3349b46. The separately checked documentation, catalog, navigation and new test
+files pass Biome. No hosted handler, OAuth discovery, wallet custody or approval
+implementation was changed by this correction.

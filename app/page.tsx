@@ -13,10 +13,18 @@ import { GITHUB_URL } from "@/lib/site";
 import "./landing.css";
 
 const capabilities = [
-	{ label: "Send BSV", icon: Send },
-	{ label: "Create ordinals", icon: Images },
-	{ label: "Sign messages", icon: KeyRound },
-	{ label: "Explore the chain", icon: Link2 },
+	{ label: "Send BSV", icon: Send, href: "/docs/tools/wallet_sendBsv" },
+	{
+		label: "Create ordinals",
+		icon: Images,
+		href: "/docs/tools/wallet_createOrdinals",
+	},
+	{
+		label: "Sign messages",
+		icon: KeyRound,
+		href: "/docs/tools/wallet_signBsm",
+	},
+	{ label: "Explore the chain", icon: Link2, href: "/docs/tools/bsv_explore" },
 ];
 export default function LandingPage() {
 	return (
@@ -31,7 +39,7 @@ export default function LandingPage() {
 					BSV MCP
 				</Link>
 				<nav aria-label="Main navigation">
-					<a href="#tools">Tools</a>
+					<a href="/docs/tools">Tools</a>
 					<Link href="/docs">Docs</Link>
 					<GitHubStars url={GITHUB_URL} />
 				</nav>
@@ -54,7 +62,7 @@ export default function LandingPage() {
 						</p>
 						<div className="hero-actions">
 							<InstallButton />
-							<a href="#tools" className="landing-text-link">
+							<a href="/docs/tools" className="landing-text-link">
 								Explore tools <ArrowRight size={16} />
 							</a>
 						</div>
@@ -94,14 +102,14 @@ export default function LandingPage() {
 					aria-label="Wallet capabilities"
 				>
 					<div className="capability-list">
-						{capabilities.map(({ label, icon: Icon }) => (
-							<Link key={label} href="/docs#tools">
+						{capabilities.map(({ label, icon: Icon, href }) => (
+							<Link key={label} href={href}>
 								<Icon size={34} strokeWidth={1.25} />
 								<span>{label}</span>
 							</Link>
 						))}
 					</div>
-					<Link href="/docs#tools" className="landing-text-link">
+					<Link href="/docs/tools" className="landing-text-link">
 						All tools <ArrowRight size={15} />
 					</Link>
 				</section>

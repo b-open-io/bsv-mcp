@@ -263,7 +263,7 @@ export const CONFIG = {
 	// --stdio CLI flag takes precedence over TRANSPORT env var (matches neighborhood plugin pattern)
 	transportMode: process.argv.includes("--stdio")
 		? "stdio"
-		: process.env.TRANSPORT?.toLowerCase() || "http", // 'stdio' or 'http'/default
+		: (process.env.TRANSPORT ?? "stdio").toLowerCase(),
 	port: Number.parseInt(process.env.PORT || "3000", 10),
 
 	// --- Droplit API Configuration ---
@@ -996,15 +996,16 @@ export async function main() {
 		console.log(`
 BSV MCP Server v${packageJson.version}
 
-Usage: bun run index.ts [options]
+Usage: bsv-mcp [options]
 
 Options:
+  --stdio            Use local stdio (the default; overrides TRANSPORT)
   --help, -h          Show this help message
   --version, -v       Show version information
   vault-setup         Open the local read-only Vault migration preview
 
 Environment Variables:
-  TRANSPORT           Transport mode: 'stdio' or 'http' (default: http)
+  TRANSPORT           Transport mode: 'stdio' or 'http' (default: stdio; HTTP requires explicit opt-in)
   PORT               HTTP server port (default: 3000)
   BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
@@ -1043,6 +1044,15 @@ Authentication:
 	if (args.includes("--version") || args.includes("-v")) {
 		console.log(`${packageJson.name} v${packageJson.version}`);
 		process.exit(0);
+	}
+
+	if (CONFIG.transportMode !== "stdio" && CONFIG.transportMode !== "http") {
+		throw new Error(
+			"TRANSPORT must be stdio or http; omit it to run locally over stdio",
+		);
+	}
+	if (args.some((arg) => arg !== "--stdio")) {
+		throw new Error("Unknown server argument; use --help for supported commands");
 	}
 
 	// --- Initialize Keys ---

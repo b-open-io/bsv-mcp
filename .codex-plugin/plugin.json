@@ -1,12 +1,12 @@
 {
 	"name": "bsv-mcp",
-	"version": "0.5.0",
-	"description": "Bitcoin SV tools for AI assistants. Connect to the hosted MCP server through Sigma Identity.",
+	"version": "0.5.1",
+	"description": "Bitcoin SV tools for AI assistants. Run a local MCP server with your own wallet.",
 	"author": {
 		"name": "bOpen",
 		"url": "https://github.com/b-open-io"
 	},
-	"homepage": "https://bsvmcp.com/connect",
+	"homepage": "https://bsvmcp.com/docs#quickstart",
 	"repository": "https://github.com/b-open-io/bsv-mcp",
 	"license": "MIT",
 	"skills": "./skills/",
@@ -20,7 +20,7 @@
 		"defaultPrompt": [
 			"Run bsv_status and explain which services are available."
 		],
-		"longDescription": "Connect your AI assistant to hosted Bitcoin SV tools for transaction lookups, ordinals, and service status. Sign in through Sigma Identity. Personal wallet setup is separate.",
+		"longDescription": "Run Bitcoin SV tools locally for transaction lookups, payments, ordinals and identity. Connect an external wallet or open local Vault setup. No account sign-in is required.",
 		"capabilities": ["Interactive"]
 	}
 }

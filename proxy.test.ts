@@ -84,3 +84,13 @@ describe("root MCP routing", () => {
 		).toBe(null);
 	});
 });
+
+test("tool reference .md URLs resolve to their matching Markdown document", () => {
+	const response = proxy(
+		new NextRequest("https://bsvmcp.com/docs/tools/wallet_sendBsv.md"),
+	);
+	expect(response.headers.get("x-middleware-rewrite")).toBe(
+		"https://bsvmcp.com/md/docs/tools/wallet_sendBsv",
+	);
+	expect(response.headers.get("vary")).toContain("Accept");
+});

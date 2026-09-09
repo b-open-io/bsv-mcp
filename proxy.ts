@@ -37,8 +37,14 @@ export function proxy(request: NextRequest) {
 		return NextResponse.rewrite(url);
 	}
 
+	// Tool references support both negotiated Markdown and explicit .md URLs.
+	const toolMarkdown =
+		request.nextUrl.pathname.startsWith("/docs/tools") &&
+		request.nextUrl.pathname.endsWith(".md");
 	const accept = request.headers.get("accept");
-	const chosen = selectMediaType(accept, OFFERED_MEDIA);
+	const chosen = toolMarkdown
+		? MEDIA_MARKDOWN
+		: selectMediaType(accept, OFFERED_MEDIA);
 
 	if (chosen === null) {
 		return new NextResponse(
@@ -58,7 +64,10 @@ export function proxy(request: NextRequest) {
 	if (chosen === MEDIA_MARKDOWN) {
 		const url = request.nextUrl.clone();
 		const pagePath =
-			STABLE_PAGE_ALIASES[request.nextUrl.pathname] ?? request.nextUrl.pathname;
+			STABLE_PAGE_ALIASES[request.nextUrl.pathname] ??
+			(toolMarkdown
+				? request.nextUrl.pathname.slice(0, -3)
+				: request.nextUrl.pathname);
 		url.pathname = `/md${pagePath === "/" ? "" : pagePath}`;
 		const response = NextResponse.rewrite(url);
 		response.headers.set("Vary", VARY_HEADER);

@@ -8,6 +8,7 @@ import {
 	getToolCounts,
 	toolsInCategory,
 } from "./tool-count";
+import manifest from "./tool-manifest.json";
 
 describe("tool manifest", () => {
 	test(
@@ -17,7 +18,7 @@ describe("tool manifest", () => {
 			// `bun run tools:manifest` and commit the result.
 			const live = await readToolsFromServer();
 			expect(live.length).toBeGreaterThan(0);
-			expect([...allToolNames]).toEqual(live);
+			expect(manifest.tools).toEqual(live);
 		},
 		{ timeout: 120_000 },
 	);

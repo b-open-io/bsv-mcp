@@ -6,7 +6,7 @@ import {
 	renderHomeMarkdown,
 	renderNotFoundMarkdown,
 } from "./markdown";
-import { MCP_ENDPOINT, OAUTH_SCOPE_NAMES, SITE_URL } from "./site";
+import { SITE_URL } from "./site";
 import { toolCategories } from "./site-content";
 
 describe("home markdown", () => {
@@ -23,19 +23,17 @@ describe("home markdown", () => {
 		}
 	});
 
-	test("publishes the endpoint and scopes agents need", () => {
-		expect(doc).toContain(MCP_ENDPOINT);
-		for (const scope of OAUTH_SCOPE_NAMES) {
-			expect(doc).toContain(scope);
-		}
+	test("documents local installation without hosted login", () => {
+		expect(doc).toContain("--stdio");
+		expect(doc).not.toContain("Hosted MCP endpoint:");
 	});
 });
 
 describe("connect markdown", () => {
-	test("explains the auth model and links discovery", () => {
+	test("explains local setup", () => {
 		const doc = renderConnectMarkdown();
-		expect(doc).toContain(MCP_ENDPOINT);
-		expect(doc).toContain("/.well-known/oauth-protected-resource");
+		expect(doc).toContain("No Sigma account or OAuth sign-in is required");
+		expect(doc).toContain("/docs/tools");
 	});
 });
 
@@ -47,23 +45,21 @@ describe("not found markdown", () => {
 	});
 
 	test("points agents at every recovery route", () => {
-		for (const target of ["/llms.txt", "/sitemap.xml", `${SITE_URL}/connect`]) {
+		for (const target of ["/llms.txt", "/sitemap.xml", `${SITE_URL}/docs`]) {
 			expect(doc).toContain(target);
 		}
 	});
 
 	test("includes machine-readable endpoints", () => {
-		expect(doc).toContain(MCP_ENDPOINT);
+		expect(doc).toContain(`${SITE_URL}/docs/tools`);
 	});
 });
 
 describe("markdownPages", () => {
 	test("covers the routes proxy can rewrite", () => {
-		expect(Object.keys(markdownPages).sort()).toEqual([
-			"/",
-			"/connect",
-			"/docs",
-		]);
+		expect(Object.keys(markdownPages)).toEqual(
+			expect.arrayContaining(["/", "/connect", "/docs"]),
+		);
 		for (const render of Object.values(markdownPages)) {
 			expect(render().length).toBeGreaterThan(100);
 		}

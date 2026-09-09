@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // @bun
-var __isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT || "").toLowerCase() === "stdio";
+var __isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")).toLowerCase() === "stdio";
 if (__isStdio) {
   var __err = console.error.bind(console);
   console.log = function() { __err.apply(null, ["[log]"].concat([].slice.call(arguments))); };
@@ -71,7 +71,7 @@ var __require = /* @__PURE__ */ createRequire(import.meta.url);
 // utils/stdioGuard.ts
 var isStdio2;
 var init_stdioGuard = __esm(() => {
-  isStdio2 = process.argv.includes("--stdio") || process.env.TRANSPORT?.toLowerCase() === "stdio";
+  isStdio2 = process.argv.includes("--stdio") || (process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")).toLowerCase() === "stdio";
   if (isStdio2) {
     const err = console.error.bind(console);
     console.log = (...args) => err("[log]", ...args);
@@ -25873,7 +25873,7 @@ var init_package = __esm(() => {
     name: "bsv-mcp",
     module: "dist/index.js",
     type: "module",
-    version: "0.5.0",
+    version: "0.5.1",
     license: "MIT",
     author: "satchmo",
     description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -260731,7 +260731,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/.codex/worktrees/local-mcp-tool-reference/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -261438,7 +261438,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/.codex/worktrees/local-mcp-tool-reference/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();
@@ -313109,15 +313109,16 @@ async function main() {
     console.log(`
 BSV MCP Server v${package_default.version}
 
-Usage: bun run index.ts [options]
+Usage: bsv-mcp [options]
 
 Options:
+  --stdio            Use local stdio (the default; overrides TRANSPORT)
   --help, -h          Show this help message
   --version, -v       Show version information
   vault-setup         Open the local read-only Vault migration preview
 
 Environment Variables:
-  TRANSPORT           Transport mode: 'stdio' or 'http' (default: http)
+  TRANSPORT           Transport mode: 'stdio' or 'http' (default: stdio; HTTP requires explicit opt-in)
   PORT               HTTP server port (default: 3000)
   BRC100_WALLET_URL  Existing SDK HTTPWalletJSON signer RPC URL
   BRC100_WALLET_ORIGINATOR  Signer permission origin (default: bsv-mcp.local)
@@ -313155,6 +313156,12 @@ Authentication:
   if (args.includes("--version") || args.includes("-v")) {
     console.log(`${package_default.name} v${package_default.version}`);
     process.exit(0);
+  }
+  if (CONFIG.transportMode !== "stdio" && CONFIG.transportMode !== "http") {
+    throw new Error("TRANSPORT must be stdio or http; omit it to run locally over stdio");
+  }
+  if (args.some((arg) => arg !== "--stdio")) {
+    throw new Error("Unknown server argument; use --help for supported commands");
   }
   const projectConfig = readProjectWalletConfig();
   const projectRuntime = projectConfig ? await createProjectWalletRuntime() : undefined;
@@ -313842,7 +313849,7 @@ var init_server2 = __esm(() => {
     loadBapTools: process.env.DISABLE_BAP_TOOLS !== "true",
     loadBsocialTools: process.env.DISABLE_BSOCIAL_TOOLS !== "true",
     disableBroadcasting: process.env.DISABLE_BROADCASTING === "true",
-    transportMode: process.argv.includes("--stdio") ? "stdio" : process.env.TRANSPORT?.toLowerCase() || "http",
+    transportMode: process.argv.includes("--stdio") ? "stdio" : (process.env.TRANSPORT ?? "stdio").toLowerCase(),
     port: Number.parseInt(process.env.PORT || "3000", 10),
     useDroplitApi: process.env.USE_DROPLIT_API === "true",
     droplitApiUrl: process.env.DROPLIT_API_URL || "http://127.0.0.1:4000",
@@ -313858,7 +313865,7 @@ var init_server2 = __esm(() => {
 });
 
 // utils/stdioGuard.ts
-var isStdio = process.argv.includes("--stdio") || process.env.TRANSPORT?.toLowerCase() === "stdio";
+var isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")).toLowerCase() === "stdio";
 if (isStdio) {
   const err = console.error.bind(console);
   console.log = (...args) => err("[log]", ...args);

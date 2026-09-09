@@ -1,8 +1,8 @@
 {
 	"mcpServers": {
 		"bsv-mcp": {
-			"type": "http",
-			"url": "https://bsvmcp.com"
+			"command": "npx",
+			"args": ["-y", "bsv-mcp@0.5.1", "--stdio"]
 		}
 	}
 }

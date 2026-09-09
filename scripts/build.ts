@@ -10,7 +10,7 @@ const LAUNCHER_OUTFILE = "./dist/local-mcp-launcher.js";
 // so we prepend it as a banner. Bun's bundler hoists module shims
 // before user code, which is why inline guard in index.ts isn't enough for the bundle.
 const STDIO_GUARD = `\
-var __isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT || "").toLowerCase() === "stdio";
+var __isStdio = process.argv.includes("--stdio") || (process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")).toLowerCase() === "stdio";
 if (__isStdio) {
   var __err = console.error.bind(console);
   console.log = function() { __err.apply(null, ["[log]"].concat([].slice.call(arguments))); };

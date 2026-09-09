@@ -1,11 +1,8 @@
 import {
-	AUTH_SERVER_URL,
 	GITHUB_URL,
 	getAppVersion,
-	MCP_ENDPOINT,
 	MCP_PROTOCOL_LATEST,
 	NPM_URL,
-	OAUTH_SCOPES,
 	SITE_DESCRIPTION,
 	SITE_NAME,
 	SITE_URL,
@@ -30,36 +27,21 @@ export async function GET() {
 		})
 		.join("\n");
 
-	const scopes = OAUTH_SCOPES.map(
-		(scope) => `- \`${scope.name}\`: ${scope.description}`,
-	).join("\n");
-
 	const body = `# ${SITE_NAME}
 
 > ${SITE_DESCRIPTION}
 
 ${SITE_NAME} is version ${getAppVersion()} and speaks MCP protocol ${MCP_PROTOCOL_LATEST}.
-It runs three ways: locally over stdio, self-hosted over Streamable HTTP, or as
-the hosted service on this domain. Every page on this site is also available as
+Your AI client runs it locally over stdio. Local use needs no account sign-in. Every page on this site is also available as
 markdown by sending \`Accept: text/markdown\`, or by appending \`.md\` to the path.
 
 ## Docs
 
 - [Home](${SITE_URL}/index.md): what ${SITE_NAME} is, the tool catalogue, install instructions and deployment modes
-- [Connect](${SITE_URL}/connect.md): generate or import a Bitcoin key and get a client configuration
+- [All tools](${SITE_URL}/docs/tools.md): searchable catalog with individual tool inputs, results, permissions and wallet availability
 - [Documentation](${SITE_URL}/docs.md): wallet setup, backend configuration, tools, sponsorship, delegation and troubleshooting
 - [README](${GITHUB_URL}#readme): quick start and source
 - [Changelog](${GITHUB_URL}/blob/master/CHANGELOG.md): release history
-
-## API
-
-- [MCP endpoint](${MCP_ENDPOINT}): Streamable HTTP transport, OAuth 2.1 protected
-- [Protected resource metadata](${SITE_URL}/.well-known/oauth-protected-resource): RFC 9728, declares supported scopes
-- [Authorization server metadata](${SITE_URL}/.well-known/oauth-authorization-server): RFC 8414 endpoints for ${AUTH_SERVER_URL}
-
-## Scopes
-
-${scopes}
 
 ## Tools
 

@@ -1,7 +1,9 @@
 import { linkBrcMarkdown } from "./brc";
 import { SITE_URL } from "./site";
 
-interface DocTopic {
+export interface DocTopic {
+	id?: string;
+	settings?: { name: string; default: string; effect: string }[];
 	title: string;
 	paragraphs: string[];
 	code?: string;
@@ -13,14 +15,13 @@ export interface DocSection extends DocTopic {
 }
 
 /** Shared by the website and its Markdown representation. */
-export const docs: DocSection[] = [
+const sections: DocSection[] = [
 	{
 		id: "quickstart",
 		title: "Start here",
 		paragraphs: [
 			"BSV MCP lets an AI assistant use Bitcoin SV tools. You can ask it to check a transaction, show your wallet balance, send a payment, or create an ordinal: content such as an image recorded on the blockchain.",
-			"Start by connecting BSV MCP to your AI client. The examples below use a server running on your computer. Hosted access is available on the connection page.",
-			"Hosted access uses Sigma Identity only for account sign-in and consent. The token opens BSV MCP's hosted endpoint; it does not attach your wallet or approve a payment.",
+			"Your AI client starts the server on your computer over stdio. No Sigma account or OAuth sign-in is required. Connect a wallet when you need its capabilities.",
 		],
 		links: [
 			{
@@ -28,22 +29,22 @@ export const docs: DocSection[] = [
 				href: "/#install",
 			},
 			{
-				label: "Connect hosted server",
-				href: "/connect",
+				label: "Browse all tools",
+				href: "/docs/tools",
 			},
 		],
 		topics: [
 			{
 				title: "1. Add the server",
 				paragraphs: [
-					"Install Bun, then run the command for your client in a terminal. These examples start without a wallet and disable broadcasting. You only need one command.",
+					"Install Bun to run the server and Node.js for npx, then run the command for your client in a terminal. Choose one command. The server can start before wallet setup; it never silently creates a key.",
 				],
-				code: "# Codex\ncodex mcp add bsv-mcp --env DISABLE_WALLET_TOOLS=true --env DISABLE_BROADCASTING=true -- bunx bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --env DISABLE_WALLET_TOOLS=true --env DISABLE_BROADCASTING=true --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio",
+				code: "# Codex\ncodex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 			{
 				title: "2. Connect a wallet",
 				paragraphs: [
-					"When you need funds, choose a wallet option below, remove DISABLE_WALLET_TOOLS and DISABLE_BROADCASTING from the server configuration, and restart your client. The tools available to you depend on that choice and the tool groups enabled on your server.",
+					"Ask your assistant to open wallet setup. Create, import or unlock an account in the local browser, or configure an existing external wallet as described below. The server refreshes its tools after local setup.",
 				],
 			},
 			{
@@ -75,7 +76,7 @@ export const docs: DocSection[] = [
 			{
 				title: "Connect an existing wallet",
 				paragraphs: [
-					"Your wallet must expose the BSV SDK HTTPWalletJSON interface, an API for wallet requests. Set BRC100_WALLET_URL to that API address. The wallet controls permissions and keeps its keys; BSV MCP does not create local or remote wallet storage in this mode.",
+					"Your wallet must expose the BSV SDK HTTPWalletJSON signing API. It keeps its keys and controls permissions. BSV MCP does not initialize wallet storage when connected to an external signer.",
 					"Add the following variables to your MCP server environment, replace the wallet URL with your own, then restart the server. BSV_CHAIN must match the wallet network: main for mainnet or test for testnet.",
 				],
 				code: "BRC100_WALLET_URL=http://127.0.0.1:3321\nBRC100_WALLET_ORIGINATOR=bsv-mcp.local\nBSV_CHAIN=main",
@@ -84,9 +85,9 @@ export const docs: DocSection[] = [
 				title: "Set up an encrypted account",
 				paragraphs: [
 					"Start BSV MCP in your MCP client and open wallet setup. The browser wizard can create a wallet, import a detected account, or upload an encrypted or plaintext backup. Choose an account and network, then enter the Vault password in the local browser. Back up your Vault before funding the wallet. Never paste private keys or passwords into chat.",
-					"Accounts live in ~/.bsv-mcp/accounts/<name>/ with configuration and wallet databases; the embedded Vault stores their encrypted keys. BSV_MCP_ACCOUNT selects an account; the default name is default. The local wizard unlocks the Vault for the running MCP process and refreshes wallet tools without a restart. On restart, unlock it again through wallet setup. Existing encrypted accounts and legacy environment keys remain migration inputs; the wizard never silently replaces a missing key.",
-					"Import several wallets into the same Vault before unlocking. You can also unlock the Vault picker and link an existing private/WIF entry to a new account without duplicating its key. HD roots require a supported derived key rather than direct selection. Choose default payment, identity, and ordinals keys in the wizard; these public selections are stored in ~/.bsv-mcp/settings.json. A project can override one role with BSV_MCP_PAYMENT_KEY, BSV_MCP_IDENTITY_KEY, or BSV_MCP_ORDINALS_KEY in its native MCP environment, using account-name:payment or account-name:identity. Use none to disable identity or ordinals. Unassigned identity and ordinals roles use the payment key. Role choices apply after unlocking the Vault. Ordinals operations pay their fees from the selected ordinals wallet; a separate payment key does not automatically fund it. For SIGMA-signed inscriptions, the identity role supplies the current BAP identity key while the ordinals wallet funds and signs transaction inputs. The selected identity must have a published BAP record.",
-					"New mainnet accounts use https://wallet.1sat.app as the active wallet-storage provider and retain local SQLite as a backup; testnet accounts remain local until a compatible remote is selected. The account configuration can set activeRemote and backups; REMOTE_STORAGE_URL overrides the active remote. Wallet storage must be compatible with the 1Sat wallet SDK. These settings are separate from blockchain lookup services.",
+					"Accounts keep configuration and wallet databases locally; the Vault holds encrypted keys. Browser setup unlocks the current server and refreshes its tools. Unlock again after a restart. Existing account files and environment keys can be migrated without replacing their keys.",
+					"Import or link wallets in the Vault picker, then choose the payment, identity and ordinals roles. Project settings can override those choices. An explicitly disabled role cannot borrow another key. Ordinal fees come from the ordinals wallet. SIGMA-signed inscriptions also need a published BAP identity in the identity role.",
+					"New mainnet accounts use remote wallet storage with local SQLite as backup. Testnet starts with local storage. Account configuration can select an active remote and backups independently of blockchain lookup services.",
 				],
 				code: "BSV_MCP_ACCOUNT=default bunx bsv-mcp@latest --stdio\n# Open wallet setup from your MCP client.\n# Or prepare an account in your browser before connecting:\nbunx bsv-mcp@latest vault-setup",
 			},
@@ -110,7 +111,7 @@ export const docs: DocSection[] = [
 				paragraphs: [
 					"Use the wallet signing API address. The /1sat/wallet endpoint and the storage endpoint exposed by 1sat serve wallet store wallet data; they cannot act as BRC100_WALLET_URL.",
 					"The wallet URL must use HTTPS, or HTTP on the local computer. Credentials, query strings, fragments, and redirects are rejected. Startup requests the wallet identity public key once and stops if the request fails or takes more than 10 seconds. Wallet calls are not automatically retried.",
-					"BRC100_WALLET_ORIGINATOR defaults to bsv-mcp.local. Use a domain or HTTP(S) origin without credentials, paths, queries or fragments. Empty, malformed, and admin.bsv-mcp.internal origins are rejected. Remove PRIVATE_KEY_WIF and IDENTITY_KEY_WIF and leave USE_DROPLIT_API unset when using an external signer. The explicit sponsor pair described below can be used alongside the signer.",
+					"Choose a stable app origin so the signer can reuse its permission grants. Remove legacy private-key settings and the integrated Droplit wallet mode before connecting an external signer. A separately configured sponsor can be paired with that signer.",
 				],
 			},
 		],
@@ -151,9 +152,9 @@ export const docs: DocSection[] = [
 			{
 				title: "Configure services separately",
 				paragraphs: [
-					"EXPLORER_API_URL selects the explorer API used for blockchain lookups and prices. BananaBlocks is the mainnet default. JUNGLEBUS_API_URL supplies transaction decoding and legacy raw/BEEF reads. ORDINALS_API_URL remains for legacy sweep and token-listing data; marketplace browsing now uses 1Sat. Each tool uses its configured service; it does not automatically switch to another provider if that service fails.",
-					"Set EXPLORER_API_URL to a compatible API base without the final /main or /test; BSV MCP appends the selected network. BananaBlocks uses /api/v1/bsv. WhatsOnChain uses /v1/bsv. Testnet still defaults to WhatsOnChain because the public BananaBlocks API documents a mainnet mirror. The older WOC_API_URL setting still works when EXPLORER_API_URL is unset.",
-					"PUBLIC_ORDFS_URL overrides the content base used in generated links and dashboard previews. PUBLIC_BMAP_URL, BSOCIAL_API_URL and V5_API_URL configure optional legacy social integrations. MNEE uses its SDK's own service configuration. DROPLIT_API_URL and OAUTH_ISSUER configure sponsorship and authentication separately.",
+					"Explorer, transaction proof, ordinal content and wallet storage services can be configured independently. Each tool uses its configured provider and reports a failure rather than silently switching providers.",
+					"Explorer URLs exclude the final network segment. BSV MCP appends main or test; BananaBlocks uses /api/v1/bsv and WhatsOnChain uses /v1/bsv. Testnet uses WhatsOnChain by default.",
+					"Content previews follow the 1Sat base unless overridden. Legacy social integrations and sponsorship have separate settings. MNEE uses its own SDK service configuration.",
 				],
 				code: "# Defaults for mainnet\nONESAT_API_URL=https://api.1sat.app\nEXPLORER_API_URL=https://bananablocks.com/api/v1/bsv\nJUNGLEBUS_API_URL=https://junglebus.gorillapool.io/v1\nORDINALS_API_URL=https://ordinals.gorillapool.io/api\nPUBLIC_ORDFS_URL=https://api.1sat.app/content",
 			},
@@ -174,10 +175,10 @@ export const docs: DocSection[] = [
 		],
 	},
 	{
-		id: "tools",
+		id: "tasks",
 		title: "Common tasks",
 		paragraphs: [
-			"Ask your assistant for the task you want to complete. The tool names below help you check what it is calling. Exact arguments are listed in the tool definitions returned by your installed server.",
+			"Ask your assistant for the task you want to complete. The tool names below help you check what it is calling. Open the tool reference for exact inputs, results and wallet requirements.",
 		],
 		topics: [
 			{
@@ -231,7 +232,7 @@ export const docs: DocSection[] = [
 			{
 				title: "Enable or disable tool groups",
 				paragraphs: [
-					"Tool groups can be disabled with DISABLE_BSV_TOOLS, DISABLE_ORDINALS_TOOLS, DISABLE_WALLET_TOOLS, DISABLE_BAP_TOOLS, DISABLE_BSOCIAL_TOOLS, DISABLE_MNEE_TOOLS and DISABLE_UTILS_TOOLS=true. DISABLE_BROADCASTING=true blocks guarded transaction operations. This does not replace the signer's permissions.",
+					"Disable a tool group when an assistant should not have it in its catalog. Broadcasting controls block guarded transaction submissions; they do not replace the connected wallet’s permissions.",
 					"External signer mode supports context wallet and BRC-100 tools. Legacy collection minting/gathering, BAP/raw-key, BSocial and MNEE tools are unavailable in that mode. An advertised backend module does not automatically enable a tool group.",
 				],
 			},
@@ -376,7 +377,7 @@ export const docs: DocSection[] = [
 			{
 				title: "The wallet cannot connect",
 				paragraphs: [
-					"Check that BRC100_WALLET_URL points to the wallet signing API, not its storage endpoint. Confirm that BRC100_WALLET_ORIGINATOR identifies this app, that BSV_CHAIN matches the wallet network, and that any request shown in the wallet has been approved. If a transaction request timed out, check wallet history before retrying; it may already have succeeded.",
+					"Check that the wallet URL points to its signing API, the app origin is correct and the network matches. Approve any request shown in the wallet. After a transaction timeout, inspect wallet history before retrying: it may already have succeeded.",
 				],
 			},
 			{
@@ -391,7 +392,7 @@ export const docs: DocSection[] = [
 		id: "development",
 		title: "Development",
 		paragraphs: [
-			"This project is experimental. For development, use Bun and the commands below. The tool catalog is a snapshot of one server configuration, not a guarantee that every installation exposes the same tools. The manifest command registers tools with a synthetic test wallet in memory. It does not initialize a funded wallet or read local keys.",
+			"This project is experimental. For development, use Bun and the commands below. The tool reference combines registration fixtures for local, external and sponsored wallets in full and compact mode. Run bun run tools:manifest after changing tool registration. Captures use isolated processes without local keys or network calls.",
 		],
 		code: "bun install\nbun run dev          # Website\nbun run build:all    # MCP server + dashboard\nbun run build:next   # Production website\nbun test             # Includes server-start integration checks\nbun run lint",
 		links: [
@@ -407,25 +408,143 @@ export const docs: DocSection[] = [
 	},
 ];
 
+/** Stable topic IDs are shared by HTML navigation and Markdown anchors. */
+export const docs: DocSection[] = sections.map((section) => ({
+	...section,
+	topics: section.topics?.map((topic) => ({
+		...topic,
+		id: `${section.id}-${topic.title
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "")}`,
+	})),
+}));
+const settings = (
+	section: string,
+	title: string,
+	rows: [string, string, string][],
+) => {
+	const topic = docs
+		.find((s) => s.id === section)
+		?.topics?.find((t) => t.title === title);
+	if (topic)
+		topic.settings = rows.map(([name, value, effect]) => ({
+			name,
+			default: value,
+			effect,
+		}));
+};
+settings("wallets", "Connect an existing wallet", [
+	[
+		"BRC100_WALLET_URL",
+		"Unset",
+		"Wallet signing API URL; use HTTPS or loopback HTTP. Not a storage endpoint.",
+	],
+	[
+		"BRC100_WALLET_ORIGINATOR",
+		"bsv-mcp.local",
+		"App domain or HTTP(S) origin without a path, credentials, query or fragment.",
+	],
+	[
+		"BSV_CHAIN",
+		"main",
+		"main for mainnet; test for testnet. Must match the wallet.",
+	],
+]);
+settings("wallets", "Set up an encrypted account", [
+	["BSV_MCP_ACCOUNT", "default", "Named account under ~/.bsv-mcp/accounts/."],
+	[
+		"BSV_MCP_PAYMENT_KEY",
+		"Vault default",
+		"Public account-name:payment or account-name:identity selector.",
+	],
+	[
+		"BSV_MCP_IDENTITY_KEY",
+		"Vault default, otherwise payment role",
+		"Identity selector; none explicitly disables the role.",
+	],
+	[
+		"BSV_MCP_ORDINALS_KEY",
+		"Vault default, otherwise payment role",
+		"Ordinals selector; none explicitly disables the role.",
+	],
+	[
+		"REMOTE_STORAGE_URL",
+		"Account activeRemote",
+		"Override compatible remote wallet storage. New mainnet accounts use https://wallet.1sat.app.",
+	],
+]);
+settings("backends", "Configure services separately", [
+	[
+		"ONESAT_API_URL",
+		"https://api.1sat.app (main); https://testnet.api.1sat.app (test)",
+		"1Sat service base, without /1sat.",
+	],
+	[
+		"EXPLORER_API_URL",
+		"BananaBlocks (main); WhatsOnChain (test)",
+		"Compatible explorer API base without the network suffix.",
+	],
+	[
+		"JUNGLEBUS_API_URL",
+		"https://junglebus.gorillapool.io/v1",
+		"Transaction decoding and legacy raw/BEEF reads.",
+	],
+	[
+		"ORDINALS_API_URL",
+		"https://ordinals.gorillapool.io/api",
+		"Legacy sweep and token listing data.",
+	],
+	[
+		"PUBLIC_ORDFS_URL",
+		"1Sat base + /content",
+		"Content links and dashboard previews.",
+	],
+]);
+settings("tool-settings", "Enable or disable tool groups", [
+	[
+		"MCP_TOOL_CATALOG",
+		"full",
+		"full exposes individual tools; compact exposes families with an operation argument.",
+	],
+	...["BSV", "ORDINALS", "WALLET", "BAP", "BSOCIAL", "MNEE", "UTILS"].map(
+		(group) =>
+			[
+				`DISABLE_${group}_TOOLS`,
+				"false",
+				`true removes the ${group.toLowerCase()} tool group.`,
+			] as [string, string, string],
+	),
+	[
+		"DISABLE_BROADCASTING",
+		"false",
+		"true blocks guarded transaction operations and hides conditional payment tools.",
+	],
+	[
+		"TRANSPORT",
+		"stdio",
+		"http explicitly selects the existing self-hosted transport. HTTP is outside the active local setup guide.",
+	],
+]);
+
 function topicMarkdown(topic: DocTopic, level: number): string {
 	return [
+		...(topic.id ? [`<a id="${topic.id}"></a>`] : []),
 		`${"#".repeat(level)} ${topic.title}`,
 		...topic.paragraphs.map(linkBrcMarkdown),
+		...(topic.settings
+			? [
+					"| Setting | Default | Effect |\n| --- | --- | --- |\n" +
+						topic.settings
+							.map(
+								(row) => `| \`${row.name}\` | ${row.default} | ${row.effect} |`,
+							)
+							.join("\n"),
+				]
+			: []),
 		...(topic.code ? [`\`\`\`\n${topic.code}\n\`\`\``] : []),
 	].join("\n\n");
 }
-
 export function renderDocsMarkdown(): string {
-	return `# BSV MCP documentation\n\n${docs
-		.map((section) =>
-			[
-				topicMarkdown(section, 2),
-				...(section.topics ?? []).map((topic) => topicMarkdown(topic, 3)),
-				...(section.links ?? []).map(
-					(link) =>
-						`[${link.label}](${link.href.startsWith("/") ? SITE_URL + link.href : link.href})`,
-				),
-			].join("\n\n"),
-		)
-		.join("\n\n")}`;
+	return `# BSV MCP documentation\n\n[All tools](${SITE_URL}/docs/tools)\n\n${docs.map((section) => [topicMarkdown(section, 2), ...(section.topics ?? []).map((topic) => topicMarkdown(topic, 3)), ...(section.links ?? []).map((link) => `[${link.label}](${link.href.startsWith("/") ? SITE_URL + link.href : link.href})`)].join("\n\n")).join("\n\n")}`;
 }

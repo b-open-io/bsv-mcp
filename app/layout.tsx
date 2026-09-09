@@ -5,7 +5,6 @@ import type { SoftwareApplication, WithContext } from "schema-dts";
 import {
 	GITHUB_URL,
 	getAppVersion,
-	MCP_ENDPOINT,
 	SITE_DESCRIPTION,
 	SITE_NAME,
 	SITE_TAGLINE,
@@ -106,10 +105,6 @@ function structuredData(): WithContext<SoftwareApplication> {
 			"@type": "Organization",
 			name: "b-open-io",
 			url: GITHUB_URL,
-		},
-		potentialAction: {
-			"@type": "UseAction",
-			target: MCP_ENDPOINT,
 		},
 	};
 }

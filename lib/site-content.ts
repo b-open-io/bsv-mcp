@@ -40,7 +40,7 @@ export const toolCategories: ToolCategory[] = [
 	{
 		key: "explorer",
 		name: "Explorer",
-		prefixes: ["bsv", "x402"],
+		prefixes: ["bsv"],
 		tools: ["app_explorer_data"],
 		description:
 			"Decode raw transactions, fetch blocks and addresses, and pull the live BSV price with built-in caching.",
@@ -62,9 +62,23 @@ export const toolCategories: ToolCategory[] = [
 	{
 		key: "tokens",
 		name: "Tokens",
-		prefixes: ["mnee", "utils"],
+		prefixes: ["mnee"],
 		description:
-			"Check balances and transfer MNEE stablecoin, with utilities for encoding, hashing, and data conversion.",
+			"Check balances, parse transactions and transfer MNEE stablecoin.",
+	},
+	{
+		key: "services",
+		name: "Paid services & sponsorship",
+		prefixes: ["x402", "droplit"],
+		description:
+			"Request paid services, review quotes and work with a Droplit sponsor.",
+	},
+	{
+		key: "utilities",
+		name: "Utilities",
+		prefixes: ["utils"],
+		tools: ["utility"],
+		description: "Convert data and find agent skills.",
 	},
 ];
 
@@ -72,7 +86,7 @@ export const steps = [
 	{
 		title: "Install",
 		description:
-			"One plugin command for Claude Code, a JSON snippet for Cursor or Claude Desktop, or a hosted URL. No build step.",
+			"One plugin command for Claude Code, a JSON snippet for Cursor or Claude Desktop, or a local command. No build step.",
 	},
 	{
 		title: "Connect a key",
@@ -92,21 +106,7 @@ export const deployModes = [
 		title: "Local",
 		subtitle: "stdio transport",
 		description:
-			"Runs on your machine with an external signer or local keys. Optional encrypted key storage; see the wallet setup docs.",
-	},
-	{
-		key: "http",
-		title: "HTTP",
-		subtitle: "Streamable HTTP",
-		description:
-			"Self-host the Streamable HTTP endpoint with OAuth 2.1 and JWT validation.",
-	},
-	{
-		key: "hosted",
-		title: "Hosted",
-		subtitle: "bsvmcp.com",
-		description:
-			"Add the hosted URL to your AI client and authorize access through Sigma Identity.",
+			"Your AI client starts the server on your computer. Connect an external wallet or open local Vault setup.",
 	},
 ];
 
@@ -118,16 +118,15 @@ export const guarantees = [
 			"Local accounts use encrypted bitcoin-backup files. Missing keys stop startup; the server never generates a replacement.",
 	},
 	{
-		key: "no-env-passphrase",
-		title: "No passphrase env vars",
+		key: "browser-unlock",
+		title: "Browser unlock",
 		description:
-			"Passphrases are entered through a temporary local web prompt, never read from the environment.",
+			"The local Vault setup collects passwords in your browser. Keep secrets out of the conversation.",
 	},
 	{
-		key: "bitcoin-auth",
-		title: "Bitcoin-signed auth",
-		description:
-			"Hosted mode uses OAuth 2.1 via sigma-auth. Your public key is your identity. Nothing to register.",
+		key: "local",
+		title: "Local connection",
+		description: "Local stdio needs no Sigma account or OAuth sign-in.",
 	},
 	{
 		key: "external-signer",
@@ -149,14 +148,14 @@ export const clients = [
 
 export const installCommands = {
 	claudeCode: "claude plugin install bsv-mcp@b-open-io",
-	stdio: "bunx bsv-mcp@latest --stdio",
+	stdio: "npx -y bsv-mcp@latest --stdio",
 };
 
 export const clientConfig = `{
   "mcpServers": {
     "bsv-mcp": {
-      "command": "bunx",
-      "args": ["bsv-mcp@latest", "--stdio"]
+      "command": "npx",
+      "args": ["-y", "bsv-mcp@latest", "--stdio"]
     }
   }
 }`;
@@ -183,15 +182,15 @@ export interface InstallTarget {
 const STDIO_JSON = `{
   "mcpServers": {
     "bsv-mcp": {
-      "command": "bunx",
-      "args": ["bsv-mcp@latest", "--stdio"]
+      "command": "npx",
+      "args": ["-y", "bsv-mcp@latest", "--stdio"]
     }
   }
 }`;
 
 const STDIO_TOML = `[mcp_servers.bsv-mcp]
-command = "bunx"
-args = ["bsv-mcp@latest", "--stdio"]`;
+command = "npx"
+args = ["-y", "bsv-mcp@latest", "--stdio"]`;
 
 /**
  * Per-client install instructions.
@@ -212,14 +211,10 @@ export const installTargets: InstallTarget[] = [
 			{
 				label: "Or register the local server yourself",
 				command:
-					"claude mcp add --transport stdio bsv-mcp -- bunx bsv-mcp@latest --stdio",
-			},
-			{
-				label: "Or use the hosted server",
-				command: "claude mcp add --transport http bsv-mcp https://bsvmcp.com",
+					"claude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 		],
-		note: "The plugin bundles the server and registers it automatically, so no config file is needed.",
+		note: "The plugin bundles the local server and requires Bun. No config file is needed.",
 		docsUrl: "https://code.claude.com/docs/en/mcp",
 	},
 	{
@@ -242,10 +237,10 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "codex",
 		label: "Codex",
-		command: "codex mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
+		command: "codex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 		configPath: "~/.codex/config.toml",
 		config: STDIO_TOML,
-		note: "The command and the config file are equivalent. Codex reads TOML, not JSON.",
+		note: "Requires Bun to run the server and Node.js for npx. The command and TOML configuration are equivalent.",
 		docsUrl: "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
 	},
 	{
@@ -255,11 +250,7 @@ export const installTargets: InstallTarget[] = [
 		altCommands: [
 			{
 				label: "Or register the local server directly",
-				command: "grok mcp add bsv-mcp -- bunx bsv-mcp@latest --stdio",
-			},
-			{
-				label: "Or use the hosted server",
-				command: "grok mcp add --transport http bsv-mcp https://bsvmcp.com",
+				command: "grok mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 		],
 		note: "Grok supports Claude-format plugins. The plugin launches the bundled local server; no config file needs to be edited.",
@@ -274,7 +265,7 @@ export const installTargets: InstallTarget[] = [
   "mcp": {
     "bsv-mcp": {
       "type": "local",
-      "command": ["bunx", "bsv-mcp@latest", "--stdio"],
+      "command": ["npx", "-y", "bsv-mcp@latest", "--stdio"],
       "enabled": true
     }
   }
@@ -284,8 +275,8 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "other",
 		label: "Any MCP client",
-		command: "bunx bsv-mcp@latest --stdio",
-		note: "Any client that speaks MCP over stdio can run the server directly. For Streamable HTTP, point it at https://bsvmcp.com and authenticate with OAuth 2.1.",
+		command: "npx -y bsv-mcp@latest --stdio",
+		note: "Requires Bun to run the server and Node.js for npx. Any MCP stdio client can launch it. No account sign-in is required.",
 		docsUrl: "https://modelcontextprotocol.io",
 	},
 ];
@@ -297,7 +288,7 @@ export const installTargets: InstallTarget[] = [
 export const hero = {
 	eyebrow: "open source",
 	headline: "The Bitcoin SV wallet for MCP clients.",
-	sub: "Tools that let Claude, Cursor or any agent send BSV, inscribe ordinals and read the chain. No SDK code. One command, hosted or local.",
+	sub: "Tools that let Claude, Cursor or any agent send BSV, inscribe ordinals and read the chain. No SDK code. One local command.",
 };
 
 /** Problem before solution: what an agent developer does without this. */
@@ -318,11 +309,11 @@ export const problem = {
 export const faq = [
 	{
 		q: "Does it work with my client?",
-		a: "Anything that speaks MCP. Claude Code, Claude Desktop, Cursor, Codex, Grok Build and opencode are documented above with their exact config; any other stdio client runs it with bunx bsv-mcp@latest --stdio.",
+		a: "Anything that speaks MCP. Claude Code, Claude Desktop, Cursor, Codex, Grok Build and opencode are documented above with their exact config; any other stdio client runs it with npx -y bsv-mcp@latest --stdio.",
 	},
 	{
 		q: "Where are my keys?",
-		a: "Use an external BRC-100 signer or a named encrypted account. Run init in a local terminal and back up the account before funding it.",
+		a: "Use an external BRC-100 signer or a named encrypted account. Open local browser setup to create, import or unlock a Vault. Back it up before funding it.",
 	},
 	{
 		q: "Is it maintained?",

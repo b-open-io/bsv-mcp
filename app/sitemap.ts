@@ -1,10 +1,20 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { catalogTools } from "@/lib/tool-catalog";
 
 export default function sitemap(): MetadataRoute.Sitemap {
 	const lastModified = new Date();
 
 	return [
+		...[
+			"/docs/tools",
+			...catalogTools.map((tool) => `/docs/tools/${tool.name}`),
+		].map((path) => ({
+			url: `${SITE_URL}${path}`,
+			lastModified,
+			changeFrequency: "weekly" as const,
+			priority: 0.7,
+		})),
 		{
 			url: `${SITE_URL}/docs`,
 			lastModified,

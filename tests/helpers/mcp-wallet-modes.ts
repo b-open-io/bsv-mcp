@@ -9,7 +9,7 @@ import { newAccountConfig } from "../../utils/accounts.ts";
 const repoRoot = join(import.meta.dir, "../..");
 const testPassword = "synthetic-test-passphrase";
 
-const stdioGuardBanner = `var __stdio = process.argv.includes("--stdio") || (process.env.TRANSPORT || "").toLowerCase() === "stdio";
+const stdioGuardBanner = `var __stdio = process.argv.includes("--stdio") || (process.env.TRANSPORT ?? (process.argv.length <= 2 ? "stdio" : "")).toLowerCase() === "stdio";
 if (__stdio) {
   var __stderr = console.error.bind(console);
   console.log = function() { __stderr.apply(null, ["[log]"].concat([].slice.call(arguments))); };

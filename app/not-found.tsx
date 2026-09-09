@@ -31,10 +31,10 @@ const destinations = [
 		external: false,
 	},
 	{
-		href: "/connect",
+		href: "/docs#quickstart",
 		icon: ArrowRight,
 		title: "Connect",
-		description: "Generate a key and get an MCP client configuration.",
+		description: "Install the local server and connect your wallet.",
 		external: false,
 	},
 	{

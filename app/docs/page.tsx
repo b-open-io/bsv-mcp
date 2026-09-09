@@ -1,34 +1,63 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { BundledLanguage } from "shiki";
 import { CodeSnippet } from "@/components/landing/CodeSnippet";
-import { GitHubStars } from "@/components/landing/GitHubStars";
 import { BrcReferences } from "@/lib/brc";
-import { docs } from "@/lib/docs";
-import { GITHUB_URL } from "@/lib/site";
+import { type DocTopic, docs } from "@/lib/docs";
 
 export const metadata: Metadata = {
 	title: "Documentation",
 	description:
-		"Install BSV MCP, connect a wallet, configure 1Sat services, and use payments, ordinals and identity tools.",
+		"Install BSV MCP locally, set up your wallet and browse the tool reference.",
 	alternates: { canonical: "/docs" },
 };
-
-/**
- * Docs snippets carry no language tag: JSON payloads start with `{` (or a
- * `//` comment), everything else is shell / env text.
- */
-function DocsCode({ code }: { code: string }) {
-	const trimmed = code.trimStart();
-	const language: BundledLanguage =
-		trimmed.startsWith("{") || trimmed.startsWith("[")
-			? "json"
-			: trimmed.startsWith("//")
-				? "jsonc"
-				: "bash";
-	return <CodeSnippet code={code} language={language} filename={language} />;
+function TopicContent({ topic }: { topic: DocTopic }) {
+	return (
+		<>
+			{topic.paragraphs.map((paragraph) => (
+				<p key={paragraph} className="text-base leading-7 text-foreground/85">
+					<BrcReferences text={paragraph} />
+				</p>
+			))}
+			{topic.settings && (
+				<div className="overflow-x-auto">
+					<table className="w-full text-left text-sm">
+						<thead>
+							<tr className="border-b">
+								<th className="p-3 pl-0">Setting</th>
+								<th className="p-3">Default</th>
+								<th className="p-3">Effect</th>
+							</tr>
+						</thead>
+						<tbody>
+							{topic.settings.map((row) => (
+								<tr key={row.name} className="border-b align-top">
+									<th className="p-3 pl-0 font-mono text-xs font-medium">
+										{row.name}
+									</th>
+									<td className="min-w-32 p-3">{row.default}</td>
+									<td className="min-w-52 p-3 leading-6">{row.effect}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+			{topic.code && (
+				<CodeSnippet
+					code={topic.code}
+					language={
+						/^[{[]/.test(topic.code.trimStart())
+							? "json"
+							: topic.code.trimStart().startsWith("//")
+								? "jsonc"
+								: "bash"
+					}
+					filename="Example"
+				/>
+			)}
+		</>
+	);
 }
-
 export default function DocsPage() {
 	return (
 		<div className="mx-auto max-w-6xl px-6 pb-24">
@@ -36,42 +65,83 @@ export default function DocsPage() {
 				<Link href="/" className="font-mono font-semibold">
 					← BSV MCP
 				</Link>
-				<GitHubStars url={GITHUB_URL} />
+				<Link href="/docs/tools" className="text-sm text-primary">
+					All tools →
+				</Link>
 			</header>
-			<div className="grid gap-12 pt-12 md:grid-cols-[190px_minmax(0,1fr)]">
+			<div className="grid items-start gap-10 pt-10 md:grid-cols-[230px_minmax(0,1fr)]">
 				<aside>
-					<nav
-						aria-label="Documentation"
-						className="space-y-3 md:sticky md:top-8"
+					<details
+						open
+						className="rounded-lg border p-4 md:sticky md:top-6 md:max-h-[calc(100dvh-3rem)] md:overflow-y-auto"
 					>
-						<p className="mb-4 font-mono text-xs uppercase tracking-widest text-muted-foreground">
-							On this page
-						</p>
-						{docs.map((section) => (
-							<a
-								key={section.id}
-								href={`#${section.id}`}
-								className="block text-sm text-muted-foreground hover:text-primary"
-							>
-								{section.title}
-							</a>
-						))}
-						<Link
-							href="/docs.md"
-							className="block pt-4 font-mono text-xs text-primary"
+						<summary className="cursor-pointer font-medium">
+							Documentation
+						</summary>
+						<nav
+							aria-label="Documentation"
+							className="mt-4 max-h-64 space-y-4 overflow-y-auto md:max-h-none md:overflow-visible"
 						>
-							Read as Markdown ↗
-						</Link>
-					</nav>
+							<Link
+								href="/docs/tools"
+								className="block text-sm font-semibold text-primary"
+							>
+								All tools →
+							</Link>
+							{docs.map((section) => (
+								<details key={section.id}>
+									<summary className="cursor-pointer text-sm">
+										{section.title}
+									</summary>
+									<ul className="mt-2 space-y-2 border-l pl-3">
+										<li>
+											<a
+												href={`#${section.id}`}
+												className="text-xs text-muted-foreground hover:text-primary"
+											>
+												Overview
+											</a>
+										</li>
+										{section.topics?.map((topic) => (
+											<li key={topic.id}>
+												<a
+													href={`#${topic.id}`}
+													className="text-xs text-muted-foreground hover:text-primary"
+												>
+													{topic.title}
+												</a>
+											</li>
+										))}
+									</ul>
+								</details>
+							))}
+							<a href="/docs.md" className="block text-xs text-primary">
+								Read as Markdown ↗
+							</a>
+						</nav>
+					</details>
 				</aside>
 				<main className="min-w-0 max-w-3xl">
-					<h1 className="mb-4 text-4xl font-bold tracking-tight">
-						Documentation
-					</h1>
-					<p className="mb-12 text-lg text-muted-foreground">
-						Set up BSV MCP, then ask your assistant to check balances, find
-						assets, or send payments.
+					<h1 className="text-4xl font-bold tracking-tight">Documentation</h1>
+					<p className="mb-10 mt-4 text-lg text-muted-foreground">
+						Set up the local server, connect a wallet, then ask your assistant
+						to use Bitcoin SV.
 					</p>
+					<section
+						id="tools"
+						className="mb-10 scroll-mt-8 rounded-lg border p-5"
+					>
+						<h2 className="text-xl font-semibold">Tool reference</h2>
+						<p className="mt-2 leading-7">
+							Browse exact tool names, inputs, results and wallet requirements.
+						</p>
+						<Link
+							href="/docs/tools"
+							className="mt-3 inline-block text-primary underline"
+						>
+							Explore all tools →
+						</Link>
+					</section>
 					{docs.map((section) => (
 						<section
 							key={section.id}
@@ -81,28 +151,16 @@ export default function DocsPage() {
 							<h2 className="text-2xl font-semibold tracking-tight">
 								{section.title}
 							</h2>
-							{section.paragraphs.map((paragraph) => (
-								<p
-									key={paragraph}
-									className="text-base leading-7 text-foreground/85"
-								>
-									<BrcReferences text={paragraph} />
-								</p>
-							))}
-							{section.code && <DocsCode code={section.code} />}
+							<TopicContent topic={section} />
 							{section.topics?.map((topic) => (
-								<div key={topic.title} className="space-y-4 pt-5">
+								<section
+									key={topic.id}
+									id={topic.id}
+									className="scroll-mt-8 space-y-4 pt-5"
+								>
 									<h3 className="text-lg font-semibold">{topic.title}</h3>
-									{topic.paragraphs.map((paragraph) => (
-										<p
-											key={paragraph}
-											className="text-base leading-7 text-foreground/85"
-										>
-											<BrcReferences text={paragraph} />
-										</p>
-									))}
-									{topic.code && <DocsCode code={topic.code} />}
-								</div>
+									<TopicContent topic={topic} />
+								</section>
 							))}
 							{section.links && (
 								<div className="flex flex-wrap gap-x-6 gap-y-2 pt-2">

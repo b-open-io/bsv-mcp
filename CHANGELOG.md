@@ -1,5 +1,26 @@
 # BSV MCP Server Changelog
 
+## [0.5.1] - 2026-09-08
+
+### Changed
+
+- Start local stdio when no transport is specified, with early stdout guards in
+  both source and bundled entry points. Explicit `TRANSPORT=http` retains the
+  existing HTTP server; the deployed hosted endpoint and OAuth routes are unchanged.
+- Run the Codex plugin through the local npm executable instead of hosted MCP.
+  The executable requires Bun; the npx installer also requires Node.js.
+- Direct homepage tool links to a generated reference with 106 full tools and six
+  compact families, category navigation, search, individual URLs and Markdown.
+- Generate tool schemas and registration availability across isolated wallet
+  configurations, preserving schema variants and conditional payment tools.
+- Separate task examples from the tool reference and document wallet and backend
+  settings in tables. Local installation needs no account sign-in.
+
+### Fixed
+
+- Reject invalid transport values before wallet initialization.
+- Honor reduced-motion preferences while scrolling between homepage sections.
+
 ## [0.5.0] - 2026-09-08
 
 ### Added

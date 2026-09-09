@@ -33,9 +33,12 @@ export function QuickInstall() {
 						className="install-code-wells"
 					>
 						<CopyCommand
-							command={target?.command ?? "bunx bsv-mcp@latest --stdio"}
+							command={target?.command ?? "npx -y bsv-mcp@latest --stdio"}
 							label={target?.label ?? "Terminal"}
 						/>
+						{target?.note && (
+							<p className="text-sm text-muted-foreground">{target.note}</p>
+						)}
 						{target?.config && (
 							<CodeSnippet
 								code={target.config}
