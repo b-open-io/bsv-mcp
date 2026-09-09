@@ -6,6 +6,7 @@ import { CelestialHero } from "@/components/landing/CelestialHero";
 import { ClientLogo } from "@/components/landing/ClientLogo";
 import { DemoCarousel } from "@/components/landing/DemoCarousel";
 import { GitHubStars } from "@/components/landing/GitHubStars";
+import { HeroUseCases } from "@/components/landing/HeroUseCases";
 import { InstallButton } from "@/components/landing/InstallButton";
 import { QuickInstall } from "@/components/landing/QuickInstall";
 import { StarField } from "@/components/landing/StarField";
@@ -56,10 +57,7 @@ export default function LandingPage() {
 							<br />
 							agent a wallet.
 						</h1>
-						<p>
-							Send BSV and create ordinals
-							<br className="desktop-break" /> from your AI client.
-						</p>
+						<HeroUseCases />
 						<div className="hero-actions">
 							<InstallButton />
 							<a href="/docs/tools" className="landing-text-link">
