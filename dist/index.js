@@ -25873,7 +25873,7 @@ var init_package = __esm(() => {
     name: "bsv-mcp",
     module: "dist/index.js",
     type: "module",
-    version: "0.5.1",
+    version: "0.6.0",
     license: "MIT",
     author: "satchmo",
     description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -117062,8 +117062,11 @@ async function readSocial(input) {
   }
   if (path)
     data = await request(`/social${path}`, {
-      ...params,
-      ...q.type === "search" ? { q: q.q } : {},
+      ...q.type === "search" ? {
+        q: q.q,
+        limit: String(q.limit),
+        offset: String((q.page - 1) * q.limit)
+      } : params,
       ...q.type === "videos" && q.channel ? { channel: q.channel } : {}
     });
   return {
@@ -117092,12 +117095,18 @@ async function readRecords(q) {
   if (q.txid)
     match["MAP.tx"] = q.txid;
   const [first, ...rest] = [...new Set(q.types)];
-  const aggregate = [
+  const recent = [
     { $match: match },
+    { $sort: { timestamp: -1 } },
+    { $limit: q.page * q.limit },
+    { $project: { in: 0, out: 0 } }
+  ];
+  const aggregate = [
+    ...recent,
     ...rest.map((coll) => ({
-      $unionWith: { coll, pipeline: [{ $match: match }] }
+      $unionWith: { coll, pipeline: recent }
     })),
-    { $sort: { timestamp: -1, "tx.h": -1 } },
+    { $sort: { timestamp: -1 } },
     { $skip: (q.page - 1) * q.limit },
     { $limit: q.limit },
     { $project: { in: 0, out: 0 } }

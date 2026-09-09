@@ -1,6 +1,6 @@
 {
 	"name": "bsv-mcp",
-	"version": "0.5.1",
+	"version": "0.6.0",
 	"description": "Bitcoin SV tools for AI assistants. Run a local MCP server with your own wallet.",
 	"author": {
 		"name": "bOpen",
