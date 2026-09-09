@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GuideLinks } from "@/components/docs/GuideLinks";
 import { CodeSnippet } from "@/components/landing/CodeSnippet";
 import { BrcReferences } from "@/lib/brc";
 import { type DocTopic, docs } from "@/lib/docs";
@@ -126,6 +127,7 @@ export default function DocsPage() {
 					</details>
 				</aside>
 				<main className="min-w-0 max-w-3xl">
+					<GuideLinks />
 					<h1 className="text-4xl font-bold tracking-tight">Documentation</h1>
 					<p className="mb-10 mt-4 text-lg text-muted-foreground">
 						Set up the local server, connect a wallet, then ask your assistant
@@ -154,7 +156,7 @@ export default function DocsPage() {
 							className="mb-14 scroll-mt-8 space-y-4 border-t pt-8"
 						>
 							<summary className="cursor-pointer text-2xl font-semibold tracking-tight">
-								{section.title}
+								<h2 className="inline">{section.title}</h2>
 							</summary>
 							<TopicContent topic={section} />
 							{section.topics?.map((topic) => (
