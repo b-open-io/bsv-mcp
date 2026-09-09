@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GuideLinks } from "@/components/docs/GuideLinks";
 import { CodeSnippet } from "@/components/landing/CodeSnippet";
 import { BrcReferences } from "@/lib/brc";
 import { type DocTopic, docs } from "@/lib/docs";
@@ -59,6 +60,10 @@ function TopicContent({ topic }: { topic: DocTopic }) {
 	);
 }
 export default function DocsPage() {
+	const orderedDocs = [
+		...docs.filter((s) => ["quickstart", "tasks"].includes(s.id)),
+		...docs.filter((s) => !["quickstart", "tasks"].includes(s.id)),
+	];
 	return (
 		<div className="mx-auto max-w-6xl px-6 pb-24">
 			<header className="flex items-center justify-between border-b py-5">
@@ -88,7 +93,7 @@ export default function DocsPage() {
 							>
 								All tools →
 							</Link>
-							{docs.map((section) => (
+							{orderedDocs.map((section) => (
 								<details key={section.id}>
 									<summary className="cursor-pointer text-sm">
 										{section.title}
@@ -122,6 +127,7 @@ export default function DocsPage() {
 					</details>
 				</aside>
 				<main className="min-w-0 max-w-3xl">
+					<GuideLinks />
 					<h1 className="text-4xl font-bold tracking-tight">Documentation</h1>
 					<p className="mb-10 mt-4 text-lg text-muted-foreground">
 						Set up the local server, connect a wallet, then ask your assistant
@@ -142,15 +148,16 @@ export default function DocsPage() {
 							Explore all tools →
 						</Link>
 					</section>
-					{docs.map((section) => (
-						<section
+					{orderedDocs.map((section) => (
+						<details
+							open={["quickstart", "tasks"].includes(section.id)}
 							key={section.id}
 							id={section.id}
 							className="mb-14 scroll-mt-8 space-y-4 border-t pt-8"
 						>
-							<h2 className="text-2xl font-semibold tracking-tight">
-								{section.title}
-							</h2>
+							<summary className="cursor-pointer text-2xl font-semibold tracking-tight">
+								<h2 className="inline">{section.title}</h2>
+							</summary>
 							<TopicContent topic={section} />
 							{section.topics?.map((topic) => (
 								<section
@@ -175,7 +182,7 @@ export default function DocsPage() {
 									))}
 								</div>
 							)}
-						</section>
+						</details>
 					))}
 				</main>
 			</div>

@@ -1,5 +1,6 @@
 import { toolCategories } from "./site-content";
 import data from "./tool-catalog.json";
+import { toolReferenceNotes, walletRPC } from "./tool-reference-notes";
 
 export interface JsonSchema {
 	[key: string]: unknown;
@@ -49,7 +50,11 @@ export function categoryForTool(name: string) {
 	);
 }
 export function toolSummary(tool: ToolEntry) {
-	return tool.variants[0].definition.description ?? tool.name;
+	return (
+		toolReferenceNotes[tool.name]?.summary ??
+		tool.variants[0].definition.description?.split(". ")[0] ??
+		tool.name
+	);
 }
 export function compactOperations(tool: ToolEntry): string[] {
 	return [
@@ -119,11 +124,41 @@ export function inputFields(schema: JsonSchema, prefix = ""): InputField[] {
 		];
 	});
 }
+export function displayVariants(tool: ToolEntry) {
+	const variants: {
+		definition: ToolDefinition;
+		modes: string[];
+		profile: string;
+	}[] = [];
+	for (const variant of tool.variants) {
+		const existing = variants.find(
+			(v) =>
+				JSON.stringify(v.definition) === JSON.stringify(variant.definition),
+		);
+		if (existing) {
+			existing.modes = [...new Set([...existing.modes, ...variant.modes])];
+			existing.profile = "full and compact";
+		} else variants.push({ ...variant, modes: [...variant.modes] });
+	}
+	return variants;
+}
+export function isDeveloperTool(tool: ToolEntry) {
+	return (
+		tool.name.startsWith("app_") ||
+		tool.variants.every((v) => v.profile === "compact") ||
+		[...walletRPC, "createAction", "signAction", "abortAction"].some(
+			(method) => tool.name === `wallet_${method}`,
+		)
+	);
+}
 export const toolNavigation = toolCategories.map((category) => ({
 	id: category.key,
 	name: category.name,
 	tools: catalogTools
-		.filter((t) => categoryForTool(t.name)?.key === category.key)
+		.filter(
+			(t) =>
+				categoryForTool(t.name)?.key === category.key && !isDeveloperTool(t),
+		)
 		.map((tool) => ({
 			name: tool.name,
 			description: toolSummary(tool),

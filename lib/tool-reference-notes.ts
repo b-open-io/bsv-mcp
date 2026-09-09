@@ -1,18 +1,31 @@
 /** Editorial details checked against the tool handlers; never inferred from readOnlyHint. */
 export interface ReferenceNote {
+	summary?: string;
+	example?: Record<string, unknown>;
 	result: string;
 	approval: string;
 	details?: string;
 }
 export const toolReferenceNotes: Record<string, ReferenceNote> = {
 	bsocial_read: {
-		result:
-			"Structured source, operation and indexer data, also returned as JSON text.",
+		example: { query: { type: "search", q: "bitcoin", limit: 10 } },
+		summary: "Read posts, conversations, reactions and social history.",
+		result: "Returns the requested social records and their indexer source.",
 		approval: "Public read; no wallet or signing permission required.",
 		details:
 			"Choose query.type. records reads raw action history, including follow/unfollow; it does not claim current relationship state or independently verified authorship. PUBLIC_BMAP_URL is the server root exposing /social and /q routes. Messages are not decrypted.",
 	},
 	bsocial_publish: {
+		example: {
+			action: {
+				type: "post",
+				content: "Hello Bitcoin",
+				contentType: "text/plain",
+			},
+			preview: true,
+		},
+		summary:
+			"Publish a post, reply, reaction or message with your BAP identity.",
 		result:
 			"Transaction ID, action type and output count; preview returns unsigned output scripts without spending.",
 		approval:
@@ -109,7 +122,7 @@ export const toolReferenceNotes: Record<string, ReferenceNote> = {
 	},
 };
 
-const walletRPC = [
+export const walletRPC = [
 	"getPublicKey",
 	"encrypt",
 	"decrypt",
@@ -142,7 +155,7 @@ for (const method of walletRPC)
 		approval:
 			"Forwarded to the connected wallet under the configured app origin. Its protocol, certificate or basket permission checks apply to the requested operation.",
 		details:
-			"In role-routed configurations, walletRole selects an assigned wallet. Identity methods default to the identity role; encryption and HMAC use the encryption role. Transaction and basket operations follow their assigned role. An unavailable role fails rather than borrowing another key.",
+			"Use walletRole to choose an assigned wallet. Otherwise the configured role is used. A disabled role cannot borrow another key.",
 	};
 const publicReads: Record<string, string> = {
 	bsv_dashboard: "The MCP dashboard app resource and its initial view state.",
@@ -177,8 +190,7 @@ const publicReads: Record<string, string> = {
 for (const [name, result] of Object.entries(publicReads))
 	toolReferenceNotes[name] = {
 		result,
-		approval:
-			"No spending approval is requested by this handler. Public network lookups can still fail or require a compatible service.",
+		approval: "No wallet required.",
 	};
 const contextReads: Record<string, string> = {
 	app_wallet_data: "Wallet data for the selected dashboard view.",
@@ -190,7 +202,8 @@ const contextReads: Record<string, string> = {
 	wallet_getBalance:
 		"Local balance in satoshis and BSV with a UTXO count, or the sponsored balance in Droplit mode.",
 	wallet_getOrdinals: "The ordinals listing result as JSON text.",
-	wallet_listTokens: "The BSV21 token listing result as JSON text.",
+	wallet_listTokens:
+		"Individual BSV21 token outputs. For totals by token, use wallet_getBsv21Balances.",
 	wallet_getBsv21Balances: "BSV21 balances as JSON text.",
 	wallet_getLockData: "Locked-output data as JSON text.",
 	bap_getIdentity:

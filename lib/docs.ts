@@ -20,8 +20,8 @@ const sections: DocSection[] = [
 		id: "quickstart",
 		title: "Start here",
 		paragraphs: [
-			"BSV MCP lets an AI assistant use Bitcoin SV tools. You can ask it to check a transaction, show your wallet balance, send a payment, or create an ordinal: content such as an image recorded on the blockchain.",
-			"Your AI client starts the server on your computer over stdio. No Sigma account or OAuth sign-in is required. Connect a wallet when you need its capabilities.",
+			"Use BSV MCP to check transactions, send payments, publish social posts and create ordinals from your AI assistant.",
+			"Your AI client runs BSV MCP on your computer. Public lookups work without a wallet. Connect one to sign or spend.",
 		],
 		links: [
 			{
@@ -37,21 +37,21 @@ const sections: DocSection[] = [
 			{
 				title: "1. Add the server",
 				paragraphs: [
-					"Install Bun to run the server and Node.js for npx, then run the command for your client in a terminal. Choose one command. The server can start before wallet setup; it never silently creates a key.",
+					"Install Bun and Node.js, then run the command for your client:",
 				],
 				code: "# Codex\ncodex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 			{
 				title: "2. Connect a wallet",
 				paragraphs: [
-					"Ask your assistant to open wallet setup. Create, import or unlock an account in the local browser, or configure an existing external wallet as described below. The server refreshes its tools after local setup.",
+					"Ask your assistant to open wallet setup. Create, import or unlock an account in the browser. To connect another wallet, open the wallet guide below.",
 				],
 			},
 			{
 				title: "3. Check the connection",
 				paragraphs: [
 					'Ask your assistant: "Run bsv_status and explain whether my wallet and 1Sat service are available."',
-					"This check reports the server configuration and contacts the 1Sat capabilities endpoint, which lists enabled API services. It does not sign transactions, spend funds, or import deposits. A successful check does not verify every wallet operation.",
+					"This checks your server and its 1Sat connection without spending funds.",
 				],
 			},
 		],
@@ -60,7 +60,7 @@ const sections: DocSection[] = [
 		id: "wallets",
 		title: "Choose your wallet",
 		paragraphs: [
-			"BSV MCP can connect to an existing wallet or manage keys locally. An existing wallet handles signing: approving a transaction with its private keys.",
+			"Connect an existing wallet or create an encrypted local account.",
 		],
 		links: [
 			{
@@ -76,7 +76,7 @@ const sections: DocSection[] = [
 			{
 				title: "Connect an existing wallet",
 				paragraphs: [
-					"Your wallet must expose the BSV SDK HTTPWalletJSON signing API. It keeps its keys and controls permissions. BSV MCP does not initialize wallet storage when connected to an external signer.",
+					"Use a wallet that supports the BSV SDK HTTPWalletJSON signing API. It keeps your keys and asks you to approve wallet operations.",
 					"Add the following variables to your MCP server environment, replace the wallet URL with your own, then restart the server. BSV_CHAIN must match the wallet network: main for mainnet or test for testnet.",
 				],
 				code: "BRC100_WALLET_URL=http://127.0.0.1:3321\nBRC100_WALLET_ORIGINATOR=bsv-mcp.local\nBSV_CHAIN=main",
@@ -120,7 +120,7 @@ const sections: DocSection[] = [
 		id: "backends",
 		title: "Configure your infrastructure",
 		paragraphs: [
-			"You can use the public services with their default settings. To run your own infrastructure, set the URLs below in the MCP server environment and restart it. Each replacement must support the same API as the service it replaces.",
+			"The default public services need no configuration. To use your own, set a compatible service URL and restart BSV MCP.",
 		],
 		links: [
 			{
@@ -178,7 +178,7 @@ const sections: DocSection[] = [
 		id: "social",
 		title: "Social",
 		paragraphs: [
-			"One reader and one publisher cover Bitcoin Schema social data. Both full and compact catalogs use the same tools. BMAP is the indexer behind reads; it is not a second social network.",
+			"Use bsocial_read to find social records and bsocial_publish to publish with your BAP identity.",
 		],
 		links: [
 			{ label: "Read tool reference", href: "/docs/tools/bsocial_read" },
@@ -225,14 +225,14 @@ const sections: DocSection[] = [
 		id: "tasks",
 		title: "Common tasks",
 		paragraphs: [
-			"Ask your assistant for the task you want to complete. The tool names below help you check what it is calling. Open the tool reference for exact inputs, results and wallet requirements.",
+			"Ask your assistant for what you want. These examples show which tools it can use.",
 		],
 		topics: [
 			{
 				title: "Check your balance or a transaction",
 				paragraphs: [
 					'Ask: "Show my BSV balance and the ordinals in my wallet."',
-					"wallet_getBalance reports funds. wallet_getOrdinals lists ordinals, wallet_getBsv21Balances reports token balances, and wallet_getLockData reports locked funds.",
+					"Use wallet_getBalance for BSV, wallet_getOrdinals for inscriptions, wallet_getBsv21Balances for token balances, and wallet_getLockData for locked funds.",
 					"To inspect the blockchain, use bsv_explore for addresses, blocks, and transactions. bsv_decodeTransaction reads a transaction ID or transaction data encoded as hex or base64.",
 				],
 			},
@@ -240,7 +240,7 @@ const sections: DocSection[] = [
 				title: "Receive a payment",
 				paragraphs: [
 					'Ask: "Give me a deposit address, then check for incoming funds."',
-					"wallet_getAddress returns the deposit address. After the payment arrives, wallet_refreshUtxos imports deposits found by the blockchain indexer into the wallet. The indexer is the service that tracks blockchain activity. Your wallet balance may lag behind the on-chain balance until indexing and import finish.",
+					"wallet_getAddress returns the deposit address. After the payment arrives, wallet_refreshUtxos imports deposits found by the blockchain indexer into the wallet. Your wallet balance may lag behind the on-chain balance until indexing and import finish.",
 				],
 			},
 			{
@@ -280,7 +280,7 @@ const sections: DocSection[] = [
 				title: "Enable or disable tool groups",
 				paragraphs: [
 					"Disable a tool group when an assistant should not have it in its catalog. Broadcasting controls block guarded transaction submissions; they do not replace the connected wallet’s permissions.",
-					"External signer mode supports context wallet and BRC-100 tools. Legacy collection minting/gathering, BAP/raw-key, BSocial and MNEE tools are unavailable in that mode. An advertised backend module does not automatically enable a tool group.",
+					"External signer mode supports context wallet and BRC-100 tools. Legacy collection minting/gathering, raw-key BAP and MNEE tools are unavailable in that mode. Public social reads are available; social publishing is currently unavailable with an external signer. An advertised backend module does not automatically enable a tool group.",
 				],
 			},
 			{
@@ -296,8 +296,8 @@ const sections: DocSection[] = [
 		id: "x402",
 		title: "Pay for an online service",
 		paragraphs: [
-			"BSV MCP can request a service, read its price, and pay with the connected wallet after you authorize the purchase. The service can be a paid API, a file download, an agent, or an account upgrade. x402 itself does not require an API key.",
-			"The client takes the service URL and request details directly. There is no default vendor or required payment account. Services that separately require authentication can use wallet identity or optional service credentials.",
+			"Use x402_request to get a service response or price quote. After you approve the price, x402_payQuote pays with your connected wallet.",
+			"Supply the service URL. Some services also need wallet authentication or an API key.",
 		],
 		topics: [
 			{
@@ -362,7 +362,7 @@ const sections: DocSection[] = [
 		id: "sponsorship",
 		title: "Use a sponsor",
 		paragraphs: [
-			"A Droplit sponsor can provide funding or pay for supported operations, subject to its approval and quotas. Being listed in the sponsor catalog does not guarantee funding.",
+			"A Droplit sponsor can fund supported operations after approving your access. Its quotas and available funds apply.",
 		],
 		topics: [
 			{
@@ -439,7 +439,7 @@ const sections: DocSection[] = [
 		id: "development",
 		title: "Development",
 		paragraphs: [
-			"This project is experimental. For development, use Bun and the commands below. The tool reference combines registration fixtures for local, external and sponsored wallets in full and compact mode. Run bun run tools:manifest after changing tool registration. Captures use isolated processes without local keys or network calls.",
+			"Use Bun for development. After changing tool registration, run bun run tools:manifest to update the reference from isolated registration captures.",
 		],
 		code: "bun install\nbun run dev          # Website\nbun run build:all    # MCP server + dashboard\nbun run build:next   # Production website\nbun test             # Includes server-start integration checks\nbun run lint",
 		links: [

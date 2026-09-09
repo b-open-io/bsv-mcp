@@ -90,3 +90,23 @@ test("social operations expose their conditional fields in the reference", () =>
 		"action.attachments[].contentType",
 	);
 });
+
+test("reader reference deduplicates profiles without hiding distinct wallet inputs", async () => {
+	const { displayVariants, toolNavigation } = await import("./tool-catalog");
+	for (const name of ["bsocial_read", "bsocial_publish"]) {
+		const tool = getTool(name);
+		if (!tool) throw new Error(`Missing ${name}`);
+		expect(displayVariants(tool)).toHaveLength(1);
+		expect(renderToolMarkdown(name)?.match(/^## Definition/gm)).toHaveLength(1);
+	}
+	const publicKey = getTool("wallet_getPublicKey");
+	if (!publicKey) throw new Error("Missing public key tool");
+	expect(displayVariants(publicKey)).toHaveLength(2);
+	const navigation = toolNavigation.flatMap((group) =>
+		group.tools.map((tool) => tool.name),
+	);
+	expect(navigation).toContain("bsocial_publish");
+	expect(navigation).not.toContain("app_wallet_data");
+	expect(navigation).not.toContain("wallet_setup");
+	expect(renderToolMarkdown("app_wallet_data")).toBeDefined();
+});
