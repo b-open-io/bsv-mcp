@@ -18,7 +18,7 @@ export function InstallButton() {
 					// Repeated clicks must scroll even when the URL already has this hash.
 					if (window.location.hash !== "#install")
 						window.history.pushState(window.history.state, "", "#install");
-					target.scrollIntoView({ behavior: "instant", block: "start" });
+					target.scrollIntoView({ behavior: "auto", block: "start" });
 					target.focus({ preventScroll: true });
 				}}
 			>

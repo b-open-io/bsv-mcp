@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "./tailwind.css";
 
+@media (prefers-reduced-motion: no-preference) {
+	html {
+		scroll-behavior: smooth;
+	}
+}
+
 @layer base {
 	:root {
 		--background: 0 0% 100%;
