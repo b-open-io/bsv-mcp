@@ -185,3 +185,8 @@
 .eclipse-video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; mask-image:radial-gradient(circle,#000 44%,#000d 58%,transparent 72%); opacity:0; transition:opacity 1.2s ease; }
 .eclipse-video[data-playing='true'] { opacity:1; }
 @media (prefers-reduced-motion: reduce) { .eclipse-video { display:none; } }
+
+.hero-use-case-line { display: grid; }
+.hero-use-case-sizer, .hero-use-case-decrypted { grid-area: 1 / 1; }
+.hero-use-case-sizer { visibility: hidden; padding-right: .3em; }
+.hero-use-case-ending { display: block; }
