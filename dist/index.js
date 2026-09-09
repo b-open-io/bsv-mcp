@@ -260731,7 +260731,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/local-mcp-tool-reference/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -261438,7 +261438,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/local-mcp-tool-reference/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();
