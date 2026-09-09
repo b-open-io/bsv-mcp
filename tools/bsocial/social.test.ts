@@ -302,13 +302,21 @@ test("action history uses bounded fixed query stages and keeps undo records", as
 	);
 	expect(query.q.aggregate).toEqual([
 		{ $match: { "MAP.bapID": "target" } },
+		{ $sort: { timestamp: -1 } },
+		{ $limit: 10 },
+		{ $project: { in: 0, out: 0 } },
 		{
 			$unionWith: {
 				coll: "unfollow",
-				pipeline: [{ $match: { "MAP.bapID": "target" } }],
+				pipeline: [
+					{ $match: { "MAP.bapID": "target" } },
+					{ $sort: { timestamp: -1 } },
+					{ $limit: 10 },
+					{ $project: { in: 0, out: 0 } },
+				],
 			},
 		},
-		{ $sort: { timestamp: -1, "tx.h": -1 } },
+		{ $sort: { timestamp: -1 } },
 		{ $skip: 5 },
 		{ $limit: 5 },
 		{ $project: { in: 0, out: 0 } },

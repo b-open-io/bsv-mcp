@@ -193,8 +193,13 @@ export async function readSocial(input: z.input<typeof socialReadSchema>) {
 	}
 	if (path)
 		data = await request(`/social${path}`, {
-			...params,
-			...(q.type === "search" ? { q: q.q } : {}),
+			...(q.type === "search"
+				? {
+						q: q.q,
+						limit: String(q.limit),
+						offset: String((q.page - 1) * q.limit),
+					}
+				: params),
 			...(q.type === "videos" && q.channel ? { channel: q.channel } : {}),
 		});
 	return {
@@ -231,12 +236,18 @@ async function readRecords(q: Extract<Query, { type: "records" }>) {
 	if (q.txid) match["MAP.tx"] = q.txid;
 	const [first, ...rest] = [...new Set(q.types)];
 	// Only fixed read stages and whitelisted collections; callers cannot submit MongoDB operators.
-	const aggregate: object[] = [
+	const recent = [
 		{ $match: match },
+		{ $sort: { timestamp: -1 } },
+		{ $limit: q.page * q.limit },
+		{ $project: { in: 0, out: 0 } },
+	];
+	const aggregate: object[] = [
+		...recent,
 		...rest.map((coll) => ({
-			$unionWith: { coll, pipeline: [{ $match: match }] },
+			$unionWith: { coll, pipeline: recent },
 		})),
-		{ $sort: { timestamp: -1, "tx.h": -1 } },
+		{ $sort: { timestamp: -1 } },
 		{ $skip: (q.page - 1) * q.limit },
 		{ $limit: q.limit },
 		{ $project: { in: 0, out: 0 } },
