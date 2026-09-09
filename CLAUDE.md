@@ -8,17 +8,26 @@ BSV MCP is an open-source Model Context Protocol server for Bitcoin SV. It
 contains the published MCP package and the Next.js site that documents and hosts
 the remote MCP endpoint.
 
-The supported deployment modes are:
+## Current product decisions — September 8, 2026
 
-1. **Local stdio**: an AI client launches `bunx bsv-mcp@latest --stdio` on the
-   user’s computer. Wallet keys stay local or the client connects to an external
-   BRC-100 signer. Sigma Auth is not involved.
-2. **Self-hosted HTTP**: the package can run its Streamable HTTP server with
-   `TRANSPORT=http`.
-3. **Hosted Vercel site**: the Next.js app serves `https://bsvmcp.com` and its
-   protected MCP endpoint. Sigma Auth is a separate, generic OAuth authorization
-   server. It authenticates the account and issues a token; it does not hold
-   wallet keys or become BSV MCP.
+These decisions supersede older OAuth and architecture proposals.
+
+- Local stdio MCP is the active product. It requires no Sigma sign-in.
+- Hosted MCP, its authorization server, and HTTP spending approval are deferred.
+  Existing HTTP code is legacy implementation, not an instruction to finish it.
+- Sigma Connect is optional and requires explicit user consent. It is separate
+  from MCP authentication and from the wallet. Do not change Sigma Auth or its
+  database to make BSV MCP work.
+- A future hosted authorization server would belong to bsvmcp.com itself.
+  This is a deferred direction, not an active implementation task.
+- Local browser setup, an external wallet's signing API, and 1Sat service calls
+  may use HTTP. They do not make BSV MCP a remotely hosted MCP product.
+- The latest user decisions govern. Internal WORKLIST and the recent Sigma
+  handoff are supporting references; old checkboxes are not authorization.
+
+The website and legacy HTTP routes still contain contradictions with these
+choices. Correct them through the current reconciliation plan; do not treat
+passing tests or deployed behavior as proof of the intended product scope.
 
 The retired Cloudflare worker and OpenNext configuration were removed. Do not
 reintroduce a Cloudflare deployment path unless the product owner explicitly
@@ -63,29 +72,18 @@ stdio guard as the first loaded module and send diagnostics to stderr.
   documentation source.
 - `skills/bsv-mcp/SKILL.md`: the package skill used by supported clients.
 
-## OAuth boundary
+## Authentication and transport boundary
 
-Sigma Auth is generic. Never add `bsvmcp.com`, BSV MCP tool names, wallet
-configuration, or BSV-specific defaults to the Sigma Auth product.
+The supported local stdio flow is: AI client → local BSV MCP → an unlocked
+local Vault wallet or an explicitly connected external BRC-100 wallet. No
+OAuth account is required to start or use that local connection.
 
-For the hosted flow:
+A web page or loopback signing API is not a hosted MCP endpoint. Preserve
+those local capabilities when isolating legacy HTTP transport code.
 
-1. BSV MCP publishes OAuth protected-resource metadata and names Sigma as an
-   authorization server.
-2. The MCP client discovers Sigma’s authorization endpoints and authenticates the
-   user there.
-3. Sigma issues a short-lived token for the BSV MCP resource.
-4. BSV MCP validates the token’s signature, issuer, audience, expiry, and subject.
-
-The token only proves account authentication and consent to call the hosted
-resource. It does not connect a wallet on the user’s computer, derive a private
-key, approve a payment, or unlock a user-specific tool set. Tool availability is
-controlled by the BSV MCP deployment configuration. Do not infer wallet authority
-from an OAuth subject or scope.
-
-When changing hosted OAuth behavior, read the current MCP authorization
-specification and Better Auth MCP guidance first. Verify the complete client flow,
-not just a discovery endpoint or an empty DCR request.
+OAuth tokens never grant wallet authority, select signing keys, or approve a
+payment. Do not expand hosted auth, modify Sigma, or add remote spending as
+part of local onboarding, docs, packaging, or protocol compatibility work.
 
 ## Wallet and key safety
 
@@ -173,4 +171,6 @@ When changing hosted MCP behavior, test:
   `https://bsvmcp.com/connect`.
 - Wallet custody: `docs/keys.md`, `docs/external-signer.md`.
 - BSV MCP system design: `docs/system-design.svg`.
-- Sigma/Auth boundary handoff: `docs/sigma-auth-handoff.md`.
+- Current worklist: `internal/planning/WORKLIST.md` (local, Git-ignored).
+- Recent Sigma handoff: `internal/planning/sigma-auth-handoff.md` (amended by the worklist and latest user decisions).
+- Review plan: `internal/planning/current-product-plan.html` (local draft).
