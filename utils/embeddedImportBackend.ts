@@ -29,6 +29,7 @@ import {
 	type EmbeddedVaultReceipt,
 } from "./embeddedVaultIo";
 import { decodeEncryptedKeys, SecureKeyManager } from "./keyManager";
+import { readMcpClientEnvValue } from "./mcpClientKeySources";
 import { inspectMigration, type MigrationSource } from "./vaultMigration";
 
 export const IMPORT_CONFIRMATION = "IMPORT_WALLET_CONFIRMED" as const;
@@ -130,7 +131,7 @@ interface OriginalKeys {
 
 interface TrustedSelection {
 	entry: MigrationSource;
-	sourceDir: string;
+	sourceDir?: string;
 	destName: string;
 	destDir: string;
 	destRoot: string;
@@ -212,14 +213,16 @@ function selectTrustedSource(
 		accountNameSchema.safeParse(account).success !== true ||
 		(location !== "account" &&
 			location !== "legacy-root" &&
-			location !== "custom")
+			location !== "custom" &&
+			location !== "environment" &&
+			location !== "mcp-client")
 	)
 		throw failure("INVALID_INPUT", MESSAGES.INVALID_INPUT);
 	let inventory: ReturnType<typeof inspectMigration>;
 	try {
 		inventory = inspectMigration({
 			home,
-			env: { VAULT_PATH: vaultPath },
+			env: { ...process.env, VAULT_PATH: vaultPath },
 		});
 	} catch {
 		throw failure("SOURCE_UNAVAILABLE", MESSAGES.SOURCE_UNAVAILABLE);
@@ -235,6 +238,19 @@ function selectTrustedSource(
 	if (accountNameSchema.safeParse(destName).success !== true)
 		throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
 	const sourceDir = entry.directory;
+	if (
+		(location === "environment" || location === "mcp-client") &&
+		entry.envVar
+	) {
+		return {
+			entry,
+			destName,
+			destDir: join(destRoot, destName),
+			destRoot,
+			home,
+			vaultPath,
+		};
+	}
 	if (!sourceDir) throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
 	const destDir = join(destRoot, destName);
 	return {
@@ -294,11 +310,60 @@ function toOriginalKeys(input: {
 	return out;
 }
 
+function loadEnvOrClientKeys(selection: TrustedSelection): OriginalKeys {
+	const { entry } = selection;
+	if (entry.envVar !== "PRIVATE_KEY_WIF")
+		throw failure("SOURCE_UNAVAILABLE", MESSAGES.SOURCE_UNAVAILABLE);
+	let payment: string | undefined;
+	let identity: string | undefined;
+	if (entry.location === "environment") {
+		const envPayment = process.env.PRIVATE_KEY_WIF;
+		const envIdentity = process.env.IDENTITY_KEY_WIF;
+		payment =
+			typeof envPayment === "string" && envPayment.length > 0
+				? envPayment
+				: undefined;
+		identity =
+			typeof envIdentity === "string" && envIdentity.length > 0
+				? envIdentity
+				: undefined;
+	} else if (
+		entry.location === "mcp-client" &&
+		entry.configPath &&
+		entry.serverName
+	) {
+		payment = readMcpClientEnvValue({
+			configPath: entry.configPath,
+			serverName: entry.serverName,
+			envVar: "PRIVATE_KEY_WIF",
+		});
+		identity = readMcpClientEnvValue({
+			configPath: entry.configPath,
+			serverName: entry.serverName,
+			envVar: "IDENTITY_KEY_WIF",
+		});
+	}
+	if (!payment)
+		throw failure("SOURCE_UNAVAILABLE", MESSAGES.SOURCE_UNAVAILABLE);
+	try {
+		const payPk = PrivateKey.fromWif(payment);
+		const identityPk = identity ? PrivateKey.fromWif(identity) : undefined;
+		return toOriginalKeys({ payPk, identityPk });
+	} catch (error) {
+		if (error instanceof EmbeddedImportError) throw error;
+		throw failure("SOURCE_UNAVAILABLE", MESSAGES.SOURCE_UNAVAILABLE);
+	}
+}
+
 async function loadSourceKeys(
 	selection: TrustedSelection,
 	sourcePassphrase: string | undefined,
 ): Promise<OriginalKeys> {
 	const { entry, sourceDir } = selection;
+	if (entry.location === "environment" || entry.location === "mcp-client") {
+		return loadEnvOrClientKeys(selection);
+	}
+	if (!sourceDir) throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
 	rejectUnsafeDir(sourceDir);
 	if (!entry.encryptedBackup && !entry.plaintextKeys)
 		throw failure("MATCHING_KEYS_REQUIRED", MESSAGES.MATCHING_KEYS_REQUIRED);
@@ -501,6 +566,7 @@ function resolveChain(
 
 /** Fail before any write when a live SQLite sidecar makes a copy unsafe. */
 function assertDatabasesCopyable(selection: TrustedSelection): void {
+	if (!selection.sourceDir) return;
 	// Same-directory migration performs no DB copy: the database and any
 	// sidecars stay in place untouched, so sidecars must not deny the import.
 	if (resolve(selection.sourceDir) === resolve(selection.destDir)) return;
@@ -529,6 +595,7 @@ function assertDatabasesCopyable(selection: TrustedSelection): void {
  * write instead of being replaced.
  */
 function assertNoDestinationDbCollision(selection: TrustedSelection): void {
+	if (!selection.sourceDir) return;
 	if (resolve(selection.sourceDir) === resolve(selection.destDir)) return;
 	for (const name of selection.entry.walletDatabases) {
 		if (!DB_NAME_PATTERN.test(name))
@@ -560,6 +627,7 @@ function assertNoDestinationDbCollision(selection: TrustedSelection): void {
 async function copyInventoryDatabases(
 	selection: TrustedSelection,
 ): Promise<void> {
+	if (!selection.sourceDir) return;
 	if (resolve(selection.sourceDir) === resolve(selection.destDir)) return;
 	if (selection.entry.walletDatabases.length === 0) return;
 	try {

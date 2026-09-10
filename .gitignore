@@ -5,6 +5,7 @@ node_modules
 out
 .next
 *.tgz
+dist/
 
 # code coverage
 coverage

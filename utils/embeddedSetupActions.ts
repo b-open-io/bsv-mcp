@@ -1,24 +1,26 @@
 import { z } from "zod";
-import { createEmbeddedVaultIo } from "./embeddedVaultIo";
 import { accountNameSchema, readAccount } from "./accounts";
 import { createEmbeddedFirstRunBackend } from "./embeddedFirstRunBackend";
 import { createEmbeddedImportBackend } from "./embeddedImportBackend";
+import { createEmbeddedVaultIo } from "./embeddedVaultIo";
 import { createEmbeddedWalletActivation } from "./embeddedWalletActivation";
+import { eraseImportedPlaintextSource } from "./plaintextSourceErase";
 import type { AvailableSetupTool, EmbeddedSetupActions } from "./vaultSetup";
 import type { WalletInitResult } from "./walletInit";
-import { getWalletRoleSettings } from "./walletRoleDefaults";
 import { activateWalletRoles } from "./walletRoleActivation";
+import { getWalletRoleSettings } from "./walletRoleDefaults";
 
 const createInput = z.object({
 	activate: z.boolean().default(true),
 	accountName: accountNameSchema,
-	password: z.string().min(8),
+	password: z.string().min(12),
 	passwordConfirmation: z.string(),
 	confirmation: z.literal("CREATE_NEW_CONFIRMED"),
 });
 const unlockInput = z.object({
 	accountName: accountNameSchema,
-	password: z.string().min(1),
+	password: z.string().min(1).optional(),
+	useHardware: z.boolean().optional(),
 });
 const importInput = z.object({
 	activate: z.boolean().default(true),
@@ -26,7 +28,13 @@ const importInput = z.object({
 	source: z
 		.object({
 			account: accountNameSchema,
-			location: z.enum(["account", "legacy-root", "custom"]),
+			location: z.enum([
+				"account",
+				"legacy-root",
+				"custom",
+				"environment",
+				"mcp-client",
+			]),
 			encryptedBackup: z.boolean().default(false),
 			plaintextKeys: z.boolean().default(false),
 			walletDatabases: z.array(z.string()).default([]),
@@ -39,9 +47,10 @@ const importInput = z.object({
 		.optional(),
 	backupName: z.string().max(255).optional(),
 	sourcePassphrase: z.string().optional(),
-	destinationPassphrase: z.string().min(8),
+	destinationPassphrase: z.string().min(12),
 	passwordConfirmation: z.string(),
 	confirmation: z.literal("IMPORT_WALLET_CONFIRMED"),
+	eraseSources: z.boolean().optional(),
 });
 
 /** Private HTTP composition boundary: only readiness and public account metadata leave it. */
@@ -114,7 +123,7 @@ export function createEmbeddedSetupActions(options: {
 				const input = z
 					.object({
 						accountName: accountNameSchema,
-						password: z.string().min(8),
+						password: z.string().min(12),
 						vaultId: z.string().min(1),
 						entryId: z.string().min(1),
 						publicKey: z.string().regex(/^(02|03)[0-9a-fA-F]{64}$/),
@@ -153,7 +162,11 @@ export function createEmbeddedSetupActions(options: {
 		unlock: (body) =>
 			exclusive(async () => {
 				const input = unlockInput.parse(body);
-				return activate(input.accountName, input.password);
+				if (!input.password && !input.useHardware)
+					throw new Error(
+						"Enter your Vault password, or unlock with this Mac.",
+					);
+				return activate(input.accountName, input.password ?? "");
 			}),
 		import: (body) =>
 			exclusive(async () => {
@@ -180,14 +193,19 @@ export function createEmbeddedSetupActions(options: {
 						confirmation: input.confirmation,
 					});
 				}
-				if (!input.activate)
-					return {
-						accountName: saved.accountName,
-						address: readAccount(saved.accountName)?.address ?? "",
-						ready: false,
-						saved: true,
-					};
-				return activate(saved.accountName, input.destinationPassphrase);
+				const result = input.activate
+					? await activate(saved.accountName, input.destinationPassphrase)
+					: {
+							accountName: saved.accountName,
+							address: readAccount(saved.accountName)?.address ?? "",
+							ready: false,
+							saved: true,
+						};
+				if (input.eraseSources && input.source)
+					eraseImportedPlaintextSource(
+						input.source as Parameters<typeof eraseImportedPlaintextSource>[0],
+					);
+				return result;
 			}),
 	};
 }

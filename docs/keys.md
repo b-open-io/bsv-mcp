@@ -36,7 +36,7 @@ launcher checks that the named account already has `config.json` and encrypted
 `keys.bep`; it never creates or migrates an account. Do not put secrets in chat,
 command arguments, or committed configuration.
 
-Key resolution is explicit: `BRC100_WALLET_URL` selects an external signer and rejects conflicting local key variables. Otherwise `PRIVATE_KEY_WIF` takes precedence over the selected encrypted account as a legacy compatibility input. Its use prints a persistent Vault migration warning; move the key into Vault and remove both WIF environment variables. A bad key or password stops startup. There is no plaintext fallback and no automatic generation. Read-only operation is available with `DISABLE_WALLET_TOOLS=true`.
+Key resolution is explicit: `BRC100_WALLET_URL` selects an external signer and rejects conflicting local key variables. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are migration sources, not live signing keys. A local stdio server that finds them without an unlocked Vault keeps public tools available and asks you to import them through `wallet_onboarding`. Do not put those variables in MCP config after import. A bad key or password stops startup. There is no plaintext fallback and no automatic generation. Read-only operation is available with `DISABLE_WALLET_TOOLS=true`.
 
 ## Manage accounts
 
@@ -97,11 +97,21 @@ The browser setup flow can:
   and `wallet.db` files are preserved, while conflicting databases or live
   SQLite sidecars stop a source import before a write.
 
+New Vault files seal the recovery passphrase with Argon2id (64 MiB, t=3, p=1).
+The password must be at least 12 characters, or 16+ as a passphrase. Passwords
+are not trimmed. On Apple silicon Macs, setup also adds a Secure Enclave wrap
+when the helper is available; the passphrase remains the recovery slot.
+
 After a successful create, import, or unlock, the wallet is activated in the
 same MCP session and the tool catalog is refreshed. No registration change or
 restart is needed for that session. On a later server restart, ask your agent
 to run `wallet_onboarding` again and enter the Vault password to unlock the
-persisted binding.
+persisted binding. Headless agents may set `BSV_MCP_PASSWORD` in the process
+environment only; never save it in MCP client configuration.
+
+Import of a detected plaintext source can overwrite and remove that source
+after the Vault copy is verified. Overwriting cannot erase SSD remnants, APFS
+snapshots, or other copies.
 
 From a source checkout, run this command for standalone local setup:
 
@@ -120,6 +130,6 @@ minutes or when you stop it with Ctrl+C.
 The existing `init`, `wallet_*`, and `wallet_migrate` commands remain supported
 for the legacy encrypted account format. `wallet_migrate` does not write a
 Vault; use browser setup to import a detected source or key backup into Vault.
-`PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` remain legacy compatibility inputs and
-continue to emit a Vault migration warning. Remove them after importing the
-keys into Vault.
+`PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` remain detectable migration sources.
+They do not sign. Import them into Vault through local setup, then remove them
+from the environment and from any MCP client config that still holds them.

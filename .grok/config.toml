@@ -1,0 +1,7 @@
+# Grok project MCP for this checkout. Runs source so local work is what you
+# debug. Plugin installs use .mcp.json (the published npm package).
+[mcp_servers.bsv-mcp]
+command = "bun"
+args = ["--no-env-file", "index.ts", "--stdio"]
+startup_timeout_sec = 60
+enabled = true

@@ -51,4 +51,12 @@ describe("installTargets", () => {
 			expect(doc).toContain(target.docsUrl);
 		}
 	});
+
+	test("Grok plugin install includes --trust so MCP servers start", () => {
+		const grok = installTargets.find((target) => target.key === "grok");
+		expect(grok?.command).toBe("grok plugin install b-open-io/bsv-mcp --trust");
+		expect(grok?.altCommands?.[0]?.command).toContain("grok mcp add bsv-mcp");
+		expect(grok?.note).toContain("--trust");
+		expect(grok?.note).toContain("Bun");
+	});
 });

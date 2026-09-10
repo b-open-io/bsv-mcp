@@ -1,8 +1,8 @@
 {
 	"mcpServers": {
 		"bsv-mcp": {
-			"command": "bun",
-			"args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js", "--stdio"]
+			"command": "npx",
+			"args": ["-y", "bsv-mcp@0.6.1", "--stdio"]
 		}
 	}
 }

@@ -192,7 +192,13 @@ export function registerAllTools(
 				identityContext,
 				config.disableBroadcasting,
 			);
-		} else if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
+		} else if (
+			!config.bapPublicOnly &&
+			(config.identityPk ||
+				config.xprv ||
+				config.wallet ||
+				config.localAccountAvailable)
+		) {
 			registerBapTools(server, bapConfig);
 		} else {
 			registerBapGetIdTool(server, config.identityPk);
@@ -258,8 +264,11 @@ export function registerAllTools(
 		}
 	}
 
-	// Register MNEE tools
-	if (enableMneeTools && (!config.ctx || config.wallet)) {
+	// Register MNEE tools only when a payment key or wallet context exists.
+	if (
+		enableMneeTools &&
+		(config.payPk || config.wallet || config.roleContexts?.payments)
+	) {
 		registerMneeTools(server);
 	}
 

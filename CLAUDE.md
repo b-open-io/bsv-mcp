@@ -23,6 +23,9 @@ These decisions supersede older OAuth and architecture proposals.
   This is a deferred direction, not an active implementation task.
 - Local browser setup, an external wallet's signing API, and 1Sat service calls
   may use HTTP. They do not make BSV MCP a remotely hosted MCP product.
+- Local signing keys live in Vault. Plaintext WIFs in env files or MCP client
+  config are import sources to remove after a verified Vault import, not a
+  supported runtime.
 - The latest user decisions govern. Internal WORKLIST and the recent Sigma
   handoff are supporting references; old checkboxes are not authorization.
 
@@ -40,16 +43,18 @@ requests one.
 bun install
 bun test
 bun run lint
-bun run build:all       # Vite MCP app, then the published server bundle
+bun index.ts --stdio    # work from source
+bun run build:all       # npm bundle under dist/ (gitignored; built by prepack)
 bun run build:next      # Next.js site
 bun run dev             # Next.js site locally
-bun dist/index.js --stdio
 ```
 
-The package version is defined in `package.json`. The published package includes
-the built `dist/` bundle, README, changelog, license, and Smithery manifest.
+The package version is defined in `package.json`. Git tracks source. The
+published npm package includes the built `dist/` bundle via `"files"` and
+`prepack` / `pack:release`, plus README, changelog, license, and Smithery
+manifest.
 
-For a local MCP connection:
+For a local MCP connection to the published package:
 
 ```sh
 bunx bsv-mcp@latest --stdio
@@ -89,10 +94,27 @@ part of local onboarding, docs, packaging, or protocol compatibility work.
 ## Wallet and key safety
 
 - Never generate keys silently during startup.
-- New accounts live under `~/.bsv-mcp/accounts/<name>/` with encrypted
-  `keys.bep`, `config.json`, and the network-specific wallet database.
-- `BSV_MCP_ACCOUNT` selects the account and `BSV_MCP_PASSWORD` unlocks it in
-  the server process. `PRIVATE_KEY_WIF` is an explicit override.
+- Local signing keys belong in the encrypted Vault at `VAULT_PATH` or
+  `~/.bsv/vault.bep`. Account metadata and wallet databases live under
+  `~/.bsv-mcp/accounts/<name>/`. `config.json` may store a public
+  `vaultBinding`; it never stores a password or private key.
+- `wallet_onboarding` is the supported create, import, and unlock path. The
+  Vault password is entered in a private loopback browser. Do not collect it in
+  chat, MCP tool arguments, command lines, or saved MCP configuration.
+- New Vault files use Argon2id (64 MiB, t=3, p=1) for the recovery passphrase
+  slot. On Apple silicon Macs, create also wraps a Secure Enclave / Touch ID
+  slot when the helper is available. The passphrase remains the recovery wrap;
+  do not create an enclave-only Vault.
+- Vault passwords must be at least 12 characters, or 16+ as a passphrase.
+  Do not trim passwords. Common passwords are rejected.
+- `BSV_MCP_ACCOUNT` selects the account. `BSV_MCP_PASSWORD` is only for
+  headless agents (CI, cloud, no display). It must live in the process
+  environment for that session, never in MCP client config, argv, or git.
+  Interactive Mac use should unlock in the browser (and Enclave when present).
+- `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are migration sources, not live
+  signing keys. Detected env and MCP-client WIFs must be imported into Vault
+  through local setup, then the plaintext copy should be erased when the user
+  confirms. Do not treat them as an override.
 - Existing wallets should use `BRC100_WALLET_URL`; the wallet controls its keys
   and approval policy.
 - Keep WIFs, mnemonics, OAuth secrets, bearer tokens, and database credentials
@@ -102,7 +124,8 @@ part of local onboarding, docs, packaging, or protocol compatibility work.
 - Use the redaction helpers for errors and tool responses that may contain key
   material.
 - Do not create wallet directories outside `~/.bsv-mcp` without an explicit
-  design decision.
+  design decision. The Vault file at `~/.bsv/vault.bep` is the existing
+  exception.
 
 See `docs/keys.md` and `docs/external-signer.md` before changing custody or
 migration code.

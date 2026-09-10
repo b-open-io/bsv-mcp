@@ -338,6 +338,48 @@ describe.skipIf(!actual)("embedded import with real Vault files", () => {
 		expect(readFileSync(join(labDir, "root.wif")).equals(wifBytes)).toBe(true);
 	});
 
+	it("imports a Cursor MCP payment WIF into Vault without returning the key", async () => {
+		const root = freshRoot();
+		const home = join(root, "home");
+		mkdirSync(join(home, ".cursor"), { recursive: true, mode: 0o700 });
+		writeFileSync(
+			join(home, ".cursor", "mcp.json"),
+			JSON.stringify({
+				mcpServers: {
+					"Bitcoin SV": {
+						command: "bunx",
+						env: { PRIVATE_KEY_WIF: PAY.toWif() },
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const backend = createEmbeddedImportBackend({
+			vaultPath: join(root, "vault.bep"),
+			home,
+			loadModule,
+		});
+		const result = await backend.import({
+			source: {
+				account: "cursor-bitcoin-sv-payment",
+				location: "mcp-client",
+				client: "cursor",
+				serverName: "Bitcoin SV",
+				configPath: join(home, ".cursor", "mcp.json"),
+				envVar: "PRIVATE_KEY_WIF",
+				encryptedBackup: false,
+				plaintextKeys: true,
+				walletDatabases: [],
+			},
+			password: VAULT_PASSWORD,
+			passwordConfirmation: VAULT_PASSWORD,
+			confirmation: "IMPORT_WALLET_CONFIRMED",
+		});
+		expect(result.accountName).toBe("cursor-bitcoin-sv-payment");
+		expect(result.address).toBe(PAY.toAddress());
+		expect(JSON.stringify(result)).not.toContain(PAY.toWif());
+	});
+
 	it("accepts a configured deterministic deposit address and preserves it", async () => {
 		const root = freshRoot();
 		const home = join(root, "home");

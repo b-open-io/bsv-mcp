@@ -7,8 +7,8 @@
  * the child, or loads dotenv files itself.
  *
  * Example:
- *   bun run scripts/benchmark-mcp.ts -- bun --no-env-file dist/index.js --stdio
- *   bun run scripts/benchmark-mcp.ts --client both -- bun --no-env-file dist/index.js --stdio
+ *   bun run scripts/benchmark-mcp.ts -- bun --no-env-file index.ts --stdio
+ *   bun run scripts/benchmark-mcp.ts --client both -- bun --no-env-file index.ts --stdio
  */
 
 import {

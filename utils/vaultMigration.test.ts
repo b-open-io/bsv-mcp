@@ -65,10 +65,26 @@ test("empty environment overrides are surfaced without falling back", () => {
 	expect(
 		inspectMigration({ home, env: { PRIVATE_KEY_WIF: "" } }).environmentKeys,
 	).toEqual({ payment: true, identity: false, empty: true });
+	expect(
+		inspectMigration({
+			home,
+			env: { PRIVATE_KEY_WIF: "" },
+		}).sources.some((source) => source.location === "environment"),
+	).toBe(false);
 	expect(() => inspectMigration({ home, env: { VAULT_PATH: "" } })).toThrow(
 		"empty",
 	);
 	expect(inspectMigration({ home, env: {} }).migrationRequired).toBe(false);
+	const payment = inspectMigration({
+		home,
+		env: { PRIVATE_KEY_WIF: "not-a-secret-in-this-assertion" },
+	});
+	expect(
+		payment.sources.some((source) => source.account === "env-payment"),
+	).toBe(true);
+	expect(JSON.stringify(payment.sources)).not.toContain(
+		"not-a-secret-in-this-assertion",
+	);
 });
 
 test("rejects linked account directories and dangling key links", () => {

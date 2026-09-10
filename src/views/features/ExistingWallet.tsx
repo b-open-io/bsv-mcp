@@ -2,7 +2,6 @@ import { type FormEvent, useEffect, useState } from "react";
 import type { MigrationSource } from "../../../utils/vaultMigration";
 import type { AvailableSetupTool } from "../../../utils/vaultSetup";
 import { AvailableTools } from "../components/AvailableTools";
-import { WalletReady } from "../components/WalletReady";
 import {
 	Button,
 	LocalShell,
@@ -10,6 +9,9 @@ import {
 	PageHeader,
 	Surface,
 } from "../components/LocalShell";
+import { WalletReady } from "../components/WalletReady";
+import { migrationSourceCopy } from "../lib/migrationLabels";
+import { vaultPasswordIssue } from "../lib/vaultPassphrase";
 
 export function ExistingWallet({
 	token,
@@ -33,6 +35,7 @@ export function ExistingWallet({
 	const [destinationPassphrase, setDestinationPassphrase] = useState("");
 	const [passwordConfirmation, setPasswordConfirmation] = useState("");
 	const [confirmed, setConfirmed] = useState(false);
+	const [eraseSources, setEraseSources] = useState(true);
 	const [pending, setPending] = useState(false);
 	const [ready, setReady] = useState(false);
 	const [savedAccount, setSavedAccount] = useState("");
@@ -78,8 +81,9 @@ export function ExistingWallet({
 	async function submit(event: FormEvent) {
 		event.preventDefault();
 		if (pending || !confirmed || (!source && !file)) return;
-		if (destinationPassphrase.length < 8) {
-			setError("Choose a Vault password with at least 8 characters.");
+		const passwordIssue = vaultPasswordIssue(destinationPassphrase);
+		if (passwordIssue) {
+			setError(passwordIssue);
 			return;
 		}
 		if (destinationPassphrase !== passwordConfirmation) {
@@ -107,6 +111,7 @@ export function ExistingWallet({
 					destinationPassphrase,
 					passwordConfirmation,
 					confirmation: "IMPORT_WALLET_CONFIRMED",
+					eraseSources,
 					...(file
 						? { backupText: await file.text(), backupName: file.name }
 						: {}),
@@ -140,7 +145,12 @@ export function ExistingWallet({
 			setPending(false);
 		}
 	}
-	if (ready && !standalone) return <LocalShell navigation={false}><WalletReady tools={tools} /></LocalShell>;
+	if (ready && !standalone)
+		return (
+			<LocalShell navigation={false}>
+				<WalletReady tools={tools} />
+			</LocalShell>
+		);
 
 	return (
 		<LocalShell navigation={false}>
@@ -200,31 +210,28 @@ export function ExistingWallet({
 								below.
 							</p>
 						) : (
-							sources.map((item) => (
-								<button
-									key={`${item.location}:${item.account}`}
-									type="button"
-									className="setup-choice wallet-source-choice"
-									onClick={() => {
-										setSource(item);
-										setAccountName(item.account);
-										setError("");
-									}}
-								>
-									<strong>{item.account}</strong>
-									<span>{item.directory || item.location}</span>
-									<span>
-										{item.encryptedBackup
-											? "Encrypted key backup"
-											: item.plaintextKeys
-												? "Local key file"
-												: "Wallet database — matching key backup needed"}
-									</span>
-									{item.walletDatabases.length > 0 && (
-										<span>{item.walletDatabases.join(", ")}</span>
-									)}
-								</button>
-							))
+							sources.map((item) => {
+								const copy = migrationSourceCopy(item);
+								return (
+									<button
+										key={`${item.location}:${item.account}`}
+										type="button"
+										className="setup-choice wallet-source-choice"
+										onClick={() => {
+											setSource(item);
+											setAccountName(item.account);
+											setError("");
+										}}
+									>
+										<strong>{copy.title}</strong>
+										<span>{copy.origin}</span>
+										<span>{copy.detail}</span>
+										{(item.configPath || item.directory) && (
+											<span>{item.configPath || item.directory}</span>
+										)}
+									</button>
+								);
+							})
 						)}
 						<label className="field-label">
 							Browse for a key backup
@@ -334,6 +341,18 @@ export function ExistingWallet({
 								/>{" "}
 								Import this wallet into my local encrypted Vault.
 							</label>
+							{source?.plaintextKeys || source?.location === "mcp-client" ? (
+								<label className="checkbox-field">
+									<input
+										type="checkbox"
+										checked={eraseSources}
+										onChange={(event) => setEraseSources(event.target.checked)}
+										disabled={pending}
+									/>{" "}
+									After import, overwrite and remove the plaintext copy that was
+									imported. This cannot erase SSD snapshots or other backups.
+								</label>
+							) : null}
 							<div className="form-actions">
 								<Button
 									variant="secondary"

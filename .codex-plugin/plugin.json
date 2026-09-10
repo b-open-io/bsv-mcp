@@ -1,6 +1,6 @@
 {
 	"name": "bsv-mcp",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"description": "Bitcoin SV tools for AI assistants. Run a local MCP server with your own wallet.",
 	"author": {
 		"name": "bOpen",
@@ -18,7 +18,7 @@
 		"category": "Productivity",
 		"websiteURL": "https://bsvmcp.com",
 		"defaultPrompt": [
-			"Run bsv_status and explain which services are available."
+			"If wallet_onboarding is available, run it so I can import or create a Vault wallet. Then run bsv_status and explain which services are available."
 		],
 		"longDescription": "Run Bitcoin SV tools locally for transaction lookups, payments, ordinals and identity. Connect an external wallet or open local Vault setup. No account sign-in is required.",
 		"capabilities": ["Interactive"]

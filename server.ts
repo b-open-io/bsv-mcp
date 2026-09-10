@@ -18,9 +18,9 @@ import {
 import {
 	createMcpHandler,
 	isLegacyRequest,
-	WebStandardStreamableHTTPServerTransport,
 	type McpRequestContext,
 	McpServer,
+	WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
@@ -77,7 +77,11 @@ import {
 } from "./utils/mcpAppRegistration.ts";
 import { McpApprovalFlow } from "./utils/mcpApprovalFlow";
 import { readMcpProtocolPolicy } from "./utils/mcpProtocol";
-import { getMcpSessionPrincipal, isMcpSessionPrincipalMatch, type McpSessionPrincipal } from "./utils/mcpSessionPrincipal";
+import {
+	getMcpSessionPrincipal,
+	isMcpSessionPrincipalMatch,
+	type McpSessionPrincipal,
+} from "./utils/mcpSessionPrincipal";
 import {
 	type ToolPolicyEra,
 	withMcpToolExecution,
@@ -90,9 +94,7 @@ import {
 import { inspectMigration } from "./utils/vaultMigration";
 import { readWalletBalance } from "./utils/walletBalance";
 import { walletDepositAddress } from "./utils/walletDepositAddress";
-import {
-	destroyWallet,
-} from "./utils/walletInit.ts";
+import { destroyWallet } from "./utils/walletInit.ts";
 import { createWalletSetupLauncher } from "./utils/walletOnboarding.ts";
 import { getWalletRoleSettings } from "./utils/walletRoleDefaults";
 import type { WalletRoleContexts } from "./utils/walletRoles";
@@ -110,6 +112,7 @@ interface ServerFactoryOptions {
 	loadResources: boolean;
 	era?: ToolPolicyEra;
 	approvalFlow?: McpApprovalFlow;
+	instructions?: string;
 }
 
 type McpAppToolsConfig = {
@@ -159,7 +162,9 @@ export function createConfiguredServer(opts: ServerFactoryOptions): McpServer {
 					[EXTENSION_ID]: { version: "0.1" },
 				},
 			},
-			instructions: `
+			instructions:
+				opts.instructions ??
+				`
 				This server exposes Bitcoin SV helpers.
 				Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first.
 			`,
@@ -555,7 +560,7 @@ function registerMcpAppTools(server: McpServer, config: McpAppToolsConfig) {
 						],
 						structuredContent: {
 							error:
-								"No wallet configured. Set PRIVATE_KEY_WIF or generate keys.",
+								"No wallet configured. Call wallet_onboarding to import or create a Vault wallet.",
 						},
 					};
 				}
@@ -1030,12 +1035,13 @@ Tool Categories:
   Ordinals Tools: Search listings, market data
   Utils Tools:    General utilities, conversions
   BAP Tools:      Identity management (requires identity key)
-  BSocial Tools:  Social posts, likes, follows
+  BSocial Tools:  Read posts, likes, and follows; create a post when a wallet is connected
 
 Authentication:
   - Most tools work without authentication
-  - Wallet operations use BRC100_WALLET_URL, an initialized encrypted account or legacy environment keys
-  - Environment WIFs are legacy compatibility inputs and trigger a migration warning
+  - Wallet operations use BRC100_WALLET_URL or an unlocked local Vault
+  - BSV_MCP_PASSWORD is headless-only (process environment, never MCP config)
+  - Environment WIFs are migration sources, not live signing keys
   - BAP tools require identity keys (generated via bap_generate tool)
 		`);
 		process.exit(0);
@@ -1052,7 +1058,9 @@ Authentication:
 		);
 	}
 	if (args.some((arg) => arg !== "--stdio")) {
-		throw new Error("Unknown server argument; use --help for supported commands");
+		throw new Error(
+			"Unknown server argument; use --help for supported commands",
+		);
 	}
 
 	// --- Initialize Keys ---
@@ -1145,6 +1153,24 @@ Authentication:
 		) {
 			walletSetupReason = "locked";
 			throw new MissingWalletKeysError("Unlock your wallet in local setup.");
+		}
+		if (
+			CONFIG.transportMode === "stdio" &&
+			CONFIG.loadTools &&
+			CONFIG.loadWalletTools &&
+			!projectRuntime &&
+			!externalWallet &&
+			!CONFIG.useDroplitApi &&
+			!process.env.BSV_MCP_PASSWORD &&
+			!readAccount()?.vaultBinding &&
+			inspectMigration().sources.some(
+				(source) =>
+					source.location === "environment" || source.location === "mcp-client",
+			)
+		) {
+			throw new LegacyWalletMigrationRequiredError(
+				"Import detected MCP keys through local wallet setup.",
+			);
 		}
 		if (
 			CONFIG.transportMode === "stdio" &&
@@ -1401,11 +1427,15 @@ Authentication:
 
 		let payKeyNote = "";
 		if (!projectRuntime && !externalWallet && !hasPersistentPayKey) {
-			payKeyNote = " \x1b[33m(Using generated payPk)\x1b[0m";
+			payKeyNote = walletSetupNeeded
+				? " \x1b[33m(setup required)\x1b[0m"
+				: " \x1b[33m(no payment key)\x1b[0m";
 		}
 		let identityKeyNote = "";
 		if (!projectRuntime && !externalWallet && !hasPersistentIdentityKey) {
-			identityKeyNote = " \x1b[33m(Using generated identityPk)\x1b[0m";
+			identityKeyNote = walletSetupNeeded
+				? " \x1b[33m(setup required)\x1b[0m"
+				: " \x1b[33m(no identity key)\x1b[0m";
 		}
 
 		logFunc(`    Wallet:       ${walletStatus}${payKeyNote}`);
@@ -1441,7 +1471,9 @@ Authentication:
 		| Awaited<ReturnType<typeof createExternalWalletRuntime>>
 		| undefined;
 
-	let embeddedRuntime: Awaited<ReturnType<typeof createEmbeddedWalletRuntime>> | undefined;
+	let embeddedRuntime:
+		| Awaited<ReturnType<typeof createEmbeddedWalletRuntime>>
+		| undefined;
 
 	if (CONFIG.loadTools) {
 		// Check if we should use Droplit API mode
@@ -1532,7 +1564,11 @@ Authentication:
 					const chain =
 						readAccount()?.chain ??
 						(process.env.BSV_CHAIN === "test" ? "test" : "main");
-					const remoteResult = await createEmbeddedWalletRuntime(payPk, identityPk, chain);
+					const remoteResult = await createEmbeddedWalletRuntime(
+						payPk,
+						identityPk,
+						chain,
+					);
 					embeddedRuntime = remoteResult;
 					if (remoteResult.roleContexts) {
 						wallet = undefined;
@@ -1597,7 +1633,9 @@ Authentication:
 				enableMneeTools: !projectRuntime && effectiveConfig.loadMneeTools,
 				walletScope: "full",
 				roleContexts:
-					projectRuntime?.roleContexts ?? externalRuntime?.roleContexts ?? embeddedRuntime?.roleContexts,
+					projectRuntime?.roleContexts ??
+					externalRuntime?.roleContexts ??
+					embeddedRuntime?.roleContexts,
 				identityPk,
 				payPk,
 				xprv,
@@ -1632,6 +1670,9 @@ Authentication:
 		ctx: remoteCtx,
 		loadPrompts: effectiveConfig.loadPrompts,
 		loadResources: effectiveConfig.loadResources,
+		instructions: walletSetupNeeded
+			? "Local BSV MCP is running without an unlocked Vault wallet. Call wallet_onboarding now. It opens private setup in the local browser so existing keys, including MCP client configs, can be imported into Vault. Never ask for a private key, password, or seed phrase in chat."
+			: "This server exposes Bitcoin SV helpers. Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first.",
 	};
 
 	let stopTransport: (() => void | Promise<void>) | undefined;
@@ -1881,7 +1922,10 @@ Authentication:
 					// Modern requests are stateless and do not use MCP-Session-Id.
 					// isLegacyRequest reads a clone, so the original body remains
 					// available to the selected handler.
-					if (!CONFIG.protocol.legacyCompatibility || !(await isLegacyRequest(req))) {
+					if (
+						!CONFIG.protocol.legacyCompatibility ||
+						!(await isLegacyRequest(req))
+					) {
 						const response = await modernHandler.fetch(req, { authInfo });
 						for (const [k, v] of Object.entries(corsHeaders)) {
 							if (!response.headers.has(k)) response.headers.set(k, v);

@@ -52,11 +52,11 @@ export async function confirm(label: string) {
 }
 export async function newPassword() {
 	const value = await terminalInput(
-		"Encryption password (at least 8 characters)",
+		"Encryption password (at least 12 characters; 16+ as a passphrase)",
 		true,
 	);
-	if (value.length < 8)
-		throw new Error("Password must contain at least 8 characters");
+	if (value.length < 12)
+		throw new Error("Password must contain at least 12 characters");
 	if (value !== (await terminalInput("Repeat password", true)))
 		throw new Error("Passwords do not match");
 	return value;
