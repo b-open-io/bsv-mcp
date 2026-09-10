@@ -194,7 +194,7 @@ h3 { margin-bottom: 8px; font-size: 14px; }
 .setup-shell .choice-stack { display: grid; gap: 12px; }
 .setup-shell .local-content > .button { align-self: start; }
 .setup-shell input[type="file"].field { padding-block: 10px; font-size: 14px; }
-.setup-shell .notice { padding: 16px 18px; font-size: 15px; line-height: 1.6; }
+.setup-shell .notice { padding: 16px 18px; font-size: 15px; line-height: 1.6; text-wrap: pretty; }
 .setup-shell .migration-footnote { margin-top: 28px; font-size: 13px; line-height: 1.7; }
 .setup-shell .local-footer { justify-content: center; padding: 20px; letter-spacing: .06em; font-family: inherit; font-size: 11px; line-height: 1.5; }
 .setup-shell button:focus-visible, .setup-shell summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
