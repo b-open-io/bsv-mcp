@@ -10,6 +10,8 @@
   `^2.0.0`. Refresh React 19.3 and related UI types.
 - Import leftover plaintext key sources into Vault, then optionally erase the
   source files. Passphrase policy is enforced before Vault create or unlock.
+- Stop tracking generated `dist/` in git. Work from source (`bun index.ts`).
+  `prepack` and `pack:release` still build and ship `dist/` in the npm package.
 
 ### Fixed
 

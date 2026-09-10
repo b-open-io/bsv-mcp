@@ -8,15 +8,18 @@ usage. It never calls `tools/call` or any other MCP tool.
 Run it with an executable and its arguments after `--`:
 
 ```sh
-bun run scripts/benchmark-mcp.ts -- bun --no-env-file dist/index.js --stdio
+bun run scripts/benchmark-mcp.ts -- bun --no-env-file index.ts --stdio
 ```
+
+To measure the published bundle, build first (`bun run build`) and pass
+`dist/index.js` instead of `index.ts`.
 
 The default client is the modern split SDK v2 client. For comparison with a
 legacy client, explicitly enable server compatibility:
 
 ```sh
 MCP_LEGACY_COMPATIBILITY=true bun run scripts/benchmark-mcp.ts --client both --runs 5 -- \
-  bun --no-env-file dist/index.js --stdio
+  bun --no-env-file index.ts --stdio
 ```
 
 Use `--client modern` to run only the v2 client. It uses the canonical
@@ -29,7 +32,7 @@ package root explicitly when needed:
 bun run scripts/benchmark-mcp.ts \
   --client modern \
   --client-root /path/to/node_modules \
-  -- bun --no-env-file dist/index.js --stdio
+  -- bun --no-env-file index.ts --stdio
 ```
 
 The benchmark itself does not read `.env` files. It passes an explicit child

@@ -5,9 +5,18 @@ import { resolve } from "node:path";
 
 const bundle = resolve("dist/local-mcp-launcher.js");
 
+function ensureLauncherBundle(): void {
+	if (existsSync(bundle)) return;
+	const build = Bun.spawnSync([process.execPath, "run", "build"], {
+		stdout: "inherit",
+		stderr: "inherit",
+	});
+	if (build.exitCode !== 0)
+		throw new Error("bun run build failed; cannot check the launcher artifact");
+}
+
 test("npm package ships a self-contained local launcher bundle", () => {
-	if (!existsSync(bundle))
-		throw new Error("Run bun run build before checking the launcher artifact");
+	ensureLauncherBundle();
 	const source = readFileSync(bundle, "utf8");
 	expect(source.startsWith("#!/usr/bin/env bun")).toBe(true);
 	expect(source).toContain("BSV_MCP_PROJECT_ROOT");
@@ -18,6 +27,7 @@ test("npm package ships a self-contained local launcher bundle", () => {
 });
 
 test("bundled launcher runs from dist without a source checkout", async () => {
+	ensureLauncherBundle();
 	const child = Bun.spawn([process.execPath, bundle, "--help"], {
 		cwd: tmpdir(),
 		stdout: "pipe",

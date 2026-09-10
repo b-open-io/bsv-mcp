@@ -43,16 +43,18 @@ requests one.
 bun install
 bun test
 bun run lint
-bun run build:all       # Vite MCP app, then the published server bundle
+bun index.ts --stdio    # work from source
+bun run build:all       # npm bundle under dist/ (gitignored; built by prepack)
 bun run build:next      # Next.js site
 bun run dev             # Next.js site locally
-bun dist/index.js --stdio
 ```
 
-The package version is defined in `package.json`. The published package includes
-the built `dist/` bundle, README, changelog, license, and Smithery manifest.
+The package version is defined in `package.json`. Git tracks source. The
+published npm package includes the built `dist/` bundle via `"files"` and
+`prepack` / `pack:release`, plus README, changelog, license, and Smithery
+manifest.
 
-For a local MCP connection:
+For a local MCP connection to the published package:
 
 ```sh
 bunx bsv-mcp@latest --stdio

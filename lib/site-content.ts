@@ -214,7 +214,7 @@ export const installTargets: InstallTarget[] = [
 					"claude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 		],
-		note: "The plugin bundles the local server and requires Bun. No config file is needed.",
+		note: "The plugin starts the published npm package and requires Bun. No config file is needed.",
 		docsUrl: "https://code.claude.com/docs/en/mcp",
 	},
 	{
@@ -253,7 +253,7 @@ export const installTargets: InstallTarget[] = [
 				command: "grok mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 		],
-		note: "Grok will not start plugin MCP servers without --trust. The plugin bundles the local server and requires Bun. No config file needs to be edited.",
+		note: "Grok will not start plugin MCP servers without --trust. The plugin starts the published npm package and requires Bun. No config file needs to be edited.",
 		docsUrl: "https://docs.x.ai/build/features/skills-plugins-marketplaces",
 	},
 	{

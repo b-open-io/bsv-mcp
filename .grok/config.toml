@@ -1,7 +1,7 @@
-# Grok project MCP. Wins over the Claude-plugin .mcp.json in this checkout so
-# the plugin-root placeholder is not required. Plugin installs still use .mcp.json.
+# Grok project MCP for this checkout. Runs source so local work is what you
+# debug. Plugin installs use .mcp.json (the published npm package).
 [mcp_servers.bsv-mcp]
 command = "bun"
-args = ["--no-env-file", "dist/index.js", "--stdio"]
+args = ["--no-env-file", "index.ts", "--stdio"]
 startup_timeout_sec = 60
 enabled = true

@@ -2,7 +2,7 @@
 	"mcpServers": {
 		"bsv-mcp": {
 			"command": "npx",
-			"args": ["-y", "bsv-mcp@0.6.0", "--stdio"]
+			"args": ["-y", "bsv-mcp@0.6.1", "--stdio"]
 		}
 	}
 }

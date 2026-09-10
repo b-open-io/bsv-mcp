@@ -3,27 +3,31 @@ import { readFileSync } from "node:fs";
 import { renderDocsMarkdown } from "../lib/docs";
 
 describe("Grok plugin packaging", () => {
-	test("bundled MCP server uses the plugin root and does not load dotenv", () => {
+	test("plugin MCP runs the published npm package", () => {
+		const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+			version: string;
+		};
 		const mcp = JSON.parse(readFileSync(".mcp.json", "utf8")) as {
 			mcpServers: {
 				"bsv-mcp": { command: string; args: string[] };
 			};
 		};
-		expect(mcp.mcpServers["bsv-mcp"].command).toBe("bun");
+		expect(mcp.mcpServers["bsv-mcp"].command).toBe("npx");
 		expect(mcp.mcpServers["bsv-mcp"].args).toEqual([
-			"--no-env-file",
-			`\${CLAUDE_PLUGIN_ROOT}/dist/index.js`,
+			"-y",
+			`bsv-mcp@${pkg.version}`,
 			"--stdio",
 		]);
 	});
 
-	test("opening this repo in Grok launches the local bundled server", () => {
+	test("opening this repo in Grok runs source", () => {
 		const toml = readFileSync(".grok/config.toml", "utf8");
 		expect(toml).toContain("[mcp_servers.bsv-mcp]");
 		expect(toml).toContain('command = "bun"');
 		expect(toml).toContain("--no-env-file");
-		expect(toml).toContain("dist/index.js");
+		expect(toml).toContain("index.ts");
 		expect(toml).toContain("--stdio");
+		expect(toml).not.toContain("dist/index.js");
 		expect(toml).not.toMatch(/\$\{CLAUDE_PLUGIN_ROOT\}/);
 	});
 
