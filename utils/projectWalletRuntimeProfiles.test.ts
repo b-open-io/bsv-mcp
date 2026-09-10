@@ -102,7 +102,7 @@ test("real Vault profile startup pins each selected leaf and revokes retained ru
 			env: {
 				BSV_MCP_PROJECT_ROOT: "/synthetic/project",
 				BSV_MCP_PROJECT_ID: "project",
-				BSV_MCP_PASSWORD: "synthetic-only",
+				BSV_MCP_PASSWORD: "synthetic-only-A1",
 				VAULT_PATH: "/synthetic/vault",
 				TRANSPORT: "stdio",
 			},

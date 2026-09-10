@@ -243,7 +243,7 @@
 											},
 											"satoshis": {
 												"type": "integer",
-												"minimum": -9007199254740991,
+												"minimum": 0,
 												"maximum": 9007199254740991
 											},
 											"lockingScript": {
@@ -2852,7 +2852,11 @@
 					},
 					"modes": [
 						"legacy",
-						"legacy-identity"
+						"legacy-identity",
+						"broadcast-disabled",
+						"embedded",
+						"payments-role",
+						"sponsored"
 					],
 					"profile": "full"
 				}
@@ -2881,7 +2885,11 @@
 					},
 					"modes": [
 						"legacy",
-						"legacy-identity"
+						"legacy-identity",
+						"broadcast-disabled",
+						"embedded",
+						"payments-role",
+						"sponsored"
 					],
 					"profile": "full"
 				}
@@ -2926,7 +2934,11 @@
 					},
 					"modes": [
 						"legacy",
-						"legacy-identity"
+						"legacy-identity",
+						"broadcast-disabled",
+						"embedded",
+						"payments-role",
+						"sponsored"
 					],
 					"profile": "full"
 				}

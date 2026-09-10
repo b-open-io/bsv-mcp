@@ -1,5 +1,21 @@
 # BSV MCP Server Changelog
 
+## [0.6.1] - 2026-09-09
+
+### Changed
+
+- Consume published `bitcoin-backup@0.2.0` and `@opl.dev/vault@0.0.2` instead of
+  `file:` checkouts. Unpin zod from `overrides` and take `zod@^4.6.1`.
+- Raise `@1sat/actions` to `^0.0.208` and `@modelcontextprotocol/ext-apps` to
+  `^2.0.0`. Refresh React 19.3 and related UI types.
+- Import leftover plaintext key sources into Vault, then optionally erase the
+  source files. Passphrase policy is enforced before Vault create or unlock.
+
+### Fixed
+
+- Keep MNEE tools off in context-only external-wallet catalogs.
+- Accept a test Vault passphrase that meets the strength policy.
+
 ## [0.6.0] - 2026-09-09
 
 ### Changed

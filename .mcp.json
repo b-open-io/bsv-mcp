@@ -2,7 +2,11 @@
 	"mcpServers": {
 		"bsv-mcp": {
 			"command": "bun",
-			"args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js", "--stdio"]
+			"args": [
+				"--no-env-file",
+				"${CLAUDE_PLUGIN_ROOT}/dist/index.js",
+				"--stdio"
+			]
 		}
 	}
 }

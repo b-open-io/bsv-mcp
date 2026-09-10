@@ -39,7 +39,7 @@ const sections: DocSection[] = [
 				paragraphs: [
 					"Install Bun and Node.js, then run the command for your client:",
 				],
-				code: "# Codex\ncodex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio",
+				code: "# Codex\ncodex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio\n\n# Claude Code\nclaude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio\n\n# Grok Build\ngrok plugin install b-open-io/bsv-mcp --trust",
 			},
 			{
 				title: "2. Connect a wallet",

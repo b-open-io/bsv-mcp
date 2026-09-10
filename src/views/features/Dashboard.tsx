@@ -324,8 +324,29 @@ function Wallet({ call }: { call: Caller }) {
 	if (error)
 		return (
 			<>
-				<PageHeader eyebrow="wallet" title="Wallet" />
+				<PageHeader
+					eyebrow="wallet"
+					title="Wallet"
+					description="This session has no unlocked Vault wallet yet."
+				/>
 				<Notice tone="error">{error}</Notice>
+				<Surface>
+					<div className="surface-body">
+						<p>
+							Import an existing key or create a Vault wallet in the local
+							browser.
+						</p>
+						<Button
+							onClick={() => {
+								void call("wallet_onboarding").catch((reason) =>
+									setError(String(reason)),
+								);
+							}}
+						>
+							Open wallet setup
+						</Button>
+					</div>
+				</Surface>
 			</>
 		);
 	if (!data)

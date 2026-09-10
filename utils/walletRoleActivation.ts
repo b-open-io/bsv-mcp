@@ -40,7 +40,7 @@ export async function activateWalletRoles(
 				const io = createEmbeddedVaultIo({ vaultPath });
 				try {
 					const keys = await io.unlock({
-						password,
+						...(password ? { password } : {}),
 						binding: { vaultId: binding.vaultId, payment: ref },
 					});
 					if (!keys.payPk)

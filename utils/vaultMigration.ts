@@ -1,7 +1,13 @@
+import { timingSafeEqual } from "node:crypto";
 import { lstatSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { accountNameSchema, listAccounts, readAccount } from "./accounts";
+import {
+	inspectMcpClientKeySources,
+	type McpClientEnvVar,
+	readMcpClientEnvValue,
+} from "./mcpClientKeySources";
 import { readWalletSources } from "./walletSettings";
 
 export interface MigrationSource {
@@ -10,10 +16,14 @@ export interface MigrationSource {
 	storageIdentityKey?: string;
 	depositPrefix?: "mcp" | "1sat";
 	account: string;
-	location: "account" | "legacy-root" | "custom";
+	location: "account" | "legacy-root" | "custom" | "environment" | "mcp-client";
 	encryptedBackup: boolean;
 	plaintextKeys: boolean;
 	walletDatabases: string[];
+	envVar?: McpClientEnvVar;
+	client?: string;
+	serverName?: string;
+	configPath?: string;
 }
 export interface MigrationInventory {
 	sources: MigrationSource[];
@@ -95,6 +105,28 @@ export function inspectMigration(
 		identity: env.IDENTITY_KEY_WIF !== undefined,
 		empty: env.PRIVATE_KEY_WIF === "" || env.IDENTITY_KEY_WIF === "",
 	};
+	const clientSources = inspectMcpClientKeySources(home);
+	sources.push(...clientSources);
+	const envPayment = env.PRIVATE_KEY_WIF;
+	if (typeof envPayment === "string" && envPayment.length > 0) {
+		const listedByClient = clientSources.some((item) => {
+			if (item.envVar !== "PRIVATE_KEY_WIF") return false;
+			const value = readMcpClientEnvValue(item);
+			if (typeof value !== "string" || value.length !== envPayment.length)
+				return false;
+			return timingSafeEqual(Buffer.from(value), Buffer.from(envPayment));
+		});
+		if (!listedByClient) {
+			sources.push({
+				account: "env-payment",
+				location: "environment",
+				encryptedBackup: false,
+				plaintextKeys: true,
+				walletDatabases: [],
+				envVar: "PRIVATE_KEY_WIF",
+			});
+		}
+	}
 	return {
 		sources,
 		boundAccounts: listAccounts(join(base, "accounts"))

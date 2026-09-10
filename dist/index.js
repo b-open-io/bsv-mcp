@@ -81,6 +81,73 @@ var init_stdioGuard = __esm(() => {
   }
 });
 
+// node_modules/@modelcontextprotocol/ext-apps/dist/src/server/index.js
+var D = "ui/resourceUri", L = "text/html;profile=mcp-app", W = "io.modelcontextprotocol/ui";
+var init_server = () => {};
+
+// node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+var __create2, __defProp2, __getOwnPropDesc, __getOwnPropNames2, __getProtoOf2, __hasOwnProp2, __commonJSMin = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), __exportAll = (all, symbols) => {
+  let target = {};
+  for (var name in all) {
+    __defProp2(target, name, {
+      get: all[name],
+      enumerable: true
+    });
+  }
+  if (symbols) {
+    __defProp2(target, Symbol.toStringTag, { value: "Module" });
+  }
+  return target;
+}, __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (var keys = __getOwnPropNames2(from), i = 0, n = keys.length, key;i < n; i++) {
+      key = keys[i];
+      if (!__hasOwnProp2.call(to, key) && key !== except) {
+        __defProp2(to, key, {
+          get: ((k) => from[k]).bind(null, key),
+          enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+        });
+      }
+    }
+  }
+  return to;
+}, __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", {
+  value: mod,
+  enumerable: true
+}) : target, mod));
+var init_chunk_Br0eD_fh = __esm(() => {
+  __create2 = Object.create;
+  __defProp2 = Object.defineProperty;
+  __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  __getOwnPropNames2 = Object.getOwnPropertyNames;
+  __getProtoOf2 = Object.getPrototypeOf;
+  __hasOwnProp2 = Object.prototype.hasOwnProperty;
+});
+
+// node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
+function declares2019Dialect($schema) {
+  return typeof $schema === "string" && DRAFT_2019_09_URIS.has($schema.replace(/#$/, ""));
+}
+function declaredDialect(schema, remedy) {
+  if (!("$schema" in schema) || typeof schema.$schema !== "string")
+    return "2020-12";
+  const declared = schema.$schema.replace(/#$/, "");
+  if (DRAFT_2020_12_URIS.has(declared))
+    return "2020-12";
+  if (DRAFT_2019_09_URIS.has(declared))
+    return "2019-09";
+  if (DRAFT_07_URIS.has(declared) || DRAFT_06_URIS.has(declared))
+    return "draft-7";
+  throw new Error(`JSON Schema declares an unsupported dialect ("$schema": "${schema.$schema.slice(0, 200)}"). The default validator supports JSON Schema 2020-12, 2019-09, draft-07, and draft-06; ${remedy}`);
+}
+var DRAFT_2020_12_URIS, DRAFT_2019_09_URIS, DRAFT_07_URIS, DRAFT_06_URIS;
+var init_dialects_DoSzNhcb = __esm(() => {
+  DRAFT_2020_12_URIS = new Set(["https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft/2020-12/schema"]);
+  DRAFT_2019_09_URIS = new Set(["https://json-schema.org/draft/2019-09/schema", "http://json-schema.org/draft/2019-09/schema"]);
+  DRAFT_07_URIS = new Set(["https://json-schema.org/draft-07/schema", "http://json-schema.org/draft-07/schema"]);
+  DRAFT_06_URIS = new Set(["https://json-schema.org/draft-06/schema", "http://json-schema.org/draft-06/schema"]);
+});
+
 // node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
   const numericValues = Object.values(entries).filter((v) => typeof v === "number");
@@ -95,18 +162,23 @@ function jsonStringifyReplacer(_, value) {
     return value.toString();
   return value;
 }
-function cached(getter) {
-  const set = false;
-  return {
-    get value() {
-      if (!set) {
-        const value = getter();
-        Object.defineProperty(this, "value", { value });
-        return value;
-      }
-      throw new Error("cached value already set");
+
+class Cached {
+  constructor(getter) {
+    this._getter = getter;
+    this._value = undefined;
+  }
+  get value() {
+    const getter = this._getter;
+    if (getter !== undefined) {
+      this._value = getter();
+      this._getter = undefined;
     }
-  };
+    return this._value;
+  }
+}
+function cached(getter) {
+  return new Cached(getter);
 }
 function nullish(input) {
   return input === null || input === undefined;
@@ -152,6 +224,56 @@ function assignProp(target, prop, value) {
     enumerable: true,
     configurable: true
   });
+}
+function rawShape(def) {
+  const desc = Object.getOwnPropertyDescriptor(def, "shape");
+  return desc?.get ? desc.get.raw : desc?.value;
+}
+function sourceShape(schema) {
+  return rawShape(schema._zod.def) ?? schema._zod.def.shape;
+}
+function deferProp(target, key, getter) {
+  Object.defineProperty(target, key, {
+    get() {
+      const value = getter();
+      assignProp(this, key, value);
+      return value;
+    },
+    enumerable: true,
+    configurable: true
+  });
+}
+function putProp(target, key, value) {
+  if (key in target)
+    assignProp(target, key, value);
+  else
+    target[key] = value;
+}
+function mirrorShape(target, source, keys, wrap) {
+  const raw = sourceShape(source);
+  for (const key of keys) {
+    const desc = Object.getOwnPropertyDescriptor(raw, key);
+    if (!desc.enumerable)
+      continue;
+    if (desc.get) {
+      deferProp(target, key, () => {
+        const value = source._zod.def.shape[key];
+        return wrap ? wrap(value, key) : value;
+      });
+    } else
+      putProp(target, key, wrap ? wrap(desc.value, key) : desc.value);
+  }
+}
+function mirrorProps(target, source) {
+  for (const key of Reflect.ownKeys(source)) {
+    const desc = Object.getOwnPropertyDescriptor(source, key);
+    if (!desc.enumerable)
+      continue;
+    if (desc.get)
+      deferProp(target, key, () => source[key]);
+    else
+      putProp(target, key, desc.value);
+  }
 }
 function mergeDefs(...defs) {
   const mergedDescriptors = {};
@@ -241,23 +363,21 @@ function pick(schema, mask) {
   if (hasChecks) {
     throw new Error(".pick() cannot be used on object schemas containing refinements");
   }
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const newShape = {};
-      for (const key of Reflect.ownKeys(mask)) {
-        if (!Object.prototype.hasOwnProperty.call(currDef.shape, key)) {
-          throw new Error(`Unrecognized key: "${String(key)}"`);
-        }
-        if (!mask[key])
-          continue;
-        assignProp(newShape, key, currDef.shape[key]);
-      }
-      assignProp(this, "shape", newShape);
-      return newShape;
-    },
-    checks: []
-  });
-  return clone(schema, def);
+  const newShape = {};
+  mirrorShape(newShape, schema, maskedKeys(schema, mask));
+  return clone(schema, mergeDefs(currDef, { shape: newShape, checks: [] }));
+}
+function maskedKeys(schema, mask) {
+  const raw = sourceShape(schema);
+  const keys = [];
+  for (const key of Reflect.ownKeys(mask)) {
+    if (!Object.getOwnPropertyDescriptor(raw, key)?.enumerable) {
+      throw new Error(`Unrecognized key: "${String(key)}"`);
+    }
+    if (mask[key])
+      keys.push(key);
+  }
+  return keys;
 }
 function omit(schema, mask) {
   const currDef = schema._zod.def;
@@ -266,23 +386,10 @@ function omit(schema, mask) {
   if (hasChecks) {
     throw new Error(".omit() cannot be used on object schemas containing refinements");
   }
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const newShape = { ...schema._zod.def.shape };
-      for (const key of Reflect.ownKeys(mask)) {
-        if (!Object.prototype.hasOwnProperty.call(currDef.shape, key)) {
-          throw new Error(`Unrecognized key: "${String(key)}"`);
-        }
-        if (!mask[key])
-          continue;
-        delete newShape[key];
-      }
-      assignProp(this, "shape", newShape);
-      return newShape;
-    },
-    checks: []
-  });
-  return clone(schema, def);
+  const omitted = new Set(maskedKeys(schema, mask));
+  const newShape = {};
+  mirrorShape(newShape, schema, Reflect.ownKeys(sourceShape(schema)).filter((key) => !omitted.has(key)));
+  return clone(schema, mergeDefs(currDef, { shape: newShape, checks: [] }));
 }
 function extend(schema, shape) {
   if (!isPlainObject(shape)) {
@@ -291,34 +398,26 @@ function extend(schema, shape) {
   const checks = schema._zod.def.checks;
   const hasChecks = checks && checks.length > 0;
   if (hasChecks) {
-    const existingShape = schema._zod.def.shape;
+    const existingShape = sourceShape(schema);
     for (const key of Reflect.ownKeys(shape)) {
       if (Object.getOwnPropertyDescriptor(existingShape, key) !== undefined) {
         throw new Error("Cannot overwrite keys on object schemas containing refinements. Use `.safeExtend()` instead.");
       }
     }
   }
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const _shape = { ...schema._zod.def.shape, ...shape };
-      assignProp(this, "shape", _shape);
-      return _shape;
-    }
-  });
-  return clone(schema, def);
+  return clone(schema, mergeDefs(schema._zod.def, { shape: extended(schema, shape) }));
+}
+function extended(schema, shape) {
+  const newShape = {};
+  mirrorShape(newShape, schema, Reflect.ownKeys(sourceShape(schema)));
+  mirrorProps(newShape, shape);
+  return newShape;
 }
 function safeExtend(schema, shape) {
   if (!isPlainObject(shape)) {
     throw new Error("Invalid input to safeExtend: expected a plain object");
   }
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const _shape = { ...schema._zod.def.shape, ...shape };
-      assignProp(this, "shape", _shape);
-      return _shape;
-    }
-  });
-  return clone(schema, def);
+  return clone(schema, mergeDefs(schema._zod.def, { shape: extended(schema, shape) }));
 }
 function merge(a, b) {
   if (!b?._zod?.def) {
@@ -327,12 +426,11 @@ function merge(a, b) {
   if (a._zod.def.checks?.length) {
     throw new Error(".merge() cannot be used on object schemas containing refinements. Use .safeExtend() instead.");
   }
+  const newShape = {};
+  mirrorShape(newShape, a, Reflect.ownKeys(sourceShape(a)));
+  mirrorShape(newShape, b, Reflect.ownKeys(sourceShape(b)));
   const def = mergeDefs(a._zod.def, {
-    get shape() {
-      const _shape = { ...a._zod.def.shape, ...b._zod.def.shape };
-      assignProp(this, "shape", _shape);
-      return _shape;
-    },
+    shape: newShape,
     get catchall() {
       return b._zod.def.catchall;
     },
@@ -347,67 +445,16 @@ function partial(Class, schema, mask, name = "partial") {
   if (hasChecks) {
     throw new Error(`.${name}() cannot be used on object schemas containing refinements`);
   }
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const oldShape = schema._zod.def.shape;
-      const shape = { ...oldShape };
-      if (mask) {
-        for (const key of Reflect.ownKeys(mask)) {
-          if (!Object.prototype.hasOwnProperty.call(oldShape, key)) {
-            throw new Error(`Unrecognized key: "${String(key)}"`);
-          }
-          if (!mask[key])
-            continue;
-          shape[key] = Class ? new Class({
-            type: "optional",
-            innerType: oldShape[key]
-          }) : oldShape[key];
-        }
-      } else {
-        for (const key of Reflect.ownKeys(oldShape)) {
-          shape[key] = Class ? new Class({
-            type: "optional",
-            innerType: oldShape[key]
-          }) : oldShape[key];
-        }
-      }
-      assignProp(this, "shape", shape);
-      return shape;
-    },
-    checks: []
-  });
-  return clone(schema, def);
+  const selected = mask ? new Set(maskedKeys(schema, mask)) : undefined;
+  const newShape = {};
+  mirrorShape(newShape, schema, Reflect.ownKeys(sourceShape(schema)), Class && ((value, key) => selected && !selected.has(key) ? value : new Class({ type: "optional", innerType: value })));
+  return clone(schema, mergeDefs(schema._zod.def, { shape: newShape, checks: [] }));
 }
 function required(Class, schema, mask) {
-  const def = mergeDefs(schema._zod.def, {
-    get shape() {
-      const oldShape = schema._zod.def.shape;
-      const shape = { ...oldShape };
-      if (mask) {
-        for (const key of Reflect.ownKeys(mask)) {
-          if (!Object.prototype.hasOwnProperty.call(shape, key)) {
-            throw new Error(`Unrecognized key: "${String(key)}"`);
-          }
-          if (!mask[key])
-            continue;
-          shape[key] = new Class({
-            type: "nonoptional",
-            innerType: oldShape[key]
-          });
-        }
-      } else {
-        for (const key of Reflect.ownKeys(oldShape)) {
-          shape[key] = new Class({
-            type: "nonoptional",
-            innerType: oldShape[key]
-          });
-        }
-      }
-      assignProp(this, "shape", shape);
-      return shape;
-    }
-  });
-  return clone(schema, def);
+  const selected = mask ? new Set(maskedKeys(schema, mask)) : undefined;
+  const newShape = {};
+  mirrorShape(newShape, schema, Reflect.ownKeys(sourceShape(schema)), (value, key) => selected && !selected.has(key) ? value : new Class({ type: "nonoptional", innerType: value }));
+  return clone(schema, mergeDefs(schema._zod.def, { shape: newShape }));
 }
 function aborted(x, startIndex = 0) {
   if (x.aborted === true)
@@ -457,13 +504,18 @@ function finalizeIssue(iss, ctx, config) {
   }
   const schemaError = iss.schema !== iss.inst ? iss.schema?._zod.def?.error : undefined;
   const message = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(schemaError?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config.customError?.(iss)) ?? unwrapMessage(config.localeError?.(iss)) ?? "Invalid input";
-  const { inst: _inst, schema: _schema, continue: _continue, input: _input, ...rest } = iss;
-  rest.path ?? (rest.path = []);
-  rest.message = message;
-  if (ctx?.reportInput) {
-    rest.input = _input;
+  const full = {};
+  for (const k of Object.keys(iss)) {
+    if (k === "inst" || k === "schema" || k === "continue" || k === "input" || k === "__proto__")
+      continue;
+    full[k] = iss[k];
   }
-  return rest;
+  full.path ?? (full.path = []);
+  full.message = message;
+  if (ctx?.reportInput) {
+    full.input = iss.input;
+  }
+  return full;
 }
 function codePointLength(str) {
   const units = str.length;
@@ -526,6 +578,9 @@ function members(proto, table) {
     else
       defineBound(proto, key, desc.value);
   }
+  for (const sym of Object.getOwnPropertySymbols(table)) {
+    defineBound(proto, sym, table[sym]);
+  }
 }
 function own(inst, key, value, enumerable = true) {
   Object.defineProperty(inst, key, { configurable: true, writable: true, enumerable, value });
@@ -533,6 +588,22 @@ function own(inst, key, value, enumerable = true) {
 }
 function hide(inst, key, value) {
   return own(inst, key, value, false);
+}
+function derived(computes, table) {
+  for (const key in computes) {
+    const compute = computes[key];
+    Object.defineProperty(table, key, {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return own(this, key, compute(this));
+      },
+      set(value) {
+        own(this, key, value);
+      }
+    });
+  }
+  return table;
 }
 function defineBound(proto, key, fn) {
   Object.defineProperty(proto, key, {
@@ -604,7 +675,7 @@ function constantCatch(value) {
   fn[CONSTANT_CATCH] = true;
   return fn;
 }
-var EVALUATING, captureStackTrace, allowsEval, propertyKeyTypes, NUMBER_FORMAT_RANGES, highSurrogate, installing, broke = false, breaker, CONSTANT_CATCH = "~constantCatch";
+var EVALUATING, captureStackTrace, allowsEval, propertyKeyTypes, NUMBER_FORMAT_RANGES, BIGINT_FORMAT_RANGES, highSurrogate, installing, broke = false, breaker, CONSTANT_CATCH = "~constantCatch";
 var init_util = __esm(() => {
   init_core();
   EVALUATING = /* @__PURE__ */ Symbol("evaluating");
@@ -632,6 +703,10 @@ var init_util = __esm(() => {
     float32: [-340282346638528860000000000000000000000, 340282346638528860000000000000000000000],
     float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
   }))();
+  BIGINT_FORMAT_RANGES = {
+    int64: [/* @__PURE__ */ BigInt("-9223372036854775808"), /* @__PURE__ */ BigInt("9223372036854775807")],
+    uint64: [/* @__PURE__ */ BigInt(0), /* @__PURE__ */ BigInt("18446744073709551615")]
+  };
   highSurrogate = /[\uD800-\uDBFF]/;
   breaker = {
     configurable: true,
@@ -846,13 +921,10 @@ function formatError(error, mapper = (issue) => issue.message) {
   processError(error);
   return fieldErrors;
 }
-var _messageDesc, _zodDesc2, _issuesDesc, _installedToString, initializer = (inst, def) => {
+var _messageDesc, _issuesDesc, _installedToString, initializer = (inst, def) => {
   inst.name = "$ZodError";
-  _zodDesc2.value = inst._zod;
-  Object.defineProperty(inst, "_zod", _zodDesc2);
   _issuesDesc.value = def;
   Object.defineProperty(inst, "issues", _issuesDesc);
-  _zodDesc2.value = undefined;
   _issuesDesc.value = undefined;
   Object.defineProperty(inst, "message", _messageDesc);
   const proto = Object.getPrototypeOf(inst);
@@ -881,7 +953,6 @@ var init_errors = __esm(() => {
     enumerable: true,
     configurable: true
   };
-  _zodDesc2 = { value: undefined, enumerable: false };
   _issuesDesc = { value: undefined, enumerable: false };
   _installedToString = /* @__PURE__ */ new WeakSet([Object.prototype, Error.prototype]);
   $ZodError = $constructor("$ZodError", initializer);
@@ -893,6 +964,40 @@ var init_errors = __esm(() => {
 // node_modules/zod/v4/core/parse.js
 function finalizeParams(callee, params) {
   return { callee: params?.callee ?? callee, Err: params?.Err };
+}
+function failure(Err, issues, ctx) {
+  let error;
+  return {
+    success: false,
+    get error() {
+      if (!error) {
+        error = new Err(issues.map((iss) => finalizeIssue(iss, ctx, config())));
+        issues = undefined;
+        ctx = undefined;
+      }
+      return error;
+    },
+    set error(e) {
+      error = e;
+      issues = undefined;
+      ctx = undefined;
+    }
+  };
+}
+function validateFallback(schema, value, _ctx) {
+  const ctx = _ctx ? { ..._ctx, async: false, abortEarly: true } : { async: false, abortEarly: true };
+  const fallbackRun = schema._zod.bag.fallbackRun;
+  let result;
+  if (fallbackRun) {
+    ctx[COMPILE_FALLBACK] = true;
+    result = fallbackRun({ value, issues: [] }, ctx);
+  } else {
+    result = schema._zod.run({ value, issues: [] }, ctx);
+  }
+  if (result instanceof Promise) {
+    throw new $ZodAsyncError;
+  }
+  return result.issues.length === 0;
 }
 var _parse = (_Err) => {
   const fn = (schema, value, _ctx, _params) => {
@@ -929,20 +1034,29 @@ var _parse = (_Err) => {
   if (result instanceof Promise) {
     throw new $ZodAsyncError;
   }
-  return result.issues.length ? {
-    success: false,
-    error: new (_Err ?? $ZodError)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-  } : { success: true, data: result.value };
-}, safeParse, _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
+  return result.issues.length ? failure(_Err, result.issues, ctx) : { success: true, data: result.value };
+}, _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
   const ctx = _ctx ? { ..._ctx, async: true } : { async: true };
   let result = schema._zod.run({ value, issues: [] }, ctx);
   if (result instanceof Promise)
     result = await result;
-  return result.issues.length ? {
-    success: false,
-    error: new _Err(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-  } : { success: true, data: result.value };
-}, safeParseAsync, _encode = (_Err) => {
+  return result.issues.length ? failure(_Err, result.issues, ctx) : { success: true, data: result.value };
+}, COMPILE_INVALID, COMPILE_FALLBACK, validate = (schema, value, _ctx) => {
+  const validator = schema._zod.bag.validator;
+  if (validator !== undefined) {
+    if (validator(value) !== COMPILE_INVALID)
+      return true;
+    if (validator.definite === true && _ctx === undefined)
+      return false;
+  }
+  return validateFallback(schema, value, _ctx);
+}, validateAsync = async (schema, value, _ctx) => {
+  const ctx = _ctx ? { ..._ctx, async: true, abortEarly: true } : { async: true, abortEarly: true };
+  let result = schema._zod.run({ value, issues: [] }, ctx);
+  if (result instanceof Promise)
+    result = await result;
+  return result.issues.length === 0;
+}, _encode = (_Err) => {
   const parse = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
     const ctx = _ctx ? { ..._ctx, direction: "backward" } : { direction: "backward" };
@@ -981,10 +1095,9 @@ var _parse = (_Err) => {
 };
 var init_parse = __esm(() => {
   init_core();
-  init_errors();
   init_util();
-  safeParse = /* @__PURE__ */ _safeParse($ZodRealError);
-  safeParseAsync = /* @__PURE__ */ _safeParseAsync($ZodRealError);
+  COMPILE_INVALID = /* @__PURE__ */ Symbol.for("zod.compile.invalid");
+  COMPILE_FALLBACK = /* @__PURE__ */ Symbol.for("zod.compile.fallback");
 });
 
 // node_modules/zod/v4/core/regexes.js
@@ -1017,10 +1130,7 @@ var cuid, cuid2, ulid, xid, ksuid, nanoid, duration, guid, uuid = (version) => {
   if (!version)
     return /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
   return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
-}, email, _emoji = `^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$`, ipv4, ipv6, cidrv4, cidrv6, base64, base64url, httpProtocol, e164, dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`, date, string = (params) => {
-  const regex = params ? `[\\s\\S]{${params?.minimum ?? 0},${params?.maximum ?? ""}}` : `[\\s\\S]*`;
-  return new RegExp(`^${regex}$`);
-}, integer, number, boolean, _null, _undefined, lowercase, uppercase;
+}, email, _emoji = `^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$`, ipv4, ipv6, cidrv4, cidrv6, base64, base64url, httpProtocol, e164, dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`, date, anyString, integer, number, boolean, _null, lowercase, uppercase;
 var init_regexes = __esm(() => {
   cuid = /^[cC][0-9a-z]{6,}$/;
   cuid2 = /^[0-9a-z]+$/;
@@ -1030,21 +1140,21 @@ var init_regexes = __esm(() => {
   nanoid = /^[a-zA-Z0-9_-]{21}$/;
   duration = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/;
   guid = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
-  email = /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
+  email = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
   ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
   ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
   cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
   cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
   base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
-  base64url = /^[A-Za-z0-9_-]*$/;
+  base64url = /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/;
   httpProtocol = /^https?$/;
   e164 = /^\+[1-9]\d{6,14}$/;
   date = /* @__PURE__ */ anchor(dateSource);
+  anyString = /^[\s\S]{0,}$/;
   integer = /^-?\d+$/;
   number = /^-?\d+(?:\.\d+)?$/;
   boolean = /^(?:true|false)$/i;
   _null = /^null$/i;
-  _undefined = /^undefined$/i;
   lowercase = /^[^A-Z]*$/;
   uppercase = /^[^a-z]*$/;
 });
@@ -1072,16 +1182,6 @@ var init_checks = __esm(() => {
   $ZodCheckLessThan = /* @__PURE__ */ $constructor("$ZodCheckLessThan", (inst, def) => {
     $ZodCheck.init(inst, def);
     const origin = numericOriginMap[typeof def.value];
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      const curr = (def.inclusive ? bag.maximum : bag.exclusiveMaximum) ?? Number.POSITIVE_INFINITY;
-      if (def.value < curr) {
-        if (def.inclusive)
-          bag.maximum = def.value;
-        else
-          bag.exclusiveMaximum = def.value;
-      }
-    });
     inst._zod.check = (payload) => {
       if (def.inclusive ? payload.value <= def.value : payload.value < def.value) {
         return;
@@ -1100,16 +1200,6 @@ var init_checks = __esm(() => {
   $ZodCheckGreaterThan = /* @__PURE__ */ $constructor("$ZodCheckGreaterThan", (inst, def) => {
     $ZodCheck.init(inst, def);
     const origin = numericOriginMap[typeof def.value];
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      const curr = (def.inclusive ? bag.minimum : bag.exclusiveMinimum) ?? Number.NEGATIVE_INFINITY;
-      if (def.value > curr) {
-        if (def.inclusive)
-          bag.minimum = def.value;
-        else
-          bag.exclusiveMinimum = def.value;
-      }
-    });
     inst._zod.check = (payload) => {
       if (def.inclusive ? payload.value >= def.value : payload.value > def.value) {
         return;
@@ -1127,10 +1217,6 @@ var init_checks = __esm(() => {
   });
   $ZodCheckMultipleOf = /* @__PURE__ */ $constructor("$ZodCheckMultipleOf", (inst, def) => {
     $ZodCheck.init(inst, def);
-    inst._zod.onattach.push((inst) => {
-      var _a;
-      (_a = inst._zod.bag).multipleOf ?? (_a.multipleOf = def.value);
-    });
     inst._zod.check = (payload) => {
       if (typeof payload.value !== typeof def.value)
         throw new Error("Cannot mix number and bigint in multiple_of check.");
@@ -1153,14 +1239,6 @@ var init_checks = __esm(() => {
     const isInt = def.format?.includes("int");
     const origin = isInt ? "int" : "number";
     const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.format = def.format;
-      bag.minimum = minimum;
-      bag.maximum = maximum;
-      if (isInt)
-        bag.pattern = integer;
-    });
     inst._zod.check = (payload) => {
       const input = payload.value;
       if (isInt) {
@@ -1230,11 +1308,6 @@ var init_checks = __esm(() => {
     var _a;
     $ZodCheck.init(inst, def);
     (_a = inst._zod.def).when ?? (_a.when = _whenHasLength);
-    inst._zod.onattach.push((inst) => {
-      const curr = inst._zod.bag.maximum ?? Number.POSITIVE_INFINITY;
-      if (def.maximum < curr)
-        inst._zod.bag.maximum = def.maximum;
-    });
     inst._zod.check = (payload) => {
       const input = payload.value;
       const units = input.length;
@@ -1257,11 +1330,6 @@ var init_checks = __esm(() => {
     var _a;
     $ZodCheck.init(inst, def);
     (_a = inst._zod.def).when ?? (_a.when = _whenHasLength);
-    inst._zod.onattach.push((inst) => {
-      const curr = inst._zod.bag.minimum ?? Number.NEGATIVE_INFINITY;
-      if (def.minimum > curr)
-        inst._zod.bag.minimum = def.minimum;
-    });
     inst._zod.check = (payload) => {
       const input = payload.value;
       const units = input.length;
@@ -1284,12 +1352,6 @@ var init_checks = __esm(() => {
     var _a;
     $ZodCheck.init(inst, def);
     (_a = inst._zod.def).when ?? (_a.when = _whenHasLength);
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.minimum = def.length;
-      bag.maximum = def.length;
-      bag.length = def.length;
-    });
     inst._zod.check = (payload) => {
       const input = payload.value;
       const units = input.length;
@@ -1312,14 +1374,6 @@ var init_checks = __esm(() => {
   $ZodCheckStringFormat = /* @__PURE__ */ $constructor("$ZodCheckStringFormat", (inst, def) => {
     var _a, _b;
     $ZodCheck.init(inst, def);
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.format = def.format;
-      if (def.pattern) {
-        bag.patterns ?? (bag.patterns = new Set);
-        bag.patterns.add(def.pattern);
-      }
-    });
     if (def.pattern)
       (_a = inst._zod).check ?? (_a.check = (payload) => {
         def.pattern.lastIndex = 0;
@@ -1368,11 +1422,6 @@ var init_checks = __esm(() => {
     const escapedRegex = escapeRegex(def.includes);
     const pattern = new RegExp(typeof def.position === "number" ? `^.{${def.position},}${escapedRegex}` : escapedRegex);
     def.pattern = pattern;
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.patterns ?? (bag.patterns = new Set);
-      bag.patterns.add(pattern);
-    });
     inst._zod.check = (payload) => {
       if (payload.value.includes(def.includes, def.position))
         return;
@@ -1391,11 +1440,6 @@ var init_checks = __esm(() => {
     $ZodCheck.init(inst, def);
     const pattern = new RegExp(`^${escapeRegex(def.prefix)}.*`);
     def.pattern ?? (def.pattern = pattern);
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.patterns ?? (bag.patterns = new Set);
-      bag.patterns.add(pattern);
-    });
     inst._zod.check = (payload) => {
       if (payload.value.startsWith(def.prefix))
         return;
@@ -1414,11 +1458,6 @@ var init_checks = __esm(() => {
     $ZodCheck.init(inst, def);
     const pattern = new RegExp(`.*${escapeRegex(def.suffix)}$`);
     def.pattern ?? (def.pattern = pattern);
-    inst._zod.onattach.push((inst) => {
-      const bag = inst._zod.bag;
-      bag.patterns ?? (bag.patterns = new Set);
-      bag.patterns.add(pattern);
-    });
     inst._zod.check = (payload) => {
       if (payload.value.endsWith(def.suffix))
         return;
@@ -1451,8 +1490,11 @@ class Doc {
   }
   indented(fn) {
     this.indent += 1;
-    fn(this);
-    this.indent -= 1;
+    try {
+      fn(this);
+    } finally {
+      this.indent -= 1;
+    }
   }
   write(arg) {
     if (typeof arg === "function") {
@@ -1485,20 +1527,26 @@ var version;
 var init_versions = __esm(() => {
   version = {
     major: 4,
-    minor: 5,
-    patch: 4
+    minor: 6,
+    patch: 1
   };
 });
 
 // node_modules/zod/v4/core/schemas.js
+async function validateAsync2(inst, value) {
+  const ctx = { async: true };
+  return toStandardResult(await inst._zod.run({ value, issues: [] }, ctx), ctx);
+}
 function standardProps(inst) {
   return {
     validate: (value) => {
+      const ctx = { async: false };
       try {
-        return toStandardResult(safeParse(inst, value));
-      } catch (_) {
-        return safeParseAsync(inst, value).then(toStandardResult);
-      }
+        const r = inst._zod.run({ value, issues: [] }, ctx);
+        if (!(r instanceof Promise))
+          return toStandardResult(r, ctx);
+      } catch (_) {}
+      return validateAsync2(inst, value);
     },
     vendor: "zod",
     version: 1
@@ -1564,7 +1612,7 @@ function isValidBase64(data) {
   }
 }
 function isValidBase64URL(data) {
-  if (!base64url.test(data))
+  if (!base64urlCharset.test(data))
     return false;
   const base64 = data.replace(/[-_]/g, (c) => c === "-" ? "+" : "/");
   const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
@@ -1647,14 +1695,20 @@ function normalizeDef(def) {
     optionalKeys: new Set(okeys)
   };
 }
-function handleCatchall(proms, input, payload, ctx, def, inst) {
+function handleCatchall(proms, input, payload, ctx, def, inst, abortEarly) {
   const unrecognized = [];
   const keySet = def.keySet;
   const _catchall = def.catchall._zod;
   const t = _catchall.def.type;
   const optin = _catchall.optin;
   const optout = _catchall.optout;
+  let seen = 0;
   for (const key in input) {
+    if (abortEarly && payload.issues.length !== seen) {
+      if (aborted(payload, seen))
+        break;
+      seen = payload.issues.length;
+    }
     if (keySet.has(key))
       continue;
     if (key === "__proto__") {
@@ -1707,6 +1761,24 @@ function handleUnionResults(results, final, inst, ctx) {
     errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
   });
   return final;
+}
+function discriminatorMap(def) {
+  const map = new Map;
+  for (const option of def.options) {
+    const values = option._zod.propValues?.[def.discriminator];
+    if (!values || values.size === 0)
+      throw new Error(`Invalid discriminated union option at index "${def.options.indexOf(option)}"`);
+    for (const value of values) {
+      if (map.has(value)) {
+        if (value !== undefined)
+          throw new Error(`Duplicate discriminator value "${String(value)}"`);
+        map.set(value, null);
+      } else {
+        map.set(value, option);
+      }
+    }
+  }
+  return map;
 }
 function mergeValues(a, b) {
   if (a === b) {
@@ -1911,11 +1983,15 @@ function handleRefineResult(result, payload, input, inst) {
     payload.issues.push(issue(_iss));
   }
 }
-var $ZodType, toStandardResult = (r) => r.success ? { value: r.data } : { issues: r.error?.issues }, $ZodString, $ZodStringFormat, $ZodGUID, $ZodUUID, $ZodEmail, URL_BAD_FORMAT = 1, URL_UNPARSEABLE = 2, asciiTabOrNewline, $ZodURL, $ZodEmoji, $ZodNanoID, $ZodCUID, $ZodCUID2, $ZodULID, $ZodXID, $ZodKSUID, $ZodISODateTime, $ZodISODate, $ZodISOTime, $ZodISODuration, $ZodIPv4, ipv6Alphabet, $ZodIPv6, $ZodCIDRv4, $ZodCIDRv6, $ZodBase64, $ZodBase64URL, $ZodE164, $ZodJWT, $ZodNumber, $ZodNumberFormat, $ZodBoolean, $ZodUndefined, $ZodNull, $ZodAny, $ZodUnknown, $ZodNever, $ZodArray, NO_SYMBOL_KEYS, propShapes, $ZodObject, $ZodObjectJIT, $ZodUnion, $ZodDiscriminatedUnion, $ZodIntersection, $ZodTuple, $ZodRecord, $ZodEnum, $ZodLiteral, $ZodTransform, $ZodOptional, $ZodExactOptional, $ZodNullable, $ZodDefault, $ZodPrefault, $ZodNonOptional, $ZodCatch, $ZodPipe, $ZodPreprocess, $ZodReadonly, $ZodLazy, $ZodCustom;
+function handlePropertiesResult(result, payload, key) {
+  if (result.issues.length) {
+    payload.issues.push(...prefixIssues(key, result.issues));
+  }
+}
+var $ZodType, toStandardResult = (r, ctx) => r.issues.length ? { issues: r.issues.map((iss) => finalizeIssue(iss, ctx, config())) } : { value: r.value }, $ZodString, $ZodStringFormat, $ZodGUID, $ZodUUID, $ZodEmail, URL_BAD_FORMAT = 1, URL_UNPARSEABLE = 2, asciiTabOrNewline, $ZodURL, $ZodEmoji, $ZodNanoID, $ZodCUID, $ZodCUID2, $ZodULID, $ZodXID, $ZodKSUID, $ZodISODateTime, $ZodISODate, $ZodISOTime, $ZodISODuration, $ZodIPv4, ipv6Alphabet, $ZodIPv6, $ZodCIDRv4, $ZodCIDRv6, base64Charset, $ZodBase64, base64urlCharset, $ZodBase64URL, $ZodE164, $ZodJWT, $ZodNumber, $ZodNumberFormat, $ZodBoolean, $ZodNull, $ZodAny, $ZodUnknown, $ZodNever, $ZodArray, NO_SYMBOL_KEYS, $ZodObject, $ZodObjectJIT, $ZodUnion, $ZodDiscriminatedUnion, $ZodIntersection, $ZodTuple, $ZodRecord, $ZodEnum, $ZodLiteral, $ZodTransform, $ZodOptional, $ZodExactOptional, $ZodNullable, $ZodDefault, $ZodPrefault, $ZodNonOptional, $ZodCatch, $ZodPipe, $ZodPreprocess, $ZodReadonly, $ZodLazy, $ZodCustom, $ZodProperties;
 var init_schemas = __esm(() => {
   init_checks();
   init_core();
-  init_parse();
   init_regexes();
   init_util();
   init_versions();
@@ -2030,7 +2106,7 @@ var init_schemas = __esm(() => {
   });
   $ZodString = /* @__PURE__ */ $constructor("$ZodString", (inst, def) => {
     $ZodType.init(inst, def);
-    inst._zod.pattern = [...inst?._zod.bag?.patterns ?? []].pop() ?? string(inst._zod.bag);
+    inst._zod.pattern = def.pattern ?? anyString;
     inst._zod.parse = (payload, _) => {
       if (def.coerce)
         try {
@@ -2175,12 +2251,6 @@ var init_schemas = __esm(() => {
   $ZodISODateTime = /* @__PURE__ */ $constructor("$ZodISODateTime", (inst, def) => {
     def.pattern ?? (def.pattern = datetime(def));
     $ZodStringFormat.init(inst, def);
-    if (def.local || def.precision === -1) {
-      inst._zod.bag.laxFormat = true;
-      inst._zod.onattach.push((s) => {
-        s._zod.bag.laxFormat = true;
-      });
-    }
   });
   $ZodISODate = /* @__PURE__ */ $constructor("$ZodISODate", (inst, def) => {
     def.pattern ?? (def.pattern = date);
@@ -2197,13 +2267,11 @@ var init_schemas = __esm(() => {
   $ZodIPv4 = /* @__PURE__ */ $constructor("$ZodIPv4", (inst, def) => {
     def.pattern ?? (def.pattern = ipv4);
     $ZodStringFormat.init(inst, def);
-    inst._zod.bag.format = `ipv4`;
   });
   ipv6Alphabet = /^[0-9a-fA-F:.]+$/;
   $ZodIPv6 = /* @__PURE__ */ $constructor("$ZodIPv6", (inst, def) => {
     def.pattern ?? (def.pattern = ipv6);
     $ZodStringFormat.init(inst, def);
-    inst._zod.bag.format = `ipv6`;
     inst._zod.check = (payload) => {
       if (!isValidIPv6(payload.value)) {
         payload.issues.push({
@@ -2235,10 +2303,10 @@ var init_schemas = __esm(() => {
       }
     };
   });
+  base64Charset = /^[0-9a-zA-Z+/]*={0,2}$/;
   $ZodBase64 = /* @__PURE__ */ $constructor("$ZodBase64", (inst, def) => {
-    def.pattern ?? (def.pattern = base64);
+    def.pattern ?? (def.pattern = base64Charset);
     $ZodStringFormat.init(inst, def);
-    inst._zod.bag.contentEncoding = "base64";
     inst._zod.check = (payload) => {
       if (isValidBase64(payload.value))
         return;
@@ -2251,10 +2319,10 @@ var init_schemas = __esm(() => {
       });
     };
   });
+  base64urlCharset = /^[A-Za-z0-9_-]*$/;
   $ZodBase64URL = /* @__PURE__ */ $constructor("$ZodBase64URL", (inst, def) => {
-    def.pattern ?? (def.pattern = base64url);
+    def.pattern ?? (def.pattern = base64urlCharset);
     $ZodStringFormat.init(inst, def);
-    inst._zod.bag.contentEncoding = "base64url";
     inst._zod.check = (payload) => {
       if (isValidBase64URL(payload.value))
         return;
@@ -2287,7 +2355,7 @@ var init_schemas = __esm(() => {
   });
   $ZodNumber = /* @__PURE__ */ $constructor("$ZodNumber", (inst, def) => {
     $ZodType.init(inst, def);
-    inst._zod.pattern = inst._zod.bag.pattern ?? number;
+    inst._zod.pattern = number;
     inst._zod.parse = (payload, _ctx) => {
       if (def.coerce)
         try {
@@ -2325,23 +2393,6 @@ var init_schemas = __esm(() => {
         return payload;
       payload.issues.push({
         expected: "boolean",
-        code: "invalid_type",
-        input,
-        inst
-      });
-      return payload;
-    };
-  });
-  $ZodUndefined = /* @__PURE__ */ $constructor("$ZodUndefined", (inst, def) => {
-    $ZodType.init(inst, def);
-    inst._zod.pattern = _undefined;
-    inst._zod.values = new Set([undefined]);
-    inst._zod.parse = (payload, _ctx) => {
-      const input = payload.value;
-      if (typeof input === "undefined")
-        return payload;
-      payload.issues.push({
-        expected: "undefined",
         code: "invalid_type",
         input,
         inst
@@ -2403,6 +2454,7 @@ var init_schemas = __esm(() => {
       }
       payload.value = memo ? memo.alloc(inst, payload, Array(input.length), ctx) : Array(input.length);
       const proms = [];
+      const abortEarly = ctx?.abortEarly;
       for (let i = 0;i < input.length; i++) {
         const item = input[i];
         const result = def.element._zod.run({
@@ -2413,6 +2465,8 @@ var init_schemas = __esm(() => {
           proms.push(result.then((result) => handleArrayResult(result, payload, i)));
         } else {
           handleArrayResult(result, payload, i);
+          if (abortEarly && result.issues.length !== 0 && aborted(result))
+            break;
         }
       }
       if (proms.length) {
@@ -2422,23 +2476,19 @@ var init_schemas = __esm(() => {
     };
   });
   NO_SYMBOL_KEYS = [];
-  propShapes = new WeakMap;
   $ZodObject = /* @__PURE__ */ $constructor("$ZodObject", (inst, def) => {
     $ZodType.init(inst, def);
     const desc = Object.getOwnPropertyDescriptor(def, "shape");
-    if (!desc?.get) {
-      const sh = def.shape;
-      propShapes.set(def, sh);
-      Object.defineProperty(def, "shape", {
-        get: () => {
-          const newSh = { ...sh };
-          Object.defineProperty(def, "shape", {
-            value: newSh
-          });
-          propShapes.set(def, newSh);
-          return newSh;
-        }
-      });
+    const sh = desc?.get ? desc.get.raw : def.shape ?? {};
+    if (sh) {
+      const get = () => {
+        const newSh = { ...sh };
+        Object.defineProperty(def, "shape", { value: newSh });
+        get.raw = newSh;
+        return newSh;
+      };
+      get.raw = sh;
+      Object.defineProperty(def, "shape", { get });
     }
     const _normalized = cached(() => normalizeDef(def));
     defineLazyInternal(inst, "propValues", (zod) => {
@@ -2478,7 +2528,14 @@ var init_schemas = __esm(() => {
       payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
       const proms = [];
       const shape = value.shape;
+      const abortEarly = ctx?.abortEarly;
+      let seen = payload.issues.length;
       for (const key of value.allKeys) {
+        if (abortEarly && payload.issues.length !== seen) {
+          if (aborted(payload, seen))
+            break;
+          seen = payload.issues.length;
+        }
         if (key === "__proto__")
           continue;
         const el = shape[key];
@@ -2494,7 +2551,7 @@ var init_schemas = __esm(() => {
       if (!catchall) {
         return proms.length ? Promise.all(proms).then(() => payload) : payload;
       }
-      return handleCatchall(proms, input, payload, ctx, _normalized.value, inst);
+      return handleCatchall(proms, input, payload, ctx, _normalized.value, inst, abortEarly === true);
     };
   });
   $ZodObjectJIT = /* @__PURE__ */ $constructor("$ZodObjectJIT", (inst, def) => {
@@ -2508,10 +2565,16 @@ var init_schemas = __esm(() => {
       const doc = new Doc(["payload", "ctx"], { shape, inst, memo, syms });
       const parseStr = (k) => `shape[${k}]._zod.run({ value: input[${k}], issues: [] }, ctx)`;
       const prefixStr = (id, k) => `
+          let ${id}_ab = false;
           for (let i = 0; i < ${id}.issues.length; i++) {
             const iss = ${id}.issues[i];
             iss.path = iss.path ? [${k}, ...iss.path] : [${k}];
             payload.issues.push(iss);
+            if (iss.continue !== true) ${id}_ab = true;
+          }
+          if (${id}_ab && ctx && ctx.abortEarly) {
+            payload.value = newResult;
+            return payload;
           }`;
       doc.write(`const input = payload.value;`);
       const ids = Object.create(null);
@@ -2557,6 +2620,10 @@ var init_schemas = __esm(() => {
             input: undefined,
             path: [${k}]
           });
+          if (ctx && ctx.abortEarly) {
+            payload.value = newResult;
+            return payload;
+          }
         }
 
         if (${id}_present) {
@@ -2609,7 +2676,7 @@ var init_schemas = __esm(() => {
         payload = fastpass(payload, ctx);
         if (!catchall)
           return payload;
-        return handleCatchall([], input, payload, ctx, value, inst);
+        return handleCatchall([], input, payload, ctx, value, inst, ctx?.abortEarly === true);
       }
       return superParse(payload, ctx);
     };
@@ -2665,10 +2732,13 @@ var init_schemas = __esm(() => {
     const _super = inst._zod.parse;
     defineLazyInternal(inst, "propValues", (zod) => {
       const propValues = {};
+      let undefinedCount = 0;
       for (const option of zod.def.options) {
         const pv = option._zod.propValues;
         if (!pv || Object.keys(pv).length === 0)
           throw new Error(`Invalid discriminated union option at index "${zod.def.options.indexOf(option)}"`);
+        if (pv[zod.def.discriminator]?.has(undefined))
+          undefinedCount++;
         for (const [k, v] of Object.entries(pv)) {
           if (!Object.prototype.hasOwnProperty.call(propValues, k)) {
             assignProp(propValues, k, new Set);
@@ -2678,30 +2748,17 @@ var init_schemas = __esm(() => {
           }
         }
       }
+      if (!zod.def.unionFallback && undefinedCount > 1)
+        propValues[zod.def.discriminator]?.delete(undefined);
       return propValues;
     });
     def.options.forEach((option, i) => {
-      const propShape = propShapes.get(option._zod.def);
+      const propShape = rawShape(option._zod.def);
       if (propShape && !Object.prototype.hasOwnProperty.call(propShape, def.discriminator)) {
         throw new Error(`Invalid discriminated union option at index "${i}"`);
       }
     });
-    const disc = cached(() => {
-      const opts = def.options;
-      const map = new Map;
-      for (const o of opts) {
-        const values = o._zod.propValues?.[def.discriminator];
-        if (!values || values.size === 0)
-          throw new Error(`Invalid discriminated union option at index "${def.options.indexOf(o)}"`);
-        for (const v of values) {
-          if (map.has(v)) {
-            throw new Error(`Duplicate discriminator value "${String(v)}"`);
-          }
-          map.set(v, o);
-        }
-      }
-      return map;
-    });
+    const disc = cached(() => discriminatorMap(def));
     inst._zod.parse = (payload, ctx) => {
       const input = payload.value;
       if (!isObject(input)) {
@@ -2713,8 +2770,9 @@ var init_schemas = __esm(() => {
         });
         return payload;
       }
-      const opt = disc.value.get(input?.[def.discriminator]);
-      if (opt) {
+      const value = input?.[def.discriminator];
+      const opt = disc.value.get(value);
+      if (opt && (value !== undefined || ctx.direction !== "backward")) {
         return opt._zod.run(payload, ctx);
       }
       if (def.unionFallback || ctx.direction === "backward") {
@@ -2725,7 +2783,7 @@ var init_schemas = __esm(() => {
         errors: [],
         note: "No matching discriminator",
         discriminator: def.discriminator,
-        options: Array.from(disc.value.keys()),
+        options: Array.from(disc.value.keys()).filter((value) => disc.value.get(value) !== null),
         input,
         path: [def.discriminator],
         inst
@@ -2792,6 +2850,8 @@ var init_schemas = __esm(() => {
         }
       }
       const itemResults = new Array(items.length);
+      const abortEarly = def.rest ? ctx?.abortEarly : undefined;
+      let itemAborted = false;
       for (let i = 0;i < items.length; i++) {
         const r = items[i]._zod.run({ value: input[i], issues: [] }, ctx);
         if (r instanceof Promise) {
@@ -2800,12 +2860,20 @@ var init_schemas = __esm(() => {
           }));
         } else {
           itemResults[i] = r;
+          if (abortEarly && !itemAborted && r.issues.length)
+            itemAborted = aborted(r);
         }
       }
-      if (def.rest) {
+      if (def.rest && !itemAborted) {
         let i = items.length - 1;
         const rest = input.slice(items.length);
+        let seen = payload.issues.length;
         for (const el of rest) {
+          if (abortEarly && payload.issues.length !== seen) {
+            if (aborted(payload, seen))
+              break;
+            seen = payload.issues.length;
+          }
           i++;
           const result = def.rest._zod.run({ value: el, issues: [] }, ctx);
           if (result instanceof Promise) {
@@ -2981,8 +3049,10 @@ var init_schemas = __esm(() => {
     const values = getEnumValues(def.entries);
     const valuesSet = new Set(values);
     inst._zod.values = valuesSet;
-    const patternValues = values.filter((k) => propertyKeyTypes.has(typeof k));
-    inst._zod.pattern = new RegExp(patternValues.length ? `^(${patternValues.map((o) => escapeRegex(o.toString())).join("|")})$` : "^[^\\s\\S]$");
+    defineLazyInternal(inst, "pattern", (zod) => {
+      const patternValues = getEnumValues(zod.def.entries).filter((k) => propertyKeyTypes.has(typeof k));
+      return new RegExp(patternValues.length ? `^(${patternValues.map((o) => escapeRegex(o.toString())).join("|")})$` : "^[^\\s\\S]$");
+    });
     inst._zod.parse = (payload, _ctx) => {
       const input = payload.value;
       if (valuesSet.has(input)) {
@@ -3001,7 +3071,10 @@ var init_schemas = __esm(() => {
     $ZodType.init(inst, def);
     const values = new Set(def.values);
     inst._zod.values = values;
-    inst._zod.pattern = new RegExp(def.values.length ? `^(${def.values.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
+    defineLazyInternal(inst, "pattern", (zod) => {
+      const vals = zod.def.values;
+      return new RegExp(vals.length ? `^(${vals.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$` : "^[^\\s\\S]$");
+    });
     inst._zod.parse = (payload, _ctx) => {
       const input = payload.value;
       if (values.has(input)) {
@@ -3225,33 +3298,108 @@ var init_schemas = __esm(() => {
       return;
     };
   });
+  $ZodProperties = /* @__PURE__ */ $constructor("$ZodProperties", (inst, def) => {
+    $ZodType.init(inst, def);
+    $ZodCheck.init(inst, def);
+    const memo = globalConfig.memoizer;
+    memo?.attach(inst);
+    let entries;
+    const runShape = (payload, ctx) => {
+      entries ?? (entries = Reflect.ownKeys(def.shape).map((key) => [key, def.shape[key]]));
+      const input = payload.value;
+      let proms;
+      for (const [key, schema] of entries) {
+        const result = schema._zod.run({ value: input[key], issues: [] }, ctx);
+        if (result instanceof Promise) {
+          proms ?? (proms = []);
+          proms.push(result.then((result) => handlePropertiesResult(result, payload, key)));
+        } else {
+          handlePropertiesResult(result, payload, key);
+        }
+      }
+      if (proms)
+        return Promise.all(proms).then(() => {
+          return;
+        });
+      return;
+    };
+    inst._zod.parse = (payload, ctx) => {
+      const input = payload.value;
+      if (input === null || typeof input !== "object" && typeof input !== "function") {
+        payload.issues.push({ expected: "object", code: "invalid_type", input, inst });
+        return payload;
+      }
+      if (ctx.direction === "backward")
+        ctx = { ...ctx, direction: "forward" };
+      if (memo)
+        memo.alloc(inst, payload, input, ctx);
+      const result = runShape(payload, ctx);
+      return result instanceof Promise ? result.then(() => payload) : payload;
+    };
+    inst._zod.check = (payload) => {
+      if (payload.value == null) {
+        payload.issues.push({ expected: "object", code: "invalid_type", input: payload.value, inst });
+        return;
+      }
+      return runShape(payload, {});
+    };
+  }, {
+    *[Symbol.iterator]() {
+      yield this;
+    }
+  });
 });
 
 // node_modules/zod/v4/core/memoizer.js
+function isRef(value) {
+  return value !== null && (typeof value === "object" || typeof value === "function");
+}
 function cloneIssues(issues) {
   return issues.map((iss) => iss.path ? { ...iss, path: iss.path.slice() } : { ...iss });
 }
-function isRecursive(inst, stack) {
+function isRecursive(inst, stack, resolve) {
   const cached = recursive.get(inst);
   if (cached !== undefined)
-    return cached;
+    return cached ? PROVEN : NONE;
   if (stack.has(inst))
-    return true;
+    return PROVEN;
   stack.add(inst);
-  let result = false;
+  let result = NONE;
   const check = (child) => {
-    if (!result && child?._zod && isRecursive(child, stack))
-      result = true;
+    if (result !== PROVEN && child?._zod) {
+      const answer = isRecursive(child, stack, resolve);
+      if (answer > result)
+        result = answer;
+    }
+  };
+  const shape = (sh, spread) => {
+    let answer = NONE;
+    for (const key of Reflect.ownKeys(sh)) {
+      const desc = Object.getOwnPropertyDescriptor(sh, key);
+      if (spread && !desc.enumerable)
+        continue;
+      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve) : NONE;
+      if (child > answer)
+        answer = child;
+    }
+    return answer;
+  };
+  const merge = (answer) => {
+    if (answer > result)
+      result = answer;
   };
   const def = inst._zod.def;
   const kind = def.type;
   switch (kind) {
     case "object": {
-      for (const key of Reflect.ownKeys(def.shape))
-        check(def.shape[key]);
+      const raw = rawShape(def);
+      merge(raw ? shape(raw, true) : ASSUMED);
       check(def.catchall);
       break;
     }
+    case "properties":
+      merge(shape(def.shape, false));
+      break;
     case "array":
       check(def.element);
       break;
@@ -3295,9 +3443,11 @@ function isRecursive(inst, stack) {
       check(def.input);
       check(def.output);
       break;
-    case "lazy":
-      check(inst._zod.innerType);
+    case "lazy": {
+      const inner = def._cachedInner ?? (resolve ? inst._zod.innerType : undefined);
+      merge(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
+    }
     case "template_literal":
     case "string":
     case "number":
@@ -3336,13 +3486,17 @@ function isRecursive(inst, stack) {
     }
   }
   stack.delete(inst);
-  recursive.set(inst, result);
-  return result;
+  return settle(inst, result);
+}
+function settle(inst, answer) {
+  if (answer !== ASSUMED)
+    recursive.set(inst, answer === PROVEN);
+  return answer;
 }
 function bucketFor(state, inst) {
   let bucket = state.buckets.get(inst);
   if (!bucket) {
-    bucket = new Map;
+    bucket = new WeakMap;
     state.buckets.set(inst, bucket);
   }
   return bucket;
@@ -3352,10 +3506,11 @@ function memoizer() {
 }
 function isBackEdge(ctx, value) {
   const backEdges = ctx[STATE]?.backEdges;
-  return backEdges !== undefined && value !== null && typeof value === "object" && backEdges.has(value);
+  return backEdges !== undefined && isRef(value) && backEdges.has(value);
 }
-var $ZodCyclicError, STATE = "~memo", NO_ISSUES, recursive, handoff, open, memo;
+var $ZodCyclicError, STATE = "~memo", NO_ISSUES, recursive, NONE = 0, ASSUMED = 1, PROVEN = 2, handoff, open, memo;
 var init_memoizer = __esm(() => {
+  init_util();
   $ZodCyclicError = class $ZodCyclicError extends Error {
     constructor() {
       super(`Cannot parse a reference cycle that closes through a transform`);
@@ -3394,6 +3549,7 @@ var init_memoizer = __esm(() => {
     attach(inst) {
       var _a;
       let isRecursiveInst;
+      let rechecked = false;
       let lastCtx;
       let lastBucket;
       (_a = inst._zod).deferred ?? (_a.deferred = []);
@@ -3401,20 +3557,24 @@ var init_memoizer = __esm(() => {
         const base = inst._zod.parse;
         const wrapped = (payload, ctx) => {
           if (isRecursiveInst === undefined) {
-            isRecursiveInst = isRecursive(inst, new Set);
-            if (!isRecursiveInst) {
+            const walked = isRecursive(inst, new Set, false);
+            if (walked === NONE) {
               inst._zod.parse = base;
               if (inst._zod.run === wrapped)
                 inst._zod.run = base;
               return base(payload, ctx);
             }
+            if (walked === PROVEN || rechecked)
+              isRecursiveInst = true;
+            else
+              rechecked = true;
           }
           const input = payload.value;
-          if (input === null || typeof input !== "object")
+          if (!isRef(input))
             return base(payload, ctx);
           let state = ctx[STATE];
           if (!state) {
-            state = { buckets: new Map, backEdges: undefined };
+            state = { buckets: new WeakMap, backEdges: undefined };
             ctx[STATE] = state;
           }
           let bucket;
@@ -3433,7 +3593,7 @@ var init_memoizer = __esm(() => {
                 payload.issues.push(...cloneIssues(hit.issues));
             } else {
               payload.memo = true;
-              state.backEdges ?? (state.backEdges = new Set);
+              state.backEdges ?? (state.backEdges = new WeakSet);
               state.backEdges.add(hit.value);
             }
             return payload;
@@ -3508,6 +3668,7 @@ var error = () => {
     json_string: "JSON string",
     e164: "E.164 number",
     credit_card: "credit card number",
+    iban: "IBAN",
     jwt: "JWT",
     template_literal: "input"
   };
@@ -3954,12 +4115,6 @@ function _boolean(Class, params) {
     ...normalizeParams(params)
   });
 }
-function _undefined2(Class, params) {
-  return new Class({
-    type: "undefined",
-    ...normalizeParams(params)
-  });
-}
 function _null2(Class, params) {
   return new Class({
     type: "null",
@@ -4117,17 +4272,6 @@ function _array(Class, element, params) {
     ...normalizeParams(params)
   });
 }
-function _custom(Class, fn, _params) {
-  const norm = normalizeParams(_params);
-  norm.abort ?? (norm.abort = true);
-  const schema = new Class({
-    type: "custom",
-    check: "custom",
-    fn,
-    ...norm
-  });
-  return schema;
-}
 function _refine(Class, fn, _params) {
   const schema = new Class({
     type: "custom",
@@ -4215,7 +4359,7 @@ function handleUnrepresentable(schema, ctx, json, params, message) {
   Object.assign(json, result);
   return true;
 }
-function process2(schema, ctx, _params = { path: [], schemaPath: [] }) {
+function processSchema(schema, ctx, _params = { path: [], schemaPath: [] }) {
   var _a;
   const def = schema._zod.def;
   const seen = ctx.seen.get(schema);
@@ -4254,7 +4398,7 @@ function process2(schema, ctx, _params = { path: [], schemaPath: [] }) {
     if (parent) {
       if (!result.ref)
         result.ref = parent;
-      process2(parent, ctx, params);
+      processSchema(parent, ctx, params);
       ctx.seen.get(parent).isParent = true;
     }
   }
@@ -4359,7 +4503,6 @@ function extractDefs(ctx, schema) {
     if (seen.count > 1) {
       if (ctx.reused === "ref") {
         extractToDef(entry);
-        continue;
       }
     }
   }
@@ -4682,13 +4825,13 @@ function isTransforming(_schema, _ctx) {
 }
 var FOLDABLE_KEYS, UNION_KEYS, createToJSONSchemaMethod = (schema, processors = {}) => (params) => {
   const ctx = initializeContext({ ...params, processors });
-  process2(schema, ctx);
+  processSchema(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 }, createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) => {
   const { libraryOptions, target } = params ?? {};
   const ctx = initializeContext({ ...libraryOptions ?? {}, target, io, processors });
-  process2(schema, ctx);
+  processSchema(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
@@ -4700,6 +4843,34 @@ var init_to_json_schema = __esm(() => {
 });
 
 // node_modules/zod/v4/core/json-schema-processors.js
+function aggregateChecks(schema) {
+  const agg = {};
+  const def = schema._zod.def;
+  const list = schema._zod.traits.has("$ZodCheck") ? [schema, ...def.checks ?? []] : def.checks ?? [];
+  for (const ch of list)
+    contributors[ch._zod.def.check]?.(agg, ch._zod.def);
+  const bag = schema._zod.bag;
+  if (bag.minimum !== undefined)
+    narrowMin(agg, "minimum", bag.minimum);
+  if (bag.exclusiveMinimum !== undefined)
+    narrowMin(agg, "exclusiveMinimum", bag.exclusiveMinimum);
+  if (bag.maximum !== undefined)
+    narrowMax(agg, "maximum", bag.maximum);
+  if (bag.exclusiveMaximum !== undefined)
+    narrowMax(agg, "exclusiveMaximum", bag.exclusiveMaximum);
+  if (bag.multipleOf !== undefined)
+    addDivisor(agg, bag.multipleOf);
+  if (bag.format !== undefined) {
+    agg.format ?? (agg.format = bag.format);
+    if (bag.format.includes("int"))
+      agg.isInt = true;
+  }
+  if (bag.mime)
+    intersectMime(agg, bag.mime);
+  for (const pattern of bag.patterns ?? [])
+    addPattern(agg, pattern);
+  return agg;
+}
 function inputOptin(schema) {
   const def = schema._zod.def;
   if (def.type === "pipe" && def.in._zod.traits.has("$ZodTransform")) {
@@ -4792,7 +4963,7 @@ function toJSONSchema(input, params) {
     const defs = {};
     for (const entry of registry._idmap.entries()) {
       const [_, schema] = entry;
-      process2(schema, ctx);
+      processSchema(schema, ctx);
     }
     const schemas = {};
     const external = {
@@ -4815,14 +4986,41 @@ function toJSONSchema(input, params) {
     return { schemas };
   }
   const ctx = initializeContext({ ...params, processors: allProcessors });
-  process2(input, ctx);
+  processSchema(input, ctx);
   extractDefs(ctx, input);
   return finalize(ctx, input);
 }
-var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
+var narrowMin = (agg, key, value) => {
+  if (agg[key] === undefined || value > agg[key])
+    agg[key] = value;
+}, narrowMax = (agg, key, value) => {
+  if (agg[key] === undefined || value < agg[key])
+    agg[key] = value;
+}, narrowBoth = (agg, value) => {
+  narrowMin(agg, "minimum", value);
+  narrowMax(agg, "maximum", value);
+}, addDivisor = (agg, value) => {
+  agg.multipleOf ?? (agg.multipleOf = []);
+  if (!agg.multipleOf.includes(value))
+    agg.multipleOf.push(value);
+}, addPattern = (agg, pattern) => {
+  agg.patterns ?? (agg.patterns = new Set);
+  agg.patterns.add(pattern);
+}, intersectMime = (agg, mime) => {
+  agg.mime = agg.mime ? agg.mime.filter((m) => mime.includes(m)) : [...mime];
+}, setFormat = (agg, format) => {
+  agg.format = format;
+  if (format.includes("int"))
+    agg.isInt = true;
+}, minContributor = (agg, def) => narrowMin(agg, "minimum", def.minimum), maxContributor = (agg, def) => narrowMax(agg, "maximum", def.maximum), formatContributor = (ranges) => (agg, def) => {
+  setFormat(agg, def.format);
+  const [minimum, maximum] = ranges[def.format];
+  narrowMin(agg, "minimum", minimum);
+  narrowMax(agg, "maximum", maximum);
+}, contributors, formatMap, exactPatterns, exactPattern = (p) => exactPatterns.get(p) ?? p, stringProcessor = (schema, ctx, _json, _params) => {
   const json = _json;
   json.type = "string";
-  const { minimum, maximum, format, patterns, contentEncoding, laxFormat } = schema._zod.bag;
+  const { minimum, maximum, format, patterns, contentEncoding, laxFormat } = aggregateChecks(schema);
   if (typeof minimum === "number")
     json.minLength = minimum;
   if (typeof maximum === "number")
@@ -4838,7 +5036,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   if (contentEncoding)
     json.contentEncoding = contentEncoding;
   if (patterns && patterns.size > 0) {
-    const patternList = [...patterns];
+    const patternList = [...patterns].map(exactPattern);
     if (patternList.length === 1)
       json.pattern = patternList[0].source;
     else if (patternList.length > 1) {
@@ -4852,11 +5050,8 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   }
 }, numberProcessor = (schema, ctx, _json, params) => {
   const json = _json;
-  const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema._zod.bag;
-  if (typeof format === "string" && format.includes("int"))
-    json.type = "integer";
-  else
-    json.type = "number";
+  const { minimum, maximum, multipleOf, exclusiveMaximum, exclusiveMinimum, isInt } = aggregateChecks(schema);
+  json.type = isInt ? "integer" : "number";
   const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
   const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
   const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
@@ -4880,11 +5075,19 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   } else if (typeof maximum === "number") {
     json.maximum = maximum;
   }
-  if (typeof multipleOf === "number") {
-    if (Number.isFinite(multipleOf) && multipleOf !== 0)
-      json.multipleOf = Math.abs(multipleOf);
-    else
-      handleUnrepresentable(schema, ctx, json, params, `A multipleOf divisor of ${multipleOf} cannot be represented in JSON Schema`);
+  if (multipleOf) {
+    const divisors = new Set;
+    for (const divisor of multipleOf) {
+      if (Number.isFinite(divisor) && divisor !== 0)
+        divisors.add(Math.abs(divisor));
+      else
+        handleUnrepresentable(schema, ctx, json, params, `A multipleOf divisor of ${divisor} cannot be represented in JSON Schema`);
+    }
+    const [first, ...rest] = divisors;
+    if (first !== undefined)
+      json.multipleOf = first;
+    if (rest.length)
+      json.allOf = [...json.allOf ?? [], ...rest.map((m) => ({ multipleOf: m }))];
   }
 }, booleanProcessor = (_schema, _ctx, json, _params) => {
   json.type = "boolean";
@@ -4969,27 +5172,22 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   _json.pattern = pattern.source;
 }, fileProcessor = (schema, _ctx, json, _params) => {
   const _json = json;
-  const file = {
-    type: "string",
-    format: "binary",
-    contentEncoding: "binary"
-  };
-  const { minimum, maximum, mime } = schema._zod.bag;
+  _json.type = "string";
+  _json.format = "binary";
+  _json.contentEncoding = "binary";
+  const { minimum, maximum, mime } = aggregateChecks(schema);
   if (minimum !== undefined)
-    file.minLength = minimum;
+    _json.minLength = minimum;
   if (maximum !== undefined)
-    file.maxLength = maximum;
-  if (mime) {
-    if (mime.length === 1) {
-      file.contentMediaType = mime[0];
-      Object.assign(_json, file);
-    } else {
-      Object.assign(_json, file);
-      _json.anyOf = mime.map((m) => ({ contentMediaType: m }));
-    }
-  } else {
-    Object.assign(_json, file);
-  }
+    _json.maxLength = maximum;
+  if (!mime)
+    return;
+  if (mime.length === 0)
+    _json.not = {};
+  else if (mime.length === 1)
+    _json.contentMediaType = mime[0];
+  else
+    _json.anyOf = mime.map((m) => ({ contentMediaType: m }));
 }, successProcessor = (_schema, _ctx, json, _params) => {
   json.type = "boolean";
 }, customProcessor = (schema, ctx, json, params) => {
@@ -5005,13 +5203,13 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
 }, arrayProcessor = (schema, ctx, _json, params) => {
   const json = _json;
   const def = schema._zod.def;
-  const { minimum, maximum } = schema._zod.bag;
+  const { minimum, maximum } = aggregateChecks(schema);
   if (typeof minimum === "number")
     json.minItems = minimum;
   if (typeof maximum === "number")
     json.maxItems = maximum;
   json.type = "array";
-  json.items = process2(def.element, ctx, {
+  json.items = processSchema(def.element, ctx, {
     ...params,
     path: [...params.path, "items"]
   });
@@ -5026,7 +5224,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   json.type = "object";
   json.properties = {};
   for (const key in shape) {
-    assignProp(json.properties, key, process2(shape[key], ctx, {
+    assignProp(json.properties, key, processSchema(shape[key], ctx, {
       ...params,
       path: [...params.path, "properties", key]
     }));
@@ -5049,15 +5247,39 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
     if (ctx.io === "output")
       json.additionalProperties = false;
   } else if (def.catchall) {
-    json.additionalProperties = process2(def.catchall, ctx, {
+    json.additionalProperties = processSchema(def.catchall, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
   }
+}, propertiesProcessor = (schema, ctx, _json, params) => {
+  const json = _json;
+  const def = schema._zod.def;
+  if (Object.getOwnPropertySymbols(def.shape).length && handleUnrepresentable(schema, ctx, json, params, "Symbol keys cannot be represented in JSON Schema")) {
+    return;
+  }
+  if (ctx.io === "output") {
+    for (const key in def.shape) {
+      if (isTransforming(def.shape[key]) && handleUnrepresentable(schema, ctx, json, params, `z.properties() returns its input, so the output of a transforming schema at key "${key}" cannot be represented in JSON Schema`)) {
+        return;
+      }
+    }
+  }
+  json.type = "object";
+  json.properties = {};
+  for (const key in def.shape) {
+    assignProp(json.properties, key, processSchema(def.shape[key], ctx, {
+      ...params,
+      path: [...params.path, "properties", key]
+    }));
+  }
+  const required = Object.keys(def.shape).filter((key) => inputOptin(def.shape[key]) === undefined);
+  if (required.length > 0)
+    json.required = required;
 }, unionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
   const isExclusive = def.inclusive === false;
-  const options = def.options.map((x, i) => process2(x, ctx, {
+  const options = def.options.map((x, i) => processSchema(x, ctx, {
     ...params,
     path: [...params.path, isExclusive ? "oneOf" : "anyOf", i]
   }));
@@ -5068,11 +5290,11 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   }
 }, intersectionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const a = process2(def.left, ctx, {
+  const a = processSchema(def.left, ctx, {
     ...params,
     path: [...params.path, "allOf", 0]
   });
-  const b = process2(def.right, ctx, {
+  const b = processSchema(def.right, ctx, {
     ...params,
     path: [...params.path, "allOf", 1]
   });
@@ -5089,11 +5311,11 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   json.type = "array";
   const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
   const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
-  const prefixItems = def.items.map((x, i) => process2(x, ctx, {
+  const prefixItems = def.items.map((x, i) => processSchema(x, ctx, {
     ...params,
     path: [...params.path, prefixPath, i]
   }));
-  const rest = def.rest ? process2(def.rest, ctx, {
+  const rest = def.rest ? processSchema(def.rest, ctx, {
     ...params,
     path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
   }) : null;
@@ -5141,7 +5363,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
     if (isClosed)
       json.maxItems = maxItems;
   }
-  const { minimum, maximum } = schema._zod.bag;
+  const { minimum, maximum } = aggregateChecks(schema);
   if (typeof minimum === "number")
     json.minItems = minimum;
   if (typeof maximum === "number")
@@ -5151,20 +5373,19 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   const def = schema._zod.def;
   json.type = "object";
   const keyType = def.keyType;
-  const keyBag = keyType._zod.bag;
-  const patterns = keyBag?.patterns;
+  const patterns = aggregateChecks(keyType).patterns;
   if (def.mode === "loose" && patterns && patterns.size > 0) {
-    const valueSchema = process2(def.valueType, ctx, {
+    const valueSchema = processSchema(def.valueType, ctx, {
       ...params,
       path: [...params.path, "patternProperties", "*"]
     });
     json.patternProperties = {};
     for (const pattern of patterns) {
-      assignProp(json.patternProperties, pattern.source, valueSchema);
+      assignProp(json.patternProperties, exactPattern(pattern).source, valueSchema);
     }
   } else {
     if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") {
-      json.propertyNames = process2(def.keyType, ctx, {
+      json.propertyNames = processSchema(def.keyType, ctx, {
         ...params,
         path: [...params.path, "propertyNames"]
       });
@@ -5176,7 +5397,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
       }
       pending.push(schema);
     }
-    json.additionalProperties = process2(def.valueType, ctx, {
+    json.additionalProperties = processSchema(def.valueType, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
@@ -5191,7 +5412,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   }
 }, nullableProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const inner = process2(def.innerType, ctx, params);
+  const inner = processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   if (ctx.target === "openapi-3.0") {
     seen.ref = def.innerType;
@@ -5201,12 +5422,12 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   }
 }, nonoptionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 }, UNREPRESENTABLE_DEFAULT, defaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   const value = serializeDefaultValue(def.defaultValue, schema, ctx, json, params);
@@ -5214,7 +5435,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
     json.default = value;
 }, prefaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   if (ctx.io !== "input")
@@ -5224,7 +5445,7 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
     json._prefault = value;
 }, catchProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   let catchValue;
@@ -5239,35 +5460,59 @@ var formatMap, stringProcessor = (schema, ctx, _json, _params) => {
   const def = schema._zod.def;
   const inIsTransform = def.in._zod.traits.has("$ZodTransform");
   const innerType = ctx.io === "input" ? inIsTransform ? def.out : def.in : def.out;
-  process2(innerType, ctx, params);
+  processSchema(innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 }, readonlyProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   json.readOnly = true;
 }, promiseProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 }, optionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process2(def.innerType, ctx, params);
+  processSchema(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 }, lazyProcessor = (schema, ctx, _json, params) => {
   const innerType = schema._zod.innerType;
-  process2(innerType, ctx, params);
+  processSchema(innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 }, allProcessors;
 var init_json_schema_processors = __esm(() => {
   init_regexes();
+  init_schemas();
   init_to_json_schema();
   init_util();
+  contributors = {
+    greater_than: (agg, def) => narrowMin(agg, def.inclusive ? "minimum" : "exclusiveMinimum", def.value),
+    less_than: (agg, def) => narrowMax(agg, def.inclusive ? "maximum" : "exclusiveMaximum", def.value),
+    multiple_of: (agg, def) => addDivisor(agg, def.value),
+    number_format: formatContributor(NUMBER_FORMAT_RANGES),
+    bigint_format: formatContributor(BIGINT_FORMAT_RANGES),
+    min_length: minContributor,
+    max_length: maxContributor,
+    length_equals: (agg, def) => narrowBoth(agg, def.length),
+    min_size: minContributor,
+    max_size: maxContributor,
+    size_equals: (agg, def) => narrowBoth(agg, def.size),
+    string_format: (agg, def) => {
+      setFormat(agg, def.format);
+      if (def.pattern)
+        addPattern(agg, def.pattern);
+      if (def.format === "base64" || def.format === "base64url")
+        agg.contentEncoding = def.format;
+      if (def.local || def.precision === -1)
+        agg.laxFormat = true;
+    },
+    mime_type: (agg, def) => intersectMime(agg, def.mime)
+  };
   formatMap = {
     guid: "uuid",
     url: "uri",
@@ -5275,6 +5520,10 @@ var init_json_schema_processors = __esm(() => {
     json_string: "json-string",
     regex: ""
   };
+  exactPatterns = new Map([
+    [base64Charset, base64],
+    [base64urlCharset, base64url]
+  ]);
   pendingRecords = new WeakMap;
   UNREPRESENTABLE_DEFAULT = Symbol();
   allProcessors = {
@@ -5297,6 +5546,7 @@ var init_json_schema_processors = __esm(() => {
     file: fileProcessor,
     success: successProcessor,
     custom: customProcessor,
+    properties: propertiesProcessor,
     function: functionProcessor,
     transform: transformProcessor,
     map: mapProcessor,
@@ -5342,107 +5592,8 @@ var init_core2 = __esm(() => {
   init_to_json_schema();
 });
 
-// node_modules/zod/v4/mini/parse.js
-var init_parse2 = __esm(() => {
-  init_core2();
-});
-
-// node_modules/zod/v4/mini/schemas.js
-var init_schemas2 = () => {};
-
-// node_modules/zod/v4/mini/checks.js
-var init_checks2 = () => {};
-
-// node_modules/zod/v4/mini/iso.js
-var init_iso = () => {};
-
-// node_modules/zod/v4/mini/coerce.js
-var init_coerce = () => {};
-
-// node_modules/zod/v4/mini/external.js
-var init_external = __esm(() => {
-  init_core2();
-  init_locales();
-  init_iso();
-  init_coerce();
-  init_parse2();
-  init_schemas2();
-  init_checks2();
-});
-
-// node_modules/zod/v4-mini/index.js
-var init_v4_mini = __esm(() => {
-  init_external();
-});
-
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
-function isZ4Schema(s) {
-  const schema = s;
-  return !!schema._zod;
-}
-function safeParse2(schema, data) {
-  if (isZ4Schema(schema)) {
-    const result = safeParse(schema, data);
-    return result;
-  }
-  const v3Schema = schema;
-  const result = v3Schema.safeParse(data);
-  return result;
-}
-function getObjectShape(schema) {
-  if (!schema)
-    return;
-  let rawShape;
-  if (isZ4Schema(schema)) {
-    const v4Schema = schema;
-    rawShape = v4Schema._zod?.def?.shape;
-  } else {
-    const v3Schema = schema;
-    rawShape = v3Schema.shape;
-  }
-  if (!rawShape)
-    return;
-  if (typeof rawShape === "function") {
-    try {
-      return rawShape();
-    } catch {
-      return;
-    }
-  }
-  return rawShape;
-}
-function getLiteralValue(schema) {
-  if (isZ4Schema(schema)) {
-    const v4Schema = schema;
-    const def = v4Schema._zod?.def;
-    if (def) {
-      if (def.value !== undefined)
-        return def.value;
-      if (Array.isArray(def.values) && def.values.length > 0) {
-        return def.values[0];
-      }
-    }
-  }
-  const v3Schema = schema;
-  const def = v3Schema._def;
-  if (def) {
-    if (def.value !== undefined)
-      return def.value;
-    if (Array.isArray(def.values) && def.values.length > 0) {
-      return def.values[0];
-    }
-  }
-  const directValue = schema.value;
-  if (directValue !== undefined)
-    return directValue;
-  return;
-}
-var init_zod_compat = __esm(() => {
-  init_v4_mini();
-});
-
 // node_modules/zod/v4/classic/checks.js
-var init_checks3 = __esm(() => {
+var init_checks2 = __esm(() => {
   init_core2();
 });
 
@@ -5497,22 +5648,23 @@ var init_errors2 = __esm(() => {
 });
 
 // node_modules/zod/v4/classic/parse.js
-var parse4, parseAsync2, safeParse3, safeParseAsync2, encode2, decode2, encodeAsync2, decodeAsync2, safeEncode2, safeDecode2, safeEncodeAsync2, safeDecodeAsync2;
-var init_parse3 = __esm(() => {
+var parse2, parseAsync, safeParse, safeParseAsync, encode, decode, encodeAsync, decodeAsync, safeEncode, safeDecode, safeEncodeAsync, safeDecodeAsync;
+var init_parse2 = __esm(() => {
   init_core2();
   init_errors2();
-  parse4 = /* @__PURE__ */ _parse(ZodRealError);
-  parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
-  safeParse3 = /* @__PURE__ */ _safeParse(ZodRealError);
-  safeParseAsync2 = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-  encode2 = /* @__PURE__ */ _encode(ZodRealError);
-  decode2 = /* @__PURE__ */ _decode(ZodRealError);
-  encodeAsync2 = /* @__PURE__ */ _encodeAsync(ZodRealError);
-  decodeAsync2 = /* @__PURE__ */ _decodeAsync(ZodRealError);
-  safeEncode2 = /* @__PURE__ */ _safeEncode(ZodRealError);
-  safeDecode2 = /* @__PURE__ */ _safeDecode(ZodRealError);
-  safeEncodeAsync2 = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
-  safeDecodeAsync2 = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
+  init_core2();
+  parse2 = /* @__PURE__ */ _parse(ZodRealError);
+  parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
+  safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
+  safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
+  encode = /* @__PURE__ */ _encode(ZodRealError);
+  decode = /* @__PURE__ */ _decode(ZodRealError);
+  encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
+  decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
+  safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
+  safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
+  safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
+  safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 });
 
 // node_modules/zod/v4/classic/schemas.js
@@ -5545,9 +5697,6 @@ function int(params) {
 function boolean2(params) {
   return _boolean(ZodBoolean, params);
 }
-function _undefined3(params) {
-  return _undefined2(ZodUndefined, params);
-}
 function _null3(params) {
   return _null2(ZodNull, params);
 }
@@ -5563,7 +5712,7 @@ function never(params) {
 function array(element, params) {
   return _array(ZodArray, element, params);
 }
-function object2(shape, params) {
+function object(shape, params) {
   const def = {
     type: "object",
     shape: shape ?? {},
@@ -5733,9 +5882,6 @@ function lazy(getter) {
     getter
   });
 }
-function custom(fn, _params) {
-  return _custom(ZodCustom, fn ?? (() => true), _params);
-}
 function refine(fn, _params = {}) {
   return _refine(ZodCustom, fn, _params);
 }
@@ -5749,15 +5895,15 @@ function preprocess(fn, schema) {
     out: schema
   });
 }
-var ZodType, _ZodString, ZodString, ZodStringFormat, ZodISODateTime, ZodISODate, ZodISOTime, ZodISODuration, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodNumber, ZodNumberFormat, ZodBoolean, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodArray, ZodObject, ZodUnion, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodEnum, ZodLiteral, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodCatch, ZodPipe, ZodPreprocess, ZodReadonly, ZodLazy, ZodCustom;
-var init_schemas3 = __esm(() => {
+var ZodType, _ZodString, ZodString, ZodStringFormat, ZodISODateTime, ZodISODate, ZodISOTime, ZodISODuration, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodNumber, ZodNumberFormat, ZodBoolean, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodArray, ZodObject, ZodUnion, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodEnum, ZodLiteral, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodCatch, ZodPipe, ZodPreprocess, ZodReadonly, ZodLazy, ZodCustom;
+var init_schemas2 = __esm(() => {
   init_core2();
   init_core2();
   init_json_schema_processors();
   init_to_json_schema();
   init_en();
-  init_checks3();
-  init_parse3();
+  init_checks2();
+  init_parse2();
   ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
     _ensureDefaultLocale();
     $ZodType.init(inst, def);
@@ -5872,16 +6018,16 @@ var init_schemas3 = __esm(() => {
       own(this, "~standard", value);
     },
     parse: function _parse(data, params) {
-      return parse4(this, data, params, { callee: _parse });
+      return parse2(this, data, params, { callee: _parse });
     },
     parseAsync: async function _parseAsync(data, params) {
-      return await parseAsync2(this, data, params, { callee: _parseAsync });
+      return await parseAsync(this, data, params, { callee: _parseAsync });
     },
     safeParse(data, params) {
-      return safeParse3(this, data, params);
+      return safeParse(this, data, params);
     },
     async safeParseAsync(data, params) {
-      return safeParseAsync2(this, data, params);
+      return safeParseAsync(this, data, params);
     },
     get spa() {
       return this?.safeParseAsync;
@@ -5889,29 +6035,35 @@ var init_schemas3 = __esm(() => {
     set spa(value) {
       own(this, "spa", value);
     },
+    validate(data, params) {
+      return validate(this, data, params);
+    },
+    validateAsync(data, params) {
+      return validateAsync(this, data, params);
+    },
     encode: function _encode(data, params) {
-      return encode2(this, data, params, { callee: _encode });
+      return encode(this, data, params, { callee: _encode });
     },
     decode: function _decode(data, params) {
-      return decode2(this, data, params, { callee: _decode });
+      return decode(this, data, params, { callee: _decode });
     },
     encodeAsync: async function _encodeAsync(data, params) {
-      return await encodeAsync2(this, data, params, { callee: _encodeAsync });
+      return await encodeAsync(this, data, params, { callee: _encodeAsync });
     },
     decodeAsync: async function _decodeAsync(data, params) {
-      return await decodeAsync2(this, data, params, { callee: _decodeAsync });
+      return await decodeAsync(this, data, params, { callee: _decodeAsync });
     },
     safeEncode(data, params) {
-      return safeEncode2(this, data, params);
+      return safeEncode(this, data, params);
     },
     safeDecode(data, params) {
-      return safeDecode2(this, data, params);
+      return safeDecode(this, data, params);
     },
     async safeEncodeAsync(data, params) {
-      return safeEncodeAsync2(this, data, params);
+      return safeEncodeAsync(this, data, params);
     },
     async safeDecodeAsync(data, params) {
-      return safeDecodeAsync2(this, data, params);
+      return safeDecodeAsync(this, data, params);
     },
     toJSONSchema(params) {
       return createToJSONSchemaMethod(this, {})(params);
@@ -5927,10 +6079,10 @@ var init_schemas3 = __esm(() => {
     $ZodString.init(inst, def);
     ZodType.init(inst, def);
     inst._zod.processJSONSchema = (ctx, json, params) => stringProcessor(inst, ctx, json, params);
-    const bag = inst._zod.bag;
-    inst.format = bag.format ?? null;
-    inst.minLength = bag.minimum ?? null;
-    inst.maxLength = bag.maximum ?? null;
+  }, /* @__PURE__ */ derived({
+    format: (inst) => aggregateChecks(inst).format ?? null,
+    minLength: (inst) => aggregateChecks(inst).minimum ?? null,
+    maxLength: (inst) => aggregateChecks(inst).maximum ?? null
   }, {
     regex(...args) {
       return this.check(_regex(...args));
@@ -5977,7 +6129,7 @@ var init_schemas3 = __esm(() => {
     slugify() {
       return this.check(_slugify());
     }
-  });
+  }));
   ZodString = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
     $ZodString.init(inst, def);
     _ZodString.init(inst, def);
@@ -6161,12 +6313,21 @@ var init_schemas3 = __esm(() => {
     $ZodNumber.init(inst, def);
     ZodType.init(inst, def);
     inst._zod.processJSONSchema = (ctx, json, params) => numberProcessor(inst, ctx, json, params);
-    const bag = inst._zod.bag;
-    inst.minValue = Math.max(bag.minimum ?? Number.NEGATIVE_INFINITY, bag.exclusiveMinimum ?? Number.NEGATIVE_INFINITY) ?? null;
-    inst.maxValue = Math.min(bag.maximum ?? Number.POSITIVE_INFINITY, bag.exclusiveMaximum ?? Number.POSITIVE_INFINITY) ?? null;
-    inst.isInt = (bag.format ?? "").includes("int") || Number.isSafeInteger(bag.multipleOf ?? 0.5);
     inst.isFinite = true;
-    inst.format = bag.format ?? null;
+  }, /* @__PURE__ */ derived({
+    minValue: (inst) => {
+      const { minimum, exclusiveMinimum } = aggregateChecks(inst);
+      return Math.max(minimum ?? Number.NEGATIVE_INFINITY, exclusiveMinimum ?? Number.NEGATIVE_INFINITY);
+    },
+    maxValue: (inst) => {
+      const { maximum, exclusiveMaximum } = aggregateChecks(inst);
+      return Math.min(maximum ?? Number.POSITIVE_INFINITY, exclusiveMaximum ?? Number.POSITIVE_INFINITY);
+    },
+    isInt: (inst) => {
+      const { isInt, multipleOf } = aggregateChecks(inst);
+      return !!isInt || !!multipleOf?.some(Number.isSafeInteger);
+    },
+    format: (inst) => aggregateChecks(inst).format ?? null
   }, {
     gt(value, params) {
       return this.check(_gt(value, params));
@@ -6213,7 +6374,7 @@ var init_schemas3 = __esm(() => {
     finite() {
       return this;
     }
-  });
+  }));
   ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
     $ZodNumberFormat.init(inst, def);
     ZodNumber.init(inst, def);
@@ -6222,11 +6383,6 @@ var init_schemas3 = __esm(() => {
     $ZodBoolean.init(inst, def);
     ZodType.init(inst, def);
     inst._zod.processJSONSchema = (ctx, json, params) => booleanProcessor(inst, ctx, json, params);
-  });
-  ZodUndefined = /* @__PURE__ */ $constructor("ZodUndefined", (inst, def) => {
-    $ZodUndefined.init(inst, def);
-    ZodType.init(inst, def);
-    inst._zod.processJSONSchema = (ctx, json, params) => undefinedProcessor(inst, ctx, json, params);
   });
   ZodNull = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
     $ZodNull.init(inst, def);
@@ -6282,19 +6438,19 @@ var init_schemas3 = __esm(() => {
       return _enum(Object.keys(this._zod.def.shape));
     },
     catchall(catchall) {
-      return this.clone({ ...this._zod.def, catchall });
+      return this.clone(mergeDefs(this._zod.def, { catchall }));
     },
     passthrough() {
-      return this.clone({ ...this._zod.def, catchall: unknown() });
+      return this.clone(mergeDefs(this._zod.def, { catchall: unknown() }));
     },
     loose() {
-      return this.clone({ ...this._zod.def, catchall: unknown() });
+      return this.clone(mergeDefs(this._zod.def, { catchall: unknown() }));
     },
     strict() {
-      return this.clone({ ...this._zod.def, catchall: never() });
+      return this.clone(mergeDefs(this._zod.def, { catchall: never() }));
     },
     strip() {
-      return this.clone({ ...this._zod.def, catchall: undefined });
+      return this.clone(mergeDefs(this._zod.def, { catchall: undefined }));
     },
     extend(incoming) {
       return extend(this, incoming);
@@ -6371,7 +6527,7 @@ var init_schemas3 = __esm(() => {
     ZodType.init(inst, def);
     inst._zod.processJSONSchema = (ctx, json, params) => enumProcessor(inst, ctx, json, params);
     inst.enum = def.entries;
-    inst.options = Object.values(def.entries);
+    inst.options = [...inst._zod.values];
     const keys = new Set(Object.keys(def.entries));
     inst.extract = (values, params) => {
       const newEntries = {};
@@ -6546,8 +6702,8 @@ var init_compat = __esm(() => {
 });
 
 // node_modules/zod/v4/classic/iso.js
-var exports_iso2 = {};
-__export(exports_iso2, {
+var exports_iso = {};
+__export(exports_iso, {
   ZodISODate: () => ZodISODate,
   ZodISODateTime: () => ZodISODateTime,
   ZodISODuration: () => ZodISODuration,
@@ -6569,40 +6725,39 @@ function time2(params) {
 function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
-var init_iso2 = __esm(() => {
+var init_iso = __esm(() => {
   init_core2();
-  init_schemas3();
-  init_schemas3();
+  init_schemas2();
+  init_schemas2();
 });
 
 // node_modules/zod/v4/classic/coerce.js
 function number3(params) {
   return _coercedNumber(ZodNumber, params);
 }
-var init_coerce2 = __esm(() => {
+var init_coerce = __esm(() => {
   init_core2();
-  init_schemas3();
+  init_schemas2();
 });
 
 // node_modules/zod/v4/classic/external.js
-var init_external2 = __esm(() => {
+var init_external = __esm(() => {
   init_core2();
   init_core2();
   init_json_schema_processors();
   init_locales();
-  init_iso2();
-  init_coerce2();
-  init_schemas3();
-  init_checks3();
+  init_iso();
+  init_coerce();
+  init_schemas2();
+  init_checks2();
   init_errors2();
-  init_parse3();
+  init_parse2();
   init_compat();
 });
 
 // node_modules/zod/v4/classic/index.js
 var init_classic = __esm(() => {
-  init_external2();
-  init_external2();
+  init_external();
 });
 
 // node_modules/zod/v4/index.js
@@ -6610,76 +6765,69 @@ var init_v4 = __esm(() => {
   init_classic();
 });
 
-// node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
-var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task", JSONRPC_VERSION = "2.0", AssertObjectSchema, ProgressTokenSchema, CursorSchema, TaskCreationParamsSchema, TaskMetadataSchema, RelatedTaskMetadataSchema, RequestMetaSchema, BaseRequestParamsSchema, TaskAugmentedRequestParamsSchema, isTaskAugmentedRequestParams = (value) => TaskAugmentedRequestParamsSchema.safeParse(value).success, RequestSchema, NotificationsParamsSchema, NotificationSchema, ResultSchema, RequestIdSchema, JSONRPCRequestSchema, isJSONRPCRequest = (value) => JSONRPCRequestSchema.safeParse(value).success, JSONRPCNotificationSchema, isJSONRPCNotification = (value) => JSONRPCNotificationSchema.safeParse(value).success, JSONRPCResultResponseSchema, isJSONRPCResultResponse = (value) => JSONRPCResultResponseSchema.safeParse(value).success, ErrorCode, JSONRPCErrorResponseSchema, isJSONRPCErrorResponse = (value) => JSONRPCErrorResponseSchema.safeParse(value).success, JSONRPCMessageSchema, JSONRPCResponseSchema, EmptyResultSchema, CancelledNotificationParamsSchema, CancelledNotificationSchema, IconSchema, IconsSchema, BaseMetadataSchema, ImplementationSchema, FormElicitationCapabilitySchema, ElicitationCapabilitySchema, ClientTasksCapabilitySchema, ServerTasksCapabilitySchema, ClientCapabilitiesSchema, InitializeRequestParamsSchema, InitializeRequestSchema, ServerCapabilitiesSchema, InitializeResultSchema, InitializedNotificationSchema, PingRequestSchema, ProgressSchema, ProgressNotificationParamsSchema, ProgressNotificationSchema, PaginatedRequestParamsSchema, PaginatedRequestSchema, PaginatedResultSchema, TaskStatusSchema, TaskSchema, CreateTaskResultSchema, TaskStatusNotificationParamsSchema, TaskStatusNotificationSchema, GetTaskRequestSchema, GetTaskResultSchema, GetTaskPayloadRequestSchema, GetTaskPayloadResultSchema, ListTasksRequestSchema, ListTasksResultSchema, CancelTaskRequestSchema, CancelTaskResultSchema, ResourceContentsSchema, TextResourceContentsSchema, Base64Schema, BlobResourceContentsSchema, RoleSchema, AnnotationsSchema, ResourceSchema, ResourceTemplateSchema, ListResourcesRequestSchema, ListResourcesResultSchema, ListResourceTemplatesRequestSchema, ListResourceTemplatesResultSchema, ResourceRequestParamsSchema, ReadResourceRequestParamsSchema, ReadResourceRequestSchema, ReadResourceResultSchema, ResourceListChangedNotificationSchema, SubscribeRequestParamsSchema, SubscribeRequestSchema, UnsubscribeRequestParamsSchema, UnsubscribeRequestSchema, ResourceUpdatedNotificationParamsSchema, ResourceUpdatedNotificationSchema, PromptArgumentSchema, PromptSchema, ListPromptsRequestSchema, ListPromptsResultSchema, GetPromptRequestParamsSchema, GetPromptRequestSchema, TextContentSchema, ImageContentSchema, AudioContentSchema, ToolUseContentSchema, EmbeddedResourceSchema, ResourceLinkSchema, ContentBlockSchema, PromptMessageSchema, GetPromptResultSchema, PromptListChangedNotificationSchema, ToolAnnotationsSchema, ToolExecutionSchema, ToolSchema, ListToolsRequestSchema, ListToolsResultSchema, CallToolResultSchema, CompatibilityCallToolResultSchema, CallToolRequestParamsSchema, CallToolRequestSchema, ToolListChangedNotificationSchema, ListChangedOptionsBaseSchema, LoggingLevelSchema, SetLevelRequestParamsSchema, SetLevelRequestSchema, LoggingMessageNotificationParamsSchema, LoggingMessageNotificationSchema, ModelHintSchema, ModelPreferencesSchema, ToolChoiceSchema, ToolResultContentSchema, SamplingContentSchema, SamplingMessageContentBlockSchema, SamplingMessageSchema, CreateMessageRequestParamsSchema, CreateMessageRequestSchema, CreateMessageResultSchema, CreateMessageResultWithToolsSchema, BooleanSchemaSchema, StringSchemaSchema, NumberSchemaSchema, UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema, LegacyTitledEnumSchemaSchema, SingleSelectEnumSchemaSchema, UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema, MultiSelectEnumSchemaSchema, EnumSchemaSchema, PrimitiveSchemaDefinitionSchema, ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema, ElicitRequestParamsSchema, ElicitRequestSchema, ElicitationCompleteNotificationParamsSchema, ElicitationCompleteNotificationSchema, ElicitResultSchema, ResourceTemplateReferenceSchema, PromptReferenceSchema, CompleteRequestParamsSchema, CompleteRequestSchema, CompleteResultSchema, RootSchema, ListRootsRequestSchema, ListRootsResultSchema, RootsListChangedNotificationSchema, ClientRequestSchema, ClientNotificationSchema, ClientResultSchema, ServerRequestSchema, ServerNotificationSchema, ServerResultSchema, McpError, UrlElicitationRequiredError;
-var init_types = __esm(() => {
+// node_modules/@modelcontextprotocol/core/dist/auth-CUe6YdwF.mjs
+var LATEST_PROTOCOL_VERSION = "2025-11-25", DEFAULT_NEGOTIATED_PROTOCOL_VERSION = "2025-03-26", SUPPORTED_PROTOCOL_VERSIONS, RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task", PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion", CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo", SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo", CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities", SUBSCRIPTION_ID_META_KEY = "io.modelcontextprotocol/subscriptionId", LOG_LEVEL_META_KEY = "io.modelcontextprotocol/logLevel", JSONRPC_VERSION = "2.0", JSONValueSchema, JSONObjectSchema, JSONArraySchema, ProgressTokenSchema, CursorSchema, TaskMetadataSchema, RelatedTaskMetadataSchema, RequestMetaSchema, BaseRequestParamsSchema, TaskAugmentedRequestParamsSchema, RequestSchema, NotificationsParamsSchema, NotificationSchema, ResultMetaObjectSchema, ResultSchema, RequestIdSchema, JSONRPCRequestSchema, JSONRPCNotificationSchema, JSONRPCResultResponseSchema, JSONRPCErrorResponseSchema, JSONRPCMessageSchema, JSONRPCResponseSchema, EmptyResultSchema, CancelledNotificationParamsSchema, CancelledNotificationSchema, IconSchema, IconsSchema, BaseMetadataSchema, ImplementationSchema, FormElicitationCapabilitySchema, ElicitationCapabilitySchema, ClientTasksCapabilitySchema, ServerTasksCapabilitySchema, ClientCapabilitiesSchema, InitializeRequestParamsSchema, InitializeRequestSchema, ServerCapabilitiesSchema, InitializeResultSchema, InitializedNotificationSchema, DiscoverRequestSchema, DiscoverResultSchema, PingRequestSchema, ProgressSchema, ProgressNotificationParamsSchema, ProgressNotificationSchema, PaginatedRequestParamsSchema, PaginatedRequestSchema, PaginatedResultSchema, ResourceContentsSchema, TextResourceContentsSchema, Base64Schema, BlobResourceContentsSchema, RoleSchema, AnnotationsSchema, ResourceSchema, ResourceTemplateSchema, ListResourcesRequestSchema, ListResourcesResultSchema, ListResourceTemplatesRequestSchema, ListResourceTemplatesResultSchema, ResourceRequestParamsSchema, ReadResourceRequestParamsSchema, ReadResourceRequestSchema, ReadResourceResultSchema, ResourceListChangedNotificationSchema, SubscribeRequestParamsSchema, SubscribeRequestSchema, UnsubscribeRequestParamsSchema, UnsubscribeRequestSchema, SubscriptionFilterSchema, SubscriptionsListenRequestParamsSchema, SubscriptionsListenRequestSchema, SubscriptionsAcknowledgedNotificationParamsSchema, SubscriptionsAcknowledgedNotificationSchema, SubscriptionsListenResultMetaSchema, SubscriptionsListenResultSchema, ResourceUpdatedNotificationParamsSchema, ResourceUpdatedNotificationSchema, PromptArgumentSchema, PromptSchema, ListPromptsRequestSchema, ListPromptsResultSchema, GetPromptRequestParamsSchema, GetPromptRequestSchema, TextContentSchema, ImageContentSchema, AudioContentSchema, ToolUseContentSchema, EmbeddedResourceSchema, ResourceLinkSchema, ContentBlockSchema, PromptMessageSchema, GetPromptResultSchema, PromptListChangedNotificationSchema, ToolAnnotationsSchema, ToolExecutionSchema, ToolSchema, ListToolsRequestSchema, ListToolsResultSchema, CallToolResultSchema, CompatibilityCallToolResultSchema, CallToolRequestParamsSchema, CallToolRequestSchema, ToolListChangedNotificationSchema, ListChangedOptionsBaseSchema, LoggingLevelSchema, SetLevelRequestParamsSchema, SetLevelRequestSchema, LoggingMessageNotificationParamsSchema, LoggingMessageNotificationSchema, ModelHintSchema, ModelPreferencesSchema, ToolChoiceSchema, ToolResultContentSchema, SamplingContentSchema, SamplingMessageContentBlockSchema, SamplingMessageSchema, CreateMessageRequestParamsSchema, CreateMessageRequestSchema, CreateMessageResultSchema, CreateMessageResultWithToolsSchema, BooleanSchemaSchema, StringSchemaSchema, NumberSchemaSchema, UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema, LegacyTitledEnumSchemaSchema, SingleSelectEnumSchemaSchema, UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema, MultiSelectEnumSchemaSchema, EnumSchemaSchema, PrimitiveSchemaDefinitionSchema, ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema, ElicitRequestParamsSchema, ElicitRequestSchema, ElicitationCompleteNotificationParamsSchema, ElicitationCompleteNotificationSchema, ElicitResultSchema, ResourceTemplateReferenceSchema, PromptReferenceSchema, CompleteRequestParamsSchema, CompleteRequestSchema, CompleteResultSchema, RootSchema, ListRootsRequestSchema, ListRootsResultSchema, RootsListChangedNotificationSchema, TaskCreationParamsSchema, TaskStatusSchema, TaskSchema, CreateTaskResultSchema, TaskStatusNotificationParamsSchema, TaskStatusNotificationSchema, GetTaskRequestSchema, GetTaskResultSchema, GetTaskPayloadRequestSchema, GetTaskPayloadResultSchema, ListTasksRequestSchema, ListTasksResultSchema, CancelTaskRequestSchema, CancelTaskResultSchema, ClientRequestSchema, ClientNotificationSchema, ClientResultSchema, ServerRequestSchema, ServerNotificationSchema, ServerResultSchema, SafeUrlSchema, OAuthProtectedResourceMetadataSchema, OAuthMetadataSchema, OpenIdProviderMetadataSchema, OpenIdProviderDiscoveryMetadataSchema, OAuthTokensSchema, IdJagTokenExchangeResponseSchema, OAuthErrorResponseSchema, OptionalSafeUrlSchema, OAuthClientMetadataSchema, OAuthClientInformationSchema, OAuthClientInformationFullSchema, OAuthClientRegistrationErrorSchema, OAuthTokenRevocationRequestSchema;
+var init_auth_CUe6YdwF = __esm(() => {
   init_v4();
-  AssertObjectSchema = custom((v) => v !== null && (typeof v === "object" || typeof v === "function"));
+  SUPPORTED_PROTOCOL_VERSIONS = [
+    LATEST_PROTOCOL_VERSION,
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+    "2024-10-07"
+  ];
+  JSONValueSchema = lazy(() => union([
+    string2(),
+    number2(),
+    boolean2(),
+    _null3(),
+    record(string2(), JSONValueSchema),
+    array(JSONValueSchema)
+  ]));
+  JSONObjectSchema = record(string2(), JSONValueSchema);
+  JSONArraySchema = array(JSONValueSchema);
   ProgressTokenSchema = union([string2(), number2().int()]);
   CursorSchema = string2();
-  TaskCreationParamsSchema = looseObject({
-    ttl: number2().optional(),
-    pollInterval: number2().optional()
-  });
-  TaskMetadataSchema = object2({
-    ttl: number2().optional()
-  });
-  RelatedTaskMetadataSchema = object2({
-    taskId: string2()
-  });
+  TaskMetadataSchema = object({ ttl: number2().optional() });
+  RelatedTaskMetadataSchema = object({ taskId: string2() });
   RequestMetaSchema = looseObject({
     progressToken: ProgressTokenSchema.optional(),
     [RELATED_TASK_META_KEY]: RelatedTaskMetadataSchema.optional()
   });
-  BaseRequestParamsSchema = object2({
-    _meta: RequestMetaSchema.optional()
-  });
-  TaskAugmentedRequestParamsSchema = BaseRequestParamsSchema.extend({
-    task: TaskMetadataSchema.optional()
-  });
-  RequestSchema = object2({
+  BaseRequestParamsSchema = object({ _meta: RequestMetaSchema.optional() });
+  TaskAugmentedRequestParamsSchema = BaseRequestParamsSchema.extend({ task: TaskMetadataSchema.optional() });
+  RequestSchema = object({
     method: string2(),
     params: BaseRequestParamsSchema.loose().optional()
   });
-  NotificationsParamsSchema = object2({
-    _meta: RequestMetaSchema.optional()
-  });
-  NotificationSchema = object2({
+  NotificationsParamsSchema = object({ _meta: RequestMetaSchema.optional() });
+  NotificationSchema = object({
     method: string2(),
     params: NotificationsParamsSchema.loose().optional()
   });
-  ResultSchema = looseObject({
-    _meta: RequestMetaSchema.optional()
-  });
+  ResultMetaObjectSchema = looseObject({ get [SERVER_INFO_META_KEY]() {
+    return ImplementationSchema.optional().catch(undefined);
+  } });
+  ResultSchema = looseObject({ _meta: ResultMetaObjectSchema.optional() });
   RequestIdSchema = union([string2(), number2().int()]);
-  JSONRPCRequestSchema = object2({
+  JSONRPCRequestSchema = object({
     jsonrpc: literal(JSONRPC_VERSION),
     id: RequestIdSchema,
     ...RequestSchema.shape
   }).strict();
-  JSONRPCNotificationSchema = object2({
+  JSONRPCNotificationSchema = object({
     jsonrpc: literal(JSONRPC_VERSION),
     ...NotificationSchema.shape
   }).strict();
-  JSONRPCResultResponseSchema = object2({
+  JSONRPCResultResponseSchema = object({
     jsonrpc: literal(JSONRPC_VERSION),
     id: RequestIdSchema,
     result: ResultSchema
   }).strict();
-  (function(ErrorCode) {
-    ErrorCode[ErrorCode["ConnectionClosed"] = -32000] = "ConnectionClosed";
-    ErrorCode[ErrorCode["RequestTimeout"] = -32001] = "RequestTimeout";
-    ErrorCode[ErrorCode["ParseError"] = -32700] = "ParseError";
-    ErrorCode[ErrorCode["InvalidRequest"] = -32600] = "InvalidRequest";
-    ErrorCode[ErrorCode["MethodNotFound"] = -32601] = "MethodNotFound";
-    ErrorCode[ErrorCode["InvalidParams"] = -32602] = "InvalidParams";
-    ErrorCode[ErrorCode["InternalError"] = -32603] = "InternalError";
-    ErrorCode[ErrorCode["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
-  })(ErrorCode || (ErrorCode = {}));
-  JSONRPCErrorResponseSchema = object2({
+  JSONRPCErrorResponseSchema = object({
     jsonrpc: literal(JSONRPC_VERSION),
     id: RequestIdSchema.optional(),
-    error: object2({
+    error: object({
       code: number2().int(),
       message: string2(),
       data: unknown().optional()
@@ -6701,16 +6849,14 @@ var init_types = __esm(() => {
     method: literal("notifications/cancelled"),
     params: CancelledNotificationParamsSchema
   });
-  IconSchema = object2({
+  IconSchema = object({
     src: string2(),
     mimeType: string2().optional(),
     sizes: array(string2()).optional(),
     theme: _enum(["light", "dark"]).optional()
   });
-  IconsSchema = object2({
-    icons: array(IconSchema).optional()
-  });
-  BaseMetadataSchema = object2({
+  IconsSchema = object({ icons: array(IconSchema).optional() });
+  BaseMetadataSchema = object({
     name: string2(),
     title: string2().optional()
   });
@@ -6721,53 +6867,38 @@ var init_types = __esm(() => {
     websiteUrl: string2().optional(),
     description: string2().optional()
   });
-  FormElicitationCapabilitySchema = intersection(object2({
-    applyDefaults: boolean2().optional()
-  }), record(string2(), unknown()));
+  FormElicitationCapabilitySchema = intersection(object({ applyDefaults: boolean2().optional() }), JSONObjectSchema);
   ElicitationCapabilitySchema = preprocess((value) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      if (Object.keys(value).length === 0) {
-        return { form: {} };
-      }
-    }
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
+      return { form: {} };
     return value;
-  }, intersection(object2({
+  }, intersection(object({
     form: FormElicitationCapabilitySchema.optional(),
-    url: AssertObjectSchema.optional()
-  }), record(string2(), unknown()).optional()));
+    url: JSONObjectSchema.optional()
+  }), JSONObjectSchema.optional()));
   ClientTasksCapabilitySchema = looseObject({
-    list: AssertObjectSchema.optional(),
-    cancel: AssertObjectSchema.optional(),
+    list: JSONObjectSchema.optional(),
+    cancel: JSONObjectSchema.optional(),
     requests: looseObject({
-      sampling: looseObject({
-        createMessage: AssertObjectSchema.optional()
-      }).optional(),
-      elicitation: looseObject({
-        create: AssertObjectSchema.optional()
-      }).optional()
+      sampling: looseObject({ createMessage: JSONObjectSchema.optional() }).optional(),
+      elicitation: looseObject({ create: JSONObjectSchema.optional() }).optional()
     }).optional()
   });
   ServerTasksCapabilitySchema = looseObject({
-    list: AssertObjectSchema.optional(),
-    cancel: AssertObjectSchema.optional(),
-    requests: looseObject({
-      tools: looseObject({
-        call: AssertObjectSchema.optional()
-      }).optional()
-    }).optional()
+    list: JSONObjectSchema.optional(),
+    cancel: JSONObjectSchema.optional(),
+    requests: looseObject({ tools: looseObject({ call: JSONObjectSchema.optional() }).optional() }).optional()
   });
-  ClientCapabilitiesSchema = object2({
-    experimental: record(string2(), AssertObjectSchema).optional(),
-    sampling: object2({
-      context: AssertObjectSchema.optional(),
-      tools: AssertObjectSchema.optional()
+  ClientCapabilitiesSchema = object({
+    experimental: record(string2(), JSONObjectSchema).optional(),
+    sampling: object({
+      context: JSONObjectSchema.optional(),
+      tools: JSONObjectSchema.optional()
     }).optional(),
     elicitation: ElicitationCapabilitySchema.optional(),
-    roots: object2({
-      listChanged: boolean2().optional()
-    }).optional(),
+    roots: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ClientTasksCapabilitySchema.optional(),
-    extensions: record(string2(), AssertObjectSchema).optional()
+    extensions: record(string2(), JSONObjectSchema).optional()
   });
   InitializeRequestParamsSchema = BaseRequestParamsSchema.extend({
     protocolVersion: string2(),
@@ -6778,22 +6909,18 @@ var init_types = __esm(() => {
     method: literal("initialize"),
     params: InitializeRequestParamsSchema
   });
-  ServerCapabilitiesSchema = object2({
-    experimental: record(string2(), AssertObjectSchema).optional(),
-    logging: AssertObjectSchema.optional(),
-    completions: AssertObjectSchema.optional(),
-    prompts: object2({
-      listChanged: boolean2().optional()
-    }).optional(),
-    resources: object2({
+  ServerCapabilitiesSchema = object({
+    experimental: record(string2(), JSONObjectSchema).optional(),
+    logging: JSONObjectSchema.optional(),
+    completions: JSONObjectSchema.optional(),
+    prompts: object({ listChanged: boolean2().optional() }).optional(),
+    resources: object({
       subscribe: boolean2().optional(),
       listChanged: boolean2().optional()
     }).optional(),
-    tools: object2({
-      listChanged: boolean2().optional()
-    }).optional(),
+    tools: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ServerTasksCapabilitySchema.optional(),
-    extensions: record(string2(), AssertObjectSchema).optional()
+    extensions: record(string2(), JSONObjectSchema).optional()
   });
   InitializeResultSchema = ResultSchema.extend({
     protocolVersion: string2(),
@@ -6805,16 +6932,25 @@ var init_types = __esm(() => {
     method: literal("notifications/initialized"),
     params: NotificationsParamsSchema.optional()
   });
+  DiscoverRequestSchema = RequestSchema.extend({
+    method: literal("server/discover"),
+    params: BaseRequestParamsSchema.optional()
+  });
+  DiscoverResultSchema = ResultSchema.extend({
+    supportedVersions: array(string2()),
+    capabilities: ServerCapabilitiesSchema,
+    instructions: string2().optional()
+  });
   PingRequestSchema = RequestSchema.extend({
     method: literal("ping"),
     params: BaseRequestParamsSchema.optional()
   });
-  ProgressSchema = object2({
+  ProgressSchema = object({
     progress: number2(),
     total: optional(number2()),
     message: optional(string2())
   });
-  ProgressNotificationParamsSchema = object2({
+  ProgressNotificationParamsSchema = object({
     ...NotificationsParamsSchema.shape,
     ...ProgressSchema.shape,
     progressToken: ProgressTokenSchema
@@ -6823,68 +6959,15 @@ var init_types = __esm(() => {
     method: literal("notifications/progress"),
     params: ProgressNotificationParamsSchema
   });
-  PaginatedRequestParamsSchema = BaseRequestParamsSchema.extend({
-    cursor: CursorSchema.optional()
-  });
-  PaginatedRequestSchema = RequestSchema.extend({
-    params: PaginatedRequestParamsSchema.optional()
-  });
-  PaginatedResultSchema = ResultSchema.extend({
-    nextCursor: CursorSchema.optional()
-  });
-  TaskStatusSchema = _enum(["working", "input_required", "completed", "failed", "cancelled"]);
-  TaskSchema = object2({
-    taskId: string2(),
-    status: TaskStatusSchema,
-    ttl: union([number2(), _null3()]),
-    createdAt: string2(),
-    lastUpdatedAt: string2(),
-    pollInterval: optional(number2()),
-    statusMessage: optional(string2())
-  });
-  CreateTaskResultSchema = ResultSchema.extend({
-    task: TaskSchema
-  });
-  TaskStatusNotificationParamsSchema = NotificationsParamsSchema.merge(TaskSchema);
-  TaskStatusNotificationSchema = NotificationSchema.extend({
-    method: literal("notifications/tasks/status"),
-    params: TaskStatusNotificationParamsSchema
-  });
-  GetTaskRequestSchema = RequestSchema.extend({
-    method: literal("tasks/get"),
-    params: BaseRequestParamsSchema.extend({
-      taskId: string2()
-    })
-  });
-  GetTaskResultSchema = ResultSchema.merge(TaskSchema);
-  GetTaskPayloadRequestSchema = RequestSchema.extend({
-    method: literal("tasks/result"),
-    params: BaseRequestParamsSchema.extend({
-      taskId: string2()
-    })
-  });
-  GetTaskPayloadResultSchema = ResultSchema.loose();
-  ListTasksRequestSchema = PaginatedRequestSchema.extend({
-    method: literal("tasks/list")
-  });
-  ListTasksResultSchema = PaginatedResultSchema.extend({
-    tasks: array(TaskSchema)
-  });
-  CancelTaskRequestSchema = RequestSchema.extend({
-    method: literal("tasks/cancel"),
-    params: BaseRequestParamsSchema.extend({
-      taskId: string2()
-    })
-  });
-  CancelTaskResultSchema = ResultSchema.merge(TaskSchema);
-  ResourceContentsSchema = object2({
+  PaginatedRequestParamsSchema = BaseRequestParamsSchema.extend({ cursor: CursorSchema.optional() });
+  PaginatedRequestSchema = RequestSchema.extend({ params: PaginatedRequestParamsSchema.optional() });
+  PaginatedResultSchema = ResultSchema.extend({ nextCursor: CursorSchema.optional() });
+  ResourceContentsSchema = object({
     uri: string2(),
     mimeType: optional(string2()),
     _meta: record(string2(), unknown()).optional()
   });
-  TextResourceContentsSchema = ResourceContentsSchema.extend({
-    text: string2()
-  });
+  TextResourceContentsSchema = ResourceContentsSchema.extend({ text: string2() });
   Base64Schema = string2().refine((val) => {
     try {
       atob(val);
@@ -6893,16 +6976,14 @@ var init_types = __esm(() => {
       return false;
     }
   }, { message: "Invalid Base64 string" });
-  BlobResourceContentsSchema = ResourceContentsSchema.extend({
-    blob: Base64Schema
-  });
+  BlobResourceContentsSchema = ResourceContentsSchema.extend({ blob: Base64Schema });
   RoleSchema = _enum(["user", "assistant"]);
-  AnnotationsSchema = object2({
+  AnnotationsSchema = object({
     audience: array(RoleSchema).optional(),
     priority: number2().min(0).max(1).optional(),
     lastModified: datetime2({ offset: true }).optional()
   });
-  ResourceSchema = object2({
+  ResourceSchema = object({
     ...BaseMetadataSchema.shape,
     ...IconsSchema.shape,
     uri: string2(),
@@ -6912,7 +6993,7 @@ var init_types = __esm(() => {
     annotations: AnnotationsSchema.optional(),
     _meta: optional(looseObject({}))
   });
-  ResourceTemplateSchema = object2({
+  ResourceTemplateSchema = object({
     ...BaseMetadataSchema.shape,
     ...IconsSchema.shape,
     uriTemplate: string2(),
@@ -6921,29 +7002,17 @@ var init_types = __esm(() => {
     annotations: AnnotationsSchema.optional(),
     _meta: optional(looseObject({}))
   });
-  ListResourcesRequestSchema = PaginatedRequestSchema.extend({
-    method: literal("resources/list")
-  });
-  ListResourcesResultSchema = PaginatedResultSchema.extend({
-    resources: array(ResourceSchema)
-  });
-  ListResourceTemplatesRequestSchema = PaginatedRequestSchema.extend({
-    method: literal("resources/templates/list")
-  });
-  ListResourceTemplatesResultSchema = PaginatedResultSchema.extend({
-    resourceTemplates: array(ResourceTemplateSchema)
-  });
-  ResourceRequestParamsSchema = BaseRequestParamsSchema.extend({
-    uri: string2()
-  });
+  ListResourcesRequestSchema = PaginatedRequestSchema.extend({ method: literal("resources/list") });
+  ListResourcesResultSchema = PaginatedResultSchema.extend({ resources: array(ResourceSchema) });
+  ListResourceTemplatesRequestSchema = PaginatedRequestSchema.extend({ method: literal("resources/templates/list") });
+  ListResourceTemplatesResultSchema = PaginatedResultSchema.extend({ resourceTemplates: array(ResourceTemplateSchema) });
+  ResourceRequestParamsSchema = BaseRequestParamsSchema.extend({ uri: string2() });
   ReadResourceRequestParamsSchema = ResourceRequestParamsSchema;
   ReadResourceRequestSchema = RequestSchema.extend({
     method: literal("resources/read"),
     params: ReadResourceRequestParamsSchema
   });
-  ReadResourceResultSchema = ResultSchema.extend({
-    contents: array(union([TextResourceContentsSchema, BlobResourceContentsSchema]))
-  });
+  ReadResourceResultSchema = ResultSchema.extend({ contents: array(union([TextResourceContentsSchema, BlobResourceContentsSchema])) });
   ResourceListChangedNotificationSchema = NotificationSchema.extend({
     method: literal("notifications/resources/list_changed"),
     params: NotificationsParamsSchema.optional()
@@ -6958,31 +7027,43 @@ var init_types = __esm(() => {
     method: literal("resources/unsubscribe"),
     params: UnsubscribeRequestParamsSchema
   });
-  ResourceUpdatedNotificationParamsSchema = NotificationsParamsSchema.extend({
-    uri: string2()
+  SubscriptionFilterSchema = object({
+    toolsListChanged: boolean2().optional(),
+    promptsListChanged: boolean2().optional(),
+    resourcesListChanged: boolean2().optional(),
+    resourceSubscriptions: array(string2()).optional()
   });
+  SubscriptionsListenRequestParamsSchema = BaseRequestParamsSchema.extend({ notifications: SubscriptionFilterSchema });
+  SubscriptionsListenRequestSchema = RequestSchema.extend({
+    method: literal("subscriptions/listen"),
+    params: SubscriptionsListenRequestParamsSchema
+  });
+  SubscriptionsAcknowledgedNotificationParamsSchema = NotificationsParamsSchema.extend({ notifications: SubscriptionFilterSchema });
+  SubscriptionsAcknowledgedNotificationSchema = NotificationSchema.extend({
+    method: literal("notifications/subscriptions/acknowledged"),
+    params: SubscriptionsAcknowledgedNotificationParamsSchema
+  });
+  SubscriptionsListenResultMetaSchema = ResultMetaObjectSchema.extend({ [SUBSCRIPTION_ID_META_KEY]: RequestIdSchema });
+  SubscriptionsListenResultSchema = ResultSchema.extend({ _meta: SubscriptionsListenResultMetaSchema });
+  ResourceUpdatedNotificationParamsSchema = NotificationsParamsSchema.extend({ uri: string2() });
   ResourceUpdatedNotificationSchema = NotificationSchema.extend({
     method: literal("notifications/resources/updated"),
     params: ResourceUpdatedNotificationParamsSchema
   });
-  PromptArgumentSchema = object2({
+  PromptArgumentSchema = object({
     name: string2(),
     description: optional(string2()),
     required: optional(boolean2())
   });
-  PromptSchema = object2({
+  PromptSchema = object({
     ...BaseMetadataSchema.shape,
     ...IconsSchema.shape,
     description: optional(string2()),
     arguments: optional(array(PromptArgumentSchema)),
     _meta: optional(looseObject({}))
   });
-  ListPromptsRequestSchema = PaginatedRequestSchema.extend({
-    method: literal("prompts/list")
-  });
-  ListPromptsResultSchema = PaginatedResultSchema.extend({
-    prompts: array(PromptSchema)
-  });
+  ListPromptsRequestSchema = PaginatedRequestSchema.extend({ method: literal("prompts/list") });
+  ListPromptsResultSchema = PaginatedResultSchema.extend({ prompts: array(PromptSchema) });
   GetPromptRequestParamsSchema = BaseRequestParamsSchema.extend({
     name: string2(),
     arguments: record(string2(), string2()).optional()
@@ -6991,42 +7072,40 @@ var init_types = __esm(() => {
     method: literal("prompts/get"),
     params: GetPromptRequestParamsSchema
   });
-  TextContentSchema = object2({
+  TextContentSchema = object({
     type: literal("text"),
     text: string2(),
     annotations: AnnotationsSchema.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  ImageContentSchema = object2({
+  ImageContentSchema = object({
     type: literal("image"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  AudioContentSchema = object2({
+  AudioContentSchema = object({
     type: literal("audio"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  ToolUseContentSchema = object2({
+  ToolUseContentSchema = object({
     type: literal("tool_use"),
     name: string2(),
     id: string2(),
     input: record(string2(), unknown()),
     _meta: record(string2(), unknown()).optional()
   });
-  EmbeddedResourceSchema = object2({
+  EmbeddedResourceSchema = object({
     type: literal("resource"),
     resource: union([TextResourceContentsSchema, BlobResourceContentsSchema]),
     annotations: AnnotationsSchema.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  ResourceLinkSchema = ResourceSchema.extend({
-    type: literal("resource_link")
-  });
+  ResourceLinkSchema = ResourceSchema.extend({ type: literal("resource_link") });
   ContentBlockSchema = union([
     TextContentSchema,
     ImageContentSchema,
@@ -7034,7 +7113,7 @@ var init_types = __esm(() => {
     ResourceLinkSchema,
     EmbeddedResourceSchema
   ]);
-  PromptMessageSchema = object2({
+  PromptMessageSchema = object({
     role: RoleSchema,
     content: ContentBlockSchema
   });
@@ -7046,48 +7125,40 @@ var init_types = __esm(() => {
     method: literal("notifications/prompts/list_changed"),
     params: NotificationsParamsSchema.optional()
   });
-  ToolAnnotationsSchema = object2({
+  ToolAnnotationsSchema = object({
     title: string2().optional(),
     readOnlyHint: boolean2().optional(),
     destructiveHint: boolean2().optional(),
     idempotentHint: boolean2().optional(),
     openWorldHint: boolean2().optional()
   });
-  ToolExecutionSchema = object2({
-    taskSupport: _enum(["required", "optional", "forbidden"]).optional()
-  });
-  ToolSchema = object2({
+  ToolExecutionSchema = object({ taskSupport: _enum([
+    "required",
+    "optional",
+    "forbidden"
+  ]).optional() });
+  ToolSchema = object({
     ...BaseMetadataSchema.shape,
     ...IconsSchema.shape,
     description: string2().optional(),
-    inputSchema: object2({
+    inputSchema: object({
       type: literal("object"),
-      properties: record(string2(), AssertObjectSchema).optional(),
+      properties: record(string2(), JSONValueSchema).optional(),
       required: array(string2()).optional()
     }).catchall(unknown()),
-    outputSchema: object2({
-      type: literal("object"),
-      properties: record(string2(), AssertObjectSchema).optional(),
-      required: array(string2()).optional()
-    }).catchall(unknown()).optional(),
+    outputSchema: looseObject({ $schema: string2().optional() }).optional(),
     annotations: ToolAnnotationsSchema.optional(),
     execution: ToolExecutionSchema.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  ListToolsRequestSchema = PaginatedRequestSchema.extend({
-    method: literal("tools/list")
-  });
-  ListToolsResultSchema = PaginatedResultSchema.extend({
-    tools: array(ToolSchema)
-  });
+  ListToolsRequestSchema = PaginatedRequestSchema.extend({ method: literal("tools/list") });
+  ListToolsResultSchema = PaginatedResultSchema.extend({ tools: array(ToolSchema) });
   CallToolResultSchema = ResultSchema.extend({
     content: array(ContentBlockSchema).default([]),
-    structuredContent: record(string2(), unknown()).optional(),
+    structuredContent: unknown().optional(),
     isError: boolean2().optional()
   });
-  CompatibilityCallToolResultSchema = CallToolResultSchema.or(ResultSchema.extend({
-    toolResult: unknown()
-  }));
+  CompatibilityCallToolResultSchema = CallToolResultSchema.or(ResultSchema.extend({ toolResult: unknown() }));
   CallToolRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
     name: string2(),
     arguments: record(string2(), unknown()).optional()
@@ -7100,14 +7171,21 @@ var init_types = __esm(() => {
     method: literal("notifications/tools/list_changed"),
     params: NotificationsParamsSchema.optional()
   });
-  ListChangedOptionsBaseSchema = object2({
+  ListChangedOptionsBaseSchema = object({
     autoRefresh: boolean2().default(true),
     debounceMs: number2().int().nonnegative().default(300)
   });
-  LoggingLevelSchema = _enum(["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]);
-  SetLevelRequestParamsSchema = BaseRequestParamsSchema.extend({
-    level: LoggingLevelSchema
-  });
+  LoggingLevelSchema = _enum([
+    "debug",
+    "info",
+    "notice",
+    "warning",
+    "error",
+    "critical",
+    "alert",
+    "emergency"
+  ]);
+  SetLevelRequestParamsSchema = BaseRequestParamsSchema.extend({ level: LoggingLevelSchema });
   SetLevelRequestSchema = RequestSchema.extend({
     method: literal("logging/setLevel"),
     params: SetLevelRequestParamsSchema
@@ -7121,27 +7199,31 @@ var init_types = __esm(() => {
     method: literal("notifications/message"),
     params: LoggingMessageNotificationParamsSchema
   });
-  ModelHintSchema = object2({
-    name: string2().optional()
-  });
-  ModelPreferencesSchema = object2({
+  ModelHintSchema = object({ name: string2().optional() });
+  ModelPreferencesSchema = object({
     hints: array(ModelHintSchema).optional(),
     costPriority: number2().min(0).max(1).optional(),
     speedPriority: number2().min(0).max(1).optional(),
     intelligencePriority: number2().min(0).max(1).optional()
   });
-  ToolChoiceSchema = object2({
-    mode: _enum(["auto", "required", "none"]).optional()
-  });
-  ToolResultContentSchema = object2({
+  ToolChoiceSchema = object({ mode: _enum([
+    "auto",
+    "required",
+    "none"
+  ]).optional() });
+  ToolResultContentSchema = object({
     type: literal("tool_result"),
     toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
-    content: array(ContentBlockSchema).default([]),
-    structuredContent: object2({}).loose().optional(),
+    content: array(ContentBlockSchema),
+    structuredContent: unknown().optional(),
     isError: boolean2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  SamplingContentSchema = discriminatedUnion("type", [TextContentSchema, ImageContentSchema, AudioContentSchema]);
+  SamplingContentSchema = discriminatedUnion("type", [
+    TextContentSchema,
+    ImageContentSchema,
+    AudioContentSchema
+  ]);
   SamplingMessageContentBlockSchema = discriminatedUnion("type", [
     TextContentSchema,
     ImageContentSchema,
@@ -7149,7 +7231,7 @@ var init_types = __esm(() => {
     ToolUseContentSchema,
     ToolResultContentSchema
   ]);
-  SamplingMessageSchema = object2({
+  SamplingMessageSchema = object({
     role: RoleSchema,
     content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)]),
     _meta: record(string2(), unknown()).optional()
@@ -7157,2421 +7239,6 @@ var init_types = __esm(() => {
   CreateMessageRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
     messages: array(SamplingMessageSchema),
     modelPreferences: ModelPreferencesSchema.optional(),
-    systemPrompt: string2().optional(),
-    includeContext: _enum(["none", "thisServer", "allServers"]).optional(),
-    temperature: number2().optional(),
-    maxTokens: number2().int(),
-    stopSequences: array(string2()).optional(),
-    metadata: AssertObjectSchema.optional(),
-    tools: array(ToolSchema).optional(),
-    toolChoice: ToolChoiceSchema.optional()
-  });
-  CreateMessageRequestSchema = RequestSchema.extend({
-    method: literal("sampling/createMessage"),
-    params: CreateMessageRequestParamsSchema
-  });
-  CreateMessageResultSchema = ResultSchema.extend({
-    model: string2(),
-    stopReason: optional(_enum(["endTurn", "stopSequence", "maxTokens"]).or(string2())),
-    role: RoleSchema,
-    content: SamplingContentSchema
-  });
-  CreateMessageResultWithToolsSchema = ResultSchema.extend({
-    model: string2(),
-    stopReason: optional(_enum(["endTurn", "stopSequence", "maxTokens", "toolUse"]).or(string2())),
-    role: RoleSchema,
-    content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)])
-  });
-  BooleanSchemaSchema = object2({
-    type: literal("boolean"),
-    title: string2().optional(),
-    description: string2().optional(),
-    default: boolean2().optional()
-  });
-  StringSchemaSchema = object2({
-    type: literal("string"),
-    title: string2().optional(),
-    description: string2().optional(),
-    minLength: number2().optional(),
-    maxLength: number2().optional(),
-    format: _enum(["email", "uri", "date", "date-time"]).optional(),
-    default: string2().optional()
-  });
-  NumberSchemaSchema = object2({
-    type: _enum(["number", "integer"]),
-    title: string2().optional(),
-    description: string2().optional(),
-    minimum: number2().optional(),
-    maximum: number2().optional(),
-    default: number2().optional()
-  });
-  UntitledSingleSelectEnumSchemaSchema = object2({
-    type: literal("string"),
-    title: string2().optional(),
-    description: string2().optional(),
-    enum: array(string2()),
-    default: string2().optional()
-  });
-  TitledSingleSelectEnumSchemaSchema = object2({
-    type: literal("string"),
-    title: string2().optional(),
-    description: string2().optional(),
-    oneOf: array(object2({
-      const: string2(),
-      title: string2()
-    })),
-    default: string2().optional()
-  });
-  LegacyTitledEnumSchemaSchema = object2({
-    type: literal("string"),
-    title: string2().optional(),
-    description: string2().optional(),
-    enum: array(string2()),
-    enumNames: array(string2()).optional(),
-    default: string2().optional()
-  });
-  SingleSelectEnumSchemaSchema = union([UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema]);
-  UntitledMultiSelectEnumSchemaSchema = object2({
-    type: literal("array"),
-    title: string2().optional(),
-    description: string2().optional(),
-    minItems: number2().optional(),
-    maxItems: number2().optional(),
-    items: object2({
-      type: literal("string"),
-      enum: array(string2())
-    }),
-    default: array(string2()).optional()
-  });
-  TitledMultiSelectEnumSchemaSchema = object2({
-    type: literal("array"),
-    title: string2().optional(),
-    description: string2().optional(),
-    minItems: number2().optional(),
-    maxItems: number2().optional(),
-    items: object2({
-      anyOf: array(object2({
-        const: string2(),
-        title: string2()
-      }))
-    }),
-    default: array(string2()).optional()
-  });
-  MultiSelectEnumSchemaSchema = union([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema]);
-  EnumSchemaSchema = union([LegacyTitledEnumSchemaSchema, SingleSelectEnumSchemaSchema, MultiSelectEnumSchemaSchema]);
-  PrimitiveSchemaDefinitionSchema = union([EnumSchemaSchema, BooleanSchemaSchema, StringSchemaSchema, NumberSchemaSchema]);
-  ElicitRequestFormParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-    mode: literal("form").optional(),
-    message: string2(),
-    requestedSchema: object2({
-      type: literal("object"),
-      properties: record(string2(), PrimitiveSchemaDefinitionSchema),
-      required: array(string2()).optional()
-    })
-  });
-  ElicitRequestURLParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-    mode: literal("url"),
-    message: string2(),
-    elicitationId: string2(),
-    url: string2().url()
-  });
-  ElicitRequestParamsSchema = union([ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema]);
-  ElicitRequestSchema = RequestSchema.extend({
-    method: literal("elicitation/create"),
-    params: ElicitRequestParamsSchema
-  });
-  ElicitationCompleteNotificationParamsSchema = NotificationsParamsSchema.extend({
-    elicitationId: string2()
-  });
-  ElicitationCompleteNotificationSchema = NotificationSchema.extend({
-    method: literal("notifications/elicitation/complete"),
-    params: ElicitationCompleteNotificationParamsSchema
-  });
-  ElicitResultSchema = ResultSchema.extend({
-    action: _enum(["accept", "decline", "cancel"]),
-    content: preprocess((val) => val === null ? undefined : val, record(string2(), union([string2(), number2(), boolean2(), array(string2())])).optional())
-  });
-  ResourceTemplateReferenceSchema = object2({
-    type: literal("ref/resource"),
-    uri: string2()
-  });
-  PromptReferenceSchema = object2({
-    type: literal("ref/prompt"),
-    name: string2()
-  });
-  CompleteRequestParamsSchema = BaseRequestParamsSchema.extend({
-    ref: union([PromptReferenceSchema, ResourceTemplateReferenceSchema]),
-    argument: object2({
-      name: string2(),
-      value: string2()
-    }),
-    context: object2({
-      arguments: record(string2(), string2()).optional()
-    }).optional()
-  });
-  CompleteRequestSchema = RequestSchema.extend({
-    method: literal("completion/complete"),
-    params: CompleteRequestParamsSchema
-  });
-  CompleteResultSchema = ResultSchema.extend({
-    completion: looseObject({
-      values: array(string2()).max(100),
-      total: optional(number2().int()),
-      hasMore: optional(boolean2())
-    })
-  });
-  RootSchema = object2({
-    uri: string2().startsWith("file://"),
-    name: string2().optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  ListRootsRequestSchema = RequestSchema.extend({
-    method: literal("roots/list"),
-    params: BaseRequestParamsSchema.optional()
-  });
-  ListRootsResultSchema = ResultSchema.extend({
-    roots: array(RootSchema)
-  });
-  RootsListChangedNotificationSchema = NotificationSchema.extend({
-    method: literal("notifications/roots/list_changed"),
-    params: NotificationsParamsSchema.optional()
-  });
-  ClientRequestSchema = union([
-    PingRequestSchema,
-    InitializeRequestSchema,
-    CompleteRequestSchema,
-    SetLevelRequestSchema,
-    GetPromptRequestSchema,
-    ListPromptsRequestSchema,
-    ListResourcesRequestSchema,
-    ListResourceTemplatesRequestSchema,
-    ReadResourceRequestSchema,
-    SubscribeRequestSchema,
-    UnsubscribeRequestSchema,
-    CallToolRequestSchema,
-    ListToolsRequestSchema,
-    GetTaskRequestSchema,
-    GetTaskPayloadRequestSchema,
-    ListTasksRequestSchema,
-    CancelTaskRequestSchema
-  ]);
-  ClientNotificationSchema = union([
-    CancelledNotificationSchema,
-    ProgressNotificationSchema,
-    InitializedNotificationSchema,
-    RootsListChangedNotificationSchema,
-    TaskStatusNotificationSchema
-  ]);
-  ClientResultSchema = union([
-    EmptyResultSchema,
-    CreateMessageResultSchema,
-    CreateMessageResultWithToolsSchema,
-    ElicitResultSchema,
-    ListRootsResultSchema,
-    GetTaskResultSchema,
-    ListTasksResultSchema,
-    CreateTaskResultSchema
-  ]);
-  ServerRequestSchema = union([
-    PingRequestSchema,
-    CreateMessageRequestSchema,
-    ElicitRequestSchema,
-    ListRootsRequestSchema,
-    GetTaskRequestSchema,
-    GetTaskPayloadRequestSchema,
-    ListTasksRequestSchema,
-    CancelTaskRequestSchema
-  ]);
-  ServerNotificationSchema = union([
-    CancelledNotificationSchema,
-    ProgressNotificationSchema,
-    LoggingMessageNotificationSchema,
-    ResourceUpdatedNotificationSchema,
-    ResourceListChangedNotificationSchema,
-    ToolListChangedNotificationSchema,
-    PromptListChangedNotificationSchema,
-    TaskStatusNotificationSchema,
-    ElicitationCompleteNotificationSchema
-  ]);
-  ServerResultSchema = union([
-    EmptyResultSchema,
-    InitializeResultSchema,
-    CompleteResultSchema,
-    GetPromptResultSchema,
-    ListPromptsResultSchema,
-    ListResourcesResultSchema,
-    ListResourceTemplatesResultSchema,
-    ReadResourceResultSchema,
-    CallToolResultSchema,
-    ListToolsResultSchema,
-    GetTaskResultSchema,
-    ListTasksResultSchema,
-    CreateTaskResultSchema
-  ]);
-  McpError = class McpError extends Error {
-    constructor(code, message, data) {
-      super(`MCP error ${code}: ${message}`);
-      this.code = code;
-      this.data = data;
-      this.name = "McpError";
-    }
-    static fromError(code, message, data) {
-      if (code === ErrorCode.UrlElicitationRequired && data) {
-        const errorData = data;
-        if (errorData.elicitations) {
-          return new UrlElicitationRequiredError(errorData.elicitations, message);
-        }
-      }
-      return new McpError(code, message, data);
-    }
-  };
-  UrlElicitationRequiredError = class UrlElicitationRequiredError extends McpError {
-    constructor(elicitations, message = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
-      super(ErrorCode.UrlElicitationRequired, message, {
-        elicitations
-      });
-    }
-    get elicitations() {
-      return this.data?.elicitations ?? [];
-    }
-  };
-});
-
-// node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
-function isTerminal(status) {
-  return status === "completed" || status === "failed" || status === "cancelled";
-}
-
-// node_modules/zod-to-json-schema/dist/esm/Options.js
-var ignoreOverride;
-var init_Options = __esm(() => {
-  ignoreOverride = Symbol("Let zodToJsonSchema decide on which parser to use");
-});
-
-// node_modules/zod-to-json-schema/dist/esm/Refs.js
-var init_Refs = __esm(() => {
-  init_Options();
-});
-// node_modules/zod-to-json-schema/dist/esm/parsers/any.js
-var init_any = () => {};
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/array.js
-var init_array = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/bigint.js
-var init_bigint = () => {};
-// node_modules/zod-to-json-schema/dist/esm/parsers/branded.js
-var init_branded = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/catch.js
-var init_catch = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/date.js
-var init_date = () => {};
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/default.js
-var init_default = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/effects.js
-var init_effects = __esm(() => {
-  init_parseDef();
-  init_any();
-});
-// node_modules/zod-to-json-schema/dist/esm/parsers/intersection.js
-var init_intersection = __esm(() => {
-  init_parseDef();
-});
-// node_modules/zod-to-json-schema/dist/esm/parsers/string.js
-var ALPHA_NUMERIC;
-var init_string = __esm(() => {
-  ALPHA_NUMERIC = new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/record.js
-var init_record = __esm(() => {
-  init_parseDef();
-  init_string();
-  init_branded();
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/map.js
-var init_map = __esm(() => {
-  init_parseDef();
-  init_record();
-  init_any();
-});
-// node_modules/zod-to-json-schema/dist/esm/parsers/never.js
-var init_never = __esm(() => {
-  init_any();
-});
-// node_modules/zod-to-json-schema/dist/esm/parsers/union.js
-var init_union = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/nullable.js
-var init_nullable = __esm(() => {
-  init_parseDef();
-  init_union();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/number.js
-var init_number = () => {};
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/object.js
-var init_object = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/optional.js
-var init_optional = __esm(() => {
-  init_parseDef();
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/pipeline.js
-var init_pipeline = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/promise.js
-var init_promise = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/set.js
-var init_set = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/tuple.js
-var init_tuple = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/undefined.js
-var init_undefined = __esm(() => {
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/unknown.js
-var init_unknown = __esm(() => {
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parsers/readonly.js
-var init_readonly = __esm(() => {
-  init_parseDef();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/selectParser.js
-var init_selectParser = __esm(() => {
-  init_any();
-  init_array();
-  init_bigint();
-  init_branded();
-  init_catch();
-  init_date();
-  init_default();
-  init_effects();
-  init_intersection();
-  init_map();
-  init_never();
-  init_nullable();
-  init_number();
-  init_object();
-  init_optional();
-  init_pipeline();
-  init_promise();
-  init_record();
-  init_set();
-  init_string();
-  init_tuple();
-  init_undefined();
-  init_union();
-  init_unknown();
-  init_readonly();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parseDef.js
-var init_parseDef = __esm(() => {
-  init_Options();
-  init_selectParser();
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/parseTypes.js
-var init_parseTypes = () => {};
-
-// node_modules/zod-to-json-schema/dist/esm/zodToJsonSchema.js
-var init_zodToJsonSchema = __esm(() => {
-  init_parseDef();
-  init_Refs();
-  init_any();
-});
-
-// node_modules/zod-to-json-schema/dist/esm/index.js
-var init_esm = __esm(() => {
-  init_zodToJsonSchema();
-  init_Options();
-  init_Refs();
-  init_parseDef();
-  init_parseTypes();
-  init_any();
-  init_array();
-  init_bigint();
-  init_branded();
-  init_catch();
-  init_date();
-  init_default();
-  init_effects();
-  init_intersection();
-  init_map();
-  init_never();
-  init_nullable();
-  init_number();
-  init_object();
-  init_optional();
-  init_pipeline();
-  init_promise();
-  init_readonly();
-  init_record();
-  init_set();
-  init_string();
-  init_tuple();
-  init_undefined();
-  init_union();
-  init_unknown();
-  init_selectParser();
-  init_zodToJsonSchema();
-});
-
-// node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-json-schema-compat.js
-function getMethodLiteral(schema) {
-  const shape = getObjectShape(schema);
-  const methodSchema = shape?.method;
-  if (!methodSchema) {
-    throw new Error("Schema is missing a method literal");
-  }
-  const value = getLiteralValue(methodSchema);
-  if (typeof value !== "string") {
-    throw new Error("Schema method literal must be a string");
-  }
-  return value;
-}
-function parseWithCompat(schema, data) {
-  const result = safeParse2(schema, data);
-  if (!result.success) {
-    throw result.error;
-  }
-  return result.data;
-}
-var init_zod_json_schema_compat = __esm(() => {
-  init_zod_compat();
-  init_esm();
-});
-
-// node_modules/@modelcontextprotocol/sdk/dist/esm/shared/protocol.js
-class Protocol {
-  constructor(_options) {
-    this._options = _options;
-    this._requestMessageId = 0;
-    this._requestHandlers = new Map;
-    this._requestHandlerAbortControllers = new Map;
-    this._notificationHandlers = new Map;
-    this._responseHandlers = new Map;
-    this._progressHandlers = new Map;
-    this._timeoutInfo = new Map;
-    this._pendingDebouncedNotifications = new Set;
-    this._taskProgressTokens = new Map;
-    this._requestResolvers = new Map;
-    this.setNotificationHandler(CancelledNotificationSchema, (notification) => {
-      this._oncancel(notification);
-    });
-    this.setNotificationHandler(ProgressNotificationSchema, (notification) => {
-      this._onprogress(notification);
-    });
-    this.setRequestHandler(PingRequestSchema, (_request) => ({}));
-    this._taskStore = _options?.taskStore;
-    this._taskMessageQueue = _options?.taskMessageQueue;
-    if (this._taskStore) {
-      this.setRequestHandler(GetTaskRequestSchema, async (request, extra) => {
-        const task = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
-        if (!task) {
-          throw new McpError(ErrorCode.InvalidParams, "Failed to retrieve task: Task not found");
-        }
-        return {
-          ...task
-        };
-      });
-      this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
-        const handleTaskResult = async () => {
-          const taskId = request.params.taskId;
-          if (this._taskMessageQueue) {
-            let queuedMessage;
-            while (queuedMessage = await this._taskMessageQueue.dequeue(taskId, extra.sessionId)) {
-              if (queuedMessage.type === "response" || queuedMessage.type === "error") {
-                const message = queuedMessage.message;
-                const requestId = message.id;
-                const resolver = this._requestResolvers.get(requestId);
-                if (resolver) {
-                  this._requestResolvers.delete(requestId);
-                  if (queuedMessage.type === "response") {
-                    resolver(message);
-                  } else {
-                    const errorMessage = message;
-                    const error = new McpError(errorMessage.error.code, errorMessage.error.message, errorMessage.error.data);
-                    resolver(error);
-                  }
-                } else {
-                  const messageType = queuedMessage.type === "response" ? "Response" : "Error";
-                  this._onerror(new Error(`${messageType} handler missing for request ${requestId}`));
-                }
-                continue;
-              }
-              await this._transport?.send(queuedMessage.message, { relatedRequestId: extra.requestId });
-            }
-          }
-          const task = await this._taskStore.getTask(taskId, extra.sessionId);
-          if (!task) {
-            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
-          }
-          if (!isTerminal(task.status)) {
-            await this._waitForTaskUpdate(taskId, extra.signal);
-            return await handleTaskResult();
-          }
-          if (isTerminal(task.status)) {
-            const result = await this._taskStore.getTaskResult(taskId, extra.sessionId);
-            this._clearTaskQueue(taskId);
-            return {
-              ...result,
-              _meta: {
-                ...result._meta,
-                [RELATED_TASK_META_KEY]: {
-                  taskId
-                }
-              }
-            };
-          }
-          return await handleTaskResult();
-        };
-        return await handleTaskResult();
-      });
-      this.setRequestHandler(ListTasksRequestSchema, async (request, extra) => {
-        try {
-          const { tasks, nextCursor } = await this._taskStore.listTasks(request.params?.cursor, extra.sessionId);
-          return {
-            tasks,
-            nextCursor,
-            _meta: {}
-          };
-        } catch (error) {
-          throw new McpError(ErrorCode.InvalidParams, `Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-      this.setRequestHandler(CancelTaskRequestSchema, async (request, extra) => {
-        try {
-          const task = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
-          if (!task) {
-            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${request.params.taskId}`);
-          }
-          if (isTerminal(task.status)) {
-            throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
-          }
-          await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId);
-          const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
-          if (!cancelledTask) {
-            throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
-          }
-          return {
-            _meta: {},
-            ...cancelledTask
-          };
-        } catch (error) {
-          if (error instanceof McpError) {
-            throw error;
-          }
-          throw new McpError(ErrorCode.InvalidRequest, `Failed to cancel task: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-  }
-  async _oncancel(notification) {
-    if (!notification.params.requestId) {
-      return;
-    }
-    const controller = this._requestHandlerAbortControllers.get(notification.params.requestId);
-    controller?.abort(notification.params.reason);
-  }
-  _setupTimeout(messageId, timeout, maxTotalTimeout, onTimeout, resetTimeoutOnProgress = false) {
-    this._timeoutInfo.set(messageId, {
-      timeoutId: setTimeout(onTimeout, timeout),
-      startTime: Date.now(),
-      timeout,
-      maxTotalTimeout,
-      resetTimeoutOnProgress,
-      onTimeout
-    });
-  }
-  _resetTimeout(messageId) {
-    const info = this._timeoutInfo.get(messageId);
-    if (!info)
-      return false;
-    const totalElapsed = Date.now() - info.startTime;
-    if (info.maxTotalTimeout && totalElapsed >= info.maxTotalTimeout) {
-      this._timeoutInfo.delete(messageId);
-      throw McpError.fromError(ErrorCode.RequestTimeout, "Maximum total timeout exceeded", {
-        maxTotalTimeout: info.maxTotalTimeout,
-        totalElapsed
-      });
-    }
-    clearTimeout(info.timeoutId);
-    info.timeoutId = setTimeout(info.onTimeout, info.timeout);
-    return true;
-  }
-  _cleanupTimeout(messageId) {
-    const info = this._timeoutInfo.get(messageId);
-    if (info) {
-      clearTimeout(info.timeoutId);
-      this._timeoutInfo.delete(messageId);
-    }
-  }
-  async connect(transport) {
-    if (this._transport) {
-      throw new Error("Already connected to a transport. Call close() before connecting to a new transport, or use a separate Protocol instance per connection.");
-    }
-    this._transport = transport;
-    const _onclose = this.transport?.onclose;
-    this._transport.onclose = () => {
-      _onclose?.();
-      this._onclose();
-    };
-    const _onerror = this.transport?.onerror;
-    this._transport.onerror = (error) => {
-      _onerror?.(error);
-      this._onerror(error);
-    };
-    const _onmessage = this._transport?.onmessage;
-    this._transport.onmessage = (message, extra) => {
-      _onmessage?.(message, extra);
-      if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
-        this._onresponse(message);
-      } else if (isJSONRPCRequest(message)) {
-        this._onrequest(message, extra);
-      } else if (isJSONRPCNotification(message)) {
-        this._onnotification(message);
-      } else {
-        this._onerror(new Error(`Unknown message type: ${JSON.stringify(message)}`));
-      }
-    };
-    await this._transport.start();
-  }
-  _onclose() {
-    const responseHandlers = this._responseHandlers;
-    this._responseHandlers = new Map;
-    this._progressHandlers.clear();
-    this._taskProgressTokens.clear();
-    this._pendingDebouncedNotifications.clear();
-    for (const info of this._timeoutInfo.values()) {
-      clearTimeout(info.timeoutId);
-    }
-    this._timeoutInfo.clear();
-    for (const controller of this._requestHandlerAbortControllers.values()) {
-      controller.abort();
-    }
-    this._requestHandlerAbortControllers.clear();
-    const error = McpError.fromError(ErrorCode.ConnectionClosed, "Connection closed");
-    this._transport = undefined;
-    this.onclose?.();
-    for (const handler of responseHandlers.values()) {
-      handler(error);
-    }
-  }
-  _onerror(error) {
-    this.onerror?.(error);
-  }
-  _onnotification(notification) {
-    const handler = this._notificationHandlers.get(notification.method) ?? this.fallbackNotificationHandler;
-    if (handler === undefined) {
-      return;
-    }
-    Promise.resolve().then(() => handler(notification)).catch((error) => this._onerror(new Error(`Uncaught error in notification handler: ${error}`)));
-  }
-  _onrequest(request, extra) {
-    const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
-    const capturedTransport = this._transport;
-    const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
-    if (handler === undefined) {
-      const errorResponse = {
-        jsonrpc: "2.0",
-        id: request.id,
-        error: {
-          code: ErrorCode.MethodNotFound,
-          message: "Method not found"
-        }
-      };
-      if (relatedTaskId && this._taskMessageQueue) {
-        this._enqueueTaskMessage(relatedTaskId, {
-          type: "error",
-          message: errorResponse,
-          timestamp: Date.now()
-        }, capturedTransport?.sessionId).catch((error) => this._onerror(new Error(`Failed to enqueue error response: ${error}`)));
-      } else {
-        capturedTransport?.send(errorResponse).catch((error) => this._onerror(new Error(`Failed to send an error response: ${error}`)));
-      }
-      return;
-    }
-    const abortController = new AbortController;
-    this._requestHandlerAbortControllers.set(request.id, abortController);
-    const taskCreationParams = isTaskAugmentedRequestParams(request.params) ? request.params.task : undefined;
-    const taskStore = this._taskStore ? this.requestTaskStore(request, capturedTransport?.sessionId) : undefined;
-    const fullExtra = {
-      signal: abortController.signal,
-      sessionId: capturedTransport?.sessionId,
-      _meta: request.params?._meta,
-      sendNotification: async (notification) => {
-        if (abortController.signal.aborted)
-          return;
-        const notificationOptions = { relatedRequestId: request.id };
-        if (relatedTaskId) {
-          notificationOptions.relatedTask = { taskId: relatedTaskId };
-        }
-        await this.notification(notification, notificationOptions);
-      },
-      sendRequest: async (r, resultSchema, options) => {
-        if (abortController.signal.aborted) {
-          throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
-        }
-        const requestOptions = { ...options, relatedRequestId: request.id };
-        if (relatedTaskId && !requestOptions.relatedTask) {
-          requestOptions.relatedTask = { taskId: relatedTaskId };
-        }
-        const effectiveTaskId = requestOptions.relatedTask?.taskId ?? relatedTaskId;
-        if (effectiveTaskId && taskStore) {
-          await taskStore.updateTaskStatus(effectiveTaskId, "input_required");
-        }
-        return await this.request(r, resultSchema, requestOptions);
-      },
-      authInfo: extra?.authInfo,
-      requestId: request.id,
-      requestInfo: extra?.requestInfo,
-      taskId: relatedTaskId,
-      taskStore,
-      taskRequestedTtl: taskCreationParams?.ttl,
-      closeSSEStream: extra?.closeSSEStream,
-      closeStandaloneSSEStream: extra?.closeStandaloneSSEStream
-    };
-    Promise.resolve().then(() => {
-      if (taskCreationParams) {
-        this.assertTaskHandlerCapability(request.method);
-      }
-    }).then(() => handler(request, fullExtra)).then(async (result) => {
-      if (abortController.signal.aborted) {
-        return;
-      }
-      const response = {
-        result,
-        jsonrpc: "2.0",
-        id: request.id
-      };
-      if (relatedTaskId && this._taskMessageQueue) {
-        await this._enqueueTaskMessage(relatedTaskId, {
-          type: "response",
-          message: response,
-          timestamp: Date.now()
-        }, capturedTransport?.sessionId);
-      } else {
-        await capturedTransport?.send(response);
-      }
-    }, async (error) => {
-      if (abortController.signal.aborted) {
-        return;
-      }
-      const errorResponse = {
-        jsonrpc: "2.0",
-        id: request.id,
-        error: {
-          code: Number.isSafeInteger(error["code"]) ? error["code"] : ErrorCode.InternalError,
-          message: error.message ?? "Internal error",
-          ...error["data"] !== undefined && { data: error["data"] }
-        }
-      };
-      if (relatedTaskId && this._taskMessageQueue) {
-        await this._enqueueTaskMessage(relatedTaskId, {
-          type: "error",
-          message: errorResponse,
-          timestamp: Date.now()
-        }, capturedTransport?.sessionId);
-      } else {
-        await capturedTransport?.send(errorResponse);
-      }
-    }).catch((error) => this._onerror(new Error(`Failed to send response: ${error}`))).finally(() => {
-      if (this._requestHandlerAbortControllers.get(request.id) === abortController) {
-        this._requestHandlerAbortControllers.delete(request.id);
-      }
-    });
-  }
-  _onprogress(notification) {
-    const { progressToken, ...params } = notification.params;
-    const messageId = Number(progressToken);
-    const handler = this._progressHandlers.get(messageId);
-    if (!handler) {
-      this._onerror(new Error(`Received a progress notification for an unknown token: ${JSON.stringify(notification)}`));
-      return;
-    }
-    const responseHandler = this._responseHandlers.get(messageId);
-    const timeoutInfo = this._timeoutInfo.get(messageId);
-    if (timeoutInfo && responseHandler && timeoutInfo.resetTimeoutOnProgress) {
-      try {
-        this._resetTimeout(messageId);
-      } catch (error) {
-        this._responseHandlers.delete(messageId);
-        this._progressHandlers.delete(messageId);
-        this._cleanupTimeout(messageId);
-        responseHandler(error);
-        return;
-      }
-    }
-    handler(params);
-  }
-  _onresponse(response) {
-    const messageId = Number(response.id);
-    const resolver = this._requestResolvers.get(messageId);
-    if (resolver) {
-      this._requestResolvers.delete(messageId);
-      if (isJSONRPCResultResponse(response)) {
-        resolver(response);
-      } else {
-        const error = new McpError(response.error.code, response.error.message, response.error.data);
-        resolver(error);
-      }
-      return;
-    }
-    const handler = this._responseHandlers.get(messageId);
-    if (handler === undefined) {
-      this._onerror(new Error(`Received a response for an unknown message ID: ${JSON.stringify(response)}`));
-      return;
-    }
-    this._responseHandlers.delete(messageId);
-    this._cleanupTimeout(messageId);
-    let isTaskResponse = false;
-    if (isJSONRPCResultResponse(response) && response.result && typeof response.result === "object") {
-      const result = response.result;
-      if (result.task && typeof result.task === "object") {
-        const task = result.task;
-        if (typeof task.taskId === "string") {
-          isTaskResponse = true;
-          this._taskProgressTokens.set(task.taskId, messageId);
-        }
-      }
-    }
-    if (!isTaskResponse) {
-      this._progressHandlers.delete(messageId);
-    }
-    if (isJSONRPCResultResponse(response)) {
-      handler(response);
-    } else {
-      const error = McpError.fromError(response.error.code, response.error.message, response.error.data);
-      handler(error);
-    }
-  }
-  get transport() {
-    return this._transport;
-  }
-  async close() {
-    await this._transport?.close();
-  }
-  async* requestStream(request, resultSchema, options) {
-    const { task } = options ?? {};
-    if (!task) {
-      try {
-        const result = await this.request(request, resultSchema, options);
-        yield { type: "result", result };
-      } catch (error) {
-        yield {
-          type: "error",
-          error: error instanceof McpError ? error : new McpError(ErrorCode.InternalError, String(error))
-        };
-      }
-      return;
-    }
-    let taskId;
-    try {
-      const createResult = await this.request(request, CreateTaskResultSchema, options);
-      if (createResult.task) {
-        taskId = createResult.task.taskId;
-        yield { type: "taskCreated", task: createResult.task };
-      } else {
-        throw new McpError(ErrorCode.InternalError, "Task creation did not return a task");
-      }
-      while (true) {
-        const task = await this.getTask({ taskId }, options);
-        yield { type: "taskStatus", task };
-        if (isTerminal(task.status)) {
-          if (task.status === "completed") {
-            const result = await this.getTaskResult({ taskId }, resultSchema, options);
-            yield { type: "result", result };
-          } else if (task.status === "failed") {
-            yield {
-              type: "error",
-              error: new McpError(ErrorCode.InternalError, `Task ${taskId} failed`)
-            };
-          } else if (task.status === "cancelled") {
-            yield {
-              type: "error",
-              error: new McpError(ErrorCode.InternalError, `Task ${taskId} was cancelled`)
-            };
-          }
-          return;
-        }
-        if (task.status === "input_required") {
-          const result = await this.getTaskResult({ taskId }, resultSchema, options);
-          yield { type: "result", result };
-          return;
-        }
-        const pollInterval = task.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1000;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
-        options?.signal?.throwIfAborted();
-      }
-    } catch (error) {
-      yield {
-        type: "error",
-        error: error instanceof McpError ? error : new McpError(ErrorCode.InternalError, String(error))
-      };
-    }
-  }
-  request(request, resultSchema, options) {
-    const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve, reject) => {
-      const earlyReject = (error) => {
-        reject(error);
-      };
-      if (!this._transport) {
-        earlyReject(new Error("Not connected"));
-        return;
-      }
-      if (this._options?.enforceStrictCapabilities === true) {
-        try {
-          this.assertCapabilityForMethod(request.method);
-          if (task) {
-            this.assertTaskCapability(request.method);
-          }
-        } catch (e) {
-          earlyReject(e);
-          return;
-        }
-      }
-      options?.signal?.throwIfAborted();
-      const messageId = this._requestMessageId++;
-      const jsonrpcRequest = {
-        ...request,
-        jsonrpc: "2.0",
-        id: messageId
-      };
-      if (options?.onprogress) {
-        this._progressHandlers.set(messageId, options.onprogress);
-        jsonrpcRequest.params = {
-          ...request.params,
-          _meta: {
-            ...request.params?._meta || {},
-            progressToken: messageId
-          }
-        };
-      }
-      if (task) {
-        jsonrpcRequest.params = {
-          ...jsonrpcRequest.params,
-          task
-        };
-      }
-      if (relatedTask) {
-        jsonrpcRequest.params = {
-          ...jsonrpcRequest.params,
-          _meta: {
-            ...jsonrpcRequest.params?._meta || {},
-            [RELATED_TASK_META_KEY]: relatedTask
-          }
-        };
-      }
-      const cancel = (reason) => {
-        this._responseHandlers.delete(messageId);
-        this._progressHandlers.delete(messageId);
-        this._cleanupTimeout(messageId);
-        this._transport?.send({
-          jsonrpc: "2.0",
-          method: "notifications/cancelled",
-          params: {
-            requestId: messageId,
-            reason: String(reason)
-          }
-        }, { relatedRequestId, resumptionToken, onresumptiontoken }).catch((error) => this._onerror(new Error(`Failed to send cancellation: ${error}`)));
-        const error = reason instanceof McpError ? reason : new McpError(ErrorCode.RequestTimeout, String(reason));
-        reject(error);
-      };
-      this._responseHandlers.set(messageId, (response) => {
-        if (options?.signal?.aborted) {
-          return;
-        }
-        if (response instanceof Error) {
-          return reject(response);
-        }
-        try {
-          const parseResult = safeParse2(resultSchema, response.result);
-          if (!parseResult.success) {
-            reject(parseResult.error);
-          } else {
-            resolve(parseResult.data);
-          }
-        } catch (error) {
-          reject(error);
-        }
-      });
-      options?.signal?.addEventListener("abort", () => {
-        cancel(options?.signal?.reason);
-      });
-      const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC;
-      const timeoutHandler = () => cancel(McpError.fromError(ErrorCode.RequestTimeout, "Request timed out", { timeout }));
-      this._setupTimeout(messageId, timeout, options?.maxTotalTimeout, timeoutHandler, options?.resetTimeoutOnProgress ?? false);
-      const relatedTaskId = relatedTask?.taskId;
-      if (relatedTaskId) {
-        const responseResolver = (response) => {
-          const handler = this._responseHandlers.get(messageId);
-          if (handler) {
-            handler(response);
-          } else {
-            this._onerror(new Error(`Response handler missing for side-channeled request ${messageId}`));
-          }
-        };
-        this._requestResolvers.set(messageId, responseResolver);
-        this._enqueueTaskMessage(relatedTaskId, {
-          type: "request",
-          message: jsonrpcRequest,
-          timestamp: Date.now()
-        }).catch((error) => {
-          this._cleanupTimeout(messageId);
-          reject(error);
-        });
-      } else {
-        this._transport.send(jsonrpcRequest, { relatedRequestId, resumptionToken, onresumptiontoken }).catch((error) => {
-          this._cleanupTimeout(messageId);
-          reject(error);
-        });
-      }
-    });
-  }
-  async getTask(params, options) {
-    return this.request({ method: "tasks/get", params }, GetTaskResultSchema, options);
-  }
-  async getTaskResult(params, resultSchema, options) {
-    return this.request({ method: "tasks/result", params }, resultSchema, options);
-  }
-  async listTasks(params, options) {
-    return this.request({ method: "tasks/list", params }, ListTasksResultSchema, options);
-  }
-  async cancelTask(params, options) {
-    return this.request({ method: "tasks/cancel", params }, CancelTaskResultSchema, options);
-  }
-  async notification(notification, options) {
-    if (!this._transport) {
-      throw new Error("Not connected");
-    }
-    this.assertNotificationCapability(notification.method);
-    const relatedTaskId = options?.relatedTask?.taskId;
-    if (relatedTaskId) {
-      const jsonrpcNotification = {
-        ...notification,
-        jsonrpc: "2.0",
-        params: {
-          ...notification.params,
-          _meta: {
-            ...notification.params?._meta || {},
-            [RELATED_TASK_META_KEY]: options.relatedTask
-          }
-        }
-      };
-      await this._enqueueTaskMessage(relatedTaskId, {
-        type: "notification",
-        message: jsonrpcNotification,
-        timestamp: Date.now()
-      });
-      return;
-    }
-    const debouncedMethods = this._options?.debouncedNotificationMethods ?? [];
-    const canDebounce = debouncedMethods.includes(notification.method) && !notification.params && !options?.relatedRequestId && !options?.relatedTask;
-    if (canDebounce) {
-      if (this._pendingDebouncedNotifications.has(notification.method)) {
-        return;
-      }
-      this._pendingDebouncedNotifications.add(notification.method);
-      Promise.resolve().then(() => {
-        this._pendingDebouncedNotifications.delete(notification.method);
-        if (!this._transport) {
-          return;
-        }
-        let jsonrpcNotification = {
-          ...notification,
-          jsonrpc: "2.0"
-        };
-        if (options?.relatedTask) {
-          jsonrpcNotification = {
-            ...jsonrpcNotification,
-            params: {
-              ...jsonrpcNotification.params,
-              _meta: {
-                ...jsonrpcNotification.params?._meta || {},
-                [RELATED_TASK_META_KEY]: options.relatedTask
-              }
-            }
-          };
-        }
-        this._transport?.send(jsonrpcNotification, options).catch((error) => this._onerror(error));
-      });
-      return;
-    }
-    let jsonrpcNotification = {
-      ...notification,
-      jsonrpc: "2.0"
-    };
-    if (options?.relatedTask) {
-      jsonrpcNotification = {
-        ...jsonrpcNotification,
-        params: {
-          ...jsonrpcNotification.params,
-          _meta: {
-            ...jsonrpcNotification.params?._meta || {},
-            [RELATED_TASK_META_KEY]: options.relatedTask
-          }
-        }
-      };
-    }
-    await this._transport.send(jsonrpcNotification, options);
-  }
-  setRequestHandler(requestSchema, handler) {
-    const method = getMethodLiteral(requestSchema);
-    this.assertRequestHandlerCapability(method);
-    this._requestHandlers.set(method, (request, extra) => {
-      const parsed = parseWithCompat(requestSchema, request);
-      return Promise.resolve(handler(parsed, extra));
-    });
-  }
-  removeRequestHandler(method) {
-    this._requestHandlers.delete(method);
-  }
-  assertCanSetRequestHandler(method) {
-    if (this._requestHandlers.has(method)) {
-      throw new Error(`A request handler for ${method} already exists, which would be overridden`);
-    }
-  }
-  setNotificationHandler(notificationSchema, handler) {
-    const method = getMethodLiteral(notificationSchema);
-    this._notificationHandlers.set(method, (notification) => {
-      const parsed = parseWithCompat(notificationSchema, notification);
-      return Promise.resolve(handler(parsed));
-    });
-  }
-  removeNotificationHandler(method) {
-    this._notificationHandlers.delete(method);
-  }
-  _cleanupTaskProgressHandler(taskId) {
-    const progressToken = this._taskProgressTokens.get(taskId);
-    if (progressToken !== undefined) {
-      this._progressHandlers.delete(progressToken);
-      this._taskProgressTokens.delete(taskId);
-    }
-  }
-  async _enqueueTaskMessage(taskId, message, sessionId) {
-    if (!this._taskStore || !this._taskMessageQueue) {
-      throw new Error("Cannot enqueue task message: taskStore and taskMessageQueue are not configured");
-    }
-    const maxQueueSize = this._options?.maxTaskQueueSize;
-    await this._taskMessageQueue.enqueue(taskId, message, sessionId, maxQueueSize);
-  }
-  async _clearTaskQueue(taskId, sessionId) {
-    if (this._taskMessageQueue) {
-      const messages = await this._taskMessageQueue.dequeueAll(taskId, sessionId);
-      for (const message of messages) {
-        if (message.type === "request" && isJSONRPCRequest(message.message)) {
-          const requestId = message.message.id;
-          const resolver = this._requestResolvers.get(requestId);
-          if (resolver) {
-            resolver(new McpError(ErrorCode.InternalError, "Task cancelled or completed"));
-            this._requestResolvers.delete(requestId);
-          } else {
-            this._onerror(new Error(`Resolver missing for request ${requestId} during task ${taskId} cleanup`));
-          }
-        }
-      }
-    }
-  }
-  async _waitForTaskUpdate(taskId, signal) {
-    let interval = this._options?.defaultTaskPollInterval ?? 1000;
-    try {
-      const task = await this._taskStore?.getTask(taskId);
-      if (task?.pollInterval) {
-        interval = task.pollInterval;
-      }
-    } catch {}
-    return new Promise((resolve, reject) => {
-      if (signal.aborted) {
-        reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
-        return;
-      }
-      const timeoutId = setTimeout(resolve, interval);
-      signal.addEventListener("abort", () => {
-        clearTimeout(timeoutId);
-        reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
-      }, { once: true });
-    });
-  }
-  requestTaskStore(request, sessionId) {
-    const taskStore = this._taskStore;
-    if (!taskStore) {
-      throw new Error("No task store configured");
-    }
-    return {
-      createTask: async (taskParams) => {
-        if (!request) {
-          throw new Error("No request provided");
-        }
-        return await taskStore.createTask(taskParams, request.id, {
-          method: request.method,
-          params: request.params
-        }, sessionId);
-      },
-      getTask: async (taskId) => {
-        const task = await taskStore.getTask(taskId, sessionId);
-        if (!task) {
-          throw new McpError(ErrorCode.InvalidParams, "Failed to retrieve task: Task not found");
-        }
-        return task;
-      },
-      storeTaskResult: async (taskId, status, result) => {
-        await taskStore.storeTaskResult(taskId, status, result, sessionId);
-        const task = await taskStore.getTask(taskId, sessionId);
-        if (task) {
-          const notification = TaskStatusNotificationSchema.parse({
-            method: "notifications/tasks/status",
-            params: task
-          });
-          await this.notification(notification);
-          if (isTerminal(task.status)) {
-            this._cleanupTaskProgressHandler(taskId);
-          }
-        }
-      },
-      getTaskResult: (taskId) => {
-        return taskStore.getTaskResult(taskId, sessionId);
-      },
-      updateTaskStatus: async (taskId, status, statusMessage) => {
-        const task = await taskStore.getTask(taskId, sessionId);
-        if (!task) {
-          throw new McpError(ErrorCode.InvalidParams, `Task "${taskId}" not found - it may have been cleaned up`);
-        }
-        if (isTerminal(task.status)) {
-          throw new McpError(ErrorCode.InvalidParams, `Cannot update task "${taskId}" from terminal status "${task.status}" to "${status}". Terminal states (completed, failed, cancelled) cannot transition to other states.`);
-        }
-        await taskStore.updateTaskStatus(taskId, status, statusMessage, sessionId);
-        const updatedTask = await taskStore.getTask(taskId, sessionId);
-        if (updatedTask) {
-          const notification = TaskStatusNotificationSchema.parse({
-            method: "notifications/tasks/status",
-            params: updatedTask
-          });
-          await this.notification(notification);
-          if (isTerminal(updatedTask.status)) {
-            this._cleanupTaskProgressHandler(taskId);
-          }
-        }
-      },
-      listTasks: (cursor) => {
-        return taskStore.listTasks(cursor, sessionId);
-      }
-    };
-  }
-}
-function isPlainObject2(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function mergeCapabilities(base, additional) {
-  const result = { ...base };
-  for (const key in additional) {
-    const k = key;
-    const addValue = additional[k];
-    if (addValue === undefined)
-      continue;
-    const baseValue = result[k];
-    if (isPlainObject2(baseValue) && isPlainObject2(addValue)) {
-      result[k] = { ...baseValue, ...addValue };
-    } else {
-      result[k] = addValue;
-    }
-  }
-  return result;
-}
-var DEFAULT_REQUEST_TIMEOUT_MSEC = 60000;
-var init_protocol = __esm(() => {
-  init_zod_compat();
-  init_types();
-  init_zod_json_schema_compat();
-});
-
-// node_modules/@modelcontextprotocol/ext-apps/dist/src/server/index.js
-class N {
-  eventTarget;
-  eventSource;
-  messageListener;
-  constructor(Z = window.parent, $) {
-    this.eventTarget = Z;
-    this.eventSource = $;
-    this.messageListener = (J) => {
-      if ($ && J.source !== this.eventSource) {
-        console.debug("Ignoring message from unknown source", J);
-        return;
-      }
-      let X = JSONRPCMessageSchema.safeParse(J.data);
-      if (X.success)
-        console.debug("Parsed message", X.data), this.onmessage?.(X.data);
-      else if (J.data?.jsonrpc !== "2.0")
-        console.debug("Ignoring non-JSON-RPC message", X.error.message, J);
-      else
-        console.error("Failed to parse message", X.error.message, J), this.onerror?.(Error("Invalid JSON-RPC message received: " + X.error.message));
-    };
-  }
-  async start() {
-    window.addEventListener("message", this.messageListener);
-  }
-  async send(Z, $) {
-    if (Z.method !== z)
-      console.debug("Sending message", Z);
-    this.eventTarget.postMessage(Z, "*");
-  }
-  async close() {
-    window.removeEventListener("message", this.messageListener), this.onclose?.();
-  }
-  onclose;
-  onerror;
-  onmessage;
-  sessionId;
-  setProtocolVersion;
-}
-async function x(Z, $) {
-  let J = Z["~standard"];
-  if (J.jsonSchema)
-    return J.jsonSchema[$](qQ);
-  if (J.vendor === "zod") {
-    await Promise.resolve().then(() => init_v4());
-    return toJSONSchema(Z, { io: $ });
-  }
-  throw Error(`Schema (vendor: ${J.vendor}) does not implement Standard JSON Schema (~standard.jsonSchema). Use a library that does (zod v4, ArkType, Valibot) or wrap your schema accordingly.`);
-}
-async function S(Z, $, J = "") {
-  let X = await Z["~standard"].validate($);
-  if (X.issues) {
-    let V = X.issues.map((D) => {
-      let L = D.path?.map((W) => typeof W === "object" ? W.key : W).join(".");
-      return L ? `${L}: ${D.message}` : D.message;
-    }).join("; ");
-    throw Error(J + V);
-  }
-  return X.value;
-}
-var r, F, q = "2026-01-26", z = "ui/notifications/tool-input-partial", v, K, QQ, ZQ, $Q, I, P, w, JQ, Y, j, XQ, H, _, A, f, u, E, VQ, O, DQ, d, h, LQ, WQ, BQ, R, m, GQ, dQ, KQ, NQ, YQ, U, T, k, jQ, FQ, M, qQ, C = "ui/resourceUri", p = "text/html;profile=mcp-app", c, TQ = "io.modelcontextprotocol/ui";
-var init_server = __esm(() => {
-  init_protocol();
-  init_types();
-  init_protocol();
-  init_types();
-  init_v4();
-  init_types();
-  init_v4();
-  r = ((Z) => "function" < "u" ? __require : typeof Proxy < "u" ? new Proxy(Z, { get: ($, J) => ("function" < "u" ? __require : $)[J] }) : Z)(function(Z) {
-    if ("function" < "u")
-      return __require.apply(this, arguments);
-    throw Error('Dynamic require of "' + Z + '" is not supported');
-  });
-  F = class F extends Protocol {
-    _registeredMethods = new Set;
-    _eventSlots = new Map;
-    onEventDispatch(Z, $) {}
-    _ensureEventSlot(Z) {
-      let $ = this._eventSlots.get(Z);
-      if (!$) {
-        let J = this.eventSchemas[Z];
-        if (!J)
-          throw Error(`Unknown event: ${String(Z)}`);
-        $ = { listeners: [] }, this._eventSlots.set(Z, $);
-        let X = J.shape.method.value;
-        this._registeredMethods.add(X);
-        let V = $;
-        super.setNotificationHandler(J, (D) => {
-          let L = D.params;
-          this.onEventDispatch(Z, L), V.onHandler?.(L);
-          for (let W of [...V.listeners])
-            W(L);
-        });
-      }
-      return $;
-    }
-    setEventHandler(Z, $) {
-      let J = this._ensureEventSlot(Z);
-      if (J.onHandler && $)
-        console.warn(`[MCP Apps] on${String(Z)} handler replaced. Use addEventListener("${String(Z)}", …) to add multiple listeners without replacing.`);
-      J.onHandler = $;
-    }
-    getEventHandler(Z) {
-      return this._eventSlots.get(Z)?.onHandler;
-    }
-    addEventListener(Z, $) {
-      this._ensureEventSlot(Z).listeners.push($);
-    }
-    removeEventListener(Z, $) {
-      let J = this._eventSlots.get(Z);
-      if (!J)
-        return;
-      let X = J.listeners.indexOf($);
-      if (X !== -1)
-        J.listeners.splice(X, 1);
-    }
-    setRequestHandler = (Z, $) => {
-      this._assertMethodNotRegistered(Z, "setRequestHandler"), super.setRequestHandler(Z, $);
-    };
-    setNotificationHandler = (Z, $) => {
-      this._assertMethodNotRegistered(Z, "setNotificationHandler"), super.setNotificationHandler(Z, $);
-    };
-    warnIfRequestHandlerReplaced(Z, $, J) {
-      if ($ && J)
-        console.warn(`[MCP Apps] ${Z} handler replaced. Previous handler will no longer be called.`);
-    }
-    replaceRequestHandler = (Z, $) => {
-      let J = Z.shape.method.value;
-      this._registeredMethods.add(J), super.setRequestHandler(Z, $);
-    };
-    _assertMethodNotRegistered(Z, $) {
-      let J = Z.shape.method.value;
-      if (this._registeredMethods.has(J))
-        throw Error(`Handler for "${J}" already registered (via ${$}). Use addEventListener() to attach multiple listeners, or the on* setter for replace semantics.`);
-      this._registeredMethods.add(J);
-    }
-  };
-  v = union([literal("light"), literal("dark")]).describe("Color theme preference for the host environment.");
-  K = union([literal("inline"), literal("fullscreen"), literal("pip")]).describe("Display mode for UI presentation.");
-  QQ = union([literal("--color-background-primary"), literal("--color-background-secondary"), literal("--color-background-tertiary"), literal("--color-background-inverse"), literal("--color-background-ghost"), literal("--color-background-info"), literal("--color-background-danger"), literal("--color-background-success"), literal("--color-background-warning"), literal("--color-background-disabled"), literal("--color-text-primary"), literal("--color-text-secondary"), literal("--color-text-tertiary"), literal("--color-text-inverse"), literal("--color-text-ghost"), literal("--color-text-info"), literal("--color-text-danger"), literal("--color-text-success"), literal("--color-text-warning"), literal("--color-text-disabled"), literal("--color-border-primary"), literal("--color-border-secondary"), literal("--color-border-tertiary"), literal("--color-border-inverse"), literal("--color-border-ghost"), literal("--color-border-info"), literal("--color-border-danger"), literal("--color-border-success"), literal("--color-border-warning"), literal("--color-border-disabled"), literal("--color-ring-primary"), literal("--color-ring-secondary"), literal("--color-ring-inverse"), literal("--color-ring-info"), literal("--color-ring-danger"), literal("--color-ring-success"), literal("--color-ring-warning"), literal("--font-sans"), literal("--font-mono"), literal("--font-weight-normal"), literal("--font-weight-medium"), literal("--font-weight-semibold"), literal("--font-weight-bold"), literal("--font-text-xs-size"), literal("--font-text-sm-size"), literal("--font-text-md-size"), literal("--font-text-lg-size"), literal("--font-heading-xs-size"), literal("--font-heading-sm-size"), literal("--font-heading-md-size"), literal("--font-heading-lg-size"), literal("--font-heading-xl-size"), literal("--font-heading-2xl-size"), literal("--font-heading-3xl-size"), literal("--font-text-xs-line-height"), literal("--font-text-sm-line-height"), literal("--font-text-md-line-height"), literal("--font-text-lg-line-height"), literal("--font-heading-xs-line-height"), literal("--font-heading-sm-line-height"), literal("--font-heading-md-line-height"), literal("--font-heading-lg-line-height"), literal("--font-heading-xl-line-height"), literal("--font-heading-2xl-line-height"), literal("--font-heading-3xl-line-height"), literal("--border-radius-xs"), literal("--border-radius-sm"), literal("--border-radius-md"), literal("--border-radius-lg"), literal("--border-radius-xl"), literal("--border-radius-full"), literal("--border-width-regular"), literal("--shadow-hairline"), literal("--shadow-sm"), literal("--shadow-md"), literal("--shadow-lg")]).describe("CSS variable keys available to MCP apps for theming.");
-  ZQ = record(QQ.describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`), union([string2(), _undefined3()]).describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`)).describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`);
-  $Q = object2({ method: literal("ui/open-link"), params: object2({ url: string2().describe("URL to open in the host's browser") }) });
-  I = object2({ isError: boolean2().optional().describe("True if the host failed to open the URL (e.g., due to security policy).") }).passthrough();
-  P = object2({ isError: boolean2().optional().describe("True if the download failed (e.g., user cancelled or host denied).") }).passthrough();
-  w = object2({ isError: boolean2().optional().describe("True if the host rejected or failed to deliver the message.") }).passthrough();
-  JQ = object2({ method: literal("ui/notifications/sandbox-proxy-ready"), params: object2({}) });
-  Y = object2({ connectDomains: array(string2()).optional().describe(`Origins for network requests (fetch/XHR/WebSocket).
-
-- Maps to CSP \`connect-src\` directive
-- Empty or omitted → no network connections (secure default)`), resourceDomains: array(string2()).optional().describe("Origins for static resources (images, scripts, stylesheets, fonts, media).\n\n- Maps to CSP `img-src`, `script-src`, `style-src`, `font-src`, `media-src` directives\n- Wildcard subdomains supported: `https://*.example.com`\n- Empty or omitted → no network resources (secure default)"), frameDomains: array(string2()).optional().describe("Origins for nested iframes.\n\n- Maps to CSP `frame-src` directive\n- Empty or omitted → no nested iframes allowed (`frame-src 'none'`)"), baseUriDomains: array(string2()).optional().describe("Allowed base URIs for the document.\n\n- Maps to CSP `base-uri` directive\n- Empty or omitted → only same origin allowed (`base-uri 'self'`)") });
-  j = object2({ camera: object2({}).optional().describe("Request camera access.\n\nMaps to Permission Policy `camera` feature."), microphone: object2({}).optional().describe("Request microphone access.\n\nMaps to Permission Policy `microphone` feature."), geolocation: object2({}).optional().describe("Request geolocation access.\n\nMaps to Permission Policy `geolocation` feature."), clipboardWrite: object2({}).optional().describe("Request clipboard write access.\n\nMaps to Permission Policy `clipboard-write` feature.") });
-  XQ = object2({ method: literal("ui/notifications/size-changed"), params: object2({ width: number2().optional().describe("New width in pixels."), height: number2().optional().describe("New height in pixels.") }) });
-  H = object2({ method: literal("ui/notifications/tool-input"), params: object2({ arguments: record(string2(), unknown().describe("Complete tool call arguments as key-value pairs.")).optional().describe("Complete tool call arguments as key-value pairs.") }) });
-  _ = object2({ method: literal("ui/notifications/tool-input-partial"), params: object2({ arguments: record(string2(), unknown().describe("Partial tool call arguments (incomplete, may change).")).optional().describe("Partial tool call arguments (incomplete, may change).") }) });
-  A = object2({ method: literal("ui/notifications/tool-cancelled"), params: object2({ reason: string2().optional().describe('Optional reason for the cancellation (e.g., "user action", "timeout").') }) });
-  f = object2({ fonts: string2().optional() });
-  u = object2({ variables: ZQ.optional().describe("CSS variables for theming the app."), css: f.optional().describe("CSS blocks that apps can inject.") });
-  E = object2({ method: literal("ui/resource-teardown"), params: object2({}) });
-  VQ = record(string2(), unknown());
-  O = object2({ text: object2({}).optional().describe("Host supports text content blocks."), image: object2({}).optional().describe("Host supports image content blocks."), audio: object2({}).optional().describe("Host supports audio content blocks."), resource: object2({}).optional().describe("Host supports resource content blocks."), resourceLink: object2({}).optional().describe("Host supports resource link content blocks."), structuredContent: object2({}).optional().describe("Host supports structured content.") });
-  DQ = object2({ method: literal("ui/notifications/request-teardown"), params: object2({}).optional() });
-  d = object2({ experimental: record(string2(), record(string2(), any()).describe("Experimental features keyed by identifier.")).optional().describe("Experimental features keyed by identifier."), openLinks: object2({}).optional().describe("Host supports opening external URLs."), downloadFile: object2({}).optional().describe("Host supports file downloads via ui/download-file."), serverTools: object2({ listChanged: boolean2().optional().describe("Host supports tools/list_changed notifications.") }).optional().describe("Host can proxy tool calls to the MCP server."), serverResources: object2({ listChanged: boolean2().optional().describe("Host supports resources/list_changed notifications.") }).optional().describe("Host can proxy resource reads to the MCP server."), logging: object2({}).optional().describe("Host accepts log messages."), sandbox: object2({ permissions: j.optional().describe("Permissions granted by the host (camera, microphone, geolocation)."), csp: Y.optional().describe("CSP domains approved by the host.") }).optional().describe("Sandbox configuration applied by the host."), updateModelContext: O.optional().describe("Host accepts context updates (ui/update-model-context) to be included in the model's context for future turns."), message: O.optional().describe("Host supports receiving content messages (ui/message) from the view."), sampling: object2({ tools: object2({}).optional().describe("Host supports tool use via `tools` and `toolChoice` parameters.") }).optional().describe("Host supports LLM sampling (sampling/createMessage) from the view.\nMirrors the MCP `ClientCapabilities.sampling` shape so hosts can pass it through.") });
-  h = object2({ experimental: record(string2(), record(string2(), any()).describe("Experimental features keyed by identifier.")).optional().describe("Experimental features keyed by identifier."), tools: object2({ listChanged: boolean2().optional().describe("App supports tools/list_changed notifications.") }).optional().describe("App exposes MCP-style tools that the host can call."), availableDisplayModes: array(K).optional().describe("Display modes the app supports.") });
-  LQ = object2({ method: literal("ui/notifications/initialized"), params: object2({}).optional() });
-  WQ = object2({ csp: Y.optional().describe("Content Security Policy configuration for UI resources."), permissions: j.optional().describe("Sandbox permissions requested by the UI resource."), domain: string2().optional().describe(`Dedicated origin for view sandbox.
-
-Useful when views need stable, dedicated origins for OAuth callbacks, CORS policies, or API key allowlists.
-
-**Host-dependent:** The format and validation rules for this field are determined by each host. Servers MUST consult host-specific documentation for the expected domain format. Common patterns include:
-- Hash-based subdomains (e.g., \`{hash}.claudemcpcontent.com\`)
-- URL-derived subdomains (e.g., \`www-example-com.oaiusercontent.com\`)
-
-If omitted, host uses default sandbox origin (typically per-conversation).`), prefersBorder: boolean2().optional().describe(`Visual boundary preference - true if view prefers a visible border.
-
-Boolean requesting whether a visible border and background is provided by the host. Specifying an explicit value for this is recommended because hosts' defaults may vary.
-
-- \`true\`: request visible border + background
-- \`false\`: request no visible border + background
-- omitted: host decides border`) });
-  BQ = object2({ method: literal("ui/request-display-mode"), params: object2({ mode: K.describe("The display mode being requested.") }) });
-  R = object2({ mode: K.describe("The display mode that was actually set. May differ from requested if not supported.") }).passthrough();
-  m = union([literal("model"), literal("app")]).describe("Tool visibility scope - who can access the tool.");
-  GQ = object2({ resourceUri: string2().optional(), visibility: array(m).optional().describe(`Who can access this tool. Default: ["model", "app"]
-- "model": Tool visible to and callable by the agent
-- "app": Tool callable by the app from this server only`), csp: never().optional(), permissions: never().optional() });
-  dQ = object2({ mimeTypes: array(string2()).optional().describe('Array of supported MIME types for UI resources.\nMust include `"text/html;profile=mcp-app"` for MCP Apps support.') });
-  KQ = object2({ method: literal("ui/download-file"), params: object2({ contents: array(union([EmbeddedResourceSchema, ResourceLinkSchema])).describe("Resource contents to download — embedded (inline data) or linked (host fetches). Uses standard MCP resource types.") }) });
-  NQ = object2({ method: literal("ui/message"), params: object2({ role: literal("user").describe('Message role, currently only "user" is supported.'), content: array(ContentBlockSchema).describe("Message content blocks (text, image, etc.).") }) });
-  YQ = object2({ method: literal("ui/notifications/sandbox-resource-ready"), params: object2({ html: string2().describe("HTML content to load into the inner iframe."), sandbox: string2().optional().describe("Optional override for the inner iframe's sandbox attribute."), csp: Y.optional().describe("CSP configuration from resource metadata."), permissions: j.optional().describe("Sandbox permissions from resource metadata.") }) });
-  U = object2({ method: literal("ui/notifications/tool-result"), params: CallToolResultSchema.describe("Standard MCP tool execution result.") });
-  T = object2({ toolInfo: object2({ id: RequestIdSchema.optional().describe("JSON-RPC id of the tools/call request."), tool: ToolSchema.describe("Tool definition including name, inputSchema, etc.") }).optional().describe("Metadata of the tool call that instantiated this App."), theme: v.optional().describe("Current color theme preference."), styles: u.optional().describe("Style configuration for theming the app."), displayMode: K.optional().describe("How the UI is currently displayed."), availableDisplayModes: array(K).optional().describe("Display modes the host supports."), containerDimensions: union([object2({ height: number2().describe("Fixed container height in pixels.") }), object2({ maxHeight: union([number2(), _undefined3()]).optional().describe("Maximum container height in pixels.") })]).and(union([object2({ width: number2().describe("Fixed container width in pixels.") }), object2({ maxWidth: union([number2(), _undefined3()]).optional().describe("Maximum container width in pixels.") })])).optional().describe(`Container dimensions. Represents the dimensions of the iframe or other
-container holding the app. Specify either width or maxWidth, and either height or maxHeight.`), locale: string2().optional().describe("User's language and region preference in BCP 47 format."), timeZone: string2().optional().describe("User's timezone in IANA format."), userAgent: string2().optional().describe("Host application identifier."), platform: union([literal("web"), literal("desktop"), literal("mobile")]).optional().describe("Platform type for responsive design decisions."), deviceCapabilities: object2({ touch: boolean2().optional().describe("Whether the device supports touch input."), hover: boolean2().optional().describe("Whether the device supports hover interactions.") }).optional().describe("Device input capabilities."), safeAreaInsets: object2({ top: number2().describe("Top safe area inset in pixels."), right: number2().describe("Right safe area inset in pixels."), bottom: number2().describe("Bottom safe area inset in pixels."), left: number2().describe("Left safe area inset in pixels.") }).optional().describe("Mobile safe area boundaries in pixels.") }).passthrough();
-  k = object2({ method: literal("ui/notifications/host-context-changed"), params: T.describe("Partial context update containing only changed fields.") });
-  jQ = object2({ method: literal("ui/update-model-context"), params: object2({ content: array(ContentBlockSchema).optional().describe("Context content blocks (text, image, etc.)."), structuredContent: record(string2(), unknown().describe("Structured content for machine-readable context data.")).optional().describe("Structured content for machine-readable context data.") }) });
-  FQ = object2({ method: literal("ui/initialize"), params: object2({ appInfo: ImplementationSchema.describe("App identification (name and version)."), appCapabilities: h.describe("Features and capabilities this app provides."), protocolVersion: string2().describe("Protocol version this app supports.") }) });
-  M = object2({ protocolVersion: string2().describe('Negotiated protocol version string (e.g., "2025-11-21").'), hostInfo: ImplementationSchema.describe("Host application identification and version."), hostCapabilities: d.describe("Features and capabilities provided by the host."), hostContext: T.describe("Rich context about the host environment.") }).passthrough();
-  qQ = { target: "draft-2020-12" };
-  c = class c extends F {
-    _appInfo;
-    _capabilities;
-    options;
-    _hostCapabilities;
-    _hostInfo;
-    _hostContext;
-    _registeredTools = {};
-    _initializedSent = false;
-    _assertInitialized(Z) {
-      if (this._initializedSent)
-        return;
-      let $ = `[ext-apps] App.${Z}() called before connect() completed the ui/initialize handshake. Await app.connect() before calling this method, or move data loading to an ontoolresult handler.`;
-      if (this.options?.strict)
-        throw Error($);
-      console.warn(`${$}. This will throw in a future release.`);
-    }
-    eventSchemas = { toolinput: H, toolinputpartial: _, toolresult: U, toolcancelled: A, hostcontextchanged: k };
-    static ONE_SHOT_EVENTS = new Set(["toolinput", "toolinputpartial", "toolresult", "toolcancelled"]);
-    _everHadListener = new Set;
-    _assertHandlerTiming(Z) {
-      if (!c.ONE_SHOT_EVENTS.has(Z) || this._everHadListener.has(Z))
-        return;
-      if (this._everHadListener.add(Z), !this._initializedSent)
-        return;
-      let $ = `[ext-apps] "${String(Z)}" handler registered after connect() completed the ui/initialize handshake. The host may have already sent this notification. Register handlers before calling app.connect().`;
-      if (this.options?.strict)
-        throw Error($);
-      console.warn($);
-    }
-    setEventHandler(Z, $) {
-      if ($)
-        this._assertHandlerTiming(Z);
-      super.setEventHandler(Z, $);
-    }
-    addEventListener(Z, $) {
-      this._assertHandlerTiming(Z), super.addEventListener(Z, $);
-    }
-    onEventDispatch(Z, $) {
-      if (Z === "hostcontextchanged")
-        this._hostContext = { ...this._hostContext, ...$ };
-    }
-    constructor(Z, $ = {}, J = { autoResize: true }) {
-      super(J);
-      this._appInfo = Z;
-      this._capabilities = $;
-      this.options = J;
-      if (!J.allowUnsafeEval)
-        config({ jitless: true });
-      this.setRequestHandler(PingRequestSchema, (X) => {
-        return console.log("Received ping:", X.params), {};
-      }), this.setEventHandler("hostcontextchanged", undefined);
-    }
-    registerCapabilities(Z) {
-      if (this.transport)
-        throw Error("Cannot register capabilities after transport is established");
-      this._capabilities = mergeCapabilities(this._capabilities, Z);
-    }
-    registerTool(Z, $, J) {
-      if (this._registeredTools[Z])
-        throw Error(`Tool ${Z} is already registered`);
-      let X = this, V = () => {
-        if (X._initializedSent && X._capabilities.tools?.listChanged)
-          X.sendToolListChanged();
-      }, D = $.inputSchema !== undefined, L = { title: $.title, description: $.description, inputSchema: $.inputSchema, outputSchema: $.outputSchema, annotations: $.annotations, _meta: $._meta, enabled: true, enable() {
-        this.enabled = true, V();
-      }, disable() {
-        this.enabled = false, V();
-      }, update(W) {
-        Object.assign(this, W), V();
-      }, remove() {
-        if (X._registeredTools[Z] !== L)
-          return;
-        delete X._registeredTools[Z], V();
-      }, handler: async (W, B) => {
-        if (!L.enabled)
-          throw Error(`Tool ${Z} is disabled`);
-        let G;
-        if (D) {
-          let b = L.inputSchema, l = b ? await S(b, W ?? {}, `Invalid input for tool ${Z}: `) : W ?? {};
-          G = await J(l, B);
-        } else
-          G = await J(B);
-        if (L.outputSchema && !G.isError)
-          G.structuredContent = await S(L.outputSchema, G.structuredContent, `Invalid output for tool ${Z}: `);
-        return G;
-      } };
-      if (this._registeredTools[Z] = L, !this._capabilities.tools && !this.transport)
-        this.registerCapabilities({ tools: { listChanged: true } });
-      return this.ensureToolHandlersInitialized(), V(), L;
-    }
-    _toolHandlersInitialized = false;
-    ensureToolHandlersInitialized() {
-      if (this._toolHandlersInitialized)
-        return;
-      this._toolHandlersInitialized = true, this.oncalltool = async (Z, $) => {
-        let J = this._registeredTools[Z.name];
-        if (!J)
-          throw Error(`Tool ${Z.name} not found`);
-        return J.handler(Z.arguments, $);
-      }, this.onlisttools = async (Z, $) => {
-        return { tools: await Promise.all(Object.entries(this._registeredTools).filter(([X, V]) => V.enabled).map(async ([X, V]) => {
-          let D = { name: X, title: V.title, description: V.description, inputSchema: V.inputSchema ? await x(V.inputSchema, "input") : { type: "object", properties: {} } };
-          if (V.outputSchema)
-            D.outputSchema = await x(V.outputSchema, "output");
-          if (V.annotations)
-            D.annotations = V.annotations;
-          if (V._meta)
-            D._meta = V._meta;
-          return D;
-        })) };
-      };
-    }
-    async sendToolListChanged(Z = {}) {
-      this._assertInitialized("sendToolListChanged"), await this.notification({ method: "notifications/tools/list_changed", params: Z });
-    }
-    getHostCapabilities() {
-      return this._hostCapabilities;
-    }
-    getHostVersion() {
-      return this._hostInfo;
-    }
-    getHostContext() {
-      return this._hostContext;
-    }
-    get ontoolinput() {
-      return this.getEventHandler("toolinput");
-    }
-    set ontoolinput(Z) {
-      this.setEventHandler("toolinput", Z);
-    }
-    get ontoolinputpartial() {
-      return this.getEventHandler("toolinputpartial");
-    }
-    set ontoolinputpartial(Z) {
-      this.setEventHandler("toolinputpartial", Z);
-    }
-    get ontoolresult() {
-      return this.getEventHandler("toolresult");
-    }
-    set ontoolresult(Z) {
-      this.setEventHandler("toolresult", Z);
-    }
-    get ontoolcancelled() {
-      return this.getEventHandler("toolcancelled");
-    }
-    set ontoolcancelled(Z) {
-      this.setEventHandler("toolcancelled", Z);
-    }
-    get onhostcontextchanged() {
-      return this.getEventHandler("hostcontextchanged");
-    }
-    set onhostcontextchanged(Z) {
-      this.setEventHandler("hostcontextchanged", Z);
-    }
-    _onteardown;
-    get onteardown() {
-      return this._onteardown;
-    }
-    set onteardown(Z) {
-      this.warnIfRequestHandlerReplaced("onteardown", this._onteardown, Z), this._onteardown = Z, this.replaceRequestHandler(E, ($, J) => {
-        if (!this._onteardown)
-          throw Error("No onteardown handler set");
-        return this._onteardown($.params, J);
-      });
-    }
-    _oncalltool;
-    get oncalltool() {
-      return this._oncalltool;
-    }
-    set oncalltool(Z) {
-      this.warnIfRequestHandlerReplaced("oncalltool", this._oncalltool, Z), this._oncalltool = Z, this.replaceRequestHandler(CallToolRequestSchema, ($, J) => {
-        if (!this._oncalltool)
-          throw Error("No oncalltool handler set");
-        return this._oncalltool($.params, J);
-      });
-    }
-    _onlisttools;
-    get onlisttools() {
-      return this._onlisttools;
-    }
-    set onlisttools(Z) {
-      this.warnIfRequestHandlerReplaced("onlisttools", this._onlisttools, Z), this._onlisttools = Z, this.replaceRequestHandler(ListToolsRequestSchema, ($, J) => {
-        if (!this._onlisttools)
-          throw Error("No onlisttools handler set");
-        return this._onlisttools($.params, J);
-      });
-    }
-    assertCapabilityForMethod(Z) {
-      switch (Z) {
-        case "sampling/createMessage":
-          if (!this._hostCapabilities?.sampling)
-            throw Error(`Host does not support sampling (required for ${Z})`);
-          break;
-      }
-    }
-    assertRequestHandlerCapability(Z) {
-      switch (Z) {
-        case "tools/call":
-        case "tools/list":
-          if (!this._capabilities.tools)
-            throw Error(`Client does not support tool capability (required for ${Z})`);
-          return;
-        case "ping":
-        case "ui/resource-teardown":
-          return;
-        default:
-          throw Error(`No handler for method ${Z} registered`);
-      }
-    }
-    assertNotificationCapability(Z) {}
-    assertTaskCapability(Z) {
-      throw Error("Tasks are not supported in MCP Apps");
-    }
-    assertTaskHandlerCapability(Z) {
-      throw Error("Task handlers are not supported in MCP Apps");
-    }
-    async callServerTool(Z, $) {
-      if (this._assertInitialized("callServerTool"), typeof Z === "string")
-        throw Error(`callServerTool() expects an object as its first argument, but received a string ("${Z}"). Did you mean: callServerTool({ name: "${Z}", arguments: { ... } })?`);
-      return await this.request({ method: "tools/call", params: Z }, CallToolResultSchema, { onprogress: () => {}, resetTimeoutOnProgress: true, ...$ });
-    }
-    async readServerResource(Z, $) {
-      return this._assertInitialized("readServerResource"), await this.request({ method: "resources/read", params: Z }, ReadResourceResultSchema, $);
-    }
-    async listServerResources(Z, $) {
-      return this._assertInitialized("listServerResources"), await this.request({ method: "resources/list", params: Z }, ListResourcesResultSchema, $);
-    }
-    async createSamplingMessage(Z, $) {
-      this._assertInitialized("createSamplingMessage");
-      let J = Z.tools ? CreateMessageResultWithToolsSchema : CreateMessageResultSchema;
-      return await this.request({ method: "sampling/createMessage", params: Z }, J, $);
-    }
-    sendMessage(Z, $) {
-      return this._assertInitialized("sendMessage"), this.request({ method: "ui/message", params: Z }, w, $);
-    }
-    sendLog(Z) {
-      return this.notification({ method: "notifications/message", params: Z });
-    }
-    updateModelContext(Z, $) {
-      return this._assertInitialized("updateModelContext"), this.request({ method: "ui/update-model-context", params: Z }, EmptyResultSchema, $);
-    }
-    openLink(Z, $) {
-      return this._assertInitialized("openLink"), this.request({ method: "ui/open-link", params: Z }, I, $);
-    }
-    sendOpenLink = this.openLink;
-    downloadFile(Z, $) {
-      return this._assertInitialized("downloadFile"), this.request({ method: "ui/download-file", params: Z }, P, $);
-    }
-    requestTeardown(Z = {}) {
-      return this.notification({ method: "ui/notifications/request-teardown", params: Z });
-    }
-    requestDisplayMode(Z, $) {
-      return this._assertInitialized("requestDisplayMode"), this.request({ method: "ui/request-display-mode", params: Z }, R, $);
-    }
-    sendSizeChanged(Z) {
-      return this.notification({ method: "ui/notifications/size-changed", params: Z });
-    }
-    setupSizeChangedNotifications() {
-      let Z = false, $ = 0, J = 0, X = () => {
-        if (Z)
-          return;
-        Z = true, requestAnimationFrame(() => {
-          Z = false;
-          let D = document.documentElement, L = D.style.height;
-          D.style.height = "max-content";
-          let W = Math.ceil(D.getBoundingClientRect().height);
-          D.style.height = L;
-          let B = Math.ceil(window.innerWidth);
-          if (B !== $ || W !== J)
-            $ = B, J = W, this.sendSizeChanged({ width: B, height: W });
-        });
-      };
-      X();
-      let V = new ResizeObserver(X);
-      return V.observe(document.documentElement), V.observe(document.body), () => V.disconnect();
-    }
-    async connect(Z = new N(window.parent, window.parent), $) {
-      if (this.transport)
-        throw Error("App is already connected. Call close() before connecting again.");
-      this._initializedSent = false, await super.connect(Z);
-      try {
-        let J = await this.request({ method: "ui/initialize", params: { appCapabilities: this._capabilities, appInfo: this._appInfo, protocolVersion: q } }, M, $);
-        if (J === undefined)
-          throw Error(`Server sent invalid initialize result: ${J}`);
-        if (this._hostCapabilities = J.hostCapabilities, this._hostInfo = J.hostInfo, this._hostContext = J.hostContext, await this.notification({ method: "ui/notifications/initialized" }), this._initializedSent = true, this.options?.autoResize)
-          this.setupSizeChangedNotifications();
-      } catch (J) {
-        throw this.close(), J;
-      }
-    }
-  };
-});
-
-// node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
-var __create2, __defProp2, __getOwnPropDesc, __getOwnPropNames2, __getProtoOf2, __hasOwnProp2, __commonJSMin = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), __exportAll = (all, symbols) => {
-  let target = {};
-  for (var name in all) {
-    __defProp2(target, name, {
-      get: all[name],
-      enumerable: true
-    });
-  }
-  if (symbols) {
-    __defProp2(target, Symbol.toStringTag, { value: "Module" });
-  }
-  return target;
-}, __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (var keys = __getOwnPropNames2(from), i = 0, n = keys.length, key;i < n; i++) {
-      key = keys[i];
-      if (!__hasOwnProp2.call(to, key) && key !== except) {
-        __defProp2(to, key, {
-          get: ((k) => from[k]).bind(null, key),
-          enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
-        });
-      }
-    }
-  }
-  return to;
-}, __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", {
-  value: mod,
-  enumerable: true
-}) : target, mod));
-var init_chunk_Br0eD_fh = __esm(() => {
-  __create2 = Object.create;
-  __defProp2 = Object.defineProperty;
-  __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-  __getOwnPropNames2 = Object.getOwnPropertyNames;
-  __getProtoOf2 = Object.getPrototypeOf;
-  __hasOwnProp2 = Object.prototype.hasOwnProperty;
-});
-
-// node_modules/@modelcontextprotocol/server/dist/dialects-DoSzNhcb.mjs
-function declares2019Dialect($schema) {
-  return typeof $schema === "string" && DRAFT_2019_09_URIS.has($schema.replace(/#$/, ""));
-}
-function declaredDialect(schema, remedy) {
-  if (!("$schema" in schema) || typeof schema.$schema !== "string")
-    return "2020-12";
-  const declared = schema.$schema.replace(/#$/, "");
-  if (DRAFT_2020_12_URIS.has(declared))
-    return "2020-12";
-  if (DRAFT_2019_09_URIS.has(declared))
-    return "2019-09";
-  if (DRAFT_07_URIS.has(declared) || DRAFT_06_URIS.has(declared))
-    return "draft-7";
-  throw new Error(`JSON Schema declares an unsupported dialect ("$schema": "${schema.$schema.slice(0, 200)}"). The default validator supports JSON Schema 2020-12, 2019-09, draft-07, and draft-06; ${remedy}`);
-}
-var DRAFT_2020_12_URIS, DRAFT_2019_09_URIS, DRAFT_07_URIS, DRAFT_06_URIS;
-var init_dialects_DoSzNhcb = __esm(() => {
-  DRAFT_2020_12_URIS = new Set(["https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft/2020-12/schema"]);
-  DRAFT_2019_09_URIS = new Set(["https://json-schema.org/draft/2019-09/schema", "http://json-schema.org/draft/2019-09/schema"]);
-  DRAFT_07_URIS = new Set(["https://json-schema.org/draft-07/schema", "http://json-schema.org/draft-07/schema"]);
-  DRAFT_06_URIS = new Set(["https://json-schema.org/draft-06/schema", "http://json-schema.org/draft-06/schema"]);
-});
-
-// node_modules/@modelcontextprotocol/core/dist/auth-CUe6YdwF.mjs
-var LATEST_PROTOCOL_VERSION = "2025-11-25", DEFAULT_NEGOTIATED_PROTOCOL_VERSION = "2025-03-26", SUPPORTED_PROTOCOL_VERSIONS, RELATED_TASK_META_KEY2 = "io.modelcontextprotocol/related-task", PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion", CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo", SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo", CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities", SUBSCRIPTION_ID_META_KEY = "io.modelcontextprotocol/subscriptionId", LOG_LEVEL_META_KEY = "io.modelcontextprotocol/logLevel", JSONRPC_VERSION2 = "2.0", JSONValueSchema, JSONObjectSchema, JSONArraySchema, ProgressTokenSchema2, CursorSchema2, TaskMetadataSchema2, RelatedTaskMetadataSchema2, RequestMetaSchema2, BaseRequestParamsSchema2, TaskAugmentedRequestParamsSchema2, RequestSchema2, NotificationsParamsSchema2, NotificationSchema2, ResultMetaObjectSchema, ResultSchema2, RequestIdSchema2, JSONRPCRequestSchema2, JSONRPCNotificationSchema2, JSONRPCResultResponseSchema2, JSONRPCErrorResponseSchema2, JSONRPCMessageSchema2, JSONRPCResponseSchema2, EmptyResultSchema2, CancelledNotificationParamsSchema2, CancelledNotificationSchema2, IconSchema2, IconsSchema2, BaseMetadataSchema2, ImplementationSchema2, FormElicitationCapabilitySchema2, ElicitationCapabilitySchema2, ClientTasksCapabilitySchema2, ServerTasksCapabilitySchema2, ClientCapabilitiesSchema2, InitializeRequestParamsSchema2, InitializeRequestSchema2, ServerCapabilitiesSchema2, InitializeResultSchema2, InitializedNotificationSchema2, DiscoverRequestSchema, DiscoverResultSchema, PingRequestSchema2, ProgressSchema2, ProgressNotificationParamsSchema2, ProgressNotificationSchema2, PaginatedRequestParamsSchema2, PaginatedRequestSchema2, PaginatedResultSchema2, ResourceContentsSchema2, TextResourceContentsSchema2, Base64Schema2, BlobResourceContentsSchema2, RoleSchema2, AnnotationsSchema2, ResourceSchema2, ResourceTemplateSchema2, ListResourcesRequestSchema2, ListResourcesResultSchema2, ListResourceTemplatesRequestSchema2, ListResourceTemplatesResultSchema2, ResourceRequestParamsSchema2, ReadResourceRequestParamsSchema2, ReadResourceRequestSchema2, ReadResourceResultSchema2, ResourceListChangedNotificationSchema2, SubscribeRequestParamsSchema2, SubscribeRequestSchema2, UnsubscribeRequestParamsSchema2, UnsubscribeRequestSchema2, SubscriptionFilterSchema, SubscriptionsListenRequestParamsSchema, SubscriptionsListenRequestSchema, SubscriptionsAcknowledgedNotificationParamsSchema, SubscriptionsAcknowledgedNotificationSchema, SubscriptionsListenResultMetaSchema, SubscriptionsListenResultSchema, ResourceUpdatedNotificationParamsSchema2, ResourceUpdatedNotificationSchema2, PromptArgumentSchema2, PromptSchema2, ListPromptsRequestSchema2, ListPromptsResultSchema2, GetPromptRequestParamsSchema2, GetPromptRequestSchema2, TextContentSchema2, ImageContentSchema2, AudioContentSchema2, ToolUseContentSchema2, EmbeddedResourceSchema2, ResourceLinkSchema2, ContentBlockSchema2, PromptMessageSchema2, GetPromptResultSchema2, PromptListChangedNotificationSchema2, ToolAnnotationsSchema2, ToolExecutionSchema2, ToolSchema2, ListToolsRequestSchema2, ListToolsResultSchema2, CallToolResultSchema2, CompatibilityCallToolResultSchema2, CallToolRequestParamsSchema2, CallToolRequestSchema2, ToolListChangedNotificationSchema2, ListChangedOptionsBaseSchema2, LoggingLevelSchema2, SetLevelRequestParamsSchema2, SetLevelRequestSchema2, LoggingMessageNotificationParamsSchema2, LoggingMessageNotificationSchema2, ModelHintSchema2, ModelPreferencesSchema2, ToolChoiceSchema2, ToolResultContentSchema2, SamplingContentSchema2, SamplingMessageContentBlockSchema2, SamplingMessageSchema2, CreateMessageRequestParamsSchema2, CreateMessageRequestSchema2, CreateMessageResultSchema2, CreateMessageResultWithToolsSchema2, BooleanSchemaSchema2, StringSchemaSchema2, NumberSchemaSchema2, UntitledSingleSelectEnumSchemaSchema2, TitledSingleSelectEnumSchemaSchema2, LegacyTitledEnumSchemaSchema2, SingleSelectEnumSchemaSchema2, UntitledMultiSelectEnumSchemaSchema2, TitledMultiSelectEnumSchemaSchema2, MultiSelectEnumSchemaSchema2, EnumSchemaSchema2, PrimitiveSchemaDefinitionSchema2, ElicitRequestFormParamsSchema2, ElicitRequestURLParamsSchema2, ElicitRequestParamsSchema2, ElicitRequestSchema2, ElicitationCompleteNotificationParamsSchema2, ElicitationCompleteNotificationSchema2, ElicitResultSchema2, ResourceTemplateReferenceSchema2, PromptReferenceSchema2, CompleteRequestParamsSchema2, CompleteRequestSchema2, CompleteResultSchema2, RootSchema2, ListRootsRequestSchema2, ListRootsResultSchema2, RootsListChangedNotificationSchema2, TaskCreationParamsSchema2, TaskStatusSchema2, TaskSchema2, CreateTaskResultSchema2, TaskStatusNotificationParamsSchema2, TaskStatusNotificationSchema2, GetTaskRequestSchema2, GetTaskResultSchema2, GetTaskPayloadRequestSchema2, GetTaskPayloadResultSchema2, ListTasksRequestSchema2, ListTasksResultSchema2, CancelTaskRequestSchema2, CancelTaskResultSchema2, ClientRequestSchema2, ClientNotificationSchema2, ClientResultSchema2, ServerRequestSchema2, ServerNotificationSchema2, ServerResultSchema2, SafeUrlSchema, OAuthProtectedResourceMetadataSchema, OAuthMetadataSchema, OpenIdProviderMetadataSchema, OpenIdProviderDiscoveryMetadataSchema, OAuthTokensSchema, IdJagTokenExchangeResponseSchema, OAuthErrorResponseSchema, OptionalSafeUrlSchema, OAuthClientMetadataSchema, OAuthClientInformationSchema, OAuthClientInformationFullSchema, OAuthClientRegistrationErrorSchema, OAuthTokenRevocationRequestSchema;
-var init_auth_CUe6YdwF = __esm(() => {
-  init_v4();
-  SUPPORTED_PROTOCOL_VERSIONS = [
-    LATEST_PROTOCOL_VERSION,
-    "2025-06-18",
-    "2025-03-26",
-    "2024-11-05",
-    "2024-10-07"
-  ];
-  JSONValueSchema = lazy(() => union([
-    string2(),
-    number2(),
-    boolean2(),
-    _null3(),
-    record(string2(), JSONValueSchema),
-    array(JSONValueSchema)
-  ]));
-  JSONObjectSchema = record(string2(), JSONValueSchema);
-  JSONArraySchema = array(JSONValueSchema);
-  ProgressTokenSchema2 = union([string2(), number2().int()]);
-  CursorSchema2 = string2();
-  TaskMetadataSchema2 = object2({ ttl: number2().optional() });
-  RelatedTaskMetadataSchema2 = object2({ taskId: string2() });
-  RequestMetaSchema2 = looseObject({
-    progressToken: ProgressTokenSchema2.optional(),
-    [RELATED_TASK_META_KEY2]: RelatedTaskMetadataSchema2.optional()
-  });
-  BaseRequestParamsSchema2 = object2({ _meta: RequestMetaSchema2.optional() });
-  TaskAugmentedRequestParamsSchema2 = BaseRequestParamsSchema2.extend({ task: TaskMetadataSchema2.optional() });
-  RequestSchema2 = object2({
-    method: string2(),
-    params: BaseRequestParamsSchema2.loose().optional()
-  });
-  NotificationsParamsSchema2 = object2({ _meta: RequestMetaSchema2.optional() });
-  NotificationSchema2 = object2({
-    method: string2(),
-    params: NotificationsParamsSchema2.loose().optional()
-  });
-  ResultMetaObjectSchema = looseObject({ get [SERVER_INFO_META_KEY]() {
-    return ImplementationSchema2.optional().catch(undefined);
-  } });
-  ResultSchema2 = looseObject({ _meta: ResultMetaObjectSchema.optional() });
-  RequestIdSchema2 = union([string2(), number2().int()]);
-  JSONRPCRequestSchema2 = object2({
-    jsonrpc: literal(JSONRPC_VERSION2),
-    id: RequestIdSchema2,
-    ...RequestSchema2.shape
-  }).strict();
-  JSONRPCNotificationSchema2 = object2({
-    jsonrpc: literal(JSONRPC_VERSION2),
-    ...NotificationSchema2.shape
-  }).strict();
-  JSONRPCResultResponseSchema2 = object2({
-    jsonrpc: literal(JSONRPC_VERSION2),
-    id: RequestIdSchema2,
-    result: ResultSchema2
-  }).strict();
-  JSONRPCErrorResponseSchema2 = object2({
-    jsonrpc: literal(JSONRPC_VERSION2),
-    id: RequestIdSchema2.optional(),
-    error: object2({
-      code: number2().int(),
-      message: string2(),
-      data: unknown().optional()
-    })
-  }).strict();
-  JSONRPCMessageSchema2 = union([
-    JSONRPCRequestSchema2,
-    JSONRPCNotificationSchema2,
-    JSONRPCResultResponseSchema2,
-    JSONRPCErrorResponseSchema2
-  ]);
-  JSONRPCResponseSchema2 = union([JSONRPCResultResponseSchema2, JSONRPCErrorResponseSchema2]);
-  EmptyResultSchema2 = ResultSchema2.strict();
-  CancelledNotificationParamsSchema2 = NotificationsParamsSchema2.extend({
-    requestId: RequestIdSchema2.optional(),
-    reason: string2().optional()
-  });
-  CancelledNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/cancelled"),
-    params: CancelledNotificationParamsSchema2
-  });
-  IconSchema2 = object2({
-    src: string2(),
-    mimeType: string2().optional(),
-    sizes: array(string2()).optional(),
-    theme: _enum(["light", "dark"]).optional()
-  });
-  IconsSchema2 = object2({ icons: array(IconSchema2).optional() });
-  BaseMetadataSchema2 = object2({
-    name: string2(),
-    title: string2().optional()
-  });
-  ImplementationSchema2 = BaseMetadataSchema2.extend({
-    ...BaseMetadataSchema2.shape,
-    ...IconsSchema2.shape,
-    version: string2(),
-    websiteUrl: string2().optional(),
-    description: string2().optional()
-  });
-  FormElicitationCapabilitySchema2 = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema);
-  ElicitationCapabilitySchema2 = preprocess((value) => {
-    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
-      return { form: {} };
-    return value;
-  }, intersection(object2({
-    form: FormElicitationCapabilitySchema2.optional(),
-    url: JSONObjectSchema.optional()
-  }), JSONObjectSchema.optional()));
-  ClientTasksCapabilitySchema2 = looseObject({
-    list: JSONObjectSchema.optional(),
-    cancel: JSONObjectSchema.optional(),
-    requests: looseObject({
-      sampling: looseObject({ createMessage: JSONObjectSchema.optional() }).optional(),
-      elicitation: looseObject({ create: JSONObjectSchema.optional() }).optional()
-    }).optional()
-  });
-  ServerTasksCapabilitySchema2 = looseObject({
-    list: JSONObjectSchema.optional(),
-    cancel: JSONObjectSchema.optional(),
-    requests: looseObject({ tools: looseObject({ call: JSONObjectSchema.optional() }).optional() }).optional()
-  });
-  ClientCapabilitiesSchema2 = object2({
-    experimental: record(string2(), JSONObjectSchema).optional(),
-    sampling: object2({
-      context: JSONObjectSchema.optional(),
-      tools: JSONObjectSchema.optional()
-    }).optional(),
-    elicitation: ElicitationCapabilitySchema2.optional(),
-    roots: object2({ listChanged: boolean2().optional() }).optional(),
-    tasks: ClientTasksCapabilitySchema2.optional(),
-    extensions: record(string2(), JSONObjectSchema).optional()
-  });
-  InitializeRequestParamsSchema2 = BaseRequestParamsSchema2.extend({
-    protocolVersion: string2(),
-    capabilities: ClientCapabilitiesSchema2,
-    clientInfo: ImplementationSchema2
-  });
-  InitializeRequestSchema2 = RequestSchema2.extend({
-    method: literal("initialize"),
-    params: InitializeRequestParamsSchema2
-  });
-  ServerCapabilitiesSchema2 = object2({
-    experimental: record(string2(), JSONObjectSchema).optional(),
-    logging: JSONObjectSchema.optional(),
-    completions: JSONObjectSchema.optional(),
-    prompts: object2({ listChanged: boolean2().optional() }).optional(),
-    resources: object2({
-      subscribe: boolean2().optional(),
-      listChanged: boolean2().optional()
-    }).optional(),
-    tools: object2({ listChanged: boolean2().optional() }).optional(),
-    tasks: ServerTasksCapabilitySchema2.optional(),
-    extensions: record(string2(), JSONObjectSchema).optional()
-  });
-  InitializeResultSchema2 = ResultSchema2.extend({
-    protocolVersion: string2(),
-    capabilities: ServerCapabilitiesSchema2,
-    serverInfo: ImplementationSchema2,
-    instructions: string2().optional()
-  });
-  InitializedNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/initialized"),
-    params: NotificationsParamsSchema2.optional()
-  });
-  DiscoverRequestSchema = RequestSchema2.extend({
-    method: literal("server/discover"),
-    params: BaseRequestParamsSchema2.optional()
-  });
-  DiscoverResultSchema = ResultSchema2.extend({
-    supportedVersions: array(string2()),
-    capabilities: ServerCapabilitiesSchema2,
-    instructions: string2().optional()
-  });
-  PingRequestSchema2 = RequestSchema2.extend({
-    method: literal("ping"),
-    params: BaseRequestParamsSchema2.optional()
-  });
-  ProgressSchema2 = object2({
-    progress: number2(),
-    total: optional(number2()),
-    message: optional(string2())
-  });
-  ProgressNotificationParamsSchema2 = object2({
-    ...NotificationsParamsSchema2.shape,
-    ...ProgressSchema2.shape,
-    progressToken: ProgressTokenSchema2
-  });
-  ProgressNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/progress"),
-    params: ProgressNotificationParamsSchema2
-  });
-  PaginatedRequestParamsSchema2 = BaseRequestParamsSchema2.extend({ cursor: CursorSchema2.optional() });
-  PaginatedRequestSchema2 = RequestSchema2.extend({ params: PaginatedRequestParamsSchema2.optional() });
-  PaginatedResultSchema2 = ResultSchema2.extend({ nextCursor: CursorSchema2.optional() });
-  ResourceContentsSchema2 = object2({
-    uri: string2(),
-    mimeType: optional(string2()),
-    _meta: record(string2(), unknown()).optional()
-  });
-  TextResourceContentsSchema2 = ResourceContentsSchema2.extend({ text: string2() });
-  Base64Schema2 = string2().refine((val) => {
-    try {
-      atob(val);
-      return true;
-    } catch {
-      return false;
-    }
-  }, { message: "Invalid Base64 string" });
-  BlobResourceContentsSchema2 = ResourceContentsSchema2.extend({ blob: Base64Schema2 });
-  RoleSchema2 = _enum(["user", "assistant"]);
-  AnnotationsSchema2 = object2({
-    audience: array(RoleSchema2).optional(),
-    priority: number2().min(0).max(1).optional(),
-    lastModified: datetime2({ offset: true }).optional()
-  });
-  ResourceSchema2 = object2({
-    ...BaseMetadataSchema2.shape,
-    ...IconsSchema2.shape,
-    uri: string2(),
-    description: optional(string2()),
-    mimeType: optional(string2()),
-    size: optional(number2()),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: optional(looseObject({}))
-  });
-  ResourceTemplateSchema2 = object2({
-    ...BaseMetadataSchema2.shape,
-    ...IconsSchema2.shape,
-    uriTemplate: string2(),
-    description: optional(string2()),
-    mimeType: optional(string2()),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: optional(looseObject({}))
-  });
-  ListResourcesRequestSchema2 = PaginatedRequestSchema2.extend({ method: literal("resources/list") });
-  ListResourcesResultSchema2 = PaginatedResultSchema2.extend({ resources: array(ResourceSchema2) });
-  ListResourceTemplatesRequestSchema2 = PaginatedRequestSchema2.extend({ method: literal("resources/templates/list") });
-  ListResourceTemplatesResultSchema2 = PaginatedResultSchema2.extend({ resourceTemplates: array(ResourceTemplateSchema2) });
-  ResourceRequestParamsSchema2 = BaseRequestParamsSchema2.extend({ uri: string2() });
-  ReadResourceRequestParamsSchema2 = ResourceRequestParamsSchema2;
-  ReadResourceRequestSchema2 = RequestSchema2.extend({
-    method: literal("resources/read"),
-    params: ReadResourceRequestParamsSchema2
-  });
-  ReadResourceResultSchema2 = ResultSchema2.extend({ contents: array(union([TextResourceContentsSchema2, BlobResourceContentsSchema2])) });
-  ResourceListChangedNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/resources/list_changed"),
-    params: NotificationsParamsSchema2.optional()
-  });
-  SubscribeRequestParamsSchema2 = ResourceRequestParamsSchema2;
-  SubscribeRequestSchema2 = RequestSchema2.extend({
-    method: literal("resources/subscribe"),
-    params: SubscribeRequestParamsSchema2
-  });
-  UnsubscribeRequestParamsSchema2 = ResourceRequestParamsSchema2;
-  UnsubscribeRequestSchema2 = RequestSchema2.extend({
-    method: literal("resources/unsubscribe"),
-    params: UnsubscribeRequestParamsSchema2
-  });
-  SubscriptionFilterSchema = object2({
-    toolsListChanged: boolean2().optional(),
-    promptsListChanged: boolean2().optional(),
-    resourcesListChanged: boolean2().optional(),
-    resourceSubscriptions: array(string2()).optional()
-  });
-  SubscriptionsListenRequestParamsSchema = BaseRequestParamsSchema2.extend({ notifications: SubscriptionFilterSchema });
-  SubscriptionsListenRequestSchema = RequestSchema2.extend({
-    method: literal("subscriptions/listen"),
-    params: SubscriptionsListenRequestParamsSchema
-  });
-  SubscriptionsAcknowledgedNotificationParamsSchema = NotificationsParamsSchema2.extend({ notifications: SubscriptionFilterSchema });
-  SubscriptionsAcknowledgedNotificationSchema = NotificationSchema2.extend({
-    method: literal("notifications/subscriptions/acknowledged"),
-    params: SubscriptionsAcknowledgedNotificationParamsSchema
-  });
-  SubscriptionsListenResultMetaSchema = ResultMetaObjectSchema.extend({ [SUBSCRIPTION_ID_META_KEY]: RequestIdSchema2 });
-  SubscriptionsListenResultSchema = ResultSchema2.extend({ _meta: SubscriptionsListenResultMetaSchema });
-  ResourceUpdatedNotificationParamsSchema2 = NotificationsParamsSchema2.extend({ uri: string2() });
-  ResourceUpdatedNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/resources/updated"),
-    params: ResourceUpdatedNotificationParamsSchema2
-  });
-  PromptArgumentSchema2 = object2({
-    name: string2(),
-    description: optional(string2()),
-    required: optional(boolean2())
-  });
-  PromptSchema2 = object2({
-    ...BaseMetadataSchema2.shape,
-    ...IconsSchema2.shape,
-    description: optional(string2()),
-    arguments: optional(array(PromptArgumentSchema2)),
-    _meta: optional(looseObject({}))
-  });
-  ListPromptsRequestSchema2 = PaginatedRequestSchema2.extend({ method: literal("prompts/list") });
-  ListPromptsResultSchema2 = PaginatedResultSchema2.extend({ prompts: array(PromptSchema2) });
-  GetPromptRequestParamsSchema2 = BaseRequestParamsSchema2.extend({
-    name: string2(),
-    arguments: record(string2(), string2()).optional()
-  });
-  GetPromptRequestSchema2 = RequestSchema2.extend({
-    method: literal("prompts/get"),
-    params: GetPromptRequestParamsSchema2
-  });
-  TextContentSchema2 = object2({
-    type: literal("text"),
-    text: string2(),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  ImageContentSchema2 = object2({
-    type: literal("image"),
-    data: Base64Schema2,
-    mimeType: string2(),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  AudioContentSchema2 = object2({
-    type: literal("audio"),
-    data: Base64Schema2,
-    mimeType: string2(),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  ToolUseContentSchema2 = object2({
-    type: literal("tool_use"),
-    name: string2(),
-    id: string2(),
-    input: record(string2(), unknown()),
-    _meta: record(string2(), unknown()).optional()
-  });
-  EmbeddedResourceSchema2 = object2({
-    type: literal("resource"),
-    resource: union([TextResourceContentsSchema2, BlobResourceContentsSchema2]),
-    annotations: AnnotationsSchema2.optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  ResourceLinkSchema2 = ResourceSchema2.extend({ type: literal("resource_link") });
-  ContentBlockSchema2 = union([
-    TextContentSchema2,
-    ImageContentSchema2,
-    AudioContentSchema2,
-    ResourceLinkSchema2,
-    EmbeddedResourceSchema2
-  ]);
-  PromptMessageSchema2 = object2({
-    role: RoleSchema2,
-    content: ContentBlockSchema2
-  });
-  GetPromptResultSchema2 = ResultSchema2.extend({
-    description: string2().optional(),
-    messages: array(PromptMessageSchema2)
-  });
-  PromptListChangedNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/prompts/list_changed"),
-    params: NotificationsParamsSchema2.optional()
-  });
-  ToolAnnotationsSchema2 = object2({
-    title: string2().optional(),
-    readOnlyHint: boolean2().optional(),
-    destructiveHint: boolean2().optional(),
-    idempotentHint: boolean2().optional(),
-    openWorldHint: boolean2().optional()
-  });
-  ToolExecutionSchema2 = object2({ taskSupport: _enum([
-    "required",
-    "optional",
-    "forbidden"
-  ]).optional() });
-  ToolSchema2 = object2({
-    ...BaseMetadataSchema2.shape,
-    ...IconsSchema2.shape,
-    description: string2().optional(),
-    inputSchema: object2({
-      type: literal("object"),
-      properties: record(string2(), JSONValueSchema).optional(),
-      required: array(string2()).optional()
-    }).catchall(unknown()),
-    outputSchema: looseObject({ $schema: string2().optional() }).optional(),
-    annotations: ToolAnnotationsSchema2.optional(),
-    execution: ToolExecutionSchema2.optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  ListToolsRequestSchema2 = PaginatedRequestSchema2.extend({ method: literal("tools/list") });
-  ListToolsResultSchema2 = PaginatedResultSchema2.extend({ tools: array(ToolSchema2) });
-  CallToolResultSchema2 = ResultSchema2.extend({
-    content: array(ContentBlockSchema2).default([]),
-    structuredContent: unknown().optional(),
-    isError: boolean2().optional()
-  });
-  CompatibilityCallToolResultSchema2 = CallToolResultSchema2.or(ResultSchema2.extend({ toolResult: unknown() }));
-  CallToolRequestParamsSchema2 = TaskAugmentedRequestParamsSchema2.extend({
-    name: string2(),
-    arguments: record(string2(), unknown()).optional()
-  });
-  CallToolRequestSchema2 = RequestSchema2.extend({
-    method: literal("tools/call"),
-    params: CallToolRequestParamsSchema2
-  });
-  ToolListChangedNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/tools/list_changed"),
-    params: NotificationsParamsSchema2.optional()
-  });
-  ListChangedOptionsBaseSchema2 = object2({
-    autoRefresh: boolean2().default(true),
-    debounceMs: number2().int().nonnegative().default(300)
-  });
-  LoggingLevelSchema2 = _enum([
-    "debug",
-    "info",
-    "notice",
-    "warning",
-    "error",
-    "critical",
-    "alert",
-    "emergency"
-  ]);
-  SetLevelRequestParamsSchema2 = BaseRequestParamsSchema2.extend({ level: LoggingLevelSchema2 });
-  SetLevelRequestSchema2 = RequestSchema2.extend({
-    method: literal("logging/setLevel"),
-    params: SetLevelRequestParamsSchema2
-  });
-  LoggingMessageNotificationParamsSchema2 = NotificationsParamsSchema2.extend({
-    level: LoggingLevelSchema2,
-    logger: string2().optional(),
-    data: unknown()
-  });
-  LoggingMessageNotificationSchema2 = NotificationSchema2.extend({
-    method: literal("notifications/message"),
-    params: LoggingMessageNotificationParamsSchema2
-  });
-  ModelHintSchema2 = object2({ name: string2().optional() });
-  ModelPreferencesSchema2 = object2({
-    hints: array(ModelHintSchema2).optional(),
-    costPriority: number2().min(0).max(1).optional(),
-    speedPriority: number2().min(0).max(1).optional(),
-    intelligencePriority: number2().min(0).max(1).optional()
-  });
-  ToolChoiceSchema2 = object2({ mode: _enum([
-    "auto",
-    "required",
-    "none"
-  ]).optional() });
-  ToolResultContentSchema2 = object2({
-    type: literal("tool_result"),
-    toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
-    content: array(ContentBlockSchema2),
-    structuredContent: unknown().optional(),
-    isError: boolean2().optional(),
-    _meta: record(string2(), unknown()).optional()
-  });
-  SamplingContentSchema2 = discriminatedUnion("type", [
-    TextContentSchema2,
-    ImageContentSchema2,
-    AudioContentSchema2
-  ]);
-  SamplingMessageContentBlockSchema2 = discriminatedUnion("type", [
-    TextContentSchema2,
-    ImageContentSchema2,
-    AudioContentSchema2,
-    ToolUseContentSchema2,
-    ToolResultContentSchema2
-  ]);
-  SamplingMessageSchema2 = object2({
-    role: RoleSchema2,
-    content: union([SamplingMessageContentBlockSchema2, array(SamplingMessageContentBlockSchema2)]),
-    _meta: record(string2(), unknown()).optional()
-  });
-  CreateMessageRequestParamsSchema2 = TaskAugmentedRequestParamsSchema2.extend({
-    messages: array(SamplingMessageSchema2),
-    modelPreferences: ModelPreferencesSchema2.optional(),
     systemPrompt: string2().optional(),
     includeContext: _enum([
       "none",
@@ -9582,24 +7249,24 @@ var init_auth_CUe6YdwF = __esm(() => {
     maxTokens: number2().int(),
     stopSequences: array(string2()).optional(),
     metadata: JSONObjectSchema.optional(),
-    tools: array(ToolSchema2).optional(),
-    toolChoice: ToolChoiceSchema2.optional()
+    tools: array(ToolSchema).optional(),
+    toolChoice: ToolChoiceSchema.optional()
   });
-  CreateMessageRequestSchema2 = RequestSchema2.extend({
+  CreateMessageRequestSchema = RequestSchema.extend({
     method: literal("sampling/createMessage"),
-    params: CreateMessageRequestParamsSchema2
+    params: CreateMessageRequestParamsSchema
   });
-  CreateMessageResultSchema2 = ResultSchema2.extend({
+  CreateMessageResultSchema = ResultSchema.extend({
     model: string2(),
     stopReason: optional(_enum([
       "endTurn",
       "stopSequence",
       "maxTokens"
     ]).or(string2())),
-    role: RoleSchema2,
-    content: SamplingContentSchema2
+    role: RoleSchema,
+    content: SamplingContentSchema
   });
-  CreateMessageResultWithToolsSchema2 = ResultSchema2.extend({
+  CreateMessageResultWithToolsSchema = ResultSchema.extend({
     model: string2(),
     stopReason: optional(_enum([
       "endTurn",
@@ -9607,16 +7274,16 @@ var init_auth_CUe6YdwF = __esm(() => {
       "maxTokens",
       "toolUse"
     ]).or(string2())),
-    role: RoleSchema2,
-    content: union([SamplingMessageContentBlockSchema2, array(SamplingMessageContentBlockSchema2)])
+    role: RoleSchema,
+    content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)])
   });
-  BooleanSchemaSchema2 = object2({
+  BooleanSchemaSchema = object({
     type: literal("boolean"),
     title: string2().optional(),
     description: string2().optional(),
     default: boolean2().optional()
   });
-  StringSchemaSchema2 = object2({
+  StringSchemaSchema = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -9630,7 +7297,7 @@ var init_auth_CUe6YdwF = __esm(() => {
     ]).optional(),
     default: string2().optional()
   });
-  NumberSchemaSchema2 = object2({
+  NumberSchemaSchema = object({
     type: _enum(["number", "integer"]),
     title: string2().optional(),
     description: string2().optional(),
@@ -9638,24 +7305,24 @@ var init_auth_CUe6YdwF = __esm(() => {
     maximum: number2().optional(),
     default: number2().optional()
   });
-  UntitledSingleSelectEnumSchemaSchema2 = object2({
+  UntitledSingleSelectEnumSchemaSchema = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
     enum: array(string2()),
     default: string2().optional()
   });
-  TitledSingleSelectEnumSchemaSchema2 = object2({
+  TitledSingleSelectEnumSchemaSchema = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
-    oneOf: array(object2({
+    oneOf: array(object({
       const: string2(),
       title: string2()
     })),
     default: string2().optional()
   });
-  LegacyTitledEnumSchemaSchema2 = object2({
+  LegacyTitledEnumSchemaSchema = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -9663,69 +7330,69 @@ var init_auth_CUe6YdwF = __esm(() => {
     enumNames: array(string2()).optional(),
     default: string2().optional()
   });
-  SingleSelectEnumSchemaSchema2 = union([UntitledSingleSelectEnumSchemaSchema2, TitledSingleSelectEnumSchemaSchema2]);
-  UntitledMultiSelectEnumSchemaSchema2 = object2({
+  SingleSelectEnumSchemaSchema = union([UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema]);
+  UntitledMultiSelectEnumSchemaSchema = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({
+    items: object({
       type: literal("string"),
       enum: array(string2())
     }),
     default: array(string2()).optional()
   });
-  TitledMultiSelectEnumSchemaSchema2 = object2({
+  TitledMultiSelectEnumSchemaSchema = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({ anyOf: array(object2({
+    items: object({ anyOf: array(object({
       const: string2(),
       title: string2()
     })) }),
     default: array(string2()).optional()
   });
-  MultiSelectEnumSchemaSchema2 = union([UntitledMultiSelectEnumSchemaSchema2, TitledMultiSelectEnumSchemaSchema2]);
-  EnumSchemaSchema2 = union([
-    LegacyTitledEnumSchemaSchema2,
-    SingleSelectEnumSchemaSchema2,
-    MultiSelectEnumSchemaSchema2
+  MultiSelectEnumSchemaSchema = union([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema]);
+  EnumSchemaSchema = union([
+    LegacyTitledEnumSchemaSchema,
+    SingleSelectEnumSchemaSchema,
+    MultiSelectEnumSchemaSchema
   ]);
-  PrimitiveSchemaDefinitionSchema2 = union([
-    EnumSchemaSchema2,
-    BooleanSchemaSchema2,
-    StringSchemaSchema2,
-    NumberSchemaSchema2
+  PrimitiveSchemaDefinitionSchema = union([
+    EnumSchemaSchema,
+    BooleanSchemaSchema,
+    StringSchemaSchema,
+    NumberSchemaSchema
   ]);
-  ElicitRequestFormParamsSchema2 = TaskAugmentedRequestParamsSchema2.extend({
+  ElicitRequestFormParamsSchema = TaskAugmentedRequestParamsSchema.extend({
     mode: literal("form").optional(),
     message: string2(),
-    requestedSchema: object2({
+    requestedSchema: object({
       type: literal("object"),
-      properties: record(string2(), PrimitiveSchemaDefinitionSchema2),
+      properties: record(string2(), PrimitiveSchemaDefinitionSchema),
       required: array(string2()).optional()
     }).catchall(unknown())
   });
-  ElicitRequestURLParamsSchema2 = TaskAugmentedRequestParamsSchema2.extend({
+  ElicitRequestURLParamsSchema = TaskAugmentedRequestParamsSchema.extend({
     mode: literal("url"),
     message: string2(),
     elicitationId: string2(),
     url: string2().url()
   });
-  ElicitRequestParamsSchema2 = union([ElicitRequestFormParamsSchema2, ElicitRequestURLParamsSchema2]);
-  ElicitRequestSchema2 = RequestSchema2.extend({
+  ElicitRequestParamsSchema = union([ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema]);
+  ElicitRequestSchema = RequestSchema.extend({
     method: literal("elicitation/create"),
-    params: ElicitRequestParamsSchema2
+    params: ElicitRequestParamsSchema
   });
-  ElicitationCompleteNotificationParamsSchema2 = NotificationsParamsSchema2.extend({ elicitationId: string2() });
-  ElicitationCompleteNotificationSchema2 = NotificationSchema2.extend({
+  ElicitationCompleteNotificationParamsSchema = NotificationsParamsSchema.extend({ elicitationId: string2() });
+  ElicitationCompleteNotificationSchema = NotificationSchema.extend({
     method: literal("notifications/elicitation/complete"),
-    params: ElicitationCompleteNotificationParamsSchema2
+    params: ElicitationCompleteNotificationParamsSchema
   });
-  ElicitResultSchema2 = ResultSchema2.extend({
+  ElicitResultSchema = ResultSchema.extend({
     action: _enum([
       "accept",
       "decline",
@@ -9738,147 +7405,147 @@ var init_auth_CUe6YdwF = __esm(() => {
       array(string2())
     ])).optional())
   });
-  ResourceTemplateReferenceSchema2 = object2({
+  ResourceTemplateReferenceSchema = object({
     type: literal("ref/resource"),
     uri: string2()
   });
-  PromptReferenceSchema2 = object2({
+  PromptReferenceSchema = object({
     type: literal("ref/prompt"),
     name: string2()
   });
-  CompleteRequestParamsSchema2 = BaseRequestParamsSchema2.extend({
-    ref: union([PromptReferenceSchema2, ResourceTemplateReferenceSchema2]),
-    argument: object2({
+  CompleteRequestParamsSchema = BaseRequestParamsSchema.extend({
+    ref: union([PromptReferenceSchema, ResourceTemplateReferenceSchema]),
+    argument: object({
       name: string2(),
       value: string2()
     }),
-    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+    context: object({ arguments: record(string2(), string2()).optional() }).optional()
   });
-  CompleteRequestSchema2 = RequestSchema2.extend({
+  CompleteRequestSchema = RequestSchema.extend({
     method: literal("completion/complete"),
-    params: CompleteRequestParamsSchema2
+    params: CompleteRequestParamsSchema
   });
-  CompleteResultSchema2 = ResultSchema2.extend({ completion: looseObject({
+  CompleteResultSchema = ResultSchema.extend({ completion: looseObject({
     values: array(string2()).max(100),
     total: optional(number2().int()),
     hasMore: optional(boolean2())
   }) });
-  RootSchema2 = object2({
+  RootSchema = object({
     uri: string2().startsWith("file://"),
     name: string2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  ListRootsRequestSchema2 = RequestSchema2.extend({
+  ListRootsRequestSchema = RequestSchema.extend({
     method: literal("roots/list"),
-    params: BaseRequestParamsSchema2.optional()
+    params: BaseRequestParamsSchema.optional()
   });
-  ListRootsResultSchema2 = ResultSchema2.extend({ roots: array(RootSchema2) });
-  RootsListChangedNotificationSchema2 = NotificationSchema2.extend({
+  ListRootsResultSchema = ResultSchema.extend({ roots: array(RootSchema) });
+  RootsListChangedNotificationSchema = NotificationSchema.extend({
     method: literal("notifications/roots/list_changed"),
-    params: NotificationsParamsSchema2.optional()
+    params: NotificationsParamsSchema.optional()
   });
-  TaskCreationParamsSchema2 = looseObject({
+  TaskCreationParamsSchema = looseObject({
     ttl: number2().optional(),
     pollInterval: number2().optional()
   });
-  TaskStatusSchema2 = _enum([
+  TaskStatusSchema = _enum([
     "working",
     "input_required",
     "completed",
     "failed",
     "cancelled"
   ]);
-  TaskSchema2 = object2({
+  TaskSchema = object({
     taskId: string2(),
-    status: TaskStatusSchema2,
+    status: TaskStatusSchema,
     ttl: union([number2(), _null3()]),
     createdAt: string2(),
     lastUpdatedAt: string2(),
     pollInterval: optional(number2()),
     statusMessage: optional(string2())
   });
-  CreateTaskResultSchema2 = ResultSchema2.extend({ task: TaskSchema2 });
-  TaskStatusNotificationParamsSchema2 = NotificationsParamsSchema2.merge(TaskSchema2);
-  TaskStatusNotificationSchema2 = NotificationSchema2.extend({
+  CreateTaskResultSchema = ResultSchema.extend({ task: TaskSchema });
+  TaskStatusNotificationParamsSchema = NotificationsParamsSchema.merge(TaskSchema);
+  TaskStatusNotificationSchema = NotificationSchema.extend({
     method: literal("notifications/tasks/status"),
-    params: TaskStatusNotificationParamsSchema2
+    params: TaskStatusNotificationParamsSchema
   });
-  GetTaskRequestSchema2 = RequestSchema2.extend({
+  GetTaskRequestSchema = RequestSchema.extend({
     method: literal("tasks/get"),
-    params: BaseRequestParamsSchema2.extend({ taskId: string2() })
+    params: BaseRequestParamsSchema.extend({ taskId: string2() })
   });
-  GetTaskResultSchema2 = ResultSchema2.merge(TaskSchema2);
-  GetTaskPayloadRequestSchema2 = RequestSchema2.extend({
+  GetTaskResultSchema = ResultSchema.merge(TaskSchema);
+  GetTaskPayloadRequestSchema = RequestSchema.extend({
     method: literal("tasks/result"),
-    params: BaseRequestParamsSchema2.extend({ taskId: string2() })
+    params: BaseRequestParamsSchema.extend({ taskId: string2() })
   });
-  GetTaskPayloadResultSchema2 = ResultSchema2.loose();
-  ListTasksRequestSchema2 = PaginatedRequestSchema2.extend({ method: literal("tasks/list") });
-  ListTasksResultSchema2 = PaginatedResultSchema2.extend({ tasks: array(TaskSchema2) });
-  CancelTaskRequestSchema2 = RequestSchema2.extend({
+  GetTaskPayloadResultSchema = ResultSchema.loose();
+  ListTasksRequestSchema = PaginatedRequestSchema.extend({ method: literal("tasks/list") });
+  ListTasksResultSchema = PaginatedResultSchema.extend({ tasks: array(TaskSchema) });
+  CancelTaskRequestSchema = RequestSchema.extend({
     method: literal("tasks/cancel"),
-    params: BaseRequestParamsSchema2.extend({ taskId: string2() })
+    params: BaseRequestParamsSchema.extend({ taskId: string2() })
   });
-  CancelTaskResultSchema2 = ResultSchema2.merge(TaskSchema2);
-  ClientRequestSchema2 = union([
-    PingRequestSchema2,
-    InitializeRequestSchema2,
+  CancelTaskResultSchema = ResultSchema.merge(TaskSchema);
+  ClientRequestSchema = union([
+    PingRequestSchema,
+    InitializeRequestSchema,
     DiscoverRequestSchema,
-    CompleteRequestSchema2,
-    SetLevelRequestSchema2,
-    GetPromptRequestSchema2,
-    ListPromptsRequestSchema2,
-    ListResourcesRequestSchema2,
-    ListResourceTemplatesRequestSchema2,
-    ReadResourceRequestSchema2,
-    SubscribeRequestSchema2,
-    UnsubscribeRequestSchema2,
+    CompleteRequestSchema,
+    SetLevelRequestSchema,
+    GetPromptRequestSchema,
+    ListPromptsRequestSchema,
+    ListResourcesRequestSchema,
+    ListResourceTemplatesRequestSchema,
+    ReadResourceRequestSchema,
+    SubscribeRequestSchema,
+    UnsubscribeRequestSchema,
     SubscriptionsListenRequestSchema,
-    CallToolRequestSchema2,
-    ListToolsRequestSchema2
+    CallToolRequestSchema,
+    ListToolsRequestSchema
   ]);
-  ClientNotificationSchema2 = union([
-    CancelledNotificationSchema2,
-    ProgressNotificationSchema2,
-    InitializedNotificationSchema2,
-    RootsListChangedNotificationSchema2
+  ClientNotificationSchema = union([
+    CancelledNotificationSchema,
+    ProgressNotificationSchema,
+    InitializedNotificationSchema,
+    RootsListChangedNotificationSchema
   ]);
-  ClientResultSchema2 = union([
-    EmptyResultSchema2,
-    CreateMessageResultSchema2,
-    CreateMessageResultWithToolsSchema2,
-    ElicitResultSchema2,
-    ListRootsResultSchema2
+  ClientResultSchema = union([
+    EmptyResultSchema,
+    CreateMessageResultSchema,
+    CreateMessageResultWithToolsSchema,
+    ElicitResultSchema,
+    ListRootsResultSchema
   ]);
-  ServerRequestSchema2 = union([
-    PingRequestSchema2,
-    CreateMessageRequestSchema2,
-    ElicitRequestSchema2,
-    ListRootsRequestSchema2
+  ServerRequestSchema = union([
+    PingRequestSchema,
+    CreateMessageRequestSchema,
+    ElicitRequestSchema,
+    ListRootsRequestSchema
   ]);
-  ServerNotificationSchema2 = union([
-    CancelledNotificationSchema2,
-    ProgressNotificationSchema2,
-    LoggingMessageNotificationSchema2,
-    ResourceUpdatedNotificationSchema2,
-    ResourceListChangedNotificationSchema2,
-    ToolListChangedNotificationSchema2,
-    PromptListChangedNotificationSchema2,
+  ServerNotificationSchema = union([
+    CancelledNotificationSchema,
+    ProgressNotificationSchema,
+    LoggingMessageNotificationSchema,
+    ResourceUpdatedNotificationSchema,
+    ResourceListChangedNotificationSchema,
+    ToolListChangedNotificationSchema,
+    PromptListChangedNotificationSchema,
     SubscriptionsAcknowledgedNotificationSchema,
-    ElicitationCompleteNotificationSchema2
+    ElicitationCompleteNotificationSchema
   ]);
-  ServerResultSchema2 = union([
-    EmptyResultSchema2,
-    InitializeResultSchema2,
+  ServerResultSchema = union([
+    EmptyResultSchema,
+    InitializeResultSchema,
     DiscoverResultSchema,
-    CompleteResultSchema2,
-    GetPromptResultSchema2,
-    ListPromptsResultSchema2,
-    ListResourcesResultSchema2,
-    ListResourceTemplatesResultSchema2,
-    ReadResourceResultSchema2,
-    CallToolResultSchema2,
-    ListToolsResultSchema2,
+    CompleteResultSchema,
+    GetPromptResultSchema,
+    ListPromptsResultSchema,
+    ListResourcesResultSchema,
+    ListResourceTemplatesResultSchema,
+    ReadResourceResultSchema,
+    CallToolResultSchema,
+    ListToolsResultSchema,
     SubscriptionsListenResultSchema
   ]);
   SafeUrlSchema = url().superRefine((val, ctx) => {
@@ -9971,11 +7638,11 @@ var init_auth_CUe6YdwF = __esm(() => {
     client_id_metadata_document_supported: boolean2().optional(),
     authorization_response_iss_parameter_supported: boolean2().optional().catch(undefined)
   });
-  OpenIdProviderDiscoveryMetadataSchema = object2({
+  OpenIdProviderDiscoveryMetadataSchema = object({
     ...OpenIdProviderMetadataSchema.shape,
     ...OAuthMetadataSchema.pick({ code_challenge_methods_supported: true }).shape
   });
-  OAuthTokensSchema = object2({
+  OAuthTokensSchema = object({
     access_token: string2(),
     id_token: string2().optional(),
     token_type: string2(),
@@ -9983,14 +7650,14 @@ var init_auth_CUe6YdwF = __esm(() => {
     scope: string2().optional(),
     refresh_token: string2().optional()
   }).strip();
-  IdJagTokenExchangeResponseSchema = object2({
+  IdJagTokenExchangeResponseSchema = object({
     issued_token_type: literal("urn:ietf:params:oauth:token-type:id-jag"),
     access_token: string2(),
     token_type: string2().optional(),
     expires_in: number2().optional(),
     scope: string2().optional()
   }).strip();
-  OAuthErrorResponseSchema = object2({
+  OAuthErrorResponseSchema = object({
     error: string2(),
     error_description: string2().optional(),
     error_uri: string2().optional()
@@ -9998,7 +7665,7 @@ var init_auth_CUe6YdwF = __esm(() => {
   OptionalSafeUrlSchema = SafeUrlSchema.optional().or(literal("").transform(() => {
     return;
   }));
-  OAuthClientMetadataSchema = object2({
+  OAuthClientMetadataSchema = object({
     redirect_uris: array(SafeUrlSchema),
     token_endpoint_auth_method: string2().optional(),
     grant_types: array(string2()).optional(),
@@ -10017,18 +7684,18 @@ var init_auth_CUe6YdwF = __esm(() => {
     software_version: string2().optional(),
     software_statement: string2().optional()
   }).strip();
-  OAuthClientInformationSchema = object2({
+  OAuthClientInformationSchema = object({
     client_id: string2(),
     client_secret: string2().optional(),
     client_id_issued_at: number2().optional(),
     client_secret_expires_at: number2().optional()
   }).strip();
   OAuthClientInformationFullSchema = OAuthClientMetadataSchema.merge(OAuthClientInformationSchema);
-  OAuthClientRegistrationErrorSchema = object2({
+  OAuthClientRegistrationErrorSchema = object({
     error: string2(),
     error_description: string2().optional()
   }).strip();
-  OAuthTokenRevocationRequestSchema = object2({
+  OAuthTokenRevocationRequestSchema = object({
     token: string2(),
     token_type_hint: string2().optional()
   }).strip();
@@ -10160,20 +7827,20 @@ function build$1() {
   const JSONObjectSchema$1 = record(string2(), JSONValueSchema$1);
   const ProgressTokenSchema$1 = union([string2(), number2().int()]);
   const CursorSchema$1 = string2();
-  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
-  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const TaskMetadataSchema$1 = object({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object({ taskId: string2() });
   const RequestMetaSchema$1 = looseObject({
     progressToken: ProgressTokenSchema$1.optional(),
     "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
   });
-  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const BaseRequestParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
   const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
-  const RequestSchema$1 = object2({
+  const RequestSchema$1 = object({
     method: string2(),
     params: BaseRequestParamsSchema$1.loose().optional()
   });
-  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
-  const NotificationSchema$1 = object2({
+  const NotificationsParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object({
     method: string2(),
     params: NotificationsParamsSchema$1.loose().optional()
   });
@@ -10188,14 +7855,14 @@ function build$1() {
     method: literal("notifications/cancelled"),
     params: CancelledNotificationParamsSchema$1
   });
-  const IconSchema$1 = object2({
+  const IconSchema$1 = object({
     src: string2(),
     mimeType: string2().optional(),
     sizes: array(string2()).optional(),
     theme: _enum(["light", "dark"]).optional()
   });
-  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
-  const BaseMetadataSchema$1 = object2({
+  const IconsSchema$1 = object({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object({
     name: string2(),
     title: string2().optional()
   });
@@ -10206,12 +7873,12 @@ function build$1() {
     websiteUrl: string2().optional(),
     description: string2().optional()
   });
-  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const FormElicitationCapabilitySchema = intersection(object({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
   const ElicitationCapabilitySchema = preprocess((value) => {
     if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
       return { form: {} };
     return value;
-  }, intersection(object2({
+  }, intersection(object({
     form: FormElicitationCapabilitySchema.optional(),
     url: JSONObjectSchema$1.optional()
   }), JSONObjectSchema$1.optional()));
@@ -10228,14 +7895,14 @@ function build$1() {
     cancel: JSONObjectSchema$1.optional(),
     requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
   });
-  const ClientCapabilitiesSchema$1 = object2({
+  const ClientCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
-    sampling: object2({
+    sampling: object({
       context: JSONObjectSchema$1.optional(),
       tools: JSONObjectSchema$1.optional()
     }).optional(),
     elicitation: ElicitationCapabilitySchema.optional(),
-    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    roots: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ClientTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
@@ -10248,16 +7915,16 @@ function build$1() {
     method: literal("initialize"),
     params: InitializeRequestParamsSchema$1
   });
-  const ServerCapabilitiesSchema$1 = object2({
+  const ServerCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
     logging: JSONObjectSchema$1.optional(),
     completions: JSONObjectSchema$1.optional(),
-    prompts: object2({ listChanged: boolean2().optional() }).optional(),
-    resources: object2({
+    prompts: object({ listChanged: boolean2().optional() }).optional(),
+    resources: object({
       subscribe: boolean2().optional(),
       listChanged: boolean2().optional()
     }).optional(),
-    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tools: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ServerTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
@@ -10275,12 +7942,12 @@ function build$1() {
     method: literal("ping"),
     params: BaseRequestParamsSchema$1.optional()
   });
-  const ProgressSchema$1 = object2({
+  const ProgressSchema$1 = object({
     progress: number2(),
     total: optional(number2()),
     message: optional(string2())
   });
-  const ProgressNotificationParamsSchema$1 = object2({
+  const ProgressNotificationParamsSchema$1 = object({
     ...NotificationsParamsSchema$1.shape,
     ...ProgressSchema$1.shape,
     progressToken: ProgressTokenSchema$1
@@ -10292,7 +7959,7 @@ function build$1() {
   const PaginatedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ cursor: CursorSchema$1.optional() });
   const PaginatedRequestSchema$1 = RequestSchema$1.extend({ params: PaginatedRequestParamsSchema$1.optional() });
   const PaginatedResultSchema$1 = ResultSchema$1.extend({ nextCursor: CursorSchema$1.optional() });
-  const ResourceContentsSchema$1 = object2({
+  const ResourceContentsSchema$1 = object({
     uri: string2(),
     mimeType: optional(string2()),
     _meta: record(string2(), unknown()).optional()
@@ -10308,12 +7975,12 @@ function build$1() {
   }, { message: "Invalid Base64 string" });
   const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
   const RoleSchema$1 = _enum(["user", "assistant"]);
-  const AnnotationsSchema$1 = object2({
+  const AnnotationsSchema$1 = object({
     audience: array(RoleSchema$1).optional(),
     priority: number2().min(0).max(1).optional(),
     lastModified: datetime2({ offset: true }).optional()
   });
-  const ResourceSchema$1 = object2({
+  const ResourceSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uri: string2(),
@@ -10323,7 +7990,7 @@ function build$1() {
     annotations: AnnotationsSchema$1.optional(),
     _meta: optional(looseObject({}))
   });
-  const ResourceTemplateSchema$1 = object2({
+  const ResourceTemplateSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uriTemplate: string2(),
@@ -10362,12 +8029,12 @@ function build$1() {
     method: literal("notifications/resources/updated"),
     params: ResourceUpdatedNotificationParamsSchema$1
   });
-  const PromptArgumentSchema$1 = object2({
+  const PromptArgumentSchema$1 = object({
     name: string2(),
     description: optional(string2()),
     required: optional(boolean2())
   });
-  const PromptSchema$1 = object2({
+  const PromptSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: optional(string2()),
@@ -10384,34 +8051,34 @@ function build$1() {
     method: literal("prompts/get"),
     params: GetPromptRequestParamsSchema$1
   });
-  const TextContentSchema$1 = object2({
+  const TextContentSchema$1 = object({
     type: literal("text"),
     text: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ImageContentSchema$1 = object2({
+  const ImageContentSchema$1 = object({
     type: literal("image"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const AudioContentSchema$1 = object2({
+  const AudioContentSchema$1 = object({
     type: literal("audio"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolUseContentSchema$1 = object2({
+  const ToolUseContentSchema$1 = object({
     type: literal("tool_use"),
     name: string2(),
     id: string2(),
     input: record(string2(), unknown()),
     _meta: record(string2(), unknown()).optional()
   });
-  const EmbeddedResourceSchema$1 = object2({
+  const EmbeddedResourceSchema$1 = object({
     type: literal("resource"),
     resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
     annotations: AnnotationsSchema$1.optional(),
@@ -10425,7 +8092,7 @@ function build$1() {
     ResourceLinkSchema$1,
     EmbeddedResourceSchema$1
   ]);
-  const PromptMessageSchema$1 = object2({
+  const PromptMessageSchema$1 = object({
     role: RoleSchema$1,
     content: ContentBlockSchema$1
   });
@@ -10437,28 +8104,28 @@ function build$1() {
     method: literal("notifications/prompts/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const ToolAnnotationsSchema$1 = object2({
+  const ToolAnnotationsSchema$1 = object({
     title: string2().optional(),
     readOnlyHint: boolean2().optional(),
     destructiveHint: boolean2().optional(),
     idempotentHint: boolean2().optional(),
     openWorldHint: boolean2().optional()
   });
-  const ToolExecutionSchema$1 = object2({ taskSupport: _enum([
+  const ToolExecutionSchema$1 = object({ taskSupport: _enum([
     "required",
     "optional",
     "forbidden"
   ]).optional() });
-  const ToolSchema$1 = object2({
+  const ToolSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: string2().optional(),
-    inputSchema: object2({
+    inputSchema: object({
       type: literal("object"),
       properties: record(string2(), JSONValueSchema$1).optional(),
       required: array(string2()).optional()
     }).catchall(unknown()),
-    outputSchema: object2({
+    outputSchema: object({
       type: literal("object"),
       properties: record(string2(), JSONValueSchema$1).optional(),
       required: array(string2()).optional()
@@ -10510,23 +8177,23 @@ function build$1() {
     method: literal("notifications/message"),
     params: LoggingMessageNotificationParamsSchema$1
   });
-  const ModelHintSchema$1 = object2({ name: string2().optional() });
-  const ModelPreferencesSchema$1 = object2({
+  const ModelHintSchema$1 = object({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object({
     hints: array(ModelHintSchema$1).optional(),
     costPriority: number2().min(0).max(1).optional(),
     speedPriority: number2().min(0).max(1).optional(),
     intelligencePriority: number2().min(0).max(1).optional()
   });
-  const ToolChoiceSchema$1 = object2({ mode: _enum([
+  const ToolChoiceSchema$1 = object({ mode: _enum([
     "auto",
     "required",
     "none"
   ]).optional() });
-  const ToolResultContentSchema$1 = object2({
+  const ToolResultContentSchema$1 = object({
     type: literal("tool_result"),
     toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
     content: array(ContentBlockSchema$1),
-    structuredContent: object2({}).loose().optional(),
+    structuredContent: object({}).loose().optional(),
     isError: boolean2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
@@ -10542,7 +8209,7 @@ function build$1() {
     ToolUseContentSchema$1,
     ToolResultContentSchema$1
   ]);
-  const SamplingMessageSchema$1 = object2({
+  const SamplingMessageSchema$1 = object({
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
     _meta: record(string2(), unknown()).optional()
@@ -10588,13 +8255,13 @@ function build$1() {
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)])
   });
-  const BooleanSchemaSchema$1 = object2({
+  const BooleanSchemaSchema$1 = object({
     type: literal("boolean"),
     title: string2().optional(),
     description: string2().optional(),
     default: boolean2().optional()
   });
-  const StringSchemaSchema$1 = object2({
+  const StringSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -10608,7 +8275,7 @@ function build$1() {
     ]).optional(),
     default: string2().optional()
   });
-  const NumberSchemaSchema$1 = object2({
+  const NumberSchemaSchema$1 = object({
     type: _enum(["number", "integer"]),
     title: string2().optional(),
     description: string2().optional(),
@@ -10616,24 +8283,24 @@ function build$1() {
     maximum: number2().optional(),
     default: number2().optional()
   });
-  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+  const UntitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
     enum: array(string2()),
     default: string2().optional()
   });
-  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+  const TitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
-    oneOf: array(object2({
+    oneOf: array(object({
       const: string2(),
       title: string2()
     })),
     default: string2().optional()
   });
-  const LegacyTitledEnumSchemaSchema$1 = object2({
+  const LegacyTitledEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -10642,25 +8309,25 @@ function build$1() {
     default: string2().optional()
   });
   const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
-  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+  const UntitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({
+    items: object({
       type: literal("string"),
       enum: array(string2())
     }),
     default: array(string2()).optional()
   });
-  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+  const TitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({ anyOf: array(object2({
+    items: object({ anyOf: array(object({
       const: string2(),
       title: string2()
     })) }),
@@ -10681,7 +8348,7 @@ function build$1() {
   const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
     mode: literal("form").optional(),
     message: string2(),
-    requestedSchema: object2({
+    requestedSchema: object({
       type: literal("object"),
       properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
       required: array(string2()).optional()
@@ -10716,21 +8383,21 @@ function build$1() {
       array(string2())
     ])).optional())
   });
-  const ResourceTemplateReferenceSchema$1 = object2({
+  const ResourceTemplateReferenceSchema$1 = object({
     type: literal("ref/resource"),
     uri: string2()
   });
-  const PromptReferenceSchema$1 = object2({
+  const PromptReferenceSchema$1 = object({
     type: literal("ref/prompt"),
     name: string2()
   });
   const CompleteRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({
     ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
-    argument: object2({
+    argument: object({
       name: string2(),
       value: string2()
     }),
-    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+    context: object({ arguments: record(string2(), string2()).optional() }).optional()
   });
   const CompleteRequestSchema$1 = RequestSchema$1.extend({
     method: literal("completion/complete"),
@@ -10741,7 +8408,7 @@ function build$1() {
     total: optional(number2().int()),
     hasMore: optional(boolean2())
   }) });
-  const RootSchema$1 = object2({
+  const RootSchema$1 = object({
     uri: string2().startsWith("file://"),
     name: string2().optional(),
     _meta: record(string2(), unknown()).optional()
@@ -10766,7 +8433,7 @@ function build$1() {
     "failed",
     "cancelled"
   ]);
-  const TaskSchema$1 = object2({
+  const TaskSchema$1 = object({
     taskId: string2(),
     status: TaskStatusSchema$1,
     ttl: union([number2(), _null3()]),
@@ -11216,27 +8883,27 @@ function build() {
       return false;
     }
   }, { message: "Invalid Base64 string" });
-  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
-  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const TaskMetadataSchema$1 = object({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object({ taskId: string2() });
   const RequestMetaSchema$1 = looseObject({
     progressToken: ProgressTokenSchema$1.optional(),
     "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
   });
-  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const BaseRequestParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
   const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
-  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
-  const NotificationSchema$1 = object2({
+  const NotificationsParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object({
     method: string2(),
     params: NotificationsParamsSchema$1.loose().optional()
   });
-  const IconSchema$1 = object2({
+  const IconSchema$1 = object({
     src: string2(),
     mimeType: string2().optional(),
     sizes: array(string2()).optional(),
     theme: _enum(["light", "dark"]).optional()
   });
-  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
-  const BaseMetadataSchema$1 = object2({
+  const IconsSchema$1 = object({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object({
     name: string2(),
     title: string2().optional()
   });
@@ -11247,12 +8914,12 @@ function build() {
     websiteUrl: string2().optional(),
     description: string2().optional()
   });
-  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const FormElicitationCapabilitySchema = intersection(object({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
   const ElicitationCapabilitySchema = preprocess((value) => {
     if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
       return { form: {} };
     return value;
-  }, intersection(object2({
+  }, intersection(object({
     form: FormElicitationCapabilitySchema.optional(),
     url: JSONObjectSchema$1.optional()
   }), JSONObjectSchema$1.optional()));
@@ -11269,36 +8936,36 @@ function build() {
     cancel: JSONObjectSchema$1.optional(),
     requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
   });
-  const ClientCapabilitiesSchema$1 = object2({
+  const ClientCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
-    sampling: object2({
+    sampling: object({
       context: JSONObjectSchema$1.optional(),
       tools: JSONObjectSchema$1.optional()
     }).optional(),
     elicitation: ElicitationCapabilitySchema.optional(),
-    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    roots: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ClientTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
-  const ServerCapabilitiesSchema$1 = object2({
+  const ServerCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
     logging: JSONObjectSchema$1.optional(),
     completions: JSONObjectSchema$1.optional(),
-    prompts: object2({ listChanged: boolean2().optional() }).optional(),
-    resources: object2({
+    prompts: object({ listChanged: boolean2().optional() }).optional(),
+    resources: object({
       subscribe: boolean2().optional(),
       listChanged: boolean2().optional()
     }).optional(),
-    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tools: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ServerTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
-  const ProgressSchema$1 = object2({
+  const ProgressSchema$1 = object({
     progress: number2(),
     total: optional(number2()),
     message: optional(string2())
   });
-  const ProgressNotificationParamsSchema$1 = object2({
+  const ProgressNotificationParamsSchema$1 = object({
     ...NotificationsParamsSchema$1.shape,
     ...ProgressSchema$1.shape,
     progressToken: ProgressTokenSchema$1
@@ -11316,19 +8983,19 @@ function build() {
     method: literal("notifications/message"),
     params: LoggingMessageNotificationParamsSchema$1
   });
-  const ResourceContentsSchema$1 = object2({
+  const ResourceContentsSchema$1 = object({
     uri: string2(),
     mimeType: optional(string2()),
     _meta: record(string2(), unknown()).optional()
   });
   const TextResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ text: string2() });
   const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
-  const AnnotationsSchema$1 = object2({
+  const AnnotationsSchema$1 = object({
     audience: array(RoleSchema$1).optional(),
     priority: number2().min(0).max(1).optional(),
     lastModified: datetime2({ offset: true }).optional()
   });
-  const ResourceSchema$1 = object2({
+  const ResourceSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uri: string2(),
@@ -11338,7 +9005,7 @@ function build() {
     annotations: AnnotationsSchema$1.optional(),
     _meta: optional(looseObject({}))
   });
-  const ResourceTemplateSchema$1 = object2({
+  const ResourceTemplateSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uriTemplate: string2(),
@@ -11356,12 +9023,12 @@ function build() {
     method: literal("notifications/resources/updated"),
     params: ResourceUpdatedNotificationParamsSchema$1
   });
-  const PromptArgumentSchema$1 = object2({
+  const PromptArgumentSchema$1 = object({
     name: string2(),
     description: optional(string2()),
     required: optional(boolean2())
   });
-  const PromptSchema$1 = object2({
+  const PromptSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: optional(string2()),
@@ -11372,34 +9039,34 @@ function build() {
     method: literal("notifications/prompts/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const TextContentSchema$1 = object2({
+  const TextContentSchema$1 = object({
     type: literal("text"),
     text: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ImageContentSchema$1 = object2({
+  const ImageContentSchema$1 = object({
     type: literal("image"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const AudioContentSchema$1 = object2({
+  const AudioContentSchema$1 = object({
     type: literal("audio"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolUseContentSchema$1 = object2({
+  const ToolUseContentSchema$1 = object({
     type: literal("tool_use"),
     name: string2(),
     id: string2(),
     input: record(string2(), unknown()),
     _meta: record(string2(), unknown()).optional()
   });
-  const EmbeddedResourceSchema$1 = object2({
+  const EmbeddedResourceSchema$1 = object({
     type: literal("resource"),
     resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
     annotations: AnnotationsSchema$1.optional(),
@@ -11413,11 +9080,11 @@ function build() {
     ResourceLinkSchema$1,
     EmbeddedResourceSchema$1
   ]);
-  const PromptMessageSchema$1 = object2({
+  const PromptMessageSchema$1 = object({
     role: RoleSchema$1,
     content: ContentBlockSchema$1
   });
-  const ToolAnnotationsSchema$1 = object2({
+  const ToolAnnotationsSchema$1 = object({
     title: string2().optional(),
     readOnlyHint: boolean2().optional(),
     destructiveHint: boolean2().optional(),
@@ -11428,25 +9095,25 @@ function build() {
     method: literal("notifications/tools/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const ModelHintSchema$1 = object2({ name: string2().optional() });
-  const ModelPreferencesSchema$1 = object2({
+  const ModelHintSchema$1 = object({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object({
     hints: array(ModelHintSchema$1).optional(),
     costPriority: number2().min(0).max(1).optional(),
     speedPriority: number2().min(0).max(1).optional(),
     intelligencePriority: number2().min(0).max(1).optional()
   });
-  const ToolChoiceSchema$1 = object2({ mode: _enum([
+  const ToolChoiceSchema$1 = object({ mode: _enum([
     "auto",
     "required",
     "none"
   ]).optional() });
-  const BooleanSchemaSchema$1 = object2({
+  const BooleanSchemaSchema$1 = object({
     type: literal("boolean"),
     title: string2().optional(),
     description: string2().optional(),
     default: boolean2().optional()
   });
-  const StringSchemaSchema$1 = object2({
+  const StringSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -11460,7 +9127,7 @@ function build() {
     ]).optional(),
     default: string2().optional()
   });
-  const NumberSchemaSchema$1 = object2({
+  const NumberSchemaSchema$1 = object({
     type: _enum(["number", "integer"]),
     title: string2().optional(),
     description: string2().optional(),
@@ -11468,24 +9135,24 @@ function build() {
     maximum: number2().optional(),
     default: number2().optional()
   });
-  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+  const UntitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
     enum: array(string2()),
     default: string2().optional()
   });
-  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+  const TitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
-    oneOf: array(object2({
+    oneOf: array(object({
       const: string2(),
       title: string2()
     })),
     default: string2().optional()
   });
-  const LegacyTitledEnumSchemaSchema$1 = object2({
+  const LegacyTitledEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -11494,25 +9161,25 @@ function build() {
     default: string2().optional()
   });
   const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
-  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+  const UntitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({
+    items: object({
       type: literal("string"),
       enum: array(string2())
     }),
     default: array(string2()).optional()
   });
-  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+  const TitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({ anyOf: array(object2({
+    items: object({ anyOf: array(object({
       const: string2(),
       title: string2()
     })) }),
@@ -11533,27 +9200,27 @@ function build() {
   const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
     mode: literal("form").optional(),
     message: string2(),
-    requestedSchema: object2({
+    requestedSchema: object({
       type: literal("object"),
       properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
       required: array(string2()).optional()
     }).catchall(unknown())
   });
-  const ResourceTemplateReferenceSchema$1 = object2({
+  const ResourceTemplateReferenceSchema$1 = object({
     type: literal("ref/resource"),
     uri: string2()
   });
-  const PromptReferenceSchema$1 = object2({
+  const PromptReferenceSchema$1 = object({
     type: literal("ref/prompt"),
     name: string2()
   });
-  const RootSchema$1 = object2({
+  const RootSchema$1 = object({
     uri: string2().startsWith("file://"),
     name: string2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
   const sharedClientCapabilityShape = ClientCapabilitiesSchema$1.shape;
-  const ClientCapabilities2026Schema = object2({
+  const ClientCapabilities2026Schema = object({
     experimental: sharedClientCapabilityShape.experimental,
     sampling: sharedClientCapabilityShape.sampling,
     elicitation: sharedClientCapabilityShape.elicitation,
@@ -11561,7 +9228,7 @@ function build() {
     extensions: sharedClientCapabilityShape.extensions
   });
   const sharedServerCapabilityShape = ServerCapabilitiesSchema$1.shape;
-  const ServerCapabilities2026Schema = object2({
+  const ServerCapabilities2026Schema = object({
     experimental: sharedServerCapabilityShape.experimental,
     logging: sharedServerCapabilityShape.logging,
     completions: sharedServerCapabilityShape.completions,
@@ -11577,7 +9244,7 @@ function build() {
     [CLIENT_CAPABILITIES_META_KEY]: ClientCapabilities2026Schema,
     [LOG_LEVEL_META_KEY]: LoggingLevelSchema$1.optional()
   });
-  const ToolSchema$1 = object2({
+  const ToolSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: string2().optional(),
@@ -11589,7 +9256,7 @@ function build() {
     annotations: ToolAnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolResultContentSchema$1 = object2({
+  const ToolResultContentSchema$1 = object({
     type: literal("tool_result"),
     toolUseId: string2(),
     content: array(ContentBlockSchema$1),
@@ -11604,7 +9271,7 @@ function build() {
     ToolUseContentSchema$1,
     ToolResultContentSchema$1
   ]);
-  const SamplingMessageSchema$1 = object2({
+  const SamplingMessageSchema$1 = object({
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
     _meta: record(string2(), unknown()).optional()
@@ -11659,7 +9326,7 @@ function build() {
     cacheScope: _enum(["public", "private"]),
     contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
   });
-  const CompleteResultSchema$1 = wireResult({ completion: object2({
+  const CompleteResultSchema$1 = wireResult({ completion: object({
     values: array(string2()).max(100),
     total: number2().int().optional(),
     hasMore: boolean2().optional()
@@ -11675,7 +9342,7 @@ function build() {
     capabilities: ServerCapabilities2026Schema,
     instructions: string2().optional()
   });
-  const CreateMessageRequestParamsSchema$1 = object2({
+  const CreateMessageRequestParamsSchema$1 = object({
     messages: array(SamplingMessageSchema$1),
     modelPreferences: ModelPreferencesSchema$1.optional(),
     systemPrompt: string2().optional(),
@@ -11691,21 +9358,21 @@ function build() {
     tools: array(ToolSchema$1).optional(),
     toolChoice: ToolChoiceSchema$1.optional()
   });
-  const CreateMessageRequestSchema$1 = object2({
+  const CreateMessageRequestSchema$1 = object({
     method: literal("sampling/createMessage"),
     params: CreateMessageRequestParamsSchema$1
   });
-  const ListRootsRequestSchema$1 = object2({
+  const ListRootsRequestSchema$1 = object({
     method: literal("roots/list"),
-    params: object2({ _meta: record(string2(), unknown()).optional() }).optional()
+    params: object({ _meta: record(string2(), unknown()).optional() }).optional()
   });
-  const CreateMessageResultSchema$1 = object2({
+  const CreateMessageResultSchema$1 = object({
     ...SamplingMessageSchema$1.shape,
     model: string2(),
     stopReason: string2().optional()
   });
-  const ListRootsResultSchema$1 = object2({ roots: array(RootSchema$1) });
-  const ElicitResultSchema$1 = object2({
+  const ListRootsResultSchema$1 = object({ roots: array(RootSchema$1) });
+  const ElicitResultSchema$1 = object({
     action: _enum([
       "accept",
       "decline",
@@ -11718,13 +9385,13 @@ function build() {
       array(string2())
     ])).optional()
   });
-  const ElicitRequestURLParamsSchema$1 = object2({
+  const ElicitRequestURLParamsSchema$1 = object({
     mode: literal("url"),
     message: string2(),
     url: string2().url()
   });
   const ElicitRequestParamsSchema$1 = union([ElicitRequestFormParamsSchema$1, ElicitRequestURLParamsSchema$1]);
-  const ElicitRequestSchema$1 = object2({
+  const ElicitRequestSchema$1 = object({
     method: literal("elicitation/create"),
     params: ElicitRequestParamsSchema$1
   });
@@ -11748,24 +9415,24 @@ function build() {
     inputResponses: InputResponsesSchema.optional(),
     requestState: string2().optional()
   };
-  const InputResponseRequestParamsSchema = object2({
+  const InputResponseRequestParamsSchema = object({
     _meta: RequestMetaEnvelopeSchema,
     ...retryParamsShape
   });
   const DispatchRequestMetaSchema = looseObject({ progressToken: ProgressTokenSchema$1.optional() });
   function wireRequest(method, paramsShape) {
-    return object2({
+    return object({
       method: literal(method),
-      params: object2({
+      params: object({
         _meta: RequestMetaEnvelopeSchema,
         ...paramsShape
       })
     });
   }
   function dispatchRequest(method, paramsShape) {
-    return object2({
+    return object({
       method: literal(method),
-      params: object2({
+      params: object({
         _meta: DispatchRequestMetaSchema.optional(),
         ...paramsShape
       }).optional()
@@ -11793,15 +9460,15 @@ function build() {
   });
   const completeParamsShape = {
     ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
-    argument: object2({
+    argument: object({
       name: string2(),
       value: string2()
     }),
-    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+    context: object({ arguments: record(string2(), string2()).optional() }).optional()
   };
   const CompleteRequestSchema$1 = wireRequest("completion/complete", completeParamsShape);
   const DiscoverRequestSchema$1 = wireRequest("server/discover", {});
-  const SubscriptionFilterSchema$1 = object2({
+  const SubscriptionFilterSchema$1 = object({
     toolsListChanged: boolean2().optional(),
     promptsListChanged: boolean2().optional(),
     resourcesListChanged: boolean2().optional(),
@@ -11874,7 +9541,7 @@ function build() {
       cacheScope: _enum(["public", "private"]),
       contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
     }),
-    "completion/complete": liftedResult({ completion: object2({
+    "completion/complete": liftedResult({ completion: object({
       values: array(string2()).max(100),
       total: number2().int().optional(),
       hasMore: boolean2().optional()
@@ -11889,19 +9556,19 @@ function build() {
     "subscriptions/listen": liftedResult({})
   };
   const NotificationMetaSchema = looseObject({ "io.modelcontextprotocol/subscriptionId": RequestIdSchema$1.optional() });
-  const SubscriptionsAcknowledgedNotificationSchema$1 = object2({
+  const SubscriptionsAcknowledgedNotificationSchema$1 = object({
     method: literal("notifications/subscriptions/acknowledged"),
-    params: object2({
+    params: object({
       _meta: NotificationMetaSchema.optional(),
       notifications: SubscriptionFilterSchema$1
     })
   });
-  const CancelledNotificationParamsSchema$1 = object2({
+  const CancelledNotificationParamsSchema$1 = object({
     _meta: NotificationMetaSchema.optional(),
     requestId: RequestIdSchema$1,
     reason: string2().optional()
   });
-  const CancelledNotificationSchema$1 = object2({
+  const CancelledNotificationSchema$1 = object({
     method: literal("notifications/cancelled"),
     params: CancelledNotificationParamsSchema$1
   });
@@ -11915,7 +9582,7 @@ function build() {
     "notifications/prompts/list_changed": PromptListChangedNotificationSchema$1,
     "notifications/subscriptions/acknowledged": SubscriptionsAcknowledgedNotificationSchema$1
   };
-  const wireResultResponse = (result) => object2({
+  const wireResultResponse = (result) => object({
     jsonrpc: literal("2.0"),
     id: union([string2(), number2().int()]),
     result
@@ -12168,15 +9835,15 @@ function inputSchemaMaps() {
   const s = buildSchemas2026();
   maps = {
     request: {
-      "elicitation/create": object2({
+      "elicitation/create": object({
         method: literal("elicitation/create"),
         params: s.ElicitRequestParamsSchema
       }),
-      "sampling/createMessage": object2({
+      "sampling/createMessage": object({
         method: literal("sampling/createMessage"),
         params: s.CreateMessageRequestParamsSchema
       }),
-      "roots/list": object2({
+      "roots/list": object({
         method: literal("roots/list"),
         params: looseObject({}).optional()
       })
@@ -12545,7 +10212,7 @@ function classifyBatch(body) {
   for (const element of body) {
     if (hasEnvelopeClaim(isPlainObject$2(element) ? element["params"] : undefined))
       return rejection("jsonrpc-shape", "batch-with-modern-element", 400, new ProtocolError(ProtocolErrorCode.InvalidRequest, "Bad Request: JSON-RPC batches may not contain requests for protocol revision 2026-07-28 or later"), true);
-    if (!(isJSONRPCRequest2(element) || isJSONRPCNotification2(element) || isJSONRPCResultResponse2(element) || isJSONRPCErrorResponse2(element)))
+    if (!(isJSONRPCRequest(element) || isJSONRPCNotification(element) || isJSONRPCResultResponse(element) || isJSONRPCErrorResponse(element)))
       return rejection("jsonrpc-shape", "batch-with-invalid-element", 400, new ProtocolError(ProtocolErrorCode.InvalidRequest, "Bad Request: JSON-RPC batch contains an invalid message"), true);
   }
   return {
@@ -12658,14 +10325,14 @@ function classifyInboundRequest(request) {
   const body = request.body;
   if (Array.isArray(body))
     return classifyBatch(body);
-  if (isJSONRPCResultResponse2(body) || isJSONRPCErrorResponse2(body))
+  if (isJSONRPCResultResponse(body) || isJSONRPCErrorResponse(body))
     return {
       kind: "legacy",
       reason: "response"
     };
-  if (isPlainObject$2(body) && isJSONRPCRequest2(body))
+  if (isPlainObject$2(body) && isJSONRPCRequest(body))
     return classifyRequestBody(request, body);
-  if (isPlainObject$2(body) && isJSONRPCNotification2(body))
+  if (isPlainObject$2(body) && isJSONRPCNotification(body))
     return classifyNotificationBody(request, body);
   return rejection("jsonrpc-shape", "invalid-json-rpc-body", 400, new ProtocolError(ProtocolErrorCode.InvalidRequest, "Bad Request: the request body is not a valid JSON-RPC message"), true);
 }
@@ -12690,7 +10357,7 @@ function modernOnlyStrictRejection(route, supportedVersions) {
   }
 }
 function parseSchema(schema, data) {
-  return safeParse3(schema, data);
+  return safeParse(schema, data);
 }
 function shapeKeys(schemas) {
   return new Set(schemas.flatMap((schema) => Object.keys(schema.shape)));
@@ -12874,7 +10541,7 @@ function walkRequestedSchema(converted, vendor) {
 function describeUnsupportedProperties(pruned, fallback) {
   if (!isJsonObject(pruned.properties))
     return fallback;
-  const offenders = Object.entries(pruned.properties).filter(([, node]) => !parseSchema(PrimitiveSchemaDefinitionSchema2, node).success).map(([name]) => `properties.${name}`);
+  const offenders = Object.entries(pruned.properties).filter(([, node]) => !parseSchema(PrimitiveSchemaDefinitionSchema, node).success).map(([name]) => `properties.${name}`);
   return offenders.length > 0 ? offenders.join(", ") : fallback;
 }
 function findDroppedConstraintPaths(original, parsed, path = "") {
@@ -12898,7 +10565,7 @@ function normalizeElicitInputParams(input) {
     };
   const vendor = input.requestedSchema["~standard"].vendor;
   const pruned = walkRequestedSchema(convertStandardElicitationSchema(input.requestedSchema), vendor);
-  const parsed = parseSchema(ElicitRequestFormParamsSchema2.shape.requestedSchema, pruned);
+  const parsed = parseSchema(ElicitRequestFormParamsSchema.shape.requestedSchema, pruned);
   if (!parsed.success)
     throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Elicitation requestedSchema only supports flat primitive properties (string, number, integer, boolean, and string enums): ${describeUnsupportedProperties(pruned, parsed.error.message)}`);
   const droppedConstraints = findDroppedConstraintPaths(pruned, parsed.data);
@@ -13077,7 +10744,7 @@ function setNegotiatedProtocolVersion(instance, version) {
 function isPlainObject$1(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function mergeCapabilities2(base, additional) {
+function mergeCapabilities(base, additional) {
   const result = { ...base };
   for (const key in additional) {
     const k = key;
@@ -13092,19 +10759,19 @@ function mergeCapabilities2(base, additional) {
   }
   return result;
 }
-function isPlainObject3(value) {
+function isPlainObject2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function partitionInputResponses(inputResponses) {
   const accepted = {};
   const droppedKeys = [];
-  if (!isPlainObject3(inputResponses))
+  if (!isPlainObject2(inputResponses))
     return {
       accepted,
       droppedKeys
     };
   for (const [key, entry] of Object.entries(inputResponses)) {
-    if (!isPlainObject3(entry) || "method" in entry || "result" in entry) {
+    if (!isPlainObject2(entry) || "method" in entry || "result" in entry) {
       droppedKeys.push(key);
       continue;
     }
@@ -13140,7 +10807,7 @@ function isJsonContentType(header) {
   return mediaTypeEssence(header) === "application/json";
 }
 function deserializeMessage(line) {
-  return JSONRPCMessageSchema2.parse(JSON.parse(line));
+  return JSONRPCMessageSchema.parse(JSON.parse(line));
 }
 function serializeMessage(message) {
   return JSON.stringify(message) + `
@@ -13214,14 +10881,14 @@ function normalizeRawShapeSchema(schema) {
   if (schema === undefined)
     return;
   if (isZodRawShape(schema))
-    return object2(schema);
+    return object(schema);
   if (typeof schema === "object" && schema !== null && !isStandardSchema(schema) && Object.values(schema).some((v) => looksLikeZodV3(v)))
     throw new TypeError("Raw-shape inputSchema/outputSchema/argsSchema fields must be Zod v4 schemas. Got a Zod v3 field schema. Import from `zod/v4` (or upgrade your zod import), or wrap with `z.object({...})` yourself.");
   if (!isStandardSchema(schema))
     throw new TypeError("inputSchema/outputSchema/argsSchema must be a Standard Schema (e.g. z.object({...})) or a raw Zod shape ({ field: z.string() }).");
   return schema;
 }
-var BRANDS, OAuthError, SdkErrorCode, SdkError, SdkHttpError, REQUIRED_CLIENT_CAPABILITIES_BY_METHOD, FIRST_MODERN_PROTOCOL_VERSION = "2026-07-28", SUPPORTED_MODERN_PROTOCOL_VERSIONS, TOOL_RESULT_FOREIGN_FAMILY_KEYS, memo$1, REF_REWRITE_DATA_POSITION_KEYS, REF_REWRITE_NAME_MAP_KEYS, requestMethodKeys$1, notificationMethodKeys$1, resultMethodKeys, maps$1, rev2025RequestMethods, rev2025NotificationMethods, NOT_IN_ERA$1, rev2025Codec, memo2, CACHEABLE_RESULT_METHODS, RESULT_CACHE_HINT_FALLBACK, ProtocolErrorCode, ProtocolError, ResourceNotFoundError, UrlElicitationRequiredError2, UnsupportedProtocolVersionError, MissingRequiredClientCapabilityError, DEFAULT_CACHE_TTL_MS = 0, DEFAULT_CACHE_SCOPE = "private", EXTENDED_RESULT_TYPE_METHODS, INPUT_REQUEST_METHODS_2026, maps, requestMethodKeys, notificationMethodKeys, rev2026RequestMethods, rev2026NotificationMethods, NOT_IN_ERA, REQUIRED_ENVELOPE_KEYS, rev2026Codec, wireResultSchemasMemo, MODERN_WIRE_REVISION = "2026-07-28", ALL_CODECS, schemas_exports, isJSONRPCRequest2 = (value) => JSONRPCRequestSchema2.safeParse(value).success, isJSONRPCNotification2 = (value) => JSONRPCNotificationSchema2.safeParse(value).success, isJSONRPCResultResponse2 = (value) => JSONRPCResultResponseSchema2.safeParse(value).success, isJSONRPCErrorResponse2 = (value) => JSONRPCErrorResponseSchema2.safeParse(value).success, isInputRequiredResult = (value) => typeof value === "object" && value !== null && !Array.isArray(value) && value.resultType === "input_required", isInitializeRequest = (value) => InitializeRequestSchema2.safeParse(value).success, MCP_PARAM_HEADER_PREFIX = "Mcp-Param-", X_MCP_HEADER_KEY = "x-mcp-header", RFC9110_TOKEN, PERMITTED_X_MCP_HEADER_TYPES, NON_REACHABLE_SUBSCHEMA_KEYWORDS, OBJECT_VALUED_SUBSCHEMA_KEYWORDS, BASE64_SENTINEL_PREFIX = "=?base64?", BASE64_SENTINEL_SUFFIX = "?=", BASE64_CANONICAL, CANONICAL_DECIMAL, HEADER_MISMATCH_ERROR_CODE = -32020, INBOUND_VALIDATION_LADDER, LADDER_ERROR_HTTP_STATUS, MCP_NAME_HEADER_SOURCE, warnedZodFallback = false, JSON_SCHEMA_CONVERSION_TARGET = "draft-2020-12", DATETIME_FRACTION_DIGITS, ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS, ROOT_KEYS, PROPERTY_KEYS_BY_TYPE, SUPPORTED_STRING_FORMATS, inputRequired, REQUEST_STATE_ONLY_LEG_PACING_MS = 250, SPEC_SCHEMA_KEYS, authSchemas, _specTypeSchemas, _isSpecType, specTypeSchemas, isSpecType, DEFAULT_REQUEST_TIMEOUT_MSEC2 = 60000, RESERVED_ENVELOPE_META_KEYS, RETRY_PARAMS_KEYS, NO_REQUEST_STATE, writeNegotiatedProtocolVersion, Protocol2, require_content_type, import_content_type, STDIO_DEFAULT_MAX_BUFFER_SIZE, ReadBuffer = class {
+var BRANDS, OAuthError, SdkErrorCode, SdkError, SdkHttpError, REQUIRED_CLIENT_CAPABILITIES_BY_METHOD, FIRST_MODERN_PROTOCOL_VERSION = "2026-07-28", SUPPORTED_MODERN_PROTOCOL_VERSIONS, TOOL_RESULT_FOREIGN_FAMILY_KEYS, memo$1, REF_REWRITE_DATA_POSITION_KEYS, REF_REWRITE_NAME_MAP_KEYS, requestMethodKeys$1, notificationMethodKeys$1, resultMethodKeys, maps$1, rev2025RequestMethods, rev2025NotificationMethods, NOT_IN_ERA$1, rev2025Codec, memo2, CACHEABLE_RESULT_METHODS, RESULT_CACHE_HINT_FALLBACK, ProtocolErrorCode, ProtocolError, ResourceNotFoundError, UrlElicitationRequiredError, UnsupportedProtocolVersionError, MissingRequiredClientCapabilityError, DEFAULT_CACHE_TTL_MS = 0, DEFAULT_CACHE_SCOPE = "private", EXTENDED_RESULT_TYPE_METHODS, INPUT_REQUEST_METHODS_2026, maps, requestMethodKeys, notificationMethodKeys, rev2026RequestMethods, rev2026NotificationMethods, NOT_IN_ERA, REQUIRED_ENVELOPE_KEYS, rev2026Codec, wireResultSchemasMemo, MODERN_WIRE_REVISION = "2026-07-28", ALL_CODECS, schemas_exports, isJSONRPCRequest = (value) => JSONRPCRequestSchema.safeParse(value).success, isJSONRPCNotification = (value) => JSONRPCNotificationSchema.safeParse(value).success, isJSONRPCResultResponse = (value) => JSONRPCResultResponseSchema.safeParse(value).success, isJSONRPCErrorResponse = (value) => JSONRPCErrorResponseSchema.safeParse(value).success, isInputRequiredResult = (value) => typeof value === "object" && value !== null && !Array.isArray(value) && value.resultType === "input_required", isInitializeRequest = (value) => InitializeRequestSchema.safeParse(value).success, MCP_PARAM_HEADER_PREFIX = "Mcp-Param-", X_MCP_HEADER_KEY = "x-mcp-header", RFC9110_TOKEN, PERMITTED_X_MCP_HEADER_TYPES, NON_REACHABLE_SUBSCHEMA_KEYWORDS, OBJECT_VALUED_SUBSCHEMA_KEYWORDS, BASE64_SENTINEL_PREFIX = "=?base64?", BASE64_SENTINEL_SUFFIX = "?=", BASE64_CANONICAL, CANONICAL_DECIMAL, HEADER_MISMATCH_ERROR_CODE = -32020, INBOUND_VALIDATION_LADDER, LADDER_ERROR_HTTP_STATUS, MCP_NAME_HEADER_SOURCE, warnedZodFallback = false, JSON_SCHEMA_CONVERSION_TARGET = "draft-2020-12", DATETIME_FRACTION_DIGITS, ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS, ROOT_KEYS, PROPERTY_KEYS_BY_TYPE, SUPPORTED_STRING_FORMATS, inputRequired, REQUEST_STATE_ONLY_LEG_PACING_MS = 250, SPEC_SCHEMA_KEYS, authSchemas, _specTypeSchemas, _isSpecType, specTypeSchemas, isSpecType, DEFAULT_REQUEST_TIMEOUT_MSEC = 60000, RESERVED_ENVELOPE_META_KEYS, RETRY_PARAMS_KEYS, NO_REQUEST_STATE, writeNegotiatedProtocolVersion, Protocol, require_content_type, import_content_type, STDIO_DEFAULT_MAX_BUFFER_SIZE, ReadBuffer = class {
   _buffer;
   _maxBufferSize;
   constructor(options) {
@@ -13540,7 +11207,7 @@ var init_src_CX2iR2pK = __esm(() => {
       if (code === ProtocolErrorCode.UrlElicitationRequired && data) {
         const errorData = data;
         if (errorData.elicitations)
-          return new UrlElicitationRequiredError2(errorData.elicitations, message);
+          return new UrlElicitationRequiredError(errorData.elicitations, message);
       }
       if (code === ProtocolErrorCode.UnsupportedProtocolVersion && data) {
         const errorData = data;
@@ -13574,7 +11241,7 @@ var init_src_CX2iR2pK = __esm(() => {
       return this.data.uri;
     }
   };
-  UrlElicitationRequiredError2 = class extends ProtocolError {
+  UrlElicitationRequiredError = class extends ProtocolError {
     static {
       Object.defineProperty(this, "mcpBrand", { value: "mcp.UrlElicitationRequiredError" });
     }
@@ -13772,143 +11439,143 @@ var init_src_CX2iR2pK = __esm(() => {
   };
   ALL_CODECS = [rev2025Codec, rev2026Codec];
   schemas_exports = /* @__PURE__ */ __exportAll({
-    AnnotationsSchema: () => AnnotationsSchema2,
-    AudioContentSchema: () => AudioContentSchema2,
-    BaseMetadataSchema: () => BaseMetadataSchema2,
-    BaseRequestParamsSchema: () => BaseRequestParamsSchema2,
-    BlobResourceContentsSchema: () => BlobResourceContentsSchema2,
-    BooleanSchemaSchema: () => BooleanSchemaSchema2,
-    CallToolRequestParamsSchema: () => CallToolRequestParamsSchema2,
-    CallToolRequestSchema: () => CallToolRequestSchema2,
-    CallToolResultSchema: () => CallToolResultSchema2,
-    CancelTaskRequestSchema: () => CancelTaskRequestSchema2,
-    CancelTaskResultSchema: () => CancelTaskResultSchema2,
-    CancelledNotificationParamsSchema: () => CancelledNotificationParamsSchema2,
-    CancelledNotificationSchema: () => CancelledNotificationSchema2,
-    ClientCapabilitiesSchema: () => ClientCapabilitiesSchema2,
-    ClientNotificationSchema: () => ClientNotificationSchema2,
-    ClientRequestSchema: () => ClientRequestSchema2,
-    ClientResultSchema: () => ClientResultSchema2,
-    ClientTasksCapabilitySchema: () => ClientTasksCapabilitySchema2,
-    CompatibilityCallToolResultSchema: () => CompatibilityCallToolResultSchema2,
-    CompleteRequestParamsSchema: () => CompleteRequestParamsSchema2,
-    CompleteRequestSchema: () => CompleteRequestSchema2,
-    CompleteResultSchema: () => CompleteResultSchema2,
-    ContentBlockSchema: () => ContentBlockSchema2,
-    CreateMessageRequestParamsSchema: () => CreateMessageRequestParamsSchema2,
-    CreateMessageRequestSchema: () => CreateMessageRequestSchema2,
-    CreateMessageResultSchema: () => CreateMessageResultSchema2,
-    CreateMessageResultWithToolsSchema: () => CreateMessageResultWithToolsSchema2,
-    CreateTaskResultSchema: () => CreateTaskResultSchema2,
-    CursorSchema: () => CursorSchema2,
+    AnnotationsSchema: () => AnnotationsSchema,
+    AudioContentSchema: () => AudioContentSchema,
+    BaseMetadataSchema: () => BaseMetadataSchema,
+    BaseRequestParamsSchema: () => BaseRequestParamsSchema,
+    BlobResourceContentsSchema: () => BlobResourceContentsSchema,
+    BooleanSchemaSchema: () => BooleanSchemaSchema,
+    CallToolRequestParamsSchema: () => CallToolRequestParamsSchema,
+    CallToolRequestSchema: () => CallToolRequestSchema,
+    CallToolResultSchema: () => CallToolResultSchema,
+    CancelTaskRequestSchema: () => CancelTaskRequestSchema,
+    CancelTaskResultSchema: () => CancelTaskResultSchema,
+    CancelledNotificationParamsSchema: () => CancelledNotificationParamsSchema,
+    CancelledNotificationSchema: () => CancelledNotificationSchema,
+    ClientCapabilitiesSchema: () => ClientCapabilitiesSchema,
+    ClientNotificationSchema: () => ClientNotificationSchema,
+    ClientRequestSchema: () => ClientRequestSchema,
+    ClientResultSchema: () => ClientResultSchema,
+    ClientTasksCapabilitySchema: () => ClientTasksCapabilitySchema,
+    CompatibilityCallToolResultSchema: () => CompatibilityCallToolResultSchema,
+    CompleteRequestParamsSchema: () => CompleteRequestParamsSchema,
+    CompleteRequestSchema: () => CompleteRequestSchema,
+    CompleteResultSchema: () => CompleteResultSchema,
+    ContentBlockSchema: () => ContentBlockSchema,
+    CreateMessageRequestParamsSchema: () => CreateMessageRequestParamsSchema,
+    CreateMessageRequestSchema: () => CreateMessageRequestSchema,
+    CreateMessageResultSchema: () => CreateMessageResultSchema,
+    CreateMessageResultWithToolsSchema: () => CreateMessageResultWithToolsSchema,
+    CreateTaskResultSchema: () => CreateTaskResultSchema,
+    CursorSchema: () => CursorSchema,
     DiscoverRequestSchema: () => DiscoverRequestSchema,
     DiscoverResultSchema: () => DiscoverResultSchema,
-    ElicitRequestFormParamsSchema: () => ElicitRequestFormParamsSchema2,
-    ElicitRequestParamsSchema: () => ElicitRequestParamsSchema2,
-    ElicitRequestSchema: () => ElicitRequestSchema2,
-    ElicitRequestURLParamsSchema: () => ElicitRequestURLParamsSchema2,
-    ElicitResultSchema: () => ElicitResultSchema2,
-    ElicitationCompleteNotificationParamsSchema: () => ElicitationCompleteNotificationParamsSchema2,
-    ElicitationCompleteNotificationSchema: () => ElicitationCompleteNotificationSchema2,
-    EmbeddedResourceSchema: () => EmbeddedResourceSchema2,
-    EmptyResultSchema: () => EmptyResultSchema2,
-    EnumSchemaSchema: () => EnumSchemaSchema2,
-    GetPromptRequestParamsSchema: () => GetPromptRequestParamsSchema2,
-    GetPromptRequestSchema: () => GetPromptRequestSchema2,
-    GetPromptResultSchema: () => GetPromptResultSchema2,
-    GetTaskPayloadRequestSchema: () => GetTaskPayloadRequestSchema2,
-    GetTaskPayloadResultSchema: () => GetTaskPayloadResultSchema2,
-    GetTaskRequestSchema: () => GetTaskRequestSchema2,
-    GetTaskResultSchema: () => GetTaskResultSchema2,
-    IconSchema: () => IconSchema2,
-    IconsSchema: () => IconsSchema2,
-    ImageContentSchema: () => ImageContentSchema2,
-    ImplementationSchema: () => ImplementationSchema2,
-    InitializeRequestParamsSchema: () => InitializeRequestParamsSchema2,
-    InitializeRequestSchema: () => InitializeRequestSchema2,
-    InitializeResultSchema: () => InitializeResultSchema2,
-    InitializedNotificationSchema: () => InitializedNotificationSchema2,
+    ElicitRequestFormParamsSchema: () => ElicitRequestFormParamsSchema,
+    ElicitRequestParamsSchema: () => ElicitRequestParamsSchema,
+    ElicitRequestSchema: () => ElicitRequestSchema,
+    ElicitRequestURLParamsSchema: () => ElicitRequestURLParamsSchema,
+    ElicitResultSchema: () => ElicitResultSchema,
+    ElicitationCompleteNotificationParamsSchema: () => ElicitationCompleteNotificationParamsSchema,
+    ElicitationCompleteNotificationSchema: () => ElicitationCompleteNotificationSchema,
+    EmbeddedResourceSchema: () => EmbeddedResourceSchema,
+    EmptyResultSchema: () => EmptyResultSchema,
+    EnumSchemaSchema: () => EnumSchemaSchema,
+    GetPromptRequestParamsSchema: () => GetPromptRequestParamsSchema,
+    GetPromptRequestSchema: () => GetPromptRequestSchema,
+    GetPromptResultSchema: () => GetPromptResultSchema,
+    GetTaskPayloadRequestSchema: () => GetTaskPayloadRequestSchema,
+    GetTaskPayloadResultSchema: () => GetTaskPayloadResultSchema,
+    GetTaskRequestSchema: () => GetTaskRequestSchema,
+    GetTaskResultSchema: () => GetTaskResultSchema,
+    IconSchema: () => IconSchema,
+    IconsSchema: () => IconsSchema,
+    ImageContentSchema: () => ImageContentSchema,
+    ImplementationSchema: () => ImplementationSchema,
+    InitializeRequestParamsSchema: () => InitializeRequestParamsSchema,
+    InitializeRequestSchema: () => InitializeRequestSchema,
+    InitializeResultSchema: () => InitializeResultSchema,
+    InitializedNotificationSchema: () => InitializedNotificationSchema,
     JSONArraySchema: () => JSONArraySchema,
     JSONObjectSchema: () => JSONObjectSchema,
-    JSONRPCErrorResponseSchema: () => JSONRPCErrorResponseSchema2,
-    JSONRPCMessageSchema: () => JSONRPCMessageSchema2,
-    JSONRPCNotificationSchema: () => JSONRPCNotificationSchema2,
-    JSONRPCRequestSchema: () => JSONRPCRequestSchema2,
-    JSONRPCResponseSchema: () => JSONRPCResponseSchema2,
-    JSONRPCResultResponseSchema: () => JSONRPCResultResponseSchema2,
+    JSONRPCErrorResponseSchema: () => JSONRPCErrorResponseSchema,
+    JSONRPCMessageSchema: () => JSONRPCMessageSchema,
+    JSONRPCNotificationSchema: () => JSONRPCNotificationSchema,
+    JSONRPCRequestSchema: () => JSONRPCRequestSchema,
+    JSONRPCResponseSchema: () => JSONRPCResponseSchema,
+    JSONRPCResultResponseSchema: () => JSONRPCResultResponseSchema,
     JSONValueSchema: () => JSONValueSchema,
-    LegacyTitledEnumSchemaSchema: () => LegacyTitledEnumSchemaSchema2,
-    ListChangedOptionsBaseSchema: () => ListChangedOptionsBaseSchema2,
-    ListPromptsRequestSchema: () => ListPromptsRequestSchema2,
-    ListPromptsResultSchema: () => ListPromptsResultSchema2,
-    ListResourceTemplatesRequestSchema: () => ListResourceTemplatesRequestSchema2,
-    ListResourceTemplatesResultSchema: () => ListResourceTemplatesResultSchema2,
-    ListResourcesRequestSchema: () => ListResourcesRequestSchema2,
-    ListResourcesResultSchema: () => ListResourcesResultSchema2,
-    ListRootsRequestSchema: () => ListRootsRequestSchema2,
-    ListRootsResultSchema: () => ListRootsResultSchema2,
-    ListTasksRequestSchema: () => ListTasksRequestSchema2,
-    ListTasksResultSchema: () => ListTasksResultSchema2,
-    ListToolsRequestSchema: () => ListToolsRequestSchema2,
-    ListToolsResultSchema: () => ListToolsResultSchema2,
-    LoggingLevelSchema: () => LoggingLevelSchema2,
-    LoggingMessageNotificationParamsSchema: () => LoggingMessageNotificationParamsSchema2,
-    LoggingMessageNotificationSchema: () => LoggingMessageNotificationSchema2,
-    ModelHintSchema: () => ModelHintSchema2,
-    ModelPreferencesSchema: () => ModelPreferencesSchema2,
-    MultiSelectEnumSchemaSchema: () => MultiSelectEnumSchemaSchema2,
-    NotificationSchema: () => NotificationSchema2,
-    NotificationsParamsSchema: () => NotificationsParamsSchema2,
-    NumberSchemaSchema: () => NumberSchemaSchema2,
-    PaginatedRequestParamsSchema: () => PaginatedRequestParamsSchema2,
-    PaginatedRequestSchema: () => PaginatedRequestSchema2,
-    PaginatedResultSchema: () => PaginatedResultSchema2,
-    PingRequestSchema: () => PingRequestSchema2,
-    PrimitiveSchemaDefinitionSchema: () => PrimitiveSchemaDefinitionSchema2,
-    ProgressNotificationParamsSchema: () => ProgressNotificationParamsSchema2,
-    ProgressNotificationSchema: () => ProgressNotificationSchema2,
-    ProgressSchema: () => ProgressSchema2,
-    ProgressTokenSchema: () => ProgressTokenSchema2,
-    PromptArgumentSchema: () => PromptArgumentSchema2,
-    PromptListChangedNotificationSchema: () => PromptListChangedNotificationSchema2,
-    PromptMessageSchema: () => PromptMessageSchema2,
-    PromptReferenceSchema: () => PromptReferenceSchema2,
-    PromptSchema: () => PromptSchema2,
-    ReadResourceRequestParamsSchema: () => ReadResourceRequestParamsSchema2,
-    ReadResourceRequestSchema: () => ReadResourceRequestSchema2,
-    ReadResourceResultSchema: () => ReadResourceResultSchema2,
-    RelatedTaskMetadataSchema: () => RelatedTaskMetadataSchema2,
-    RequestIdSchema: () => RequestIdSchema2,
-    RequestMetaSchema: () => RequestMetaSchema2,
-    RequestSchema: () => RequestSchema2,
-    ResourceContentsSchema: () => ResourceContentsSchema2,
-    ResourceLinkSchema: () => ResourceLinkSchema2,
-    ResourceListChangedNotificationSchema: () => ResourceListChangedNotificationSchema2,
-    ResourceRequestParamsSchema: () => ResourceRequestParamsSchema2,
-    ResourceSchema: () => ResourceSchema2,
-    ResourceTemplateReferenceSchema: () => ResourceTemplateReferenceSchema2,
-    ResourceTemplateSchema: () => ResourceTemplateSchema2,
-    ResourceUpdatedNotificationParamsSchema: () => ResourceUpdatedNotificationParamsSchema2,
-    ResourceUpdatedNotificationSchema: () => ResourceUpdatedNotificationSchema2,
+    LegacyTitledEnumSchemaSchema: () => LegacyTitledEnumSchemaSchema,
+    ListChangedOptionsBaseSchema: () => ListChangedOptionsBaseSchema,
+    ListPromptsRequestSchema: () => ListPromptsRequestSchema,
+    ListPromptsResultSchema: () => ListPromptsResultSchema,
+    ListResourceTemplatesRequestSchema: () => ListResourceTemplatesRequestSchema,
+    ListResourceTemplatesResultSchema: () => ListResourceTemplatesResultSchema,
+    ListResourcesRequestSchema: () => ListResourcesRequestSchema,
+    ListResourcesResultSchema: () => ListResourcesResultSchema,
+    ListRootsRequestSchema: () => ListRootsRequestSchema,
+    ListRootsResultSchema: () => ListRootsResultSchema,
+    ListTasksRequestSchema: () => ListTasksRequestSchema,
+    ListTasksResultSchema: () => ListTasksResultSchema,
+    ListToolsRequestSchema: () => ListToolsRequestSchema,
+    ListToolsResultSchema: () => ListToolsResultSchema,
+    LoggingLevelSchema: () => LoggingLevelSchema,
+    LoggingMessageNotificationParamsSchema: () => LoggingMessageNotificationParamsSchema,
+    LoggingMessageNotificationSchema: () => LoggingMessageNotificationSchema,
+    ModelHintSchema: () => ModelHintSchema,
+    ModelPreferencesSchema: () => ModelPreferencesSchema,
+    MultiSelectEnumSchemaSchema: () => MultiSelectEnumSchemaSchema,
+    NotificationSchema: () => NotificationSchema,
+    NotificationsParamsSchema: () => NotificationsParamsSchema,
+    NumberSchemaSchema: () => NumberSchemaSchema,
+    PaginatedRequestParamsSchema: () => PaginatedRequestParamsSchema,
+    PaginatedRequestSchema: () => PaginatedRequestSchema,
+    PaginatedResultSchema: () => PaginatedResultSchema,
+    PingRequestSchema: () => PingRequestSchema,
+    PrimitiveSchemaDefinitionSchema: () => PrimitiveSchemaDefinitionSchema,
+    ProgressNotificationParamsSchema: () => ProgressNotificationParamsSchema,
+    ProgressNotificationSchema: () => ProgressNotificationSchema,
+    ProgressSchema: () => ProgressSchema,
+    ProgressTokenSchema: () => ProgressTokenSchema,
+    PromptArgumentSchema: () => PromptArgumentSchema,
+    PromptListChangedNotificationSchema: () => PromptListChangedNotificationSchema,
+    PromptMessageSchema: () => PromptMessageSchema,
+    PromptReferenceSchema: () => PromptReferenceSchema,
+    PromptSchema: () => PromptSchema,
+    ReadResourceRequestParamsSchema: () => ReadResourceRequestParamsSchema,
+    ReadResourceRequestSchema: () => ReadResourceRequestSchema,
+    ReadResourceResultSchema: () => ReadResourceResultSchema,
+    RelatedTaskMetadataSchema: () => RelatedTaskMetadataSchema,
+    RequestIdSchema: () => RequestIdSchema,
+    RequestMetaSchema: () => RequestMetaSchema,
+    RequestSchema: () => RequestSchema,
+    ResourceContentsSchema: () => ResourceContentsSchema,
+    ResourceLinkSchema: () => ResourceLinkSchema,
+    ResourceListChangedNotificationSchema: () => ResourceListChangedNotificationSchema,
+    ResourceRequestParamsSchema: () => ResourceRequestParamsSchema,
+    ResourceSchema: () => ResourceSchema,
+    ResourceTemplateReferenceSchema: () => ResourceTemplateReferenceSchema,
+    ResourceTemplateSchema: () => ResourceTemplateSchema,
+    ResourceUpdatedNotificationParamsSchema: () => ResourceUpdatedNotificationParamsSchema,
+    ResourceUpdatedNotificationSchema: () => ResourceUpdatedNotificationSchema,
     ResultMetaObjectSchema: () => ResultMetaObjectSchema,
-    ResultSchema: () => ResultSchema2,
-    RoleSchema: () => RoleSchema2,
-    RootSchema: () => RootSchema2,
-    RootsListChangedNotificationSchema: () => RootsListChangedNotificationSchema2,
-    SamplingContentSchema: () => SamplingContentSchema2,
-    SamplingMessageContentBlockSchema: () => SamplingMessageContentBlockSchema2,
-    SamplingMessageSchema: () => SamplingMessageSchema2,
-    ServerCapabilitiesSchema: () => ServerCapabilitiesSchema2,
-    ServerNotificationSchema: () => ServerNotificationSchema2,
-    ServerRequestSchema: () => ServerRequestSchema2,
-    ServerResultSchema: () => ServerResultSchema2,
-    ServerTasksCapabilitySchema: () => ServerTasksCapabilitySchema2,
-    SetLevelRequestParamsSchema: () => SetLevelRequestParamsSchema2,
-    SetLevelRequestSchema: () => SetLevelRequestSchema2,
-    SingleSelectEnumSchemaSchema: () => SingleSelectEnumSchemaSchema2,
-    StringSchemaSchema: () => StringSchemaSchema2,
-    SubscribeRequestParamsSchema: () => SubscribeRequestParamsSchema2,
-    SubscribeRequestSchema: () => SubscribeRequestSchema2,
+    ResultSchema: () => ResultSchema,
+    RoleSchema: () => RoleSchema,
+    RootSchema: () => RootSchema,
+    RootsListChangedNotificationSchema: () => RootsListChangedNotificationSchema,
+    SamplingContentSchema: () => SamplingContentSchema,
+    SamplingMessageContentBlockSchema: () => SamplingMessageContentBlockSchema,
+    SamplingMessageSchema: () => SamplingMessageSchema,
+    ServerCapabilitiesSchema: () => ServerCapabilitiesSchema,
+    ServerNotificationSchema: () => ServerNotificationSchema,
+    ServerRequestSchema: () => ServerRequestSchema,
+    ServerResultSchema: () => ServerResultSchema,
+    ServerTasksCapabilitySchema: () => ServerTasksCapabilitySchema,
+    SetLevelRequestParamsSchema: () => SetLevelRequestParamsSchema,
+    SetLevelRequestSchema: () => SetLevelRequestSchema,
+    SingleSelectEnumSchemaSchema: () => SingleSelectEnumSchemaSchema,
+    StringSchemaSchema: () => StringSchemaSchema,
+    SubscribeRequestParamsSchema: () => SubscribeRequestParamsSchema,
+    SubscribeRequestSchema: () => SubscribeRequestSchema,
     SubscriptionFilterSchema: () => SubscriptionFilterSchema,
     SubscriptionsAcknowledgedNotificationParamsSchema: () => SubscriptionsAcknowledgedNotificationParamsSchema,
     SubscriptionsAcknowledgedNotificationSchema: () => SubscriptionsAcknowledgedNotificationSchema,
@@ -13916,28 +11583,28 @@ var init_src_CX2iR2pK = __esm(() => {
     SubscriptionsListenRequestSchema: () => SubscriptionsListenRequestSchema,
     SubscriptionsListenResultMetaSchema: () => SubscriptionsListenResultMetaSchema,
     SubscriptionsListenResultSchema: () => SubscriptionsListenResultSchema,
-    TaskAugmentedRequestParamsSchema: () => TaskAugmentedRequestParamsSchema2,
-    TaskCreationParamsSchema: () => TaskCreationParamsSchema2,
-    TaskMetadataSchema: () => TaskMetadataSchema2,
-    TaskSchema: () => TaskSchema2,
-    TaskStatusNotificationParamsSchema: () => TaskStatusNotificationParamsSchema2,
-    TaskStatusNotificationSchema: () => TaskStatusNotificationSchema2,
-    TaskStatusSchema: () => TaskStatusSchema2,
-    TextContentSchema: () => TextContentSchema2,
-    TextResourceContentsSchema: () => TextResourceContentsSchema2,
-    TitledMultiSelectEnumSchemaSchema: () => TitledMultiSelectEnumSchemaSchema2,
-    TitledSingleSelectEnumSchemaSchema: () => TitledSingleSelectEnumSchemaSchema2,
-    ToolAnnotationsSchema: () => ToolAnnotationsSchema2,
-    ToolChoiceSchema: () => ToolChoiceSchema2,
-    ToolExecutionSchema: () => ToolExecutionSchema2,
-    ToolListChangedNotificationSchema: () => ToolListChangedNotificationSchema2,
-    ToolResultContentSchema: () => ToolResultContentSchema2,
-    ToolSchema: () => ToolSchema2,
-    ToolUseContentSchema: () => ToolUseContentSchema2,
-    UnsubscribeRequestParamsSchema: () => UnsubscribeRequestParamsSchema2,
-    UnsubscribeRequestSchema: () => UnsubscribeRequestSchema2,
-    UntitledMultiSelectEnumSchemaSchema: () => UntitledMultiSelectEnumSchemaSchema2,
-    UntitledSingleSelectEnumSchemaSchema: () => UntitledSingleSelectEnumSchemaSchema2
+    TaskAugmentedRequestParamsSchema: () => TaskAugmentedRequestParamsSchema,
+    TaskCreationParamsSchema: () => TaskCreationParamsSchema,
+    TaskMetadataSchema: () => TaskMetadataSchema,
+    TaskSchema: () => TaskSchema,
+    TaskStatusNotificationParamsSchema: () => TaskStatusNotificationParamsSchema,
+    TaskStatusNotificationSchema: () => TaskStatusNotificationSchema,
+    TaskStatusSchema: () => TaskStatusSchema,
+    TextContentSchema: () => TextContentSchema,
+    TextResourceContentsSchema: () => TextResourceContentsSchema,
+    TitledMultiSelectEnumSchemaSchema: () => TitledMultiSelectEnumSchemaSchema,
+    TitledSingleSelectEnumSchemaSchema: () => TitledSingleSelectEnumSchemaSchema,
+    ToolAnnotationsSchema: () => ToolAnnotationsSchema,
+    ToolChoiceSchema: () => ToolChoiceSchema,
+    ToolExecutionSchema: () => ToolExecutionSchema,
+    ToolListChangedNotificationSchema: () => ToolListChangedNotificationSchema,
+    ToolResultContentSchema: () => ToolResultContentSchema,
+    ToolSchema: () => ToolSchema,
+    ToolUseContentSchema: () => ToolUseContentSchema,
+    UnsubscribeRequestParamsSchema: () => UnsubscribeRequestParamsSchema,
+    UnsubscribeRequestSchema: () => UnsubscribeRequestSchema,
+    UntitledMultiSelectEnumSchemaSchema: () => UntitledMultiSelectEnumSchemaSchema,
+    UntitledSingleSelectEnumSchemaSchema: () => UntitledSingleSelectEnumSchemaSchema
   });
   RFC9110_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
   PERMITTED_X_MCP_HEADER_TYPES = new Set([
@@ -14075,20 +11742,20 @@ var init_src_CX2iR2pK = __esm(() => {
     "title",
     "writeOnly"
   ]);
-  ROOT_KEYS = new Set(["$schema", ...Object.keys(ElicitRequestFormParamsSchema2.shape.requestedSchema.shape)]);
+  ROOT_KEYS = new Set(["$schema", ...Object.keys(ElicitRequestFormParamsSchema.shape.requestedSchema.shape)]);
   PROPERTY_KEYS_BY_TYPE = {
     string: shapeKeys([
-      StringSchemaSchema2,
-      UntitledSingleSelectEnumSchemaSchema2,
-      TitledSingleSelectEnumSchemaSchema2,
-      LegacyTitledEnumSchemaSchema2
+      StringSchemaSchema,
+      UntitledSingleSelectEnumSchemaSchema,
+      TitledSingleSelectEnumSchemaSchema,
+      LegacyTitledEnumSchemaSchema
     ]),
-    number: shapeKeys([NumberSchemaSchema2]),
-    integer: shapeKeys([NumberSchemaSchema2]),
-    boolean: shapeKeys([BooleanSchemaSchema2]),
-    array: shapeKeys([UntitledMultiSelectEnumSchemaSchema2, TitledMultiSelectEnumSchemaSchema2])
+    number: shapeKeys([NumberSchemaSchema]),
+    integer: shapeKeys([NumberSchemaSchema]),
+    boolean: shapeKeys([BooleanSchemaSchema]),
+    array: shapeKeys([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema])
   };
-  SUPPORTED_STRING_FORMATS = new Set(StringSchemaSchema2.shape.format.unwrap().options);
+  SUPPORTED_STRING_FORMATS = new Set(StringSchemaSchema.shape.format.unwrap().options);
   inputRequired = Object.assign(buildInputRequired, {
     elicit(params) {
       try {
@@ -14312,7 +11979,7 @@ var init_src_CX2iR2pK = __esm(() => {
   ];
   RETRY_PARAMS_KEYS = ["inputResponses", "requestState"];
   NO_REQUEST_STATE = requestStateAccessor(undefined);
-  Protocol2 = class {
+  Protocol = class {
     _transport;
     _requestMessageId = 0;
     _requestHandlers = /* @__PURE__ */ new Map;
@@ -14427,11 +12094,11 @@ var init_src_CX2iR2pK = __esm(() => {
       const _onmessage = this._transport?.onmessage;
       this._transport.onmessage = (message, extra) => {
         _onmessage?.(message, extra);
-        if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message))
+        if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message))
           this._onresponse(message);
-        else if (isJSONRPCRequest2(message))
+        else if (isJSONRPCRequest(message))
           this._onrequest(message, extra);
-        else if (isJSONRPCNotification2(message))
+        else if (isJSONRPCNotification(message))
           this._onnotification(message, extra);
         else
           this._onerror(/* @__PURE__ */ new Error(`Unknown message type: ${JSON.stringify(message)}`));
@@ -14634,7 +12301,7 @@ var init_src_CX2iR2pK = __esm(() => {
       this._responseHandlers.delete(messageId);
       this._cleanupTimeout(messageId);
       this._progressHandlers.delete(messageId);
-      if (isJSONRPCResultResponse2(response))
+      if (isJSONRPCResultResponse(response))
         handler(response);
       else
         handler(ProtocolError.fromError(response.error.code, response.error.message, response.error.data));
@@ -14786,7 +12453,7 @@ var init_src_CX2iR2pK = __esm(() => {
         });
         onAbort = () => cancel(options?.signal?.reason);
         options?.signal?.addEventListener("abort", onAbort, { once: true });
-        const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC2;
+        const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC;
         const timeoutHandler = () => cancel(new SdkError(SdkErrorCode.RequestTimeout, "Request timed out", { timeout }));
         this._setupTimeout(messageId, timeout, options?.maxTotalTimeout, timeoutHandler, options?.resetTimeoutOnProgress ?? false);
         this._transport.send(outbound, {
@@ -22549,7 +20216,7 @@ var init_ajvProvider_CEoC__sr = __esm(() => {
 });
 
 // node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
-import process3 from "node:process";
+import process2 from "node:process";
 var init_shimsNode = __esm(() => {
   init_ajvProvider_CEoC__sr();
 });
@@ -23622,7 +21289,7 @@ var init_mcp_DXXb3Vv3 = __esm(() => {
     "prompts/get",
     "resources/read"
   ]);
-  Server = class extends Protocol2 {
+  Server = class extends Protocol {
     _clientCapabilities;
     _clientVersion;
     static {
@@ -23684,7 +21351,7 @@ var init_mcp_DXXb3Vv3 = __esm(() => {
       this.setRequestHandler("logging/setLevel", async (request, ctx) => {
         const transportSessionId = ctx.sessionId || ctx.http?.req?.headers.get("mcp-session-id") || undefined;
         const { level } = request.params;
-        const parseResult = parseSchema(LoggingLevelSchema2, level);
+        const parseResult = parseSchema(LoggingLevelSchema, level);
         if (parseResult.success)
           this._loggingLevels.set(transportSessionId, parseResult.data);
         return {};
@@ -23729,7 +21396,7 @@ var init_mcp_DXXb3Vv3 = __esm(() => {
       };
     }
     _loggingLevels = /* @__PURE__ */ new Map;
-    LOG_LEVEL_SEVERITY = new Map(LoggingLevelSchema2.options.map((level, index) => [level, index]));
+    LOG_LEVEL_SEVERITY = new Map(LoggingLevelSchema.options.map((level, index) => [level, index]));
     isMessageIgnored = (level, sessionId) => {
       const currentLevel = this._loggingLevels.get(sessionId);
       return currentLevel ? this.LOG_LEVEL_SEVERITY.get(level) < this.LOG_LEVEL_SEVERITY.get(currentLevel) : false;
@@ -23738,7 +21405,7 @@ var init_mcp_DXXb3Vv3 = __esm(() => {
       if (this.transport)
         throw new SdkError(SdkErrorCode.AlreadyConnected, "Cannot register capabilities after connecting to transport");
       const hadLogging = !!this._capabilities.logging;
-      this._capabilities = mergeCapabilities2(this._capabilities, capabilities);
+      this._capabilities = mergeCapabilities(this._capabilities, capabilities);
       if (!hadLogging && this._capabilities.logging)
         this._registerLoggingHandler();
     }
@@ -24570,7 +22237,7 @@ var PerRequestHTTPServerTransport = class {
       ...extra?.request !== undefined && { request: extra.request },
       ...extra?.authInfo !== undefined && { authInfo: extra.authInfo }
     };
-    if (isJSONRPCRequest2(message)) {
+    if (isJSONRPCRequest(message)) {
       this._requestId = message.id;
       let resolve;
       let reject;
@@ -24605,7 +22272,7 @@ var PerRequestHTTPServerTransport = class {
   async send(message, options) {
     if (this._closed)
       return;
-    const isResponse = isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message);
+    const isResponse = isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message);
     const relatedId = isResponse ? message.id : options?.relatedRequestId;
     if (this._requestId === undefined || relatedId === undefined || relatedId !== this._requestId) {
       if (isResponse)
@@ -24616,7 +22283,7 @@ var PerRequestHTTPServerTransport = class {
       if (this._terminalDelivered)
         return;
       this._terminalDelivered = true;
-      const errorCode = isJSONRPCErrorResponse2(message) ? message.error.code : undefined;
+      const errorCode = isJSONRPCErrorResponse(message) ? message.error.code : undefined;
       const ladderStatus = errorCode !== undefined && (this._dispatchWindowOpen || errorCode === ProtocolErrorCode.MissingRequiredClientCapability) ? LADDER_ERROR_HTTP_STATUS[errorCode] : undefined;
       if (ladderStatus !== undefined && this._sse === undefined) {
         this.settleResponse(Response.json(message, {
@@ -25072,7 +22739,7 @@ data:
         rawMessage = options.parsedBody;
       let messages;
       try {
-        messages = Array.isArray(rawMessage) ? rawMessage.map((msg) => JSONRPCMessageSchema2.parse(msg)) : [JSONRPCMessageSchema2.parse(rawMessage)];
+        messages = Array.isArray(rawMessage) ? rawMessage.map((msg) => JSONRPCMessageSchema.parse(msg)) : [JSONRPCMessageSchema.parse(rawMessage)];
       } catch (error) {
         this.onerror?.(error);
         return this.createJsonErrorResponse(400, -32700, "Parse error: Invalid JSON-RPC message");
@@ -25104,7 +22771,7 @@ data:
       }
       if (this._closed)
         return this.createJsonErrorResponse(404, -32001, "Session not found");
-      if (!messages.some((element) => isJSONRPCRequest2(element))) {
+      if (!messages.some((element) => isJSONRPCRequest(element))) {
         for (const message of messages)
           this.onmessage?.(message, {
             authInfo: options?.authInfo,
@@ -25124,7 +22791,7 @@ data:
             }
           });
           for (const message of messages)
-            if (isJSONRPCRequest2(message))
+            if (isJSONRPCRequest(message))
               this._requestToStreamMapping.set(message.id, streamId);
           for (const message of messages)
             this.onmessage?.(message, {
@@ -25155,7 +22822,7 @@ data:
       if (this.sessionId !== undefined)
         headers["mcp-session-id"] = this.sessionId;
       for (const message of messages)
-        if (isJSONRPCRequest2(message)) {
+        if (isJSONRPCRequest(message)) {
           this._streamMapping.set(streamId, {
             controller: streamController,
             encoder,
@@ -25174,7 +22841,7 @@ data:
       for (const message of messages) {
         let closeSSEStream;
         let closeStandaloneSSEStream;
-        if (isJSONRPCRequest2(message) && this._eventStore && this.supportsEmptySSEData(clientProtocolVersion)) {
+        if (isJSONRPCRequest(message) && this._eventStore && this.supportsEmptySSEData(clientProtocolVersion)) {
           closeSSEStream = () => {
             this.closeSSEStream(message.id);
           };
@@ -25264,10 +22931,10 @@ data:
   }
   async send(message, options) {
     let requestId = options?.relatedRequestId;
-    if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message))
+    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message))
       requestId = message.id;
     if (requestId === undefined) {
-      if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message))
+      if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message))
         throw new Error("Cannot send a response on a standalone SSE stream unless resuming a previous client request");
       let eventId;
       if (this._eventStore)
@@ -25292,7 +22959,7 @@ data:
       if (stream?.controller && stream?.encoder && (eventId === undefined || !stream.replayedEventIds?.has(eventId)))
         this.writeSSEEvent(stream.controller, stream.encoder, message, eventId);
     }
-    if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message)) {
+    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
       this._requestResponseMap.set(requestId, message);
       const relatedIds = [...this._requestToStreamMapping.entries()].filter(([_, sid]) => sid === streamId).map(([id]) => id);
       if (relatedIds.every((id) => this._requestResponseMap.has(id))) {
@@ -25406,7 +23073,7 @@ function serveStdio(factory, options = {}) {
   }).catch((error) => reportError(toError2(error)));
   const listenRouter = new StdioListenRouter(options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS);
   const modernOutboundIntercept = (message) => {
-    if (!isJSONRPCNotification2(message))
+    if (!isJSONRPCNotification(message))
       return;
     const routed = listenRouter.routeOutbound(message);
     if (routed === "passthrough")
@@ -25419,7 +23086,7 @@ function serveStdio(factory, options = {}) {
     return "handled";
   };
   const tryServeListen = async (message) => {
-    if (isJSONRPCRequest2(message) && message.method === "subscriptions/listen") {
+    if (isJSONRPCRequest(message) && message.method === "subscriptions/listen") {
       const meta = requestMetaOf(message.params);
       const issue = hasEnvelopeClaim(message.params) ? (meta === undefined ? [] : validateEnvelopeMeta(meta))[0] : {
         key: "_meta",
@@ -25459,7 +23126,7 @@ function serveStdio(factory, options = {}) {
       }).catch((error) => reportError(toError2(error)));
       return true;
     }
-    if (isJSONRPCNotification2(message) && message.method === "notifications/cancelled") {
+    if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
       const cancelledId = message.params?.requestId;
       if (cancelledId !== undefined && listenRouter.cancel(cancelledId))
         return true;
@@ -25514,7 +23181,7 @@ function serveStdio(factory, options = {}) {
     if (state.phase === "closed")
       return;
     if (state.phase === "pinned") {
-      if (state.era === "modern" && isJSONRPCRequest2(message) && message.method === "initialize" && !carriesValidModernEnvelopeClaim(message.params)) {
+      if (state.era === "modern" && isJSONRPCRequest(message) && message.method === "initialize" && !carriesValidModernEnvelopeClaim(message.params)) {
         await answerLegacyRejection(message, "initialize", message.params !== null && typeof message.params === "object" && typeof message.params.protocolVersion === "string" ? message.params.protocolVersion : undefined);
         return;
       }
@@ -25523,7 +23190,7 @@ function serveStdio(factory, options = {}) {
       state.instance.channel.deliver(message);
       return;
     }
-    if (!isJSONRPCRequest2(message) && !isJSONRPCNotification2(message)) {
+    if (!isJSONRPCRequest(message) && !isJSONRPCNotification(message)) {
       reportError(/* @__PURE__ */ new Error("Discarded a JSON-RPC response received before the connection negotiated an era"));
       return;
     }
@@ -25531,14 +23198,14 @@ function serveStdio(factory, options = {}) {
     switch (opening.kind) {
       case "invalid-envelope": {
         const detail = `Invalid _meta envelope for protocol revision 2026-07-28: ${opening.issue.key}: ${opening.issue.problem}`;
-        if (isJSONRPCRequest2(message))
+        if (isJSONRPCRequest(message))
           await writeErrorResponse(message.id, ProtocolErrorCode.InvalidParams, detail, { envelope: opening.issue });
         else
           reportError(/* @__PURE__ */ new Error(`Discarded a notification with a malformed envelope: ${detail}`));
         return;
       }
       case "unsupported-revision":
-        if (isJSONRPCRequest2(message)) {
+        if (isJSONRPCRequest(message)) {
           const error = new UnsupportedProtocolVersionError({
             supported: [...SUPPORTED_MODERN_PROTOCOL_VERSIONS],
             requested: opening.requested
@@ -25549,7 +23216,7 @@ function serveStdio(factory, options = {}) {
           reportError(/* @__PURE__ */ new Error(`Discarded a notification claiming unsupported protocol revision ${opening.requested}`));
         return;
       case "modern":
-        if (isJSONRPCRequest2(message) && message.method === "server/discover") {
+        if (isJSONRPCRequest(message) && message.method === "server/discover") {
           if (state.phase === "probe") {
             state.instance.channel.deliver(message, { classification: opening.classification });
             return;
@@ -25567,7 +23234,7 @@ function serveStdio(factory, options = {}) {
           return;
         }
         if (state.phase === "probe") {
-          if (isJSONRPCNotification2(message)) {
+          if (isJSONRPCNotification(message)) {
             state.instance.channel.deliver(message, { classification: opening.classification });
             return;
           }
@@ -25594,7 +23261,7 @@ function serveStdio(factory, options = {}) {
         return;
       case "legacy": {
         if (legacyMode === "reject") {
-          if (isJSONRPCRequest2(message))
+          if (isJSONRPCRequest(message))
             await answerLegacyRejection(message, opening.reason, opening.requestedVersion);
           return;
         }
@@ -25631,7 +23298,7 @@ function serveStdio(factory, options = {}) {
         try {
           await processMessage(message);
         } catch (error) {
-          if (isJSONRPCRequest2(message))
+          if (isJSONRPCRequest(message))
             await writeErrorResponse(message.id, ProtocolErrorCode.InternalError, "Internal server error");
           reportError(toError2(error));
         }
@@ -25687,7 +23354,7 @@ var StdioServerTransport = class {
   _readBuffer;
   _started = false;
   _closed = false;
-  constructor(_stdin = process3.stdin, _stdout = process3.stdout, options) {
+  constructor(_stdin = process2.stdin, _stdout = process2.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
     this._readBuffer = new ReadBuffer({ maxBufferSize: options?.maxBufferSize });
@@ -25789,7 +23456,7 @@ var StdioServerTransport = class {
   }
   async start() {}
   async send(message, options) {
-    if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message)) {
+    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
       const { id } = message;
       if (id !== undefined)
         this._settle(id);
@@ -25806,9 +23473,9 @@ var StdioServerTransport = class {
   deliver(message, extra) {
     if (this._closed)
       return;
-    if (isJSONRPCRequest2(message))
+    if (isJSONRPCRequest(message))
       this._pendingRequests.add(message.id);
-    else if (isJSONRPCNotification2(message) && message.method === "notifications/cancelled") {
+    else if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
       const cancelledId = message.params?.requestId;
       if (cancelledId !== undefined)
         this._settle(cancelledId);
@@ -25862,8 +23529,8 @@ var init_stdio = __esm(() => {
 
 // node_modules/zod/index.js
 var init_zod = __esm(() => {
-  init_external2();
-  init_external2();
+  init_external();
+  init_external();
 });
 
 // package.json
@@ -25873,7 +23540,7 @@ var init_package = __esm(() => {
     name: "bsv-mcp",
     module: "dist/index.js",
     type: "module",
-    version: "0.6.0",
+    version: "0.6.1",
     license: "MIT",
     author: "satchmo",
     description: "A collection of Bitcoin SV (BSV) tools for the Model Context Protocol (MCP) framework",
@@ -25912,18 +23579,18 @@ var init_package = __esm(() => {
       "@radix-ui/react-tabs": "^1.1.21",
       "@tailwindcss/postcss": "^4.3.3",
       "@types/bun": "^1.4.2",
-      "@types/node": "^26.5.0",
-      "@types/react": "^19.2.18",
-      "@types/react-dom": "^19.2.7",
+      "@types/node": "^26.5.1",
+      "@types/react": "^19.3.0",
+      "@types/react-dom": "^19.3.0",
       bun: "^1.4.2",
       "class-variance-authority": "^0.7.1",
       clsx: "^2.1.1",
       esbuild: "^0.28.2",
-      "lucide-react": "1.42.0",
+      "lucide-react": "1.43.0",
       next: "^16.3.4",
       postcss: "^8.5.28",
-      react: "^19.2.8",
-      "react-dom": "^19.2.8",
+      react: "^19.3.0",
+      "react-dom": "^19.3.0",
       "tailwind-merge": "^3.6.0",
       tailwindcss: "^4.3.3",
       vite: "^8.2.2",
@@ -25932,23 +23599,21 @@ var init_package = __esm(() => {
     peerDependencies: {
       typescript: "^7.0.2"
     },
-    overrides: {
-      zod: "4.5.4"
-    },
     dependencies: {
-      "@1sat/actions": "^0.0.207",
+      "@1sat/actions": "^0.0.208",
       "@1sat/client": "0.0.51",
       "@1sat/wallet-node": "0.0.73",
       "@bsv/sdk": "^2.4.2",
       "@bsv/wallet-toolbox": "npm:@bopen-io/wallet-toolbox@2.6.2-brc153.5",
       "@modelcontextprotocol/client": "2.0.0",
       "@modelcontextprotocol/core": "2.0.0",
-      "@modelcontextprotocol/ext-apps": "^1.7.5",
+      "@modelcontextprotocol/ext-apps": "^2.0.0",
       "@modelcontextprotocol/sdk": "^1.30.0",
       "@modelcontextprotocol/server": "2.0.0",
-      "@opl.dev/vault": "0.0.1",
+      "@opl.dev/vault": "^0.0.2",
       "better-auth": "1.7.3",
-      "bitcoin-backup": "^0.1.0",
+      "bitcoin-backup": "^0.2.0",
+      "bmap-api-types": "0.0.9",
       "bsv-bap": "^0.3.7",
       jose: "^6.2.12",
       "js-1sat-ord": "^0.1.91",
@@ -25957,7 +23622,7 @@ var init_package = __esm(() => {
       "satoshi-token": "^0.0.7",
       "schema-dts": "^2.0.0",
       shiki: "^4.4.3",
-      zod: "4.5.4",
+      zod: "^4.6.1",
       "@bsv/message-box-client": "2.4.2"
     },
     scripts: {
@@ -28738,7 +26403,7 @@ function G0_256(x) {
 function G1_256(x) {
   return rotr32(x, 17) ^ rotr32(x, 19) ^ x >>> 10;
 }
-function f2(j, x, y, z) {
+function f(j, x, y, z) {
   if (j <= 15) {
     return x ^ y ^ z;
   } else if (j <= 31) {
@@ -28751,7 +26416,7 @@ function f2(j, x, y, z) {
     return x ^ (y | ~z);
   }
 }
-function K2(j) {
+function K(j) {
   if (j <= 15) {
     return 0;
   } else if (j <= 31) {
@@ -29019,7 +26684,7 @@ var assert = (expression, message = "Hash assertion failed") => {
   if (!expression) {
     throw new Error(message);
   }
-}, BufferCtor2, CAN_USE_BUFFER2, HEX_DIGITS = "0123456789abcdef", HEX_BYTE_STRINGS, NODE_CRYPTO, r2, rh, s, sh, RIPEMD160, SHA1, ripemd160 = (msg, enc) => {
+}, BufferCtor2, CAN_USE_BUFFER2, HEX_DIGITS = "0123456789abcdef", HEX_BYTE_STRINGS, NODE_CRYPTO, r, rh, s, sh, RIPEMD160, SHA1, ripemd160 = (msg, enc) => {
   const native = ripemd160Bytes(msg, enc);
   if (native != null)
     return Array.from(native);
@@ -29069,7 +26734,7 @@ var init_Hash = __esm(() => {
     }
     return;
   })();
-  r2 = [
+  r = [
     0,
     1,
     2,
@@ -29418,13 +27083,13 @@ var init_Hash = __esm(() => {
       let Eh = E;
       let T;
       for (let j = 0;j < 80; j++) {
-        T = sum32(rotl32(SUM32_4(A, f2(j, B, C, D), msg[r2[j] + start], K2(j)), s[j]), E);
+        T = sum32(rotl32(SUM32_4(A, f(j, B, C, D), msg[r[j] + start], K(j)), s[j]), E);
         A = E;
         E = D;
         D = rotl32(C, 10);
         C = B;
         B = T;
-        T = sum32(rotl32(SUM32_4(Ah, f2(79 - j, Bh, Ch, Dh), msg[rh[j] + start], Kh(j)), sh[j]), Eh);
+        T = sum32(rotl32(SUM32_4(Ah, f(79 - j, Bh, Ch, Dh), msg[rh[j] + start], Kh(j)), sh[j]), Eh);
         Ah = Eh;
         Eh = Dh;
         Dh = rotl32(Ch, 10);
@@ -30373,7 +28038,7 @@ __export(exports_utils, {
   WriterUint8Array: () => WriterUint8Array,
   base64ToArray: () => base64ToArray,
   constantTimeEquals: () => constantTimeEquals,
-  encode: () => encode3,
+  encode: () => encode2,
   fromBase58: () => fromBase58,
   fromBase58Check: () => fromBase58Check,
   hexToUint8Array: () => hexToUint8Array,
@@ -30880,7 +28545,7 @@ var BufferCtor3, CAN_USE_BUFFER3, toSafeString = (value, fallback = "Unknown val
   throw new Error(`Invalid base64 character at index ${index}`);
 }, toUTF8 = (arr) => {
   return new TextDecoder().decode(arr instanceof Uint8Array ? arr : new Uint8Array(arr));
-}, encode3 = (arr, enc) => {
+}, encode2 = (arr, enc) => {
   switch (enc) {
     case "hex":
       return toHex2(arr);
@@ -34253,7 +31918,7 @@ var SBox, Rcon, mul2, mul3, getBytes64 = function(numericValue) {
   ];
 }, createZeroBlock = function(length) {
   return new Uint8Array(length);
-}, R2, concatBytes = (...arrays) => {
+}, R, concatBytes = (...arrays) => {
   let total = 0;
   for (const a of arrays)
     total += a.length;
@@ -34291,7 +31956,7 @@ var SBox, Rcon, mul2, mul3, getBytes64 = function(numericValue) {
       const rmask = -lsb & 255;
       rightShift(v);
       for (let k = 0;k < 16; k++) {
-        v[k] ^= R2[k] & rmask;
+        v[k] ^= R[k] & rmask;
       }
     }
   }
@@ -34585,7 +32250,7 @@ var init_AESGCM = __esm(() => {
     mul2[i] = m2;
     mul3[i] = m2 ^ i;
   }
-  R2 = (() => {
+  R = (() => {
     const r = new Uint8Array(16);
     r[0] = 225;
     return r;
@@ -34664,7 +32329,7 @@ var init_SymmetricKey = __esm(() => {
       if (NATIVE_AES_GCM_AVAILABLE) {
         const nativeResult = nativeEncrypt(msgBytes, iv, keyBytes);
         if (nativeResult !== null) {
-          return encode3(Array.from(nativeResult), enc);
+          return encode2(Array.from(nativeResult), enc);
         }
       }
       const { result, authenticationTag } = AESGCM(msgBytes, iv, keyBytes);
@@ -34676,7 +32341,7 @@ var init_SymmetricKey = __esm(() => {
       combined.set(result, offset);
       offset += result.length;
       combined.set(authenticationTag, offset);
-      return encode3(Array.from(combined), enc);
+      return encode2(Array.from(combined), enc);
     }
     decrypt(msg, enc) {
       const msgBytes = new Uint8Array(toArray2(msg, enc));
@@ -34692,7 +32357,7 @@ var init_SymmetricKey = __esm(() => {
           if (nativeResult === null) {
             throw new Error("Decryption failed!");
           }
-          return encode3(Array.from(nativeResult), enc);
+          return encode2(Array.from(nativeResult), enc);
         }
       }
       const iv = msgBytes.slice(0, ivLength);
@@ -34703,7 +32368,7 @@ var init_SymmetricKey = __esm(() => {
       if (result === null) {
         throw new Error("Decryption failed!");
       }
-      return encode3(Array.from(result), enc);
+      return encode2(Array.from(result), enc);
     }
   };
 });
@@ -34986,7 +32651,7 @@ class Script {
       if (hex.length % 2 !== 0)
         hex = "0" + hex;
       const arr = toArray2(hex, "hex");
-      if (encode3(arr, "hex") !== hex) {
+      if (encode2(arr, "hex") !== hex) {
         throw new Error("invalid hex string in script");
       }
       return { chunk: { data: arr, op: Script.pushdataOpCodeNum(arr.length) }, advance: 1 };
@@ -35049,7 +32714,7 @@ class Script {
       return this.hexCache;
     }
     this.rawBytesCache ??= this.serializeChunksToBytes();
-    const hex = BufferCtor4 == null ? encode3(Array.from(this.rawBytesCache), "hex") : BufferCtor4.from(this.rawBytesCache).toString("hex");
+    const hex = BufferCtor4 == null ? encode2(Array.from(this.rawBytesCache), "hex") : BufferCtor4.from(this.rawBytesCache).toString("hex");
     this.hexCache = hex;
     return hex;
   }
@@ -43508,7 +41173,7 @@ class Mnemonic {
     const br = new Reader(bin);
     const mnemoniclen = br.readVarIntNum();
     if (mnemoniclen > 0) {
-      this.mnemonic = encode3(br.read(mnemoniclen), "utf8");
+      this.mnemonic = encode2(br.read(mnemoniclen), "utf8");
     }
     const seedlen = br.readVarIntNum();
     if (seedlen > 0) {
@@ -43917,7 +41582,7 @@ class ECIES {
   static electrumDecrypt(encBuf, toPrivateKey, fromPublicKey) {
     const tagLength = 32;
     const magic = encBuf.slice(0, 4);
-    if (encode3(magic, "utf8") !== "BIE1") {
+    if (encode2(magic, "utf8") !== "BIE1") {
       throw new Error("Invalid Magic");
     }
     let offset = 4;
@@ -48298,7 +45963,7 @@ var init_Peer = __esm(() => {
 });
 
 // node_modules/@bsv/sdk/dist/esm/src/auth/types.js
-var init_types2 = () => {};
+var init_types = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/auth/transports/SimplifiedFetchTransport.js
 class SimplifiedFetchTransport {
@@ -49275,7 +46940,7 @@ var init_transports = __esm(() => {
 var init_auth = __esm(() => {
   init_certificates();
   init_Peer();
-  init_types2();
+  init_types();
   init_utils2();
   init_clients();
   init_transports();
@@ -51169,7 +48834,7 @@ var init_overlay_tools = __esm(() => {
 var init_storage = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/identity/types/index.js
-var init_types3 = () => {};
+var init_types2 = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/identity/IdentityClient.js
 var init_IdentityClient = () => {};
@@ -51177,19 +48842,19 @@ var init_IdentityClient = () => {};
 // node_modules/@bsv/sdk/dist/esm/src/identity/index.js
 var init_identity = __esm(() => {
   init_IdentityClient();
-  init_types3();
+  init_types2();
 });
 
 // node_modules/@bsv/sdk/dist/esm/src/registry/RegistryClient.js
 var init_RegistryClient = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/registry/types/index.js
-var init_types4 = () => {};
+var init_types3 = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/registry/index.js
 var init_registry = __esm(() => {
   init_RegistryClient();
-  init_types4();
+  init_types3();
 });
 
 // node_modules/@bsv/sdk/dist/esm/src/kvstore/index.js
@@ -51202,7 +48867,7 @@ var init_CommsLayer = () => {};
 var init_IdentityLayer = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/remittance/types.js
-var init_types5 = () => {};
+var init_types4 = () => {};
 
 // node_modules/@bsv/sdk/dist/esm/src/remittance/RemittanceManager.js
 var init_RemittanceManager = () => {};
@@ -51438,7 +49103,7 @@ var init_remittance = __esm(() => {
   init_RemittanceManager();
   init_RemittanceModule();
   init_modules();
-  init_types5();
+  init_types4();
 });
 
 // node_modules/@bsv/sdk/dist/esm/src/telemetry/TraceContext.js
@@ -72707,7 +70372,7 @@ async function getBsvPriceWithCache() {
 function registerGetPriceTool(server) {
   server.registerTool("bsv_getPrice", {
     description: "Retrieves the current price of Bitcoin SV (BSV) in USD from a reliable exchange API. This tool provides real-time market data that can be used for calculating transaction values, monitoring market conditions, or converting between BSV and fiat currencies.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       const price = await getBsvPriceWithCache();
@@ -72808,12 +70473,12 @@ function readExternalWalletConfig(env = process.env) {
     config.expectedPublicKey = PublicKey.fromString(pin).toString();
   }
   if (env.BRC100_WALLET_ROLES !== undefined) {
-    const role = object2({
+    const role = object({
       url: string2(),
       originator: string2().optional(),
       expectedPublicKey: string2().optional()
     }).strict().nullable().optional();
-    const parsed = object2({
+    const parsed = object({
       payments: role,
       identity: role,
       ordinals: role,
@@ -73641,7 +71306,7 @@ var SEPARATOR, encodePayload = (packets, callback) => {
   }
   return packets;
 }, TEXT_DECODER, protocol = 4;
-var init_esm2 = __esm(() => {
+var init_esm = __esm(() => {
   init_encodePacket();
   init_decodePacket();
   init_commons();
@@ -73730,7 +71395,7 @@ var init_cjs = __esm(() => {
 function createCookieJar() {
   return new CookieJar;
 }
-function parse6(setCookieString) {
+function parse4(setCookieString) {
   const parts = setCookieString.split("; ");
   const i = parts[0].indexOf("=");
   if (i === -1) {
@@ -73779,7 +71444,7 @@ class CookieJar {
       return;
     }
     values.forEach((value) => {
-      const parsed = parse6(value);
+      const parsed = parse4(value);
       if (parsed) {
         this._cookies.set(parsed.name, parsed);
       }
@@ -73869,7 +71534,7 @@ var init_util2 = __esm(() => {
 });
 
 // node_modules/engine.io-client/build/esm-debug/contrib/parseqs.js
-function encode4(obj) {
+function encode3(obj) {
   let str = "";
   for (let i in obj) {
     if (obj.hasOwnProperty(i)) {
@@ -73880,7 +71545,7 @@ function encode4(obj) {
   }
   return str;
 }
-function decode3(qs) {
+function decode2(qs) {
   let qry = {};
   let pairs = qs.split("&");
   for (let i = 0, l = pairs.length;i < l; i++) {
@@ -74518,7 +72183,7 @@ var require_src = __commonJS(function(exports, module) {
 // node_modules/engine.io-client/build/esm-debug/transport.js
 var import_debug, debug, TransportError, Transport;
 var init_transport = __esm(() => {
-  init_esm2();
+  init_esm();
   init_cjs();
   init_util2();
   import_debug = __toESM(require_src(), 1);
@@ -74596,7 +72261,7 @@ var init_transport = __esm(() => {
       }
     }
     _query(query) {
-      const encodedQuery = encode4(query);
+      const encodedQuery = encode3(query);
       return encodedQuery.length ? "?" + encodedQuery : "";
     }
   };
@@ -74607,7 +72272,7 @@ var import_debug2, debug2, Polling;
 var init_polling = __esm(() => {
   init_transport();
   init_util2();
-  init_esm2();
+  init_esm();
   import_debug2 = __toESM(require_src(), 1);
   debug2 = import_debug2.default("engine.io-client:polling");
   Polling = class Polling extends Transport {
@@ -77821,7 +75486,7 @@ var import_debug4, debug4, isReactNative, BaseWS, WebSocketCtor;
 var init_websocket = __esm(() => {
   init_transport();
   init_util2();
-  init_esm2();
+  init_esm();
   init_globals_node();
   import_debug4 = __toESM(require_src(), 1);
   debug4 = import_debug4.default("engine.io-client:websocket");
@@ -77939,7 +75604,7 @@ var import_debug5, debug5, WT;
 var init_webtransport = __esm(() => {
   init_transport();
   init_globals_node();
-  init_esm2();
+  init_esm();
   import_debug5 = __toESM(require_src(), 1);
   debug5 = import_debug5.default("engine.io-client:webtransport");
   WT = class WT extends Transport {
@@ -78024,7 +75689,7 @@ var init_transports2 = __esm(() => {
 });
 
 // node_modules/engine.io-client/build/esm-debug/contrib/parseuri.js
-function parse7(str) {
+function parse5(str) {
   if (str.length > 8000) {
     throw "URI too long";
   }
@@ -78093,7 +75758,7 @@ var init_socket = __esm(() => {
   init_util2();
   init_parseuri();
   init_cjs();
-  init_esm2();
+  init_esm();
   init_globals_node();
   import_debug6 = __toESM(require_src(), 1);
   debug6 = import_debug6.default("engine.io-client:socket");
@@ -78120,14 +75785,14 @@ var init_socket = __esm(() => {
         uri = null;
       }
       if (uri) {
-        const parsedUri = parse7(uri);
+        const parsedUri = parse5(uri);
         opts.hostname = parsedUri.host;
         opts.secure = parsedUri.protocol === "https" || parsedUri.protocol === "wss";
         opts.port = parsedUri.port;
         if (parsedUri.query)
           opts.query = parsedUri.query;
       } else if (opts.host) {
-        opts.hostname = parse7(opts.host).host;
+        opts.hostname = parse5(opts.host).host;
       }
       installTimerFunctions(this, opts);
       this.secure = opts.secure != null ? opts.secure : typeof location !== "undefined" && location.protocol === "https:";
@@ -78160,7 +75825,7 @@ var init_socket = __esm(() => {
       }, opts);
       this.opts.path = this.opts.path.replace(/\/$/, "") + (this.opts.addTrailingSlash ? "/" : "");
       if (typeof this.opts.query === "string") {
-        this.opts.query = decode3(this.opts.query);
+        this.opts.query = decode2(this.opts.query);
       }
       if (withEventListeners) {
         if (this.opts.closeOnBeforeunload) {
@@ -78619,7 +76284,7 @@ function url2(uri, path = "", loc) {
       }
     }
     debug7("parse %s", uri);
-    obj = parse7(uri);
+    obj = parse5(uri);
   }
   if (!obj.port) {
     if (/^(http|ws)$/.test(obj.protocol)) {
@@ -81674,7 +79339,7 @@ var init_MessageBoxClient = __esm(() => {
 function hexToBytes(hex) {
   return (hex.match(/.{1,2}/g) ?? []).map((byte) => Number.parseInt(byte, 16));
 }
-function safeParse4(input) {
+function safeParse2(input) {
   try {
     return typeof input === "string" ? JSON.parse(input) : input;
   } catch {
@@ -81815,7 +79480,7 @@ var init_PeerPayClient = __esm(() => {
         overrideHost,
         onMessage: (message) => {
           log("[MB CLIENT] Received Live Payment:", message);
-          const token = safeParse4(message.body);
+          const token = safeParse2(message.body);
           if (token == null)
             return;
           const incomingPayment = {
@@ -81908,7 +79573,7 @@ var init_PeerPayClient = __esm(() => {
         messageBox: this.messageBox,
         host: overrideHost
       })).map((msg) => {
-        const parsedToken = safeParse4(msg.body);
+        const parsedToken = safeParse2(msg.body);
         if (parsedToken == null)
           return null;
         return {
@@ -81922,14 +79587,14 @@ var init_PeerPayClient = __esm(() => {
       return (await this.listMessages({
         messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
         host: hostOverride
-      })).map((msg) => safeParse4(msg.body)).filter((r) => r != null);
+      })).map((msg) => safeParse2(msg.body)).filter((r) => r != null);
     }
     async listenForLivePaymentRequests({ onRequest, overrideHost }) {
       await this.listenForLiveMessages({
         messageBox: PAYMENT_REQUESTS_MESSAGEBOX,
         overrideHost,
         onMessage: (message) => {
-          const body = safeParse4(message.body);
+          const body = safeParse2(message.body);
           if (body == null || body.cancelled === true)
             return;
           onRequest({
@@ -81948,7 +79613,7 @@ var init_PeerPayClient = __esm(() => {
         messageBox: PAYMENT_REQUEST_RESPONSES_MESSAGEBOX,
         overrideHost,
         onMessage: (message) => {
-          const response = safeParse4(message.body);
+          const response = safeParse2(message.body);
           if (response == null)
             return;
           onResponse(response);
@@ -82056,7 +79721,7 @@ var init_PeerPayClient = __esm(() => {
       const parsed = [];
       const malformedMessageIds = [];
       for (const message of messages) {
-        const body = safeParse4(message.body);
+        const body = safeParse2(message.body);
         if (body != null && isValidPaymentRequestMessage(body))
           parsed.push({
             messageId: message.messageId,
@@ -82405,7 +80070,7 @@ var init_decodeTransaction = __esm(() => {
   init_mod();
   init_zod();
   init_backends();
-  decodeTransactionArgsSchema = object2({
+  decodeTransactionArgsSchema = object({
     tx: string2().describe("Transaction data or txid"),
     encoding: _enum(["hex", "base64"]).default("hex").describe("Encoding of the input data")
   });
@@ -82652,7 +80317,7 @@ var init_explore = __esm(() => {
     ExploreEndpoint["ADDRESS_UTXOS"] = "address_utxos";
     ExploreEndpoint["HEALTH"] = "health";
   })(ExploreEndpoint ||= {});
-  exploreArgsSchema = object2({
+  exploreArgsSchema = object({
     endpoint: nativeEnum(ExploreEndpoint).describe("configured explorer API endpoint to call"),
     network: _enum(["main", "test"]).default(configuredChain()).describe("Network to use (main or test)"),
     blockHash: string2().optional().describe("Block hash (required for block_by_hash endpoint)"),
@@ -82680,7 +80345,7 @@ var init_bsv = __esm(() => {
 
 // utils/errors.ts
 function errorToToolResult(error) {
-  if (error instanceof McpError2) {
+  if (error instanceof McpError) {
     return {
       content: [
         {
@@ -82782,9 +80447,9 @@ function successResult(data, message) {
   ] : [{ type: "text", text: JSON.stringify(data, null, 2) }];
   return { content };
 }
-var McpError2;
+var McpError;
 var init_errors4 = __esm(() => {
-  McpError2 = class McpError2 extends Error {
+  McpError = class McpError extends Error {
     code;
     details;
     isRetryable;
@@ -82794,7 +80459,7 @@ var init_errors4 = __esm(() => {
       this.details = details;
       this.isRetryable = isRetryable;
       this.name = "McpError";
-      Object.setPrototypeOf(this, McpError2.prototype);
+      Object.setPrototypeOf(this, McpError.prototype);
     }
   };
 });
@@ -82803,7 +80468,7 @@ var init_errors4 = __esm(() => {
 function registerStatusTool(server, config) {
   server.registerTool("bsv_status", {
     description: "Show server version, configured network, wallet availability, backend URLs, live 1Sat modules and any persistent Vault migration warning. Does not request keys, sign, sync or spend. Backend modules do not imply MCP tools or sponsor approval.",
-    inputSchema: object2({
+    inputSchema: object({
       checkServices: boolean2().default(true).describe("Read the 1Sat capabilities endpoint (10 second timeout)")
     }),
     annotations: {
@@ -82882,7 +80547,7 @@ var init_status = __esm(() => {
 function registerGetInscriptionTool(server, services) {
   server.registerTool("ordinals_getInscription", {
     description: "Retrieves metadata for an inscription by its outpoint. Returns content type, file info, origin, MAP data, and sequence info.",
-    inputSchema: object2({
+    inputSchema: object({
       outpoint: string2().describe("Outpoint in format 'txid.vout' or 'txid_vout'")
     })
   }, async ({ outpoint }) => {
@@ -82923,7 +80588,7 @@ var init_getInscription = __esm(() => {
 function registerGetTokenByIdOrTickerTool(server, services) {
   server.registerTool("ordinals_getTokenByIdOrTicker", {
     description: "Retrieves detailed information about a BSV21 token by its ID (txid_vout format). Returns token data including symbol, supply, decimals, funding status, and current state.",
-    inputSchema: object2({
+    inputSchema: object({
       id: string2().describe("BSV21 token ID in outpoint format (txid_vout)")
     })
   }, async ({ id }) => {
@@ -82991,7 +80656,7 @@ var marketSearchSchema;
 var init_marketListings = __esm(() => {
   init_zod();
   init_errors4();
-  marketSearchSchema = object2({
+  marketSearchSchema = object({
     q: string2().trim().min(1).max(200).optional().describe("Listing name prefix"),
     type: string2().max(100).optional().describe("Content type, e.g. image/png"),
     limit: number2().int().min(1).max(100).default(20),
@@ -83035,7 +80700,7 @@ var init_marketSales = __esm(() => {
 function registerSearchInscriptionsTool(server, services) {
   server.registerTool("ordinals_searchInscriptions", {
     description: "Search indexed outputs by 1Sat event/topic/owner key (e.g. own:ADDRESS). Returns inscription and MAP metadata when indexed. This is an index-key search, not free-text search; use marketListings.q for listing names.",
-    inputSchema: object2({
+    inputSchema: object({
       key: string2().trim().min(1).max(300).describe("Index key, e.g. own:ADDRESS, ev:EVENT, or tp:TOPIC"),
       limit: number2().int().min(1).max(100).default(20),
       from: number2().finite().nonnegative().optional().describe("Last result's score for the next page")
@@ -83461,7 +81126,7 @@ var init_findSkills = __esm(() => {
   CACHE_TTL_MS = 5 * 60 * 1000;
   MAX_BODY_BYTES = 2 * 1024 * 1024;
   SKILL_URL_PATH = /^\/[^/]+\/[^/]+\/[0-9a-f]{40}\/.+\/SKILL\.md$/;
-  findSkillsInputSchema = object2({
+  findSkillsInputSchema = object({
     query: string2().trim().min(1).max(200),
     limit: number2().int().min(1).max(5).default(3)
   });
@@ -83530,7 +81195,7 @@ Get started with:
 var installAgentMasterSchema, installAgentMasterTool;
 var init_installAgentMaster = __esm(() => {
   init_zod();
-  installAgentMasterSchema = object2({
+  installAgentMasterSchema = object({
     method: _enum(["go", "source", "auto"]).optional().describe("Installation method")
   });
   installAgentMasterTool = {
@@ -83542,15 +81207,15 @@ var init_installAgentMaster = __esm(() => {
 });
 
 // node_modules/bsv-bap/dist/index.modern.js
-function L(f) {
-  let w = I2(sha256(f, "utf8"));
-  return D(ripemd160(w, "hex"));
+function L2(f) {
+  let w = I(sha256(f, "utf8"));
+  return D2(ripemd160(w, "hex"));
 }
-function N2(f) {
-  return new KeyDeriver(f).derivePublicKey(u2, `${E2}-0`, "self", true).toAddress();
+function N(f) {
+  return new KeyDeriver(f).derivePublicKey(u, `${E}-0`, "self", true).toAddress();
 }
 
-class q2 {
+class q {
   #w;
   #f;
   #$;
@@ -83582,7 +81247,7 @@ class q2 {
         throw Error("HD private key not initialized");
       $ = this.#w.derive(this.#z).privKey;
     }
-    this.rootAddress = N2($), this.bapId = L(this.rootAddress);
+    this.rootAddress = N($), this.bapId = L2(this.rootAddress);
   }
   set rootPath(f) {
     let w;
@@ -83600,7 +81265,7 @@ class q2 {
         throw Error("HD private key not initialized");
       w = this.#w.derive($).privKey, this.#G = $, this.#j = $;
     }
-    this.rootAddress = N2(w), this.bapId = L(this.rootAddress);
+    this.rootAddress = N(w), this.bapId = L2(this.rootAddress);
   }
   get rootPath() {
     return this.#z;
@@ -83639,7 +81304,7 @@ class q2 {
   validatePath(f) {
     if (f.match(/\/[0-9]{1,10}'?\/[0-9]{1,10}'?\/[0-9]{1,10}'?\/[0-9]{1,10}'?\/[0-9]{1,10}'?\/[0-9]{1,10}'?/)) {
       let w = f.split("/");
-      if (w.length === 7 && Number(w[1].replace("'", "")) <= W && Number(w[2].replace("'", "")) <= W && Number(w[3].replace("'", "")) <= W && Number(w[4].replace("'", "")) <= W && Number(w[5].replace("'", "")) <= W && Number(w[6].replace("'", "")) <= W)
+      if (w.length === 7 && Number(w[1].replace("'", "")) <= W2 && Number(w[2].replace("'", "")) <= W2 && Number(w[3].replace("'", "")) <= W2 && Number(w[4].replace("'", "")) <= W2 && Number(w[5].replace("'", "")) <= W2 && Number(w[6].replace("'", "")) <= W2)
         return true;
     }
     return false;
@@ -83676,7 +81341,7 @@ class a {
       this.#G = w;
     if ($)
       this.#j = $;
-    this.getApiData = U2(this.#j, this.#G);
+    this.getApiData = U(this.#j, this.#G);
   }
   get lastIdPath() {
     return this.#J;
@@ -83727,7 +81392,7 @@ class a {
         throw Error("HD private key not initialized");
       w = this.#w.derive(f.rootPath).privKey;
     }
-    if (N2(w) !== f.rootAddress)
+    if (N(w) !== f.rootAddress)
       throw Error("ID does not belong to this private key");
     return true;
   }
@@ -83737,7 +81402,7 @@ class a {
         throw Error("Master private key not initialized");
       let z = this.#f;
       if (w) {
-        let j = F2(sha256(w, "utf8"));
+        let j = F(sha256(w, "utf8"));
         z = z.deriveChild(z.toPublicKey(), j);
       }
       return z.deriveChild(z.toPublicKey(), f).toPublicKey().toAddress();
@@ -83746,7 +81411,7 @@ class a {
       throw Error("HD private key not initialized");
     let $ = this.#w;
     if (w) {
-      let z = F2(sha256(w, "utf8"));
+      let z = F(sha256(w, "utf8"));
       $ = $.derive(Z.getSigningPathFromHex(z));
     }
     return $.derive(f).pubKey.toAddress();
@@ -83800,11 +81465,11 @@ class a {
     if (this.#$) {
       if (!this.#f)
         throw Error("Type 42 parameters not initialized");
-      z = new q2({ rootPk: this.#f }, w);
+      z = new q({ rootPk: this.#f }, w);
     } else {
       if (!this.#w)
         throw Error("HD private key not initialized");
-      z = new q2(this.#w, w);
+      z = new q(this.#w, w);
     }
     if (z.rootPath = $, this.#$)
       z.currentPath = $;
@@ -83849,11 +81514,11 @@ class a {
       if (this.#$) {
         if (!this.#f)
           throw Error("Type 42 parameters not initialized");
-        G = new q2({ rootPk: this.#f }, j.idSeed);
+        G = new q({ rootPk: this.#f }, j.idSeed);
       } else {
         if (!this.#w)
           throw Error("HD private key not initialized");
-        G = new q2(this.#w, j.idSeed);
+        G = new q(this.#w, j.idSeed);
       }
       if (G.import(j), z === "")
         z = G.currentPath;
@@ -83884,11 +81549,11 @@ class a {
       if (this.#$) {
         if (!this.#f)
           throw Error("Type 42 parameters not initialized");
-        $ = new q2({ rootPk: this.#f }, w.idSeed ?? "");
+        $ = new q({ rootPk: this.#f }, w.idSeed ?? "");
       } else {
         if (!this.#w)
           throw Error("HD private key not initialized");
-        $ = new q2(this.#w, w.idSeed ?? "");
+        $ = new q(this.#w, w.idSeed ?? "");
       }
       $.import(w), this.checkIdBelongs($), this.#z[$.bapId] = $, this.#J = $.currentPath;
     }
@@ -83914,32 +81579,32 @@ class a {
     if (this.#$) {
       if (!this.#f)
         throw Error("Master private key not initialized");
-      let $ = this.#f.deriveChild(this.#f.toPublicKey(), Y2);
-      return o(v2(M2(f), $.toPublicKey()));
+      let $ = this.#f.deriveChild(this.#f.toPublicKey(), Y);
+      return o(v(M(f), $.toPublicKey()));
     }
     if (!this.#w)
       throw Error("HD private key not initialized");
-    let w = this.#w.derive(Y2);
-    return o(v2(M2(f), w.pubKey));
+    let w = this.#w.derive(Y);
+    return o(v(M(f), w.pubKey));
   }
   decrypt(f) {
     if (this.#$) {
       if (!this.#f)
         throw Error("Master private key not initialized");
-      let $ = this.#f.deriveChild(this.#f.toPublicKey(), Y2);
-      return X(b(M2(f, "base64"), $));
+      let $ = this.#f.deriveChild(this.#f.toPublicKey(), Y);
+      return X(b(M(f, "base64"), $));
     }
     if (!this.#w)
       throw Error("HD private key not initialized");
-    let w = this.#w.derive(Y2);
-    return X(b(M2(f, "base64"), w.privKey));
+    let w = this.#w.derive(Y);
+    return X(b(M(f, "base64"), w.privKey));
   }
   verifyAttestationWithAIP(f) {
-    if (!f.every((z) => Array.isArray(z)) || f[0][0] !== OP_default.OP_RETURN || F2(f[1]) !== C2)
+    if (!f.every((z) => Array.isArray(z)) || f[0][0] !== OP_default.OP_RETURN || F(f[1]) !== C)
       throw Error("Not a valid BAP transaction");
-    let w = F2(f[7]) === "44415441" ? 5 : 0, $ = { type: X(f[2]), hash: F2(f[3]), sequence: X(f[4]), signingProtocol: X(f[7 + w]), signingAddress: X(f[8 + w]), signature: o(f[9 + w]) };
+    let w = F(f[7]) === "44415441" ? 5 : 0, $ = { type: X(f[2]), hash: F(f[3]), sequence: X(f[4]), signingProtocol: X(f[7 + w]), signingAddress: X(f[8 + w]), signature: o(f[9 + w]) };
     if (w && f[3] === f[8])
-      $.data = F2(f[9]);
+      $.data = F(f[9]);
     try {
       let z = [];
       for (let j = 0;j < 6 + w; j++)
@@ -83957,7 +81622,7 @@ class a {
     else if (Buffer.isBuffer(f))
       z = [...f];
     else
-      z = M2(f, "utf8");
+      z = M(f, "utf8");
     let j = Signature.fromCompact($, "base64");
     for (let G = 0;G < 4; G++)
       try {
@@ -84003,23 +81668,23 @@ class a {
     return { ...j, xprv: w || this.#w.toString(), mnemonic: $ || "" };
   }
 }
-var T2 = async (f, w, $, z) => {
+var T = async (f, w, $, z) => {
   let j = `${$}${f}`;
   return (await fetch(j, { method: "post", headers: { "Content-type": "application/json; charset=utf-8", token: z, format: "json" }, body: JSON.stringify(w) })).json();
-}, U2 = (f, w) => async ($, z) => {
-  return T2($, z, f, w);
-}, A2, O2, k2 = "1BAPSuaPnfGnSBM3GLV9yhxUdYe4vGbdMT", C2, V = "15PciHG22SNLQJXMoSUaWVi7WSqc7hCfva", S2, g = "https://api.1sat.app/1sat/bap", W = 2147483647, Q = "m/424150'/0'/0'", u2, E2 = "identity", Y2, I2, D, Z, M2, X, o, F2, v2, b;
+}, U = (f, w) => async ($, z) => {
+  return T($, z, f, w);
+}, A, O, k = "1BAPSuaPnfGnSBM3GLV9yhxUdYe4vGbdMT", C, V = "15PciHG22SNLQJXMoSUaWVi7WSqc7hCfva", S, g = "https://api.1sat.app/1sat/bap", W2 = 2147483647, Q = "m/424150'/0'/0'", u, E = "identity", Y, I, D2, Z, M, X, o, F, v, b;
 var init_index_modern = __esm(() => {
   init_mod();
   init_mod();
   init_mod();
   init_mod();
-  ({ toHex: A2, toArray: O2 } = exports_utils);
-  C2 = A2(O2(k2));
-  S2 = A2(O2(V));
-  u2 = [1, "sigma"];
-  Y2 = `m/424150'/${W}'/${W}'`;
-  ({ toHex: I2, toBase58: D } = exports_utils);
+  ({ toHex: A, toArray: O } = exports_utils);
+  C = A(O(k));
+  S = A(O(V));
+  u = [1, "sigma"];
+  Y = `m/424150'/${W2}'/${W2}'`;
+  ({ toHex: I, toBase58: D2 } = exports_utils);
   Z = { getRandomBytes(f = 32) {
     if (typeof globalThis < "u" && globalThis.crypto && globalThis.crypto.getRandomValues) {
       let w = new Uint8Array(f);
@@ -84065,8 +81730,8 @@ var init_index_modern = __esm(() => {
     let G = (Number(z.replace(/[^0-9]/g, "")) + 1).toString();
     return $[$.length - 1] = G + (j ? "'" : ""), $.join("/");
   } };
-  ({ toArray: M2, toUTF8: X, toBase64: o, toHex: F2 } = exports_utils);
-  ({ electrumEncrypt: v2, electrumDecrypt: b } = ECIES);
+  ({ toArray: M, toUTF8: X, toBase64: o, toHex: F } = exports_utils);
+  ({ electrumEncrypt: v, electrumDecrypt: b } = ECIES);
 });
 
 // tools/constants.ts
@@ -84360,7 +82025,7 @@ function registerUtilsTools(server) {
 ` + `- All parameters are required
 ` + `- The tool returns the converted data as a string
 ` + "- For binary conversion, data is represented as an array of byte values",
-    inputSchema: object2({
+    inputSchema: object({
       data: string2().describe("The data string to be converted"),
       from: encodingSchema2.describe("Source encoding format (utf8, hex, base64, or binary)"),
       to: encodingSchema2.describe("Target encoding format to convert to (utf8, hex, base64, or binary)")
@@ -84440,7 +82105,7 @@ function registerWalletOnboardingTool(server, openWalletSetup) {
 var WALLET_ONBOARDING_TOOL_NAME = "wallet_onboarding", walletOnboardingInputSchema, WALLET_ONBOARDING_ANNOTATIONS, WALLET_ONBOARDING_SUCCESS, WALLET_ONBOARDING_FAILURE;
 var init_onboarding = __esm(() => {
   init_zod();
-  walletOnboardingInputSchema = object2({});
+  walletOnboardingInputSchema = object({});
   WALLET_ONBOARDING_ANNOTATIONS = {
     readOnlyHint: false,
     destructiveHint: false,
@@ -84524,7 +82189,7 @@ var inputSchema;
 var init_peerPayments = __esm(() => {
   init_zod();
   init_peerPaymentReceive();
-  inputSchema = object2({
+  inputSchema = object({
     operation: _enum(["list", "receive"]),
     messageId: string2().trim().min(1).max(256).optional()
   });
@@ -84747,7 +82412,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   }
   server.registerTool("wallet_createAction", {
     description: "Creates a new Bitcoin transaction. Handles funding, signing, and broadcasting based on options.",
-    inputSchema: object2({
+    inputSchema: object({
       description: string2().describe("5-50 char description of the action"),
       inputBEEFJSON: string2().optional().describe("JSON array of BEEF bytes proving the inputs. Required whenever inputs are supplied — createAction rejects inputs without their proof chain."),
       inputsJSON: string2().optional().describe("JSON array of transaction inputs"),
@@ -84786,7 +82451,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_signAction", {
     description: "Signs a transaction previously created with createAction (when signAndProcess was false).",
-    inputSchema: object2({
+    inputSchema: object({
       spendsJSON: string2().describe("JSON map of input index to {unlockingScript, sequenceNumber}"),
       reference: string2().describe("Base64 reference from createAction result"),
       optionsJSON: string2().optional().describe("JSON SignActionOptions: {acceptDelayedBroadcast, sendWith}")
@@ -84806,7 +82471,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_abortAction", {
     description: "Aborts a pending (nosend or unsigned) transaction, releasing consumed inputs back to spendable state.",
-    inputSchema: object2({
+    inputSchema: object({
       reference: string2().describe("Base64 reference of the transaction to abort")
     })
   }, async ({ reference }) => {
@@ -84820,7 +82485,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_internalizeAction", {
     description: "Internalizes an external transaction, adding its outputs to wallet baskets.",
-    inputSchema: object2({
+    inputSchema: object({
       txJSON: string2().describe("JSON array of AtomicBEEF bytes"),
       outputsJSON: string2().describe("JSON array of outputs to internalize"),
       description: string2().describe("5-50 char description"),
@@ -84850,7 +82515,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_listActions", {
     description: "Lists wallet transactions filtered by labels, with optional input/output details.",
-    inputSchema: object2({
+    inputSchema: object({
       labelsJSON: string2().default("[]").describe("JSON array of label strings"),
       labelQueryMode: _enum(["any", "all"]).default("any"),
       includeLabels: boolean2().default(true),
@@ -84877,7 +82542,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_listOutputs", {
     description: "Lists spendable outputs in a basket, optionally filtered by tags.",
-    inputSchema: object2({
+    inputSchema: object({
       basket: string2().describe('Basket name (e.g. "default")'),
       tagsJSON: string2().optional().describe("JSON array of tag strings"),
       tagQueryMode: _enum(["all", "any"]).optional(),
@@ -84903,7 +82568,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_relinquishOutput", {
     description: "Removes an output from a basket without spending it.",
-    inputSchema: object2({
+    inputSchema: object({
       basket: string2().describe("Basket name"),
       output: string2().describe("Outpoint string (txid.vout)")
     })
@@ -84918,7 +82583,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_getPublicKey", {
     description: 'Retrieves a public key by protocol/key derivation. Use identityKey:true for the root identity key. protocolID is a JSON array like [2,"1sat"].',
-    inputSchema: object2({
+    inputSchema: object({
       identityKey: boolean2().optional().describe("If true, return the identity key (ignores other args)"),
       protocolIDJSON: string2().optional().describe('JSON array [securityLevel, protocolString] e.g. [2,"1sat"]'),
       keyID: string2().optional(),
@@ -84943,7 +82608,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_encrypt", {
     description: 'Encrypts data using wallet keys. protocolID is a JSON array like [2,"protocolName"].',
-    inputSchema: object2({
+    inputSchema: object({
       plaintext: array(number2()).describe("Data bytes to encrypt"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
       keyID: string2(),
@@ -84966,7 +82631,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_decrypt", {
     description: "Decrypts data using wallet keys.",
-    inputSchema: object2({
+    inputSchema: object({
       ciphertext: array(number2()).describe("Encrypted data bytes"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
       keyID: string2(),
@@ -84989,7 +82654,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_createHmac", {
     description: "Creates an HMAC using wallet keys.",
-    inputSchema: object2({
+    inputSchema: object({
       data: array(number2()).describe("Data bytes"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
       keyID: string2(),
@@ -85012,7 +82677,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_verifyHmac", {
     description: "Verifies an HMAC using wallet keys.",
-    inputSchema: object2({
+    inputSchema: object({
       data: array(number2()).describe("Data bytes"),
       hmac: array(number2()).describe("HMAC bytes to verify"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
@@ -85036,7 +82701,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_createSignature", {
     description: "Creates a digital signature using wallet keys. Supply exactly one of data or hashToDirectlySign.",
-    inputSchema: object2({
+    inputSchema: object({
       data: array(number2()).optional().describe("Data bytes to sign"),
       hashToDirectlySign: array(number2()).optional().describe("Pre-computed 32-byte hash to sign directly"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
@@ -85060,7 +82725,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_verifySignature", {
     description: "Verifies a digital signature using wallet keys. Supply exactly one of data or hashToDirectlyVerify.",
-    inputSchema: object2({
+    inputSchema: object({
       data: array(number2()).optional().describe("Data bytes that were signed"),
       hashToDirectlyVerify: array(number2()).optional().describe("Pre-computed 32-byte hash that was signed"),
       signature: array(number2()).describe("Signature bytes"),
@@ -85086,7 +82751,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_revealCounterpartyKeyLinkage", {
     description: "Reveals the linkage between the wallet identity and a counterparty to a verifier.",
-    inputSchema: object2({
+    inputSchema: object({
       counterparty: string2().describe("Counterparty public key hex"),
       verifier: string2().describe("Verifier public key hex"),
       privileged: boolean2().optional(),
@@ -85103,7 +82768,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_revealSpecificKeyLinkage", {
     description: "Reveals linkage for a specific protocol/key combination to a verifier.",
-    inputSchema: object2({
+    inputSchema: object({
       counterparty: string2().describe("Counterparty public key hex"),
       verifier: string2().describe("Verifier public key hex"),
       protocolIDJSON: string2().describe("JSON array [securityLevel, protocolString]"),
@@ -85125,7 +82790,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_acquireCertificate", {
     description: "Acquires an identity certificate from a certifier.",
-    inputSchema: object2({
+    inputSchema: object({
       type: string2().describe("Certificate type (base64)"),
       certifier: string2().describe("Certifier public key hex"),
       acquisitionProtocol: _enum(["direct", "issuance"]),
@@ -85154,7 +82819,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_listCertificates", {
     description: "Lists identity certificates filtered by certifiers and types.",
-    inputSchema: object2({
+    inputSchema: object({
       certifiersJSON: string2().describe("JSON array of certifier public key hexes"),
       typesJSON: string2().describe("JSON array of certificate types (base64)"),
       limit: number2().default(25),
@@ -85177,7 +82842,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_proveCertificate", {
     description: "Proves select fields of a certificate to a verifier.",
-    inputSchema: object2({
+    inputSchema: object({
       certificateJSON: string2().describe("JSON object of the certificate to prove"),
       fieldsToRevealJSON: string2().describe("JSON array of field names to reveal"),
       verifier: string2().describe("Verifier public key hex"),
@@ -85199,7 +82864,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_relinquishCertificate", {
     description: "Removes a certificate from the wallet.",
-    inputSchema: object2({
+    inputSchema: object({
       type: string2().describe("Certificate type"),
       serialNumber: string2().describe("Certificate serial number"),
       certifier: string2().describe("Certifier public key hex")
@@ -85215,7 +82880,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_discoverByIdentityKey", {
     description: "Discovers certificates issued to a given identity key.",
-    inputSchema: object2({
+    inputSchema: object({
       identityKey: string2().describe("Identity public key hex"),
       limit: number2().default(25),
       offset: number2().default(0),
@@ -85232,7 +82897,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_discoverByAttributes", {
     description: "Discovers certificates matching specific attributes.",
-    inputSchema: object2({
+    inputSchema: object({
       attributesJSON: string2().describe("JSON object of attribute key/value pairs to match"),
       limit: number2().default(25),
       offset: number2().default(0),
@@ -85252,7 +82917,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_isAuthenticated", {
     description: "Checks if the wallet user is authenticated.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx)
       return noCtx;
@@ -85264,7 +82929,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_waitForAuthentication", {
     description: "Blocks until the wallet user is authenticated.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx)
       return noCtx;
@@ -85276,7 +82941,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_getHeight", {
     description: "Gets the current blockchain height.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx)
       return noCtx;
@@ -85288,7 +82953,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_getHeaderForHeight", {
     description: "Gets the 80-byte block header at a given height.",
-    inputSchema: object2({
+    inputSchema: object({
       height: number2().describe("Block height")
     })
   }, async ({ height }) => {
@@ -85302,7 +82967,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_getNetwork", {
     description: "Gets the network the wallet is connected to (mainnet or testnet).",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx)
       return noCtx;
@@ -85314,7 +82979,7 @@ function registerBrc100Tools(server, ctx, identityContext, roleContexts) {
   });
   server.registerTool("wallet_getVersion", {
     description: "Gets the wallet implementation version.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx)
       return noCtx;
@@ -85960,7 +83625,7 @@ class MAP {
   }
 }
 var MAPCommand;
-var init_map2 = __esm(() => {
+var init_map = __esm(() => {
   init_dist2();
   init_mod();
   init_bitcom();
@@ -85991,7 +83656,7 @@ function buildInscriptionScript(lockingScript, content, contentType, map) {
 }
 var init_compose = __esm(() => {
   init_mod();
-  init_map2();
+  init_map();
   init_inscription();
 });
 
@@ -86325,18 +83990,18 @@ var init_bsv21 = __esm(() => {
 });
 
 // node_modules/cbor2/lib/constants.js
-var f3, T3, I3, o2, A3, S3;
+var f2, T2, I2, o2, A2, S2;
 var init_constants4 = __esm(() => {
-  f3 = { POS_INT: 0, NEG_INT: 1, BYTE_STRING: 2, UTF8_STRING: 3, ARRAY: 4, MAP: 5, TAG: 6, SIMPLE_FLOAT: 7 };
-  T3 = { DATE_STRING: 0, DATE_EPOCH: 1, POS_BIGINT: 2, NEG_BIGINT: 3, DECIMAL_FRAC: 4, BIGFLOAT: 5, BASE64URL_EXPECTED: 21, BASE64_EXPECTED: 22, BASE16_EXPECTED: 23, CBOR: 24, URI: 32, BASE64URL: 33, BASE64: 34, MIME: 36, DATE_EPOCH_DAYS: 100, SET: 258, JSON: 262, WTF8: 273, SYMBOL: 280, DATE_FULL: 1004, REGEXP: 21066, SELF_DESCRIBED: 55799, INVALID_16: 65535, INVALID_32: 4294967295, INVALID_64: 0xffffffffffffffffn };
-  I3 = { ZERO: 0, ONE: 24, TWO: 25, FOUR: 26, EIGHT: 27, INDEFINITE: 31 };
+  f2 = { POS_INT: 0, NEG_INT: 1, BYTE_STRING: 2, UTF8_STRING: 3, ARRAY: 4, MAP: 5, TAG: 6, SIMPLE_FLOAT: 7 };
+  T2 = { DATE_STRING: 0, DATE_EPOCH: 1, POS_BIGINT: 2, NEG_BIGINT: 3, DECIMAL_FRAC: 4, BIGFLOAT: 5, BASE64URL_EXPECTED: 21, BASE64_EXPECTED: 22, BASE16_EXPECTED: 23, CBOR: 24, URI: 32, BASE64URL: 33, BASE64: 34, MIME: 36, DATE_EPOCH_DAYS: 100, SET: 258, JSON: 262, WTF8: 273, SYMBOL: 280, DATE_FULL: 1004, REGEXP: 21066, SELF_DESCRIBED: 55799, INVALID_16: 65535, INVALID_32: 4294967295, INVALID_64: 0xffffffffffffffffn };
+  I2 = { ZERO: 0, ONE: 24, TWO: 25, FOUR: 26, EIGHT: 27, INDEFINITE: 31 };
   o2 = { FALSE: 20, TRUE: 21, NULL: 22, UNDEFINED: 23 };
-  A3 = class A3 {
+  A2 = class A2 {
     static BREAK = Symbol.for("github.com/hildjj/cbor2/break");
     static ENCODED = Symbol.for("github.com/hildjj/cbor2/cbor-encoded");
     static LENGTH = Symbol.for("github.com/hildjj/cbor2/length");
   };
-  S3 = { MIN: -(2n ** 63n), MAX: 2n ** 64n - 1n };
+  S2 = { MIN: -(2n ** 63n), MAX: 2n ** 64n - 1n };
 });
 
 // node_modules/cbor2/lib/tag.js
@@ -86391,20 +84056,20 @@ var init_tag = __esm(() => {
 });
 
 // node_modules/cbor2/lib/box.js
-function f4(n) {
+function f3(n) {
   if (n != null && typeof n == "object")
-    return n[A3.ENCODED];
+    return n[A2.ENCODED];
 }
 function s2(n) {
   if (n != null && typeof n == "object")
-    return n[A3.LENGTH];
+    return n[A2.LENGTH];
 }
-function u3(n, e) {
-  Object.defineProperty(n, A3.ENCODED, { configurable: true, enumerable: false, value: e });
+function u2(n, e) {
+  Object.defineProperty(n, A2.ENCODED, { configurable: true, enumerable: false, value: e });
 }
-function d2(n, e) {
+function d(n, e) {
   const r = Object(n);
-  return u3(r, e), r;
+  return u2(r, e), r;
 }
 var init_box = __esm(() => {
   init_constants4();
@@ -86412,17 +84077,17 @@ var init_box = __esm(() => {
 });
 
 // node_modules/cbor2/lib/utils.js
-function c2(r, n) {
+function c(r, n) {
   Object.defineProperty(r, g2, { configurable: false, enumerable: false, writable: false, value: n });
 }
-function f5(r) {
+function f4(r) {
   return r[g2];
 }
 function l(r) {
-  return f5(r) !== undefined;
+  return f4(r) !== undefined;
 }
-function R3(r, n = 0, t = r.length - 1) {
-  const o = r.subarray(n, t), a = f5(r);
+function R2(r, n = 0, t = r.length - 1) {
+  const o = r.subarray(n, t), a = f4(r);
   if (a) {
     const s = [];
     for (const e of a)
@@ -86430,7 +84095,7 @@ function R3(r, n = 0, t = r.length - 1) {
         const i = [...e];
         i[0] -= n, s.push(i);
       }
-    s.length && c2(o, s);
+    s.length && c(o, s);
   }
   return o;
 }
@@ -86442,10 +84107,10 @@ function b2(r) {
     t[n] = parseInt(r.substring(a, o), 16);
   return t;
 }
-function A4(r) {
+function A3(r) {
   return r.reduce((n, t) => n + t.toString(16).padStart(2, "0"), "");
 }
-function d3(r) {
+function d2(r) {
   const n = r.reduce((e, i) => e + i.length, 0), t = r.some((e) => l(e)), o = [], a = new Uint8Array(n);
   let s = 0;
   for (const e of r) {
@@ -86459,21 +84124,21 @@ function d3(r) {
     }
     s += e.length;
   }
-  return t && c2(a, o), a;
+  return t && c(a, o), a;
 }
 function y(r) {
   const n = atob(r);
   return Uint8Array.from(n, (t) => t.codePointAt(0));
 }
-function x2(r) {
-  const n = r.replace(/[_-]/g, (t) => p2[t]);
+function x(r) {
+  const n = r.replace(/[_-]/g, (t) => p[t]);
   return y(n.padEnd(Math.ceil(n.length / 4) * 4, "="));
 }
-function h2() {
+function h() {
   const r = new Uint8Array(4), n = new Uint32Array(r.buffer);
   return !((n[0] = 1) & r[0]);
 }
-function U3(r) {
+function U2(r) {
   let n = "";
   for (const t of r) {
     const o = t.codePointAt(0)?.toString(16).padStart(4, "0");
@@ -86481,10 +84146,10 @@ function U3(r) {
   }
   return n;
 }
-var g2, p2;
+var g2, p;
 var init_utils4 = __esm(() => {
   g2 = Symbol("CBOR_RANGES");
-  p2 = { "-": "+", _: "/" };
+  p = { "-": "+", _: "/" };
 });
 
 // node_modules/cbor2/lib/typeEncoderMap.js
@@ -86507,7 +84172,7 @@ class s3 {
 var init_typeEncoderMap = () => {};
 
 // node_modules/cbor2/lib/sorts.js
-function f6(c, d) {
+function f5(c, d) {
   const [u, a, n] = c, [l, s, t] = d, r = Math.min(n.length, t.length);
   for (let o = 0;o < r; o++) {
     const e = n[o] - t[o];
@@ -86604,11 +84269,11 @@ var init_writer = __esm(() => {
 });
 
 // node_modules/cbor2/lib/float.js
-function U4(i, n, e, r) {
+function U3(i, n, e, r) {
   let o = "nan'";
   return i.quiet || (o += "!"), i.sign === -1 && (o += "-"), o += r(Math.abs(i.payload), e), o += "'", o += i.encodingIndicator, o;
 }
-function v3(i, n = 0, e = false) {
+function v2(i, n = 0, e = false) {
   const r = i[n] & 128 ? -1 : 1, o = (i[n] & 124) >> 2, t = (i[n] & 3) << 8 | i[n + 1];
   if (o === 0) {
     if (e && t !== 0)
@@ -86639,7 +84304,7 @@ function Z2(i) {
       return null;
   return r;
 }
-function k3(i) {
+function k2(i) {
   if (i !== 0) {
     const n = new ArrayBuffer(8), e = new DataView(n);
     e.setFloat64(0, i, false);
@@ -86652,7 +84317,7 @@ function k3(i) {
 function B(i) {
   switch (i.length) {
     case 2:
-      v3(i, 0, true);
+      v2(i, 0, true);
       break;
     case 4: {
       const n = new DataView(i.buffer, i.byteOffset, i.byteLength), e = n.getUint32(0, false);
@@ -86670,28 +84335,28 @@ function B(i) {
       throw new TypeError(`Bad input to isSubnormal: ${i}`);
   }
 }
-var w2, f7, b3, d4, I4, g3, l2, A5, E3, p3, N3, a2, c3, u4, F3, _2, S4, m2, x3, O3;
+var w, f6, b3, d3, I3, g3, l2, A4, E2, p2, N2, a2, c2, u3, F2, _, S3, m, x2, O2;
 var init_float = __esm(() => {
-  w2 = 1n << 15n;
-  f7 = 0b11111n << 10n;
+  w = 1n << 15n;
+  f6 = 0b11111n << 10n;
   b3 = 1n << 9n;
-  d4 = b3 - 1n;
-  I4 = b3 | d4;
+  d3 = b3 - 1n;
+  I3 = b3 | d3;
   g3 = 1n << 31n;
   l2 = 0b11111111n << 23n;
-  A5 = 1n << 22n;
-  E3 = A5 - 1n;
-  p3 = A5 | E3;
-  N3 = 1n << 63n;
+  A4 = 1n << 22n;
+  E2 = A4 - 1n;
+  p2 = A4 | E2;
+  N2 = 1n << 63n;
   a2 = 0b11111111111n << 52n;
-  c3 = 1n << 51n;
-  u4 = c3 - 1n;
-  F3 = c3 | u4;
-  _2 = u4 - (d4 << 42n);
-  S4 = u4 - (E3 << 29n);
-  m2 = { 2: "0b", 8: "0o", 16: "0x" };
-  x3 = ((t) => (t[t.NATURAL = -2] = "NATURAL", t[t.UNKNOWN = -1] = "UNKNOWN", t[t.F16 = 2] = "F16", t[t.F32 = 4] = "F32", t[t.F64 = 8] = "F64", t))(x3 || {});
-  O3 = class O3 extends Number {
+  c2 = 1n << 51n;
+  u3 = c2 - 1n;
+  F2 = c2 | u3;
+  _ = u3 - (d3 << 42n);
+  S3 = u3 - (E2 << 29n);
+  m = { 2: "0b", 8: "0o", 16: "0x" };
+  x2 = ((t) => (t[t.NATURAL = -2] = "NATURAL", t[t.UNKNOWN = -1] = "UNKNOWN", t[t.F16 = 2] = "F16", t[t.F32 = 4] = "F32", t[t.F64 = 8] = "F64", t))(x2 || {});
+  O2 = class O2 extends Number {
     #n;
     #t = -1;
     constructor(n, e = true, r = -1) {
@@ -86702,9 +84367,9 @@ var init_float = __esm(() => {
           throw new Error(`Invalid NAN payload: ${n}`);
         n = BigInt(n);
         let t = 0n;
-        if (n < 0 && (t = N3, n = -n), n >= c3)
+        if (n < 0 && (t = N2, n = -n), n >= c2)
           throw new Error(`Payload too large: ${o}`);
-        const s = e ? c3 : 0n;
+        const s = e ? c2 : 0n;
         switch (this.#n = t | a2 | s | n, r) {
           case -2:
             throw new Error("NAN_SIZE.NATURAL only valid for bigint constructor");
@@ -86712,11 +84377,11 @@ var init_float = __esm(() => {
             r = this.preferredSize;
             break;
           case 2:
-            if (this.#n & _2)
+            if (this.#n & _)
               throw new Error("Invalid size for payload");
             break;
           case 4:
-            if (this.#n & S4)
+            if (this.#n & S3)
               throw new Error("Invalid size for payload");
             break;
           case 8:
@@ -86731,10 +84396,10 @@ var init_float = __esm(() => {
           this.#n = n, t = 8;
         else if ((n & l2) === l2) {
           const s = (n & g3) << 32n;
-          this.#n = s | a2 | (n & p3) << 29n, t = 4;
-        } else if ((n & f7) === f7) {
-          const s = (n & w2) << 48n;
-          this.#n = s | a2 | (n & I4) << 42n, t = 2;
+          this.#n = s | a2 | (n & p2) << 29n, t = 4;
+        } else if ((n & f6) === f6) {
+          const s = (n & w) << 48n;
+          this.#n = s | a2 | (n & I3) << 42n, t = 2;
         } else
           throw new Error(`Invalid raw NaN value: ${n}`);
         if (r === -1)
@@ -86753,10 +84418,10 @@ var init_float = __esm(() => {
             if (n[0] !== 249)
               throw new Error("Invalid CBOR encoding for half float");
             const s = BigInt(t.getUint16(1, false));
-            if ((s & f7) !== f7)
+            if ((s & f6) !== f6)
               throw new Error("Not a NaN");
-            const h = (s & w2) << 48n;
-            this.#n = h | a2 | (s & I4) << 42n, this.#t = 2;
+            const h = (s & w) << 48n;
+            this.#n = h | a2 | (s & I3) << 42n, this.#t = 2;
             break;
           }
           case 5: {
@@ -86766,7 +84431,7 @@ var init_float = __esm(() => {
             if ((s & l2) !== l2)
               throw new Error("Not a NaN");
             const h = (s & g3) << 32n;
-            this.#n = h | a2 | (s & p3) << 29n, this.#t = 4;
+            this.#n = h | a2 | (s & p2) << 29n, this.#t = 4;
             break;
           }
           case 9: {
@@ -86789,13 +84454,13 @@ var init_float = __esm(() => {
       switch (this.#t) {
         case 2: {
           e.setUint8(0, 249);
-          const o = (this.#n & N3 ? w2 : 0n) | f7 | (this.#n & F3) >> 42n;
+          const o = (this.#n & N2 ? w : 0n) | f6 | (this.#n & F2) >> 42n;
           e.setUint16(1, Number(o), false);
           break;
         }
         case 4: {
           e.setUint8(0, 250);
-          const o = (this.#n & N3 ? g3 : 0n) | l2 | (this.#n & F3) >> 29n;
+          const o = (this.#n & N2 ? g3 : 0n) | l2 | (this.#n & F2) >> 29n;
           e.setUint32(1, Number(o), false);
           break;
         }
@@ -86806,13 +84471,13 @@ var init_float = __esm(() => {
       return new Uint8Array(n);
     }
     get quiet() {
-      return !!(this.#n & c3);
+      return !!(this.#n & c2);
     }
     get sign() {
-      return this.#n & N3 ? -1 : 1;
+      return this.#n & N2 ? -1 : 1;
     }
     get payload() {
-      return Number(this.#n & u4) * this.sign;
+      return Number(this.#n & u3) * this.sign;
     }
     get raw() {
       return this.#n;
@@ -86830,7 +84495,7 @@ var init_float = __esm(() => {
       return this.#t;
     }
     get preferredSize() {
-      return (this.#n & _2) === 0n ? 2 : (this.#n & S4) === 0n ? 4 : 8;
+      return (this.#n & _) === 0n ? 2 : (this.#n & S3) === 0n ? 4 : 8;
     }
     get isShortestEncoding() {
       return this.preferredSize === this.#t;
@@ -86839,10 +84504,10 @@ var init_float = __esm(() => {
       n.write(this.bytes);
     }
     toString(n = 10) {
-      return U4(this, 1, {}, (e) => (m2[n] ?? "") + e.toString(n));
+      return U3(this, 1, {}, (e) => (m[n] ?? "") + e.toString(n));
     }
     [Symbol.for("nodejs.util.inspect.custom")](n, e, r) {
-      return U4(this, n, e, r);
+      return U3(this, n, e, r);
     }
   };
 });
@@ -87140,14 +84805,14 @@ function y2(e2) {
   const n = e2 < 0;
   return typeof e2 == "bigint" ? [n ? -e2 - 1n : e2, n] : [n ? -e2 - 1 : e2, n];
 }
-function N4(e2, n, i) {
+function N3(e2, n, i) {
   if (i.rejectFloats)
     throw new Error(`Attempt to encode an unwanted floating point number: ${e2}`);
   if (isNaN(e2))
-    n.writeUint8(U5), n.writeUint16(32256);
+    n.writeUint8(U4), n.writeUint16(32256);
   else if (!i.float64 && Math.fround(e2) === e2) {
     const r = Z2(e2);
-    r === null ? (n.writeUint8(h3), n.writeFloat32(e2)) : (n.writeUint8(U5), n.writeUint16(r));
+    r === null ? (n.writeUint8(h2), n.writeFloat32(e2)) : (n.writeUint8(U4), n.writeUint16(r));
   } else
     n.writeUint8(B2), n.writeFloat64(e2);
 }
@@ -87155,12 +84820,12 @@ function a3(e2, n, i) {
   const [r, t] = y2(e2);
   if (t && i)
     throw new TypeError(`Negative size: ${e2}`);
-  i ??= t ? f3.NEG_INT : f3.POS_INT, i <<= 5, r < 24 ? n.writeUint8(i | r) : r <= 255 ? (n.writeUint8(i | I3.ONE), n.writeUint8(r)) : r <= 65535 ? (n.writeUint8(i | I3.TWO), n.writeUint16(r)) : r <= 4294967295 ? (n.writeUint8(i | I3.FOUR), n.writeUint32(r)) : (n.writeUint8(i | I3.EIGHT), n.writeBigUint64(BigInt(r)));
+  i ??= t ? f2.NEG_INT : f2.POS_INT, i <<= 5, r < 24 ? n.writeUint8(i | r) : r <= 255 ? (n.writeUint8(i | I2.ONE), n.writeUint8(r)) : r <= 65535 ? (n.writeUint8(i | I2.TWO), n.writeUint16(r)) : r <= 4294967295 ? (n.writeUint8(i | I2.FOUR), n.writeUint32(r)) : (n.writeUint8(i | I2.EIGHT), n.writeBigUint64(BigInt(r)));
 }
-function m3(e2, n, i) {
-  typeof e2 == "number" ? a3(e2, n, f3.TAG) : typeof e2 == "object" && !i.ignoreOriginalEncoding && (A3.ENCODED in e2) ? n.write(e2[A3.ENCODED]) : e2 <= Number.MAX_SAFE_INTEGER ? a3(Number(e2), n, f3.TAG) : (n.writeUint8(f3.TAG << 5 | I3.EIGHT), n.writeBigUint64(BigInt(e2)));
+function m2(e2, n, i) {
+  typeof e2 == "number" ? a3(e2, n, f2.TAG) : typeof e2 == "object" && !i.ignoreOriginalEncoding && (A2.ENCODED in e2) ? n.write(e2[A2.ENCODED]) : e2 <= Number.MAX_SAFE_INTEGER ? a3(Number(e2), n, f2.TAG) : (n.writeUint8(f2.TAG << 5 | I2.EIGHT), n.writeBigUint64(BigInt(e2)));
 }
-function O4(e2, n, i) {
+function O3(e2, n, i) {
   const [r, t] = y2(e2);
   if (i.collapseBigInts && (!i.largeNegativeAsBigInt || e2 >= -0x8000000000000000n)) {
     if (r <= 0xffffffffn) {
@@ -87168,54 +84833,54 @@ function O4(e2, n, i) {
       return;
     }
     if (r <= 0xffffffffffffffffn) {
-      const l = (t ? f3.NEG_INT : f3.POS_INT) << 5;
-      n.writeUint8(l | I3.EIGHT), n.writeBigUint64(r);
+      const l = (t ? f2.NEG_INT : f2.POS_INT) << 5;
+      n.writeUint8(l | I2.EIGHT), n.writeBigUint64(r);
       return;
     }
   }
   if (i.rejectBigInts)
     throw new Error(`Attempt to encode unwanted bigint: ${e2}`);
-  const o = t ? T3.NEG_BIGINT : T3.POS_BIGINT, c = r.toString(16), s = c.length % 2 ? "0" : "";
-  m3(o, n, i);
+  const o = t ? T2.NEG_BIGINT : T2.POS_BIGINT, c = r.toString(16), s = c.length % 2 ? "0" : "";
+  m2(o, n, i);
   const u = b2(s + c);
-  a3(u.length, n, f3.BYTE_STRING), n.write(u);
+  a3(u.length, n, f2.BYTE_STRING), n.write(u);
 }
 function Z3(e2, n, i) {
-  i.flushToZero && (e2 = k3(e2)), Object.is(e2, -0) ? i.simplifyNegativeZero ? i.avoidInts ? N4(0, n, i) : a3(0, n) : N4(e2, n, i) : !i.avoidInts && Number.isSafeInteger(e2) ? a3(e2, n) : i.reduceUnsafeNumbers && Math.floor(e2) === e2 && e2 >= S3.MIN && e2 <= S3.MAX ? O4(BigInt(e2), n, i) : N4(e2, n, i);
+  i.flushToZero && (e2 = k2(e2)), Object.is(e2, -0) ? i.simplifyNegativeZero ? i.avoidInts ? N3(0, n, i) : a3(0, n) : N3(e2, n, i) : !i.avoidInts && Number.isSafeInteger(e2) ? a3(e2, n) : i.reduceUnsafeNumbers && Math.floor(e2) === e2 && e2 >= S2.MIN && e2 <= S2.MAX ? O3(BigInt(e2), n, i) : N3(e2, n, i);
 }
-function R4(e2, n, i) {
+function R3(e2, n, i) {
   const r = i.stringNormalization ? e2.normalize(i.stringNormalization) : e2;
   if (i.wtf8 && !e2.isWellFormed()) {
-    const t = K3.encode(r);
-    m3(T3.WTF8, n, i), a3(t.length, n, f3.BYTE_STRING), n.write(t);
+    const t = K2.encode(r);
+    m2(T2.WTF8, n, i), a3(t.length, n, f2.BYTE_STRING), n.write(t);
   } else {
-    const t = H2.encode(r);
-    a3(t.length, n, f3.UTF8_STRING), n.write(t);
+    const t = H.encode(r);
+    a3(t.length, n, f2.UTF8_STRING), n.write(t);
   }
 }
 function J(e2, n, i) {
   const r = e2;
-  L2(r, r.length, f3.ARRAY, n, i);
+  L3(r, r.length, f2.ARRAY, n, i);
   for (const t of r)
     g4(t, n, i);
 }
 function V2(e2, n) {
-  a3(e2.length, n, f3.BYTE_STRING), n.write(e2);
+  a3(e2.length, n, f2.BYTE_STRING), n.write(e2);
 }
 function ue(e2, n) {
   return b4.registerEncoder(e2, n);
 }
-function L2(e2, n, i, r, t) {
+function L3(e2, n, i, r, t) {
   const o = s2(e2);
   o && !t.ignoreOriginalEncoding ? r.write(o) : a3(n, r, i);
 }
 function X2(e2, n, i) {
   if (e2 === null) {
-    n.writeUint8(z2);
+    n.writeUint8(z);
     return;
   }
-  if (!i.ignoreOriginalEncoding && A3.ENCODED in e2) {
-    n.write(e2[A3.ENCODED]);
+  if (!i.ignoreOriginalEncoding && A2.ENCODED in e2) {
+    n.write(e2[A2.ENCODED]);
     return;
   }
   const r = e2.constructor;
@@ -87226,29 +84891,29 @@ function X2(e2, n, i) {
       if (c !== undefined) {
         if (!Array.isArray(c) || c.length !== 2)
           throw new Error("Invalid encoder return value");
-        (typeof c[0] == "bigint" || isFinite(Number(c[0]))) && m3(c[0], n, i), g4(c[1], n, i);
+        (typeof c[0] == "bigint" || isFinite(Number(c[0]))) && m2(c[0], n, i), g4(c[1], n, i);
       }
       return;
     }
   }
   if (typeof e2.toCBOR == "function") {
     const o = e2.toCBOR(n, i);
-    o && ((typeof o[0] == "bigint" || isFinite(Number(o[0]))) && m3(o[0], n, i), g4(o[1], n, i));
+    o && ((typeof o[0] == "bigint" || isFinite(Number(o[0]))) && m2(o[0], n, i), g4(o[1], n, i));
     return;
   }
   if (typeof e2.toJSON == "function") {
     g4(e2.toJSON(), n, i);
     return;
   }
-  const t = Object.entries(e2).map((o) => [o[0], o[1], v4(o[0], i)]);
-  i.sortKeys && t.sort(i.sortKeys), L2(e2, t.length, f3.MAP, n, i);
+  const t = Object.entries(e2).map((o) => [o[0], o[1], v3(o[0], i)]);
+  i.sortKeys && t.sort(i.sortKeys), L3(e2, t.length, f2.MAP, n, i);
   for (const [o, c, s] of t)
     n.write(s), g4(c, n, i);
 }
 function Q2(e2, n, i) {
   if (!e2.description || e2 !== Symbol.for(e2.description))
     throw new TypeError(`Private or empty symbol: ${e2.toString()}`);
-  m3(280, n, i), R4(e2.description, n, i);
+  m2(280, n, i), R3(e2.description, n, i);
 }
 function g4(e2, n, i) {
   switch (typeof e2) {
@@ -87256,13 +84921,13 @@ function g4(e2, n, i) {
       Z3(e2, n, i);
       break;
     case "bigint":
-      O4(e2, n, i);
+      O3(e2, n, i);
       break;
     case "string":
-      R4(e2, n, i);
+      R3(e2, n, i);
       break;
     case "boolean":
-      n.writeUint8(e2 ? j2 : q3);
+      n.writeUint8(e2 ? j : q2);
       break;
     case "undefined":
       if (i.rejectUndefined)
@@ -87279,13 +84944,13 @@ function g4(e2, n, i) {
       throw new TypeError(`Unknown type: ${typeof e2}, ${String(e2)}`);
   }
 }
-function v4(e2, n = {}) {
-  const i = { ...k4 };
-  n.dcbor ? Object.assign(i, Y3) : n.cde && Object.assign(i, F4), Object.assign(i, n);
+function v3(e2, n = {}) {
+  const i = { ...k3 };
+  n.dcbor ? Object.assign(i, Y2) : n.cde && Object.assign(i, F3), Object.assign(i, n);
   const r = new e(i);
   return g4(e2, r, i), r.read();
 }
-var ce, U5, h3, B2, j2, q3, $, z2, H2, K3, k4, F4, Y3, b4;
+var ce, U4, h2, B2, j, q2, $, z, H, K2, k3, F3, Y2, b4;
 var init_encoder = __esm(() => {
   init_typeEncoderMap();
   init_constants4();
@@ -87295,19 +84960,19 @@ var init_encoder = __esm(() => {
   init_float();
   init_lib();
   init_utils4();
-  ({ ENCODED: ce } = A3);
-  U5 = f3.SIMPLE_FLOAT << 5 | I3.TWO;
-  h3 = f3.SIMPLE_FLOAT << 5 | I3.FOUR;
-  B2 = f3.SIMPLE_FLOAT << 5 | I3.EIGHT;
-  j2 = f3.SIMPLE_FLOAT << 5 | o2.TRUE;
-  q3 = f3.SIMPLE_FLOAT << 5 | o2.FALSE;
-  $ = f3.SIMPLE_FLOAT << 5 | o2.UNDEFINED;
-  z2 = f3.SIMPLE_FLOAT << 5 | o2.NULL;
-  H2 = new TextEncoder;
-  K3 = new Wtf8Encoder;
-  k4 = { ...e.defaultOptions, avoidInts: false, cde: false, collapseBigInts: true, dateTag: T3.DATE_EPOCH, dcbor: false, float64: false, flushToZero: false, forceEndian: null, ignoreOriginalEncoding: false, largeNegativeAsBigInt: false, reduceUnsafeNumbers: false, rejectBigInts: false, rejectCustomSimples: false, rejectDuplicateKeys: false, rejectFloats: false, rejectUndefined: false, simplifyNegativeZero: false, sortKeys: null, stringNormalization: null, types: null, wtf8: false, ignoreGlobalTags: false };
-  F4 = { cde: true, ignoreOriginalEncoding: true, sortKeys: f6 };
-  Y3 = { ...F4, dcbor: true, largeNegativeAsBigInt: true, reduceUnsafeNumbers: true, rejectCustomSimples: true, rejectDuplicateKeys: true, rejectUndefined: true, simplifyNegativeZero: true, stringNormalization: "NFC" };
+  ({ ENCODED: ce } = A2);
+  U4 = f2.SIMPLE_FLOAT << 5 | I2.TWO;
+  h2 = f2.SIMPLE_FLOAT << 5 | I2.FOUR;
+  B2 = f2.SIMPLE_FLOAT << 5 | I2.EIGHT;
+  j = f2.SIMPLE_FLOAT << 5 | o2.TRUE;
+  q2 = f2.SIMPLE_FLOAT << 5 | o2.FALSE;
+  $ = f2.SIMPLE_FLOAT << 5 | o2.UNDEFINED;
+  z = f2.SIMPLE_FLOAT << 5 | o2.NULL;
+  H = new TextEncoder;
+  K2 = new Wtf8Encoder;
+  k3 = { ...e.defaultOptions, avoidInts: false, cde: false, collapseBigInts: true, dateTag: T2.DATE_EPOCH, dcbor: false, float64: false, flushToZero: false, forceEndian: null, ignoreOriginalEncoding: false, largeNegativeAsBigInt: false, reduceUnsafeNumbers: false, rejectBigInts: false, rejectCustomSimples: false, rejectDuplicateKeys: false, rejectFloats: false, rejectUndefined: false, simplifyNegativeZero: false, sortKeys: null, stringNormalization: null, types: null, wtf8: false, ignoreGlobalTags: false };
+  F3 = { cde: true, ignoreOriginalEncoding: true, sortKeys: f5 };
+  Y2 = { ...F3, dcbor: true, largeNegativeAsBigInt: true, reduceUnsafeNumbers: true, rejectCustomSimples: true, rejectDuplicateKeys: true, rejectUndefined: true, simplifyNegativeZero: true, stringNormalization: "NFC" };
   b4 = new s3;
   b4.registerEncoder(Array, J), b4.registerEncoder(Uint8Array, V2);
 });
@@ -87335,7 +85000,7 @@ var init_simple = __esm(() => {
     toCBOR(e, i) {
       if (i.rejectCustomSimples)
         throw new Error(`Cannot encode non-standard Simple value: ${this.value}`);
-      a3(this.value, e, f3.SIMPLE_FLOAT);
+      a3(this.value, e, f2.SIMPLE_FLOAT);
     }
     toString() {
       return `simple(${this.value})`;
@@ -87350,13 +85015,13 @@ var init_simple = __esm(() => {
 });
 
 // node_modules/cbor2/lib/decodeStream.js
-var p4, y3;
+var p3, y3;
 var init_decodeStream2 = __esm(() => {
   init_constants4();
   init_utils4();
   init_simple();
   init_float();
-  p4 = new TextDecoder("utf8", { fatal: true, ignoreBOM: true });
+  p3 = new TextDecoder("utf8", { fatal: true, ignoreBOM: true });
   y3 = class y3 {
     static defaultOptions = { maxDepth: 1024, encoding: "hex", requirePreferred: false };
     #t;
@@ -87380,7 +85045,7 @@ var init_decodeStream2 = __esm(() => {
       this.#r = new DataView(this.#t.buffer, this.#t.byteOffset, this.#t.byteLength);
     }
     toHere(t2) {
-      return R3(this.#t, t2, this.#e);
+      return R2(this.#t, t2, this.#e);
     }
     *[Symbol.iterator]() {
       if (yield* this.#n(0), this.#e !== this.#t.length)
@@ -87396,28 +85061,28 @@ var init_decodeStream2 = __esm(() => {
       const r = this.#e, c = this.#r.getUint8(this.#e++), i = c >> 5, n = c & 31;
       let e = n, f = false, a = 0;
       switch (n) {
-        case I3.ONE:
-          if (a = 1, e = this.#r.getUint8(this.#e), i === f3.SIMPLE_FLOAT) {
+        case I2.ONE:
+          if (a = 1, e = this.#r.getUint8(this.#e), i === f2.SIMPLE_FLOAT) {
             if (e < 32)
               throw new Error(`Invalid simple encoding in extra byte: ${e}`);
             f = true;
           } else if (this.#i.requirePreferred && e < 24)
             throw new Error(`Unexpectedly long integer encoding (1) for ${e}`);
           break;
-        case I3.TWO:
-          if (a = 2, i === f3.SIMPLE_FLOAT)
-            e = v3(this.#t, this.#e);
+        case I2.TWO:
+          if (a = 2, i === f2.SIMPLE_FLOAT)
+            e = v2(this.#t, this.#e);
           else if (e = this.#r.getUint16(this.#e, false), this.#i.requirePreferred && e <= 255)
             throw new Error(`Unexpectedly long integer encoding (2) for ${e}`);
           break;
-        case I3.FOUR:
-          if (a = 4, i === f3.SIMPLE_FLOAT)
+        case I2.FOUR:
+          if (a = 4, i === f2.SIMPLE_FLOAT)
             e = this.#r.getFloat32(this.#e, false);
           else if (e = this.#r.getUint32(this.#e, false), this.#i.requirePreferred && e <= 65535)
             throw new Error(`Unexpectedly long integer encoding (4) for ${e}`);
           break;
-        case I3.EIGHT: {
-          if (a = 8, i === f3.SIMPLE_FLOAT)
+        case I2.EIGHT: {
+          if (a = 8, i === f2.SIMPLE_FLOAT)
             e = this.#r.getFloat64(this.#e, false);
           else if (e = this.#r.getBigUint64(this.#e, false), e <= Number.MAX_SAFE_INTEGER && (e = Number(e)), this.#i.requirePreferred && e <= 4294967295)
             throw new Error(`Unexpectedly long integer encoding (8) for ${e}`);
@@ -87427,14 +85092,14 @@ var init_decodeStream2 = __esm(() => {
         case 29:
         case 30:
           throw new Error(`Additional info not implemented: ${n}`);
-        case I3.INDEFINITE:
+        case I2.INDEFINITE:
           switch (i) {
-            case f3.POS_INT:
-            case f3.NEG_INT:
-            case f3.TAG:
+            case f2.POS_INT:
+            case f2.NEG_INT:
+            case f2.TAG:
               throw new Error(`Invalid indefinite encoding for MT ${i}`);
-            case f3.SIMPLE_FLOAT:
-              yield [i, n, A3.BREAK, r, 0];
+            case f2.SIMPLE_FLOAT:
+              yield [i, n, A2.BREAK, r, 0];
               return;
           }
           e = 1 / 0;
@@ -87443,19 +85108,19 @@ var init_decodeStream2 = __esm(() => {
           f = true;
       }
       switch (this.#e += a, i) {
-        case f3.POS_INT:
+        case f2.POS_INT:
           yield [i, n, e, r, a];
           break;
-        case f3.NEG_INT:
+        case f2.NEG_INT:
           yield [i, n, typeof e == "bigint" ? -1n - e : -1 - Number(e), r, a];
           break;
-        case f3.BYTE_STRING:
+        case f2.BYTE_STRING:
           e === 1 / 0 ? yield* this.#s(i, t2, r) : yield [i, n, this.#a(e), r, e];
           break;
-        case f3.UTF8_STRING:
-          e === 1 / 0 ? yield* this.#s(i, t2, r) : yield [i, n, p4.decode(this.#a(e)), r, e];
+        case f2.UTF8_STRING:
+          e === 1 / 0 ? yield* this.#s(i, t2, r) : yield [i, n, p3.decode(this.#a(e)), r, e];
           break;
-        case f3.ARRAY:
+        case f2.ARRAY:
           if (e === 1 / 0)
             yield* this.#s(i, t2, r, false);
           else {
@@ -87465,7 +85130,7 @@ var init_decodeStream2 = __esm(() => {
               yield* this.#n(t2 + 1);
           }
           break;
-        case f3.MAP:
+        case f2.MAP:
           if (e === 1 / 0)
             yield* this.#s(i, t2, r, false);
           else {
@@ -87475,10 +85140,10 @@ var init_decodeStream2 = __esm(() => {
               yield* this.#n(t2), yield* this.#n(t2);
           }
           break;
-        case f3.TAG:
+        case f2.TAG:
           yield [i, n, e, r, a], yield* this.#n(t2);
           break;
-        case f3.SIMPLE_FLOAT: {
+        case f2.SIMPLE_FLOAT: {
           const o = e;
           f && (e = t.create(Number(e))), yield [i, n, e, r, o];
           break;
@@ -87486,22 +85151,22 @@ var init_decodeStream2 = __esm(() => {
       }
     }
     #a(t2) {
-      const r = R3(this.#t, this.#e, this.#e += t2);
+      const r = R2(this.#t, this.#e, this.#e += t2);
       if (r.length !== t2)
         throw new Error(`Unexpected end of stream reading ${t2} bytes, got ${r.length}`);
       return r;
     }
     *#s(t2, r, c, i = true) {
-      for (yield [t2, I3.INDEFINITE, 1 / 0, c, 1 / 0];; ) {
+      for (yield [t2, I2.INDEFINITE, 1 / 0, c, 1 / 0];; ) {
         const n = this.#n(r), e = n.next(), [f, a, o] = e.value;
-        if (o === A3.BREAK) {
+        if (o === A2.BREAK) {
           yield e.value, n.next();
           return;
         }
         if (i) {
           if (f !== t2)
             throw new Error(`Unmatched major type.  Expected ${t2}, got ${f}.`);
-          if (a === I3.INDEFINITE)
+          if (a === I2.INDEFINITE)
             throw new Error("New stream started in typed stream");
         }
         yield e.value, yield* n;
@@ -87511,10 +85176,10 @@ var init_decodeStream2 = __esm(() => {
 });
 
 // node_modules/cbor2/lib/container.js
-function F5(h, r) {
+function F4(h, r) {
   return !r.boxed && !r.preferMap && h.every(([i]) => typeof i == "string") ? Object.fromEntries(h) : new Map(h);
 }
-var A6, R5, y4;
+var A5, R4, y4;
 var init_container = __esm(() => {
   init_constants4();
   init_options();
@@ -87526,11 +85191,11 @@ var init_container = __esm(() => {
   init_decodeStream2();
   init_simple();
   init_tag();
-  A6 = new Map([[I3.ZERO, 1], [I3.ONE, 2], [I3.TWO, 3], [I3.FOUR, 5], [I3.EIGHT, 9]]);
-  R5 = new Uint8Array(0);
+  A5 = new Map([[I2.ZERO, 1], [I2.ONE, 2], [I2.TWO, 3], [I2.FOUR, 5], [I2.EIGHT, 9]]);
+  R4 = new Uint8Array(0);
   y4 = class y4 {
-    static defaultDecodeOptions = { ...y3.defaultOptions, ParentType: y4, boxed: false, cde: false, dcbor: false, diagnosticSizes: o4.PREFERRED, collapseBigInts: false, convertUnsafeIntsToFloat: false, createObject: F5, keepNanPayloads: false, pretty: false, preferBigInt: false, preferMap: false, rejectLargeNegatives: false, rejectBigInts: false, rejectDuplicateKeys: false, rejectFloats: false, rejectInts: false, rejectLongLoundNaN: false, rejectLongFloats: false, rejectNegativeZero: false, rejectSimple: false, rejectStreaming: false, rejectStringsNotNormalizedAs: null, rejectSubnormals: false, rejectUndefined: false, rejectUnsafeFloatInts: false, saveOriginal: false, sortKeys: null, tags: null, ignoreGlobalTags: false };
-    static cdeDecodeOptions = { cde: true, rejectStreaming: true, requirePreferred: true, sortKeys: f6 };
+    static defaultDecodeOptions = { ...y3.defaultOptions, ParentType: y4, boxed: false, cde: false, dcbor: false, diagnosticSizes: o4.PREFERRED, collapseBigInts: false, convertUnsafeIntsToFloat: false, createObject: F4, keepNanPayloads: false, pretty: false, preferBigInt: false, preferMap: false, rejectLargeNegatives: false, rejectBigInts: false, rejectDuplicateKeys: false, rejectFloats: false, rejectInts: false, rejectLongLoundNaN: false, rejectLongFloats: false, rejectNegativeZero: false, rejectSimple: false, rejectStreaming: false, rejectStringsNotNormalizedAs: null, rejectSubnormals: false, rejectUndefined: false, rejectUnsafeFloatInts: false, saveOriginal: false, sortKeys: null, tags: null, ignoreGlobalTags: false };
+    static cdeDecodeOptions = { cde: true, rejectStreaming: true, requirePreferred: true, sortKeys: f5 };
     static dcborDecodeOptions = { ...this.cdeDecodeOptions, dcbor: true, convertUnsafeIntsToFloat: true, rejectDuplicateKeys: true, rejectLargeNegatives: true, rejectLongLoundNaN: true, rejectLongFloats: true, rejectNegativeZero: true, rejectSimple: true, rejectUndefined: true, rejectUnsafeFloatInts: true, rejectStringsNotNormalizedAs: "NFC" };
     parent;
     mt;
@@ -87543,7 +85208,7 @@ var init_container = __esm(() => {
     #e;
     #t = null;
     constructor(r, i, e, t) {
-      if ([this.mt, this.ai, , this.offset] = r, this.left = i, this.parent = e, this.#e = t, e && (this.depth = e.depth + 1), this.mt === f3.MAP && (this.#e.sortKeys || this.#e.rejectDuplicateKeys) && (this.#t = []), this.#e.rejectStreaming && this.ai === I3.INDEFINITE)
+      if ([this.mt, this.ai, , this.offset] = r, this.left = i, this.parent = e, this.#e = t, e && (this.depth = e.depth + 1), this.mt === f2.MAP && (this.#e.sortKeys || this.#e.rejectDuplicateKeys) && (this.#t = []), this.#e.rejectStreaming && this.ai === I2.INDEFINITE)
         throw new Error("Streaming not supported");
     }
     get isStreaming() {
@@ -87555,17 +85220,17 @@ var init_container = __esm(() => {
     static create(r, i, e, t2) {
       const [s, u, n, c] = r;
       switch (s) {
-        case f3.POS_INT:
-        case f3.NEG_INT: {
+        case f2.POS_INT:
+        case f2.NEG_INT: {
           if (e.rejectInts)
             throw new Error(`Unexpected integer: ${n}`);
           if (e.rejectLargeNegatives && n < -0x8000000000000000n)
             throw new Error(`Invalid 65bit negative number: ${n}`);
           let o = n;
-          return e.preferBigInt ? o = BigInt(o) : e.convertUnsafeIntsToFloat && o >= S3.MIN && o <= S3.MAX && (o = Number(n)), e.boxed ? d2(o, t2.toHere(c)) : o;
+          return e.preferBigInt ? o = BigInt(o) : e.convertUnsafeIntsToFloat && o >= S2.MIN && o <= S2.MAX && (o = Number(n)), e.boxed ? d(o, t2.toHere(c)) : o;
         }
-        case f3.SIMPLE_FLOAT:
-          if (u > I3.ONE) {
+        case f2.SIMPLE_FLOAT:
+          if (u > I2.ONE) {
             if (typeof n == "symbol")
               return n;
             if (e.rejectFloats)
@@ -87573,10 +85238,10 @@ var init_container = __esm(() => {
             if (e.rejectNegativeZero && Object.is(n, -0))
               throw new Error("Decoding negative zero");
             if (isNaN(n)) {
-              const o = t2.toHere(c), f = new O3(o);
+              const o = t2.toHere(c), f = new O2(o);
               if (e.rejectLongLoundNaN) {
                 if (f.payload || o.length > 3)
-                  throw new Error(`Invalid NaN encoding: "${A4(o)}"`);
+                  throw new Error(`Invalid NaN encoding: "${A3(o)}"`);
               } else if (e.keepNanPayloads && (f.payload || f.sign === -1)) {
                 if (e.rejectLongFloats && !f.isShortestEncoding)
                   throw new Error(`NaN should have been encoded shorter: ${n}`);
@@ -87584,14 +85249,14 @@ var init_container = __esm(() => {
               }
             }
             if (e.rejectSubnormals && B(t2.toHere(c + 1)), e.rejectLongFloats) {
-              const o = v4(n, { chunkSize: 9, reduceUnsafeNumbers: e.rejectUnsafeFloatInts });
+              const o = v3(n, { chunkSize: 9, reduceUnsafeNumbers: e.rejectUnsafeFloatInts });
               if (o[0] >> 5 !== s)
                 throw new Error(`Should have been encoded as int, not float: ${n}`);
-              if (o.length < A6.get(u))
+              if (o.length < A5.get(u))
                 throw new Error(`Number should have been encoded shorter: ${n}`);
             }
             if (typeof n == "number" && e.boxed)
-              return d2(n, t2.toHere(c));
+              return d(n, t2.toHere(c));
           } else {
             if (e.rejectSimple && n instanceof t)
               throw new Error(`Invalid simple value: ${n}`);
@@ -87599,21 +85264,21 @@ var init_container = __esm(() => {
               throw new Error("Unexpected undefined");
           }
           return n;
-        case f3.BYTE_STRING:
-        case f3.UTF8_STRING:
+        case f2.BYTE_STRING:
+        case f2.UTF8_STRING:
           if (n === 1 / 0)
             return new e.ParentType(r, 1 / 0, i, e);
           if (e.rejectStringsNotNormalizedAs && typeof n == "string") {
             const o = n.normalize(e.rejectStringsNotNormalizedAs);
             if (n !== o)
-              throw new Error(`String not normalized as "${e.rejectStringsNotNormalizedAs}", got [${U3(n)}] instead of [${U3(o)}]`);
+              throw new Error(`String not normalized as "${e.rejectStringsNotNormalizedAs}", got [${U2(n)}] instead of [${U2(o)}]`);
           }
-          return e.boxed ? d2(n, t2.toHere(c)) : n;
-        case f3.ARRAY:
+          return e.boxed ? d(n, t2.toHere(c)) : n;
+        case f2.ARRAY:
           return new e.ParentType(r, n, i, e);
-        case f3.MAP:
+        case f2.MAP:
           return new e.ParentType(r, n * 2, i, e);
-        case f3.TAG: {
+        case f2.TAG: {
           const o = new e.ParentType(r, 1, i, e);
           return o.children = new o3(n), o;
         }
@@ -87621,11 +85286,11 @@ var init_container = __esm(() => {
       throw new TypeError(`Invalid major type: ${s}`);
     }
     static decodeToEncodeOpts(r) {
-      return { ...k4, avoidInts: r.rejectInts, float64: !r.rejectLongFloats, flushToZero: r.rejectSubnormals, largeNegativeAsBigInt: r.rejectLargeNegatives, sortKeys: r.sortKeys };
+      return { ...k3, avoidInts: r.rejectInts, float64: !r.rejectLongFloats, flushToZero: r.rejectSubnormals, largeNegativeAsBigInt: r.rejectLargeNegatives, sortKeys: r.sortKeys };
     }
     push(r, i, e) {
       if (this.children.push(r), this.#t) {
-        const t = f4(r) || i.toHere(e);
+        const t = f3(r) || i.toHere(e);
         this.#t.push(t);
       }
       return --this.left;
@@ -87633,7 +85298,7 @@ var init_container = __esm(() => {
     replaceLast(r, i, e) {
       let t, s = -1 / 0;
       if (this.children instanceof o3 ? (s = 0, t = this.children.contents, this.children.contents = r) : (s = this.children.length - 1, t = this.children[s], this.children[s] = r), this.#t) {
-        const u = f4(r) || e.toHere(i.offset);
+        const u = f3(r) || e.toHere(i.offset);
         this.#t[s] = u;
       }
       return t;
@@ -87641,10 +85306,10 @@ var init_container = __esm(() => {
     convert(r) {
       let i;
       switch (this.mt) {
-        case f3.ARRAY:
+        case f2.ARRAY:
           i = this.children;
           break;
-        case f3.MAP: {
+        case f2.MAP: {
           const e = this.#r();
           if (this.#e.sortKeys) {
             let t;
@@ -87656,7 +85321,7 @@ var init_container = __esm(() => {
           } else if (this.#e.rejectDuplicateKeys) {
             const t = new Set;
             for (const [s, u, n] of e) {
-              const c = A4(n);
+              const c = A3(n);
               if (t.has(c))
                 throw new Error(`Duplicate key: "0x${c}"`);
               t.add(c);
@@ -87665,20 +85330,20 @@ var init_container = __esm(() => {
           i = this.#e.createObject(e, this.#e);
           break;
         }
-        case f3.BYTE_STRING:
-          return d3(this.children);
-        case f3.UTF8_STRING: {
+        case f2.BYTE_STRING:
+          return d2(this.children);
+        case f2.UTF8_STRING: {
           const e = this.children.join("");
-          i = this.#e.boxed ? d2(e, r.toHere(this.offset)) : e;
+          i = this.#e.boxed ? d(e, r.toHere(this.offset)) : e;
           break;
         }
-        case f3.TAG:
+        case f2.TAG:
           i = this.children.decode(this.#e);
           break;
         default:
           throw new TypeError(`Invalid mt on convert: ${this.mt}`);
       }
-      return this.#e.saveOriginal && i && typeof i == "object" && u3(i, r.toHere(this.offset)), i;
+      return this.#e.saveOriginal && i && typeof i == "object" && u2(i, r.toHere(this.offset)), i;
     }
     #r() {
       const r = this.children, i = r.length;
@@ -87690,7 +85355,7 @@ var init_container = __esm(() => {
           e[t >> 1] = [r[t], r[t + 1], this.#t[t]];
       else
         for (let t = 0;t < i; t += 2)
-          e[t >> 1] = [r[t], r[t + 1], R5];
+          e[t >> 1] = [r[t], r[t + 1], R4];
       return e;
     }
   };
@@ -87699,7 +85364,7 @@ var init_container = __esm(() => {
 // node_modules/cbor2/lib/diagnostic.js
 function a4(m, l, n, p) {
   let t = "";
-  if (l === I3.INDEFINITE)
+  if (l === I2.INDEFINITE)
     t += "_";
   else {
     if (p.diagnosticSizes === o4.NEVER)
@@ -87707,65 +85372,65 @@ function a4(m, l, n, p) {
     {
       let r = p.diagnosticSizes === o4.ALWAYS;
       if (!r) {
-        let e = I3.ZERO;
+        let e = I2.ZERO;
         if (Object.is(n, -0))
-          e = I3.TWO;
-        else if (m === f3.POS_INT || m === f3.NEG_INT) {
+          e = I2.TWO;
+        else if (m === f2.POS_INT || m === f2.NEG_INT) {
           const T = n < 0, u = typeof n == "bigint" ? 1n : 1, o = T ? -n - u : n;
-          o <= 23 ? e = Number(o) : o <= 255 ? e = I3.ONE : o <= 65535 ? e = I3.TWO : o <= 4294967295 ? e = I3.FOUR : e = I3.EIGHT;
+          o <= 23 ? e = Number(o) : o <= 255 ? e = I2.ONE : o <= 65535 ? e = I2.TWO : o <= 4294967295 ? e = I2.FOUR : e = I2.EIGHT;
         } else
-          isFinite(n) ? Math.fround(n) === n ? Z2(n) == null ? e = I3.FOUR : e = I3.TWO : e = I3.EIGHT : e = I3.TWO;
+          isFinite(n) ? Math.fround(n) === n ? Z2(n) == null ? e = I2.FOUR : e = I2.TWO : e = I2.EIGHT : e = I2.TWO;
         r = e !== l;
       }
-      r && (t += "_", l < I3.ONE ? t += "i" : t += String(l - 24));
+      r && (t += "_", l < I2.ONE ? t += "i" : t += String(l - 24));
     }
   }
   return t;
 }
-function M3(m, l) {
+function M2(m, l) {
   const n = { ...y4.defaultDecodeOptions, ...l, ParentType: g5 }, p = new y3(m, n);
   let t2, r, e = "";
   for (const T of p) {
     const [u, o, i] = T;
-    switch (t2 && (t2.count > 0 && i !== A3.BREAK && (t2.mt === f3.MAP && t2.count % 2 ? e += ": " : (e += ",", n.pretty || (e += " "))), n.pretty && (t2.mt !== f3.MAP || t2.count % 2 === 0) && (e += `
-${O5.repeat(t2.depth + 1)}`)), r = y4.create(T, t2, n, p), u) {
-      case f3.POS_INT:
-      case f3.NEG_INT:
+    switch (t2 && (t2.count > 0 && i !== A2.BREAK && (t2.mt === f2.MAP && t2.count % 2 ? e += ": " : (e += ",", n.pretty || (e += " "))), n.pretty && (t2.mt !== f2.MAP || t2.count % 2 === 0) && (e += `
+${O4.repeat(t2.depth + 1)}`)), r = y4.create(T, t2, n, p), u) {
+      case f2.POS_INT:
+      case f2.NEG_INT:
         e += String(i), e += a4(u, o, i, n);
         break;
-      case f3.SIMPLE_FLOAT:
-        if (i !== A3.BREAK)
+      case f2.SIMPLE_FLOAT:
+        if (i !== A2.BREAK)
           if (typeof i == "number") {
             const c = Object.is(i, -0) ? "-0.0" : String(i);
             e += c, isFinite(i) && !/[.e]/.test(c) && (e += ".0"), e += a4(u, o, i, n);
           } else
-            i instanceof t ? (e += "simple(", e += String(i.value), e += a4(f3.POS_INT, o, i.value, n), e += ")") : e += String(i);
+            i instanceof t ? (e += "simple(", e += String(i.value), e += a4(f2.POS_INT, o, i.value, n), e += ")") : e += String(i);
         break;
-      case f3.BYTE_STRING:
-        i === 1 / 0 ? (e += "(_ ", r.close = ")", r.quote = "'") : (e += "h'", e += A4(i), e += "'", e += a4(f3.POS_INT, o, i.length, n));
+      case f2.BYTE_STRING:
+        i === 1 / 0 ? (e += "(_ ", r.close = ")", r.quote = "'") : (e += "h'", e += A3(i), e += "'", e += a4(f2.POS_INT, o, i.length, n));
         break;
-      case f3.UTF8_STRING:
-        i === 1 / 0 ? (e += "(_ ", r.close = ")") : (e += JSON.stringify(i), e += a4(f3.POS_INT, o, y5.encode(i).length, n));
+      case f2.UTF8_STRING:
+        i === 1 / 0 ? (e += "(_ ", r.close = ")") : (e += JSON.stringify(i), e += a4(f2.POS_INT, o, y5.encode(i).length, n));
         break;
-      case f3.ARRAY: {
+      case f2.ARRAY: {
         e += "[";
-        const c = a4(f3.POS_INT, o, i, n);
+        const c = a4(f2.POS_INT, o, i, n);
         e += c, c && (e += " "), n.pretty && i ? r.close = `
-${O5.repeat(r.depth)}]` : r.close = "]";
+${O4.repeat(r.depth)}]` : r.close = "]";
         break;
       }
-      case f3.MAP: {
+      case f2.MAP: {
         e += "{";
-        const c = a4(f3.POS_INT, o, i, n);
+        const c = a4(f2.POS_INT, o, i, n);
         e += c, c && (e += " "), n.pretty && i ? r.close = `
-${O5.repeat(r.depth)}}` : r.close = "}";
+${O4.repeat(r.depth)}}` : r.close = "}";
         break;
       }
-      case f3.TAG:
-        e += String(i), e += a4(f3.POS_INT, o, i, n), e += "(", r.close = ")";
+      case f2.TAG:
+        e += String(i), e += a4(f2.POS_INT, o, i, n), e += "(", r.close = ")";
         break;
     }
-    if (r === A3.BREAK)
+    if (r === A2.BREAK)
       if (t2?.isStreaming)
         t2.left = 0;
       else
@@ -87776,7 +85441,7 @@ ${O5.repeat(r.depth)}}` : r.close = "}";
       if (t2.isEmptyStream)
         e = e.slice(0, -3), e += `${t2.quote}${t2.quote}_`;
       else {
-        if (t2.mt === f3.MAP && t2.count % 2 !== 0)
+        if (t2.mt === f2.MAP && t2.count % 2 !== 0)
           throw new Error(`Odd streaming map size: ${t2.count}`);
         e += t2.close;
       }
@@ -87785,7 +85450,7 @@ ${O5.repeat(r.depth)}}` : r.close = "}";
   }
   return e;
 }
-var O5 = "  ", y5, g5;
+var O4 = "  ", y5, g5;
 var init_diagnostic = __esm(() => {
   init_options();
   init_constants4();
@@ -87799,66 +85464,66 @@ var init_diagnostic = __esm(() => {
     close = "";
     quote = '"';
     get isEmptyStream() {
-      return (this.mt === f3.UTF8_STRING || this.mt === f3.BYTE_STRING) && this.count === 0;
+      return (this.mt === f2.UTF8_STRING || this.mt === f2.BYTE_STRING) && this.count === 0;
     }
   };
 });
 
 // node_modules/cbor2/lib/comment.js
-function k5(t) {
-  return t instanceof A7;
+function k4(t) {
+  return t instanceof A6;
 }
-function O6(t, a) {
+function O5(t, a) {
   return t === 1 / 0 ? "Indefinite" : a ? `${t} ${a}${t !== 1 && t !== 1n ? "s" : ""}` : String(t);
 }
 function y6(t) {
   return "".padStart(t, " ");
 }
-function x4(t2, a, f) {
+function x3(t2, a, f) {
   let e = "";
   e += y6(t2.depth * 2);
-  const n = f4(t2);
-  e += A4(n.subarray(0, 1));
+  const n = f3(t2);
+  e += A3(n.subarray(0, 1));
   const r = t2.numBytes();
-  r && (e += " ", e += A4(n.subarray(1, r + 1))), e = e.padEnd(a.minCol + 1, " "), e += "-- ", f !== undefined && (e += y6(t2.depth * 2), f !== "" && (e += `[${f}] `));
+  r && (e += " ", e += A3(n.subarray(1, r + 1))), e = e.padEnd(a.minCol + 1, " "), e += "-- ", f !== undefined && (e += y6(t2.depth * 2), f !== "" && (e += `[${f}] `));
   let p = false;
   const [s] = t2.children;
   switch (t2.mt) {
-    case f3.POS_INT:
+    case f2.POS_INT:
       e += `Unsigned: ${s}`, typeof s == "bigint" && (e += "n");
       break;
-    case f3.NEG_INT:
+    case f2.NEG_INT:
       e += `Negative: ${s}`, typeof s == "bigint" && (e += "n");
       break;
-    case f3.BYTE_STRING:
-      e += `Bytes (Length: ${O6(t2.length)})`;
+    case f2.BYTE_STRING:
+      e += `Bytes (Length: ${O5(t2.length)})`;
       break;
-    case f3.UTF8_STRING:
-      e += `UTF8 (Length: ${O6(t2.length)})`, t2.length !== 1 / 0 && (e += `: ${JSON.stringify(s)}`);
+    case f2.UTF8_STRING:
+      e += `UTF8 (Length: ${O5(t2.length)})`, t2.length !== 1 / 0 && (e += `: ${JSON.stringify(s)}`);
       break;
-    case f3.ARRAY:
-      e += `Array (Length: ${O6(t2.value, "item")})`;
+    case f2.ARRAY:
+      e += `Array (Length: ${O5(t2.value, "item")})`;
       break;
-    case f3.MAP:
-      e += `Map (Length: ${O6(t2.value, "pair")})`;
+    case f2.MAP:
+      e += `Map (Length: ${O5(t2.value, "pair")})`;
       break;
-    case f3.TAG: {
+    case f2.TAG: {
       e += `Tag #${t2.value}`;
       const o = t2.children, [m] = o.contents.children, i = new o3(o.tag, m);
-      u3(i, n);
+      u2(i, n);
       const l = i.comment(a, t2.depth);
       l && (e += ": ", e += l), p ||= i.noChildren;
       break;
     }
-    case f3.SIMPLE_FLOAT:
-      s === A3.BREAK ? e += "BREAK" : t2.ai > I3.ONE ? Object.is(s, -0) ? e += "Float: -0" : e += `Float: ${s}` : (e += "Simple: ", s instanceof t ? e += s.value : e += s);
+    case f2.SIMPLE_FLOAT:
+      s === A2.BREAK ? e += "BREAK" : t2.ai > I2.ONE ? Object.is(s, -0) ? e += "Float: -0" : e += `Float: ${s}` : (e += "Simple: ", s instanceof t ? e += s.value : e += s);
       break;
   }
   if (!p)
     if (t2.leaf) {
       if (e += `
 `, n.length > r + 1) {
-        const o = y6((t2.depth + 1) * 2), m = f5(n);
+        const o = y6((t2.depth + 1) * 2), m = f4(n);
         if (m?.length) {
           m.sort((l, c) => {
             const g = l[0] - c[0];
@@ -87869,27 +85534,27 @@ function x4(t2, a, f) {
             if (!(l < i)) {
               if (i = l + c, g === "<<") {
                 e += y6(a.minCol + 1), e += "--", e += o, e += "<< ";
-                const d = R3(n, l, l + c), h = f5(d);
+                const d = R2(n, l, l + c), h = f4(d);
                 if (h) {
                   const $ = h.findIndex(([w, D, v]) => w === 0 && D === c && v === "<<");
                   $ >= 0 && h.splice($, 1);
                 }
-                e += M3(d), e += ` >>
-`, e += L3(d, { initialDepth: t2.depth + 1, minCol: a.minCol, noPrefixHex: true });
+                e += M2(d), e += ` >>
+`, e += L4(d, { initialDepth: t2.depth + 1, minCol: a.minCol, noPrefixHex: true });
                 continue;
               } else
-                g === "'" && (e += y6(a.minCol + 1), e += "--", e += o, e += "'", e += H3.decode(n.subarray(l, l + c)), e += `'
+                g === "'" && (e += y6(a.minCol + 1), e += "--", e += o, e += "'", e += H2.decode(n.subarray(l, l + c)), e += `'
 `);
               if (l > r)
                 for (let d = l;d < l + c; d += 8) {
                   const h = Math.min(d + 8, l + c);
-                  e += o, e += A4(n.subarray(d, h)), e += `
+                  e += o, e += A3(n.subarray(d, h)), e += `
 `;
                 }
             }
         } else
           for (let i = r + 1;i < n.length; i += 8)
-            e += o, e += A4(n.subarray(i, i + 8)), e += `
+            e += o, e += A3(n.subarray(i, i + 8)), e += `
 `;
       }
     } else {
@@ -87897,39 +85562,39 @@ function x4(t2, a, f) {
 `;
       let o = 0;
       for (const m of t2.children) {
-        if (k5(m)) {
+        if (k4(m)) {
           let i = String(o);
-          t2.mt === f3.MAP ? i = o % 2 ? `val ${(o - 1) / 2}` : `key ${o / 2}` : t2.mt === f3.TAG && (i = ""), e += x4(m, a, i);
+          t2.mt === f2.MAP ? i = o % 2 ? `val ${(o - 1) / 2}` : `key ${o / 2}` : t2.mt === f2.TAG && (i = ""), e += x3(m, a, i);
         }
         o++;
       }
     }
   return e;
 }
-function L3(t, a) {
-  const f = { ...q4, ...a, ParentType: A7, saveOriginal: true }, e = new y3(t, f);
+function L4(t, a) {
+  const f = { ...q3, ...a, ParentType: A6, saveOriginal: true }, e = new y3(t, f);
   let n, r;
   for (const s of e) {
-    if (r = y4.create(s, n, f, e), s[2] === A3.BREAK)
+    if (r = y4.create(s, n, f, e), s[2] === A2.BREAK)
       if (n?.isStreaming)
         n.left = 1;
       else
         throw new Error("Unexpected BREAK");
-    if (!k5(r)) {
-      const i = new A7(s, 0, n, f);
-      i.leaf = true, i.children.push(r), u3(i, e.toHere(s[3])), r = i;
+    if (!k4(r)) {
+      const i = new A6(s, 0, n, f);
+      i.leaf = true, i.children.push(r), u2(i, e.toHere(s[3])), r = i;
     }
     let o = (r.depth + 1) * 2;
     const m = r.numBytes();
     for (m && (o += 1, o += m * 2), f.minCol = Math.max(f.minCol, o), n && n.push(r, e, s[3]), n = r;n?.done; )
-      r = n, r.leaf || u3(r, e.toHere(r.offset)), { parent: n } = n;
+      r = n, r.leaf || u2(r, e.toHere(r.offset)), { parent: n } = n;
   }
   a && (a.minCol = f.minCol);
-  let p = f.noPrefixHex ? "" : `0x${A4(e.toHere(0))}
+  let p = f.noPrefixHex ? "" : `0x${A3(e.toHere(0))}
 `;
-  return p += x4(r, f), p;
+  return p += x3(r, f), p;
 }
-var H3, A7, q4;
+var H2, A6, q3;
 var init_comment = __esm(() => {
   init_constants4();
   init_box();
@@ -87939,82 +85604,82 @@ var init_comment = __esm(() => {
   init_simple();
   init_tag();
   init_diagnostic();
-  H3 = new TextDecoder;
-  A7 = class A7 extends y4 {
+  H2 = new TextDecoder;
+  A6 = class A6 extends y4 {
     depth = 0;
     leaf = false;
     value;
     length;
-    [A3.ENCODED];
+    [A2.ENCODED];
     constructor(a, f, e, n) {
       super(a, f, e, n), this.parent ? this.depth = this.parent.depth + 1 : this.depth = n.initialDepth, [, , this.value, , this.length] = a;
     }
     numBytes() {
       switch (this.ai) {
-        case I3.ONE:
+        case I2.ONE:
           return 1;
-        case I3.TWO:
+        case I2.TWO:
           return 2;
-        case I3.FOUR:
+        case I2.FOUR:
           return 4;
-        case I3.EIGHT:
+        case I2.EIGHT:
           return 8;
       }
       return 0;
     }
   };
-  q4 = { ...y4.defaultDecodeOptions, initialDepth: 0, noPrefixHex: false, minCol: 0 };
+  q3 = { ...y4.defaultDecodeOptions, initialDepth: 0, noPrefixHex: false, minCol: 0 };
 });
 
 // node_modules/cbor2/lib/types.js
-function I5(e) {
+function I4(e) {
   if (typeof e == "object" && e) {
     if (e.constructor !== Number)
       throw new Error(`Expected number: ${e}`);
   } else if (typeof e != "number")
     throw new Error(`Expected number: ${e}`);
 }
-function f8(e) {
+function f7(e) {
   if (typeof e == "object" && e) {
     if (e.constructor !== String)
       throw new Error(`Expected string: ${e}`);
   } else if (typeof e != "string")
     throw new Error(`Expected string: ${e}`);
 }
-function E4(e) {
+function E3(e) {
   if (!(e instanceof Uint8Array))
     throw new Error(`Expected Uint8Array: ${e}`);
 }
-function _3(e) {
+function _2(e) {
   if (!Array.isArray(e))
     throw new Error(`Expected Array: ${e}`);
 }
-function w3(e) {
-  return f8(e.contents), new Date(e.contents);
+function w2(e) {
+  return f7(e.contents), new Date(e.contents);
 }
-function N5(e) {
-  return I5(e.contents), new Date(e.contents * 1000);
+function N4(e) {
+  return I4(e.contents), new Date(e.contents * 1000);
 }
 function $2(e) {
-  return I5(e.contents), new Date(e.contents * S5);
+  return I4(e.contents), new Date(e.contents * S4);
 }
-function m4(e, r, n) {
-  if (E4(r.contents), n.rejectBigInts)
-    throw new Error(`Decoding unwanted big integer: ${r}(h'${A4(r.contents)}')`);
+function m3(e, r, n) {
+  if (E3(r.contents), n.rejectBigInts)
+    throw new Error(`Decoding unwanted big integer: ${r}(h'${A3(r.contents)}')`);
   if (n.requirePreferred && r.contents[0] === 0)
-    throw new Error(`Decoding overly-large bigint: ${r.tag}(h'${A4(r.contents)})`);
+    throw new Error(`Decoding overly-large bigint: ${r.tag}(h'${A3(r.contents)})`);
   let i = r.contents.reduce((d, u) => d << 8n | BigInt(u), 0n);
   e && (i = -1n - i);
   const a = i >= Number.MIN_SAFE_INTEGER && i <= Number.MAX_SAFE_INTEGER;
   if (n.requirePreferred && a)
     throw new Error(`Decoding bigint that could have been int: ${i}n`);
-  return n.collapseBigInts && a && (i = Number(i)), n.boxed ? d2(i, r.contents) : i;
+  return n.collapseBigInts && a && (i = Number(i)), n.boxed ? d(i, r.contents) : i;
 }
-function R6(e, r) {
-  return E4(e.contents), e;
+function R5(e, r) {
+  return E3(e.contents), e;
 }
-function c4(e, r, n) {
-  E4(e.contents);
+function c3(e, r, n) {
+  E3(e.contents);
   let i = e.contents.length;
   if (i % r.BYTES_PER_ELEMENT !== 0)
     throw new Error(`Number of bytes must be divisible by ${r.BYTES_PER_ELEMENT}, got: ${i}`);
@@ -88025,8 +85690,8 @@ function c4(e, r, n) {
   return a;
 }
 function l3(e, r, n, i, a) {
-  const d = a.forceEndian ?? U6;
-  if (m3(d ? r : n, e, a), a3(i.byteLength, e, f3.BYTE_STRING), U6 === d)
+  const d = a.forceEndian ?? U5;
+  if (m2(d ? r : n, e, a), a3(i.byteLength, e, f2.BYTE_STRING), U5 === d)
     e.write(new Uint8Array(i.buffer, i.byteOffset, i.byteLength));
   else {
     const g = `write${i.constructor.name.replace(/Array/, "")}`, y = e[g].bind(e);
@@ -88034,17 +85699,17 @@ function l3(e, r, n, i, a) {
       y(D, d);
   }
 }
-function C3(e) {
-  return E4(e.contents), new Wtf8Decoder().decode(e.contents);
+function C2(e) {
+  return E3(e.contents), new Wtf8Decoder().decode(e.contents);
 }
-function h4(e) {
+function h3(e) {
   throw new Error(`Encoding ${e.constructor.name} intentionally unimplmented.  It is not concrete enough to interoperate.  Convert to Uint8Array first.`);
 }
-function p5(e) {
+function p4(e) {
   return [NaN, e.valueOf()];
 }
-var U6, S5, L4, x5;
-var init_types6 = __esm(() => {
+var U5, S4, L5, x4;
+var init_types5 = __esm(() => {
   init_constants4();
   init_box();
   init_utils4();
@@ -88053,75 +85718,75 @@ var init_types6 = __esm(() => {
   init_tag();
   init_lib();
   init_comment();
-  U6 = !h2();
+  U5 = !h();
   ue(Map, (e, r, n) => {
-    const i = [...e.entries()].map((a) => [a[0], a[1], v4(a[0], n)]);
+    const i = [...e.entries()].map((a) => [a[0], a[1], v3(a[0], n)]);
     if (n.rejectDuplicateKeys) {
       const a = new Set;
       for (const [d, u, g] of i) {
-        const y = A4(g);
+        const y = A3(g);
         if (a.has(y))
           throw new Error(`Duplicate map key: 0x${y}`);
         a.add(y);
       }
     }
-    n.sortKeys && i.sort(n.sortKeys), L2(e, e.size, f3.MAP, r, n);
+    n.sortKeys && i.sort(n.sortKeys), L3(e, e.size, f2.MAP, r, n);
     for (const [a, d, u] of i)
       r.write(u), g4(d, r, n);
   });
-  w3.comment = (e) => {
-    f8(e.contents);
+  w2.comment = (e) => {
+    f7(e.contents);
     const r = new Date(e.contents);
-    return `(String ${e.tag === T3.DATE_FULL ? "Full " : ""}Date) ${r.toISOString()}`;
-  }, o3.registerDecoder(T3.DATE_STRING, w3), o3.registerDecoder(T3.DATE_FULL, w3);
-  N5.comment = (e) => (I5(e.contents), `(Epoch Date) ${new Date(e.contents * 1000).toISOString()}`), o3.registerDecoder(T3.DATE_EPOCH, N5);
-  S5 = 1000 * 60 * 60 * 24;
-  $2.comment = (e) => (I5(e.contents), `(Epoch Date) ${new Date(e.contents * S5).toISOString()}`), o3.registerDecoder(T3.DATE_EPOCH_DAYS, $2), ue(Date, (e, r, n) => {
+    return `(String ${e.tag === T2.DATE_FULL ? "Full " : ""}Date) ${r.toISOString()}`;
+  }, o3.registerDecoder(T2.DATE_STRING, w2), o3.registerDecoder(T2.DATE_FULL, w2);
+  N4.comment = (e) => (I4(e.contents), `(Epoch Date) ${new Date(e.contents * 1000).toISOString()}`), o3.registerDecoder(T2.DATE_EPOCH, N4);
+  S4 = 1000 * 60 * 60 * 24;
+  $2.comment = (e) => (I4(e.contents), `(Epoch Date) ${new Date(e.contents * S4).toISOString()}`), o3.registerDecoder(T2.DATE_EPOCH_DAYS, $2), ue(Date, (e, r, n) => {
     switch (n.dateTag) {
-      case T3.DATE_EPOCH:
+      case T2.DATE_EPOCH:
         return [n.dateTag, e.valueOf() / 1000];
-      case T3.DATE_STRING:
+      case T2.DATE_STRING:
         return [n.dateTag, e.toISOString().replace(/\.000Z$/, "Z")];
-      case T3.DATE_EPOCH_DAYS:
-        return [n.dateTag, Math.floor(e.valueOf() / S5)];
-      case T3.DATE_FULL:
+      case T2.DATE_EPOCH_DAYS:
+        return [n.dateTag, Math.floor(e.valueOf() / S4)];
+      case T2.DATE_FULL:
         return [n.dateTag, e.toISOString().split("T")[0]];
       default:
         throw new Error(`Unsupported date tag: ${n.dateTag}`);
     }
   });
-  L4 = m4.bind(null, false);
-  x5 = m4.bind(null, true);
-  L4.comment = (e, r) => `(Positive BigInt) ${m4(false, e, r)}n`, x5.comment = (e, r) => `(Negative BigInt) ${m4(true, e, r)}n`, o3.registerDecoder(T3.POS_BIGINT, L4), o3.registerDecoder(T3.NEG_BIGINT, x5);
-  R6.comment = (e, r, n) => {
-    E4(e.contents);
-    const i = { ...r, initialDepth: n + 2, noPrefixHex: true }, a = f4(e);
+  L5 = m3.bind(null, false);
+  x4 = m3.bind(null, true);
+  L5.comment = (e, r) => `(Positive BigInt) ${m3(false, e, r)}n`, x4.comment = (e, r) => `(Negative BigInt) ${m3(true, e, r)}n`, o3.registerDecoder(T2.POS_BIGINT, L5), o3.registerDecoder(T2.NEG_BIGINT, x4);
+  R5.comment = (e, r, n) => {
+    E3(e.contents);
+    const i = { ...r, initialDepth: n + 2, noPrefixHex: true }, a = f3(e);
     let u = 2 ** ((a[0] & 31) - 24) + 1;
     const g = a[u] & 31;
-    let y = A4(a.subarray(u, ++u));
-    g >= 24 && (y += " ", y += A4(a.subarray(u, u + 2 ** (g - 24)))), i.minCol = Math.max(i.minCol, (n + 1) * 2 + y.length);
-    const D = L3(e.contents, i);
+    let y = A3(a.subarray(u, ++u));
+    g >= 24 && (y += " ", y += A3(a.subarray(u, u + 2 ** (g - 24)))), i.minCol = Math.max(i.minCol, (n + 1) * 2 + y.length);
+    const D = L4(e.contents, i);
     let T = `Embedded CBOR
 `;
     return T += `${"".padStart((n + 1) * 2, " ")}${y}`.padEnd(i.minCol + 1, " "), T += `-- Bytes (Length: ${e.contents.length})
 `, T += D, T;
-  }, R6.noChildren = true, o3.registerDecoder(T3.CBOR, R6), o3.registerDecoder(T3.URI, (e) => (f8(e.contents), new URL(e.contents)), "URI"), ue(URL, (e) => [T3.URI, e.toString()]), o3.registerDecoder(T3.BASE64URL, (e) => (f8(e.contents), x2(e.contents)), "Base64url-encoded"), o3.registerDecoder(T3.BASE64, (e) => (f8(e.contents), y(e.contents)), "Base64-encoded"), o3.registerDecoder(35, (e) => (f8(e.contents), new RegExp(e.contents)), "RegExp"), o3.registerDecoder(21065, (e) => {
-    f8(e.contents);
+  }, R5.noChildren = true, o3.registerDecoder(T2.CBOR, R5), o3.registerDecoder(T2.URI, (e) => (f7(e.contents), new URL(e.contents)), "URI"), ue(URL, (e) => [T2.URI, e.toString()]), o3.registerDecoder(T2.BASE64URL, (e) => (f7(e.contents), x(e.contents)), "Base64url-encoded"), o3.registerDecoder(T2.BASE64, (e) => (f7(e.contents), y(e.contents)), "Base64-encoded"), o3.registerDecoder(35, (e) => (f7(e.contents), new RegExp(e.contents)), "RegExp"), o3.registerDecoder(21065, (e) => {
+    f7(e.contents);
     const r = `^(?:${e.contents})$`;
     return new RegExp(r, "u");
-  }, "I-RegExp"), o3.registerDecoder(T3.REGEXP, (e) => {
-    if (_3(e.contents), e.contents.length < 1 || e.contents.length > 2)
+  }, "I-RegExp"), o3.registerDecoder(T2.REGEXP, (e) => {
+    if (_2(e.contents), e.contents.length < 1 || e.contents.length > 2)
       throw new Error(`Invalid RegExp Array: ${e.contents}`);
     return new RegExp(e.contents[0], e.contents[1]);
-  }, "RegExp"), ue(RegExp, (e) => [T3.REGEXP, [e.source, e.flags]]), o3.registerDecoder(64, (e) => (E4(e.contents), e.contents), "uint8 Typed Array");
-  o3.registerDecoder(65, (e) => c4(e, Uint16Array, false), "uint16, big endian, Typed Array"), o3.registerDecoder(66, (e) => c4(e, Uint32Array, false), "uint32, big endian, Typed Array"), o3.registerDecoder(67, (e) => c4(e, BigUint64Array, false), "uint64, big endian, Typed Array"), o3.registerDecoder(68, (e) => (E4(e.contents), new Uint8ClampedArray(e.contents)), "uint8 Typed Array, clamped arithmetic"), ue(Uint8ClampedArray, (e) => [68, new Uint8Array(e.buffer, e.byteOffset, e.byteLength)]), o3.registerDecoder(69, (e) => c4(e, Uint16Array, true), "uint16, little endian, Typed Array"), ue(Uint16Array, (e, r, n) => l3(r, 69, 65, e, n)), o3.registerDecoder(70, (e) => c4(e, Uint32Array, true), "uint32, little endian, Typed Array"), ue(Uint32Array, (e, r, n) => l3(r, 70, 66, e, n)), o3.registerDecoder(71, (e) => c4(e, BigUint64Array, true), "uint64, little endian, Typed Array"), ue(BigUint64Array, (e, r, n) => l3(r, 71, 67, e, n)), o3.registerDecoder(72, (e) => (E4(e.contents), new Int8Array(e.contents)), "sint8 Typed Array"), ue(Int8Array, (e) => [72, new Uint8Array(e.buffer, e.byteOffset, e.byteLength)]), o3.registerDecoder(73, (e) => c4(e, Int16Array, false), "sint16, big endian, Typed Array"), o3.registerDecoder(74, (e) => c4(e, Int32Array, false), "sint32, big endian, Typed Array"), o3.registerDecoder(75, (e) => c4(e, BigInt64Array, false), "sint64, big endian, Typed Array"), o3.registerDecoder(77, (e) => c4(e, Int16Array, true), "sint16, little endian, Typed Array"), ue(Int16Array, (e, r, n) => l3(r, 77, 73, e, n)), o3.registerDecoder(78, (e) => c4(e, Int32Array, true), "sint32, little endian, Typed Array"), ue(Int32Array, (e, r, n) => l3(r, 78, 74, e, n)), o3.registerDecoder(79, (e) => c4(e, BigInt64Array, true), "sint64, little endian, Typed Array"), ue(BigInt64Array, (e, r, n) => l3(r, 79, 75, e, n)), o3.registerDecoder(81, (e) => c4(e, Float32Array, false), "IEEE 754 binary32, big endian, Typed Array"), o3.registerDecoder(82, (e) => c4(e, Float64Array, false), "IEEE 754 binary64, big endian, Typed Array"), o3.registerDecoder(85, (e) => c4(e, Float32Array, true), "IEEE 754 binary32, little endian, Typed Array"), ue(Float32Array, (e, r, n) => l3(r, 85, 81, e, n)), o3.registerDecoder(86, (e) => c4(e, Float64Array, true), "IEEE 754 binary64, big endian, Typed Array"), ue(Float64Array, (e, r, n) => l3(r, 86, 82, e, n)), o3.registerDecoder(T3.SET, (e, r) => {
-    if (_3(e.contents), r.sortKeys) {
+  }, "RegExp"), ue(RegExp, (e) => [T2.REGEXP, [e.source, e.flags]]), o3.registerDecoder(64, (e) => (E3(e.contents), e.contents), "uint8 Typed Array");
+  o3.registerDecoder(65, (e) => c3(e, Uint16Array, false), "uint16, big endian, Typed Array"), o3.registerDecoder(66, (e) => c3(e, Uint32Array, false), "uint32, big endian, Typed Array"), o3.registerDecoder(67, (e) => c3(e, BigUint64Array, false), "uint64, big endian, Typed Array"), o3.registerDecoder(68, (e) => (E3(e.contents), new Uint8ClampedArray(e.contents)), "uint8 Typed Array, clamped arithmetic"), ue(Uint8ClampedArray, (e) => [68, new Uint8Array(e.buffer, e.byteOffset, e.byteLength)]), o3.registerDecoder(69, (e) => c3(e, Uint16Array, true), "uint16, little endian, Typed Array"), ue(Uint16Array, (e, r, n) => l3(r, 69, 65, e, n)), o3.registerDecoder(70, (e) => c3(e, Uint32Array, true), "uint32, little endian, Typed Array"), ue(Uint32Array, (e, r, n) => l3(r, 70, 66, e, n)), o3.registerDecoder(71, (e) => c3(e, BigUint64Array, true), "uint64, little endian, Typed Array"), ue(BigUint64Array, (e, r, n) => l3(r, 71, 67, e, n)), o3.registerDecoder(72, (e) => (E3(e.contents), new Int8Array(e.contents)), "sint8 Typed Array"), ue(Int8Array, (e) => [72, new Uint8Array(e.buffer, e.byteOffset, e.byteLength)]), o3.registerDecoder(73, (e) => c3(e, Int16Array, false), "sint16, big endian, Typed Array"), o3.registerDecoder(74, (e) => c3(e, Int32Array, false), "sint32, big endian, Typed Array"), o3.registerDecoder(75, (e) => c3(e, BigInt64Array, false), "sint64, big endian, Typed Array"), o3.registerDecoder(77, (e) => c3(e, Int16Array, true), "sint16, little endian, Typed Array"), ue(Int16Array, (e, r, n) => l3(r, 77, 73, e, n)), o3.registerDecoder(78, (e) => c3(e, Int32Array, true), "sint32, little endian, Typed Array"), ue(Int32Array, (e, r, n) => l3(r, 78, 74, e, n)), o3.registerDecoder(79, (e) => c3(e, BigInt64Array, true), "sint64, little endian, Typed Array"), ue(BigInt64Array, (e, r, n) => l3(r, 79, 75, e, n)), o3.registerDecoder(81, (e) => c3(e, Float32Array, false), "IEEE 754 binary32, big endian, Typed Array"), o3.registerDecoder(82, (e) => c3(e, Float64Array, false), "IEEE 754 binary64, big endian, Typed Array"), o3.registerDecoder(85, (e) => c3(e, Float32Array, true), "IEEE 754 binary32, little endian, Typed Array"), ue(Float32Array, (e, r, n) => l3(r, 85, 81, e, n)), o3.registerDecoder(86, (e) => c3(e, Float64Array, true), "IEEE 754 binary64, big endian, Typed Array"), ue(Float64Array, (e, r, n) => l3(r, 86, 82, e, n)), o3.registerDecoder(T2.SET, (e, r) => {
+    if (_2(e.contents), r.sortKeys) {
       const n = y4.decodeToEncodeOpts(r);
       let i = null;
       for (const a of e.contents) {
-        const d = [a, undefined, v4(a, n)];
+        const d = [a, undefined, v3(a, n)];
         if (i && r.sortKeys(i, d) >= 0)
-          throw new Error(`Set items out of order in tag #${T3.SET}`);
+          throw new Error(`Set items out of order in tag #${T2.SET}`);
         i = d;
       }
     }
@@ -88129,34 +85794,34 @@ var init_types6 = __esm(() => {
   }, "Set"), ue(Set, (e, r, n) => {
     let i = [...e];
     if (n.sortKeys) {
-      const a = i.map((d) => [d, undefined, v4(d, n)]);
+      const a = i.map((d) => [d, undefined, v3(d, n)]);
       a.sort(n.sortKeys), i = a.map(([d]) => d);
     }
-    return [T3.SET, i];
-  }), o3.registerDecoder(T3.JSON, (e) => (f8(e.contents), JSON.parse(e.contents)), "JSON-encoded");
-  C3.comment = (e) => {
-    E4(e.contents);
+    return [T2.SET, i];
+  }), o3.registerDecoder(T2.JSON, (e) => (f7(e.contents), JSON.parse(e.contents)), "JSON-encoded");
+  C2.comment = (e) => {
+    E3(e.contents);
     const r = new Wtf8Decoder;
     return `(WTF8 string): ${JSON.stringify(r.decode(e.contents))}`;
-  }, o3.registerDecoder(T3.WTF8, C3), o3.registerDecoder(T3.SELF_DESCRIBED, (e) => e.contents, "Self-Described"), o3.registerDecoder(T3.INVALID_16, () => {
-    throw new Error(`Tag always invalid: ${T3.INVALID_16}`);
-  }, "Invalid"), o3.registerDecoder(T3.INVALID_32, () => {
-    throw new Error(`Tag always invalid: ${T3.INVALID_32}`);
-  }, "Invalid"), o3.registerDecoder(T3.INVALID_64, () => {
-    throw new Error(`Tag always invalid: ${T3.INVALID_64}`);
-  }, "Invalid"), o3.registerDecoder(T3.SYMBOL, (e) => {
+  }, o3.registerDecoder(T2.WTF8, C2), o3.registerDecoder(T2.SELF_DESCRIBED, (e) => e.contents, "Self-Described"), o3.registerDecoder(T2.INVALID_16, () => {
+    throw new Error(`Tag always invalid: ${T2.INVALID_16}`);
+  }, "Invalid"), o3.registerDecoder(T2.INVALID_32, () => {
+    throw new Error(`Tag always invalid: ${T2.INVALID_32}`);
+  }, "Invalid"), o3.registerDecoder(T2.INVALID_64, () => {
+    throw new Error(`Tag always invalid: ${T2.INVALID_64}`);
+  }, "Invalid"), o3.registerDecoder(T2.SYMBOL, (e) => {
     let r = e.contents;
     if (Array.isArray(e.contents)) {
       if (e.contents.length !== 1)
         throw new Error(`Expected Array of size 1: ${e.contents}`);
       [r] = e.contents;
     }
-    if (f8(r), !r.length)
+    if (f7(r), !r.length)
       throw new Error(`Expected non-empty string: ${e.contents}`);
     return Symbol.for(r);
   }, "Symbol");
-  ue(ArrayBuffer, h4), ue(DataView, h4), typeof SharedArrayBuffer < "u" && ue(SharedArrayBuffer, h4);
-  ue(Boolean, p5), ue(Number, p5), ue(String, p5), ue(BigInt, p5);
+  ue(ArrayBuffer, h3), ue(DataView, h3), typeof SharedArrayBuffer < "u" && ue(SharedArrayBuffer, h3);
+  ue(Boolean, p4), ue(Number, p4), ue(String, p4), ue(BigInt, p4);
 });
 
 // node_modules/cbor2/lib/version.js
@@ -88170,9 +85835,9 @@ var init_decoder = __esm(() => {
 });
 
 // node_modules/cbor2/lib/index.js
-var r3, n, d5;
+var r2, n, d4;
 var init_lib2 = __esm(() => {
-  init_types6();
+  init_types5();
   init_version();
   init_container();
   init_options();
@@ -88186,7 +85851,7 @@ var init_lib2 = __esm(() => {
   init_box();
   init_typeEncoderMap();
   init_float();
-  ({ cdeDecodeOptions: r3, dcborDecodeOptions: n, defaultDecodeOptions: d5 } = y4);
+  ({ cdeDecodeOptions: r2, dcborDecodeOptions: n, defaultDecodeOptions: d4 } = y4);
 });
 
 // node_modules/@1sat/templates/dist/shrug/metadata.js
@@ -89737,7 +87402,7 @@ var init_bsocial = __esm(() => {
   init_aip2();
   init_b();
   init_bitcom();
-  init_map2();
+  init_map();
   (function(BSocialActionType) {
     BSocialActionType["POST"] = "post";
     BSocialActionType["LIKE"] = "like";
@@ -90131,7 +87796,7 @@ var init_dist4 = __esm(() => {
   init_aip2();
   init_b();
   init_bap();
-  init_map2();
+  init_map();
   init_bsocial();
   init_sigma();
   init_ordlock();
@@ -90139,7 +87804,7 @@ var init_dist4 = __esm(() => {
   init_aip2();
   init_b();
   init_bap();
-  init_map2();
+  init_map();
   init_sigma();
   init_bsocial();
 });
@@ -91776,7 +89441,7 @@ var init_hasOneSatModule = __esm(() => {
 });
 
 // node_modules/@1sat/actions/dist/pipeline/index.js
-var init_pipeline2 = __esm(() => {
+var init_pipeline = __esm(() => {
   init_spendTargets();
   init_unlockInput();
   init_runPipeline();
@@ -92998,7 +90663,7 @@ var init_backup = __esm(() => {
 
 // node_modules/@1sat/wallet/dist/cwi/types.js
 var CWIEventName, CWI_EVENT_NAMES;
-var init_types7 = __esm(() => {
+var init_types6 = __esm(() => {
   (function(CWIEventName) {
     CWIEventName["LIST_OUTPUTS"] = "listOutputs";
     CWIEventName["LIST_ACTIONS"] = "listActions";
@@ -93064,7 +90729,7 @@ var createCWI = (transport) => ({
   getVersion: (args) => transport(CWIEventName.GET_VERSION, args)
 });
 var init_factory = __esm(() => {
-  init_types7();
+  init_types6();
 });
 
 // node_modules/@1sat/wallet/dist/cwi/event.js
@@ -93134,7 +90799,7 @@ var init_sigma3 = __esm(() => {
 
 // node_modules/@1sat/wallet/dist/cwi/index.js
 var init_cwi = __esm(() => {
-  init_types7();
+  init_types6();
   init_factory();
   init_event();
   init_chrome();
@@ -94490,6 +92155,51 @@ async function dispatchPlainPayment(wallet, args, fundingProvider) {
   const result = await wallet.createAction(args);
   return { txid: result.txid, tx: toArray(result.tx) };
 }
+function isInsufficientFunds(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /insufficient/i.test(msg);
+}
+async function listDefaultBasketSpendable(wallet) {
+  const utxos = [];
+  let offset = 0;
+  for (;; ) {
+    const page = await wallet.listOutputs({
+      basket: "default",
+      limit: 1000,
+      offset
+    });
+    for (const output of page.outputs) {
+      utxos.push({ satoshis: output.satoshis, outpoint: output.outpoint });
+    }
+    offset += page.outputs.length;
+    if (page.outputs.length === 0 || offset >= page.totalOutputs)
+      break;
+  }
+  return utxos;
+}
+async function sweepFeeForUtxos(destination, utxos) {
+  const p2pkh = new P2PKH;
+  const unlockingScriptTemplate = p2pkh.unlock(PrivateKey.fromRandom());
+  const destScript = p2pkh.lock(destination);
+  const tx = new Transaction;
+  for (const utxo of utxos) {
+    const { txid, vout } = parseOutpoint(utxo.outpoint);
+    const source = new Transaction;
+    for (let i = 0;i < vout; i++) {
+      source.addOutput({ lockingScript: destScript, satoshis: 0 });
+    }
+    source.addOutput({ lockingScript: destScript, satoshis: utxo.satoshis });
+    tx.addInput({
+      sourceTXID: txid,
+      sourceOutputIndex: vout,
+      sourceTransaction: source,
+      unlockingScriptTemplate
+    });
+  }
+  tx.addOutput({ lockingScript: destScript, change: true });
+  await tx.fee();
+  return tx.getFee();
+}
 function isPaymail(address) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address);
 }
@@ -94510,9 +92220,10 @@ function buildInscriptionScript3(address, base64Data, mimeType) {
     combined.chunks.push(chunk);
   return combined;
 }
-var maxPossibleSatoshis = 2099999999999999, sendBsv, sendAllBsv, paymentsActions;
+var sendBsv, sendAllBsv, paymentsActions;
 var init_payments = __esm(() => {
   init_dist4();
+  init_dist5();
   init_mod();
   init_paymail();
   sendBsv = {
@@ -94667,20 +92378,41 @@ var init_payments = __esm(() => {
             error: "sendAllBsv does not support paymail — use sendBsv with a fixed amount"
           };
         }
-        const result = await dispatchPlainPayment(ctx.wallet, {
-          description: "Send all BSV",
-          outputs: [
-            {
-              lockingScript: new P2PKH().lock(destination).toHex(),
-              satoshis: maxPossibleSatoshis,
-              outputDescription: "Sweep all funds",
-              tags: []
-            }
-          ],
-          options: { acceptDelayedBroadcast: false }
-        }, input.fundingProvider);
-        if (!result.txid) {
-          return { error: "no-txid-returned" };
+        const utxos = await listDefaultBasketSpendable(ctx.wallet);
+        const total = utxos.reduce((sum, u) => sum + u.satoshis, 0);
+        if (utxos.length === 0 || total <= 0) {
+          return { error: "insufficient-funds" };
+        }
+        const lockingScript = new P2PKH().lock(destination).toHex();
+        let fee = await sweepFeeForUtxos(destination, utxos);
+        let result;
+        for (let attempt = 0;attempt < 20; attempt++) {
+          const satoshis = total - fee;
+          if (satoshis <= 0) {
+            return { error: "insufficient-funds" };
+          }
+          try {
+            result = await dispatchPlainPayment(ctx.wallet, {
+              description: "Send all BSV",
+              outputs: [
+                {
+                  lockingScript,
+                  satoshis,
+                  outputDescription: "Sweep all funds",
+                  tags: []
+                }
+              ],
+              options: { acceptDelayedBroadcast: false }
+            }, input.fundingProvider);
+            break;
+          } catch (error) {
+            if (!isInsufficientFunds(error))
+              throw error;
+            fee += 1;
+          }
+        }
+        if (!result?.txid) {
+          return { error: result ? "no-txid-returned" : "insufficient-funds" };
         }
         if (ctx.debug && ctx.log) {
           ctx.log({
@@ -99644,38 +97376,38 @@ var init_mnee = __esm(() => {
 });
 
 // node_modules/@1sat/actions/dist/cosign/types.js
-var init_types8 = __esm(() => {
+var init_types7 = __esm(() => {
   init_dist2();
 });
 
 // node_modules/@1sat/actions/dist/cosign/prepare.js
 var init_prepare = __esm(() => {
   init_dist4();
-  init_types8();
+  init_types7();
 });
 
 // node_modules/@1sat/actions/dist/cosign/finalize.js
 var init_finalize = __esm(() => {
   init_dist4();
-  init_types8();
+  init_types7();
 });
 
 // node_modules/@1sat/actions/dist/cosign/buildDestination.js
 var init_buildDestination = __esm(() => {
   init_dist4();
-  init_types8();
+  init_types7();
 });
 
 // node_modules/@1sat/actions/dist/cosign/index.js
 var init_cosign2 = __esm(() => {
-  init_types8();
+  init_types7();
   init_prepare();
   init_finalize();
   init_buildDestination();
 });
 
 // node_modules/@1sat/actions/dist/sweep/types.js
-var init_types9 = () => {};
+var init_types8 = () => {};
 
 // node_modules/@1sat/actions/dist/sweep/sweepDeposit.js
 var sweepDeposit;
@@ -99806,7 +97538,7 @@ var init_sweep = __esm(() => {
   init_ordinalRemittance();
   init_sweepDeposit();
   init_scan();
-  init_types9();
+  init_types8();
   sweepBsv = {
     meta: {
       name: "sweepBsv",
@@ -101255,7 +98987,7 @@ var init_dist7 = __esm(() => {
   init_completeSignedAction();
   init_createTrackedAction();
   init_hasOneSatModule();
-  init_pipeline2();
+  init_pipeline();
   init_ordinalSeedTags();
   init_loadBasketOutput();
   init_bsv21Remittance();
@@ -101381,7 +99113,7 @@ var cancelListingArgsSchema;
 var init_cancelListing = __esm(() => {
   init_dist7();
   init_zod();
-  cancelListingArgsSchema = object2({
+  cancelListingArgsSchema = object({
     id: string2().describe("Tracking id of the listing in the ordinals basket (the 'id:' tag from wallet_getOrdinals)")
   });
 });
@@ -101551,7 +99283,7 @@ var init_createOrdinals = __esm(() => {
   init_zod();
   init_sigmaRoleContext();
   init_sigmaSigningContext();
-  createOrdinalsArgsSchema = object2({
+  createOrdinalsArgsSchema = object({
     dataB64: string2().describe("Base64-encoded content to inscribe"),
     contentType: string2().describe("MIME type of the content"),
     destinationAddress: string2().optional().describe("Optional destination address for the ordinal"),
@@ -101795,7 +99527,7 @@ function registerGatherCollectionInfoTool(server, wallet) {
 var gatherCollectionInfoArgsSchema;
 var init_gatherCollectionInfo = __esm(() => {
   init_zod();
-  gatherCollectionInfoArgsSchema = object2({
+  gatherCollectionInfoArgsSchema = object({
     folderPath: string2().describe("Path to folder containing images to analyze for collection")
   });
 });
@@ -101876,7 +99608,7 @@ var init_walletDepositAddress = __esm(() => {
 function registerGetAddressTool(server, ctx) {
   server.registerTool("wallet_getAddress", {
     description: "Retrieves the wallet's BRC-29 deposit address derived for MCP. This address can receive BSV, ordinals, or tokens via external payments.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       if (!ctx) {
@@ -101921,14 +99653,14 @@ var init_getAddress = __esm(() => {
 function J2(...q) {
   return q.every((w) => typeof w === "string");
 }
-function K4(...q) {
+function K3(...q) {
   return q.every((w) => typeof w === "number");
 }
-function L5(...q) {
+function L6(...q) {
   return q.every((w) => typeof w === "bigint");
 }
-function M4(q, w, H) {
-  if (!J2(q) && !K4(q))
+function M3(q, w, H) {
+  if (!J2(q) && !K3(q))
     throw TypeError(`toToken must be called on a number or string, got ${typeof q}`);
   if (!Number.isInteger(Number(q)))
     throw TypeError("toToken must be called on a whole number or string format whole number");
@@ -101958,7 +99690,7 @@ function M4(q, w, H) {
   }
 }
 function Q3(q, w, H) {
-  if (!J2(q) && !K4(q) && !L5(q))
+  if (!J2(q) && !K3(q) && !L6(q))
     throw TypeError(`toTokenSat must be called on a number, string or bigint, got ${typeof q}`);
   if (!Number.isInteger(w) || w < 0)
     throw TypeError("decimals must be a non-negative integer");
@@ -101994,11 +99726,11 @@ function Q3(q, w, H) {
     }
   }
 }
-function W2(q, w) {
+function W3(q, w) {
   return Q3(q, 8, w);
 }
 function X3(q, w) {
-  return M4(q, 8, w);
+  return M3(q, 8, w);
 }
 var init_dist8 = () => {};
 
@@ -102037,7 +99769,7 @@ async function readWalletBalance(ctx) {
 function registerWalletGetBalanceTool(server, ctx) {
   server.registerTool("wallet_getBalance", {
     description: "Retrieves the current BSV balance for the wallet.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx) {
       return {
@@ -102086,7 +99818,7 @@ var init_getBalance = __esm(() => {
 function registerGetBsv21BalancesTool(server, ctx) {
   server.registerTool("wallet_getBsv21Balances", {
     description: "Get aggregated BSV21 token balances grouped by token ID",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       if (!ctx)
@@ -102115,7 +99847,7 @@ var init_getBsv21Balances = __esm(() => {
 function registerGetLockDataTool(server, ctx) {
   server.registerTool("wallet_getLockData", {
     description: "Get summary of time-locked BSV (total, unlockable, next unlock height)",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       if (!ctx)
@@ -102139,7 +99871,7 @@ var init_getLockData = __esm(() => {
 function registerGetOrdinalsTool(server, ctx) {
   server.registerTool("wallet_getOrdinals", {
     description: "List ordinals/inscriptions in the wallet with metadata. Each result carries an 'id:' tag; that tracking id is the handle the transfer, listing and cancel tools take.",
-    inputSchema: object2({
+    inputSchema: object({
       limit: number2().int().optional().describe("Max number of results to return"),
       offset: number2().int().optional().describe("Number of results to skip"),
       tags: array(string2()).optional().describe("Filter by output tags (e.g. 'type:image/png')"),
@@ -102219,7 +99951,7 @@ var listOrdinalArgsSchema;
 var init_listOrdinal = __esm(() => {
   init_dist7();
   init_zod();
-  listOrdinalArgsSchema = object2({
+  listOrdinalArgsSchema = object({
     id: string2().describe("Tracking id of the ordinal in the ordinals basket (the 'id:' tag from wallet_getOrdinals)"),
     price: number2().int().positive().describe("Price in satoshis; whole satoshis above zero"),
     payAddress: string2().optional().describe("Address to receive payment on purchase. Defaults to the wallet's P1SAT '1sat 0' address.")
@@ -102230,7 +99962,7 @@ var init_listOrdinal = __esm(() => {
 function registerListTokensTool(server, ctx) {
   server.registerTool("wallet_listTokens", {
     description: "List BSV21 token outputs in the wallet",
-    inputSchema: object2({
+    inputSchema: object({
       limit: number2().int().optional().describe("Max number of results to return")
     })
   }, async (params) => {
@@ -102303,8 +100035,8 @@ var lockBsvArgsSchema;
 var init_lockBsv = __esm(() => {
   init_dist7();
   init_zod();
-  lockBsvArgsSchema = object2({
-    requests: array(object2({
+  lockBsvArgsSchema = object({
+    requests: array(object({
       satoshis: number2().int().positive().describe("Amount in satoshis to lock; whole satoshis above zero"),
       until: number2().int().positive().describe("Block height until which to lock")
     })).describe("Array of lock requests")
@@ -102312,26 +100044,26 @@ var init_lockBsv = __esm(() => {
 });
 
 // node_modules/sigma-protocol/dist/index.module.js
-function H4(z, J) {
+function H3(z, J) {
   let W = [], Q = z.chunks;
   for (let Y = 0;Y < Q.length; Y++) {
     let Z = Q[Y];
-    if (Z.data && N6(Z.data) === j3) {
+    if (Z.data && N5(Z.data) === j2) {
       if (Y + 4 < Q.length) {
         let L = Q[Y + 1], $ = Q[Y + 2], q = Q[Y + 3], D = Q[Y + 4];
         if (L?.data && $?.data && q?.data && D?.data)
-          W.push({ algorithm: N6(L.data), address: N6($.data), signature: V3(q.data), vin: Number.parseInt(N6(D.data), 10), targetVout: J }), Y += 4;
+          W.push({ algorithm: N5(L.data), address: N5($.data), signature: V3(q.data), vin: Number.parseInt(N5(D.data), 10), targetVout: J }), Y += 4;
       }
     } else if (Z.op === OP_default.OP_RETURN && Z.data && Z.data.length > 0)
       try {
         let $ = Script.fromBinary(Z.data).chunks;
         for (let q = 0;q < $.length; q++) {
           let D = $[q];
-          if (D.data && N6(D.data) === j3) {
+          if (D.data && N5(D.data) === j2) {
             if (q + 4 < $.length) {
               let w = $[q + 1], G = $[q + 2], M = $[q + 3], P = $[q + 4];
               if (w?.data && G?.data && M?.data && P?.data)
-                W.push({ algorithm: N6(w.data), address: N6(G.data), signature: V3(M.data), vin: Number.parseInt(N6(P.data), 10), targetVout: J }), q += 4;
+                W.push({ algorithm: N5(w.data), address: N5(G.data), signature: V3(M.data), vin: Number.parseInt(N5(P.data), 10), targetVout: J }), q += 4;
             }
           }
         }
@@ -102339,14 +100071,14 @@ function H4(z, J) {
   }
   return W;
 }
-function S6(z) {
-  return H4(z, 0).length;
+function S5(z) {
+  return H3(z, 0).length;
 }
-function m5(z, J) {
+function m4(z, J) {
   let W = z.chunks, Q = 0;
   for (let Y = 0;Y < W.length; Y++) {
     let Z = W[Y];
-    if (Z.data && N6(Z.data) === j3) {
+    if (Z.data && N5(Z.data) === j2) {
       if (Q === J)
         return Y;
       Q++;
@@ -102354,7 +100086,7 @@ function m5(z, J) {
       try {
         let L = Script.fromBinary(Z.data);
         for (let $ of L.chunks)
-          if ($.data && N6($.data) === j3) {
+          if ($.data && N5($.data) === j2) {
             if (Q === J)
               return Y;
             Q++;
@@ -102364,7 +100096,7 @@ function m5(z, J) {
   return -1;
 }
 
-class v5 {
+class v4 {
   _inputHash = null;
   _dataHash = null;
   _transaction;
@@ -102408,7 +100140,7 @@ class v5 {
   _sign(z, J, W) {
     if (W === undefined)
       throw Error("Failed recovery missing");
-    let Q = this._refVin === -1 ? this._targetVout : this._refVin, Y = `${F6} ${O8(X4("BSM"))} ${O8(X4(J))} ${z.toCompact(W, true, "hex")} ${O8(X4(Q.toString()))}`, Z = { algorithm: "BSM", address: J, signature: z.toCompact(W, true, "base64"), vin: Q, targetVout: this._targetVout };
+    let Q = this._refVin === -1 ? this._targetVout : this._refVin, Y = `${F5} ${O7(X4("BSM"))} ${O7(X4(J))} ${z.toCompact(W, true, "hex")} ${O7(X4(Q.toString()))}`, Z = { algorithm: "BSM", address: J, signature: z.toCompact(W, true, "base64"), vin: Q, targetVout: this._targetVout };
     return this._applySignature(Y, Z);
   }
   sign(z, J = "BSM", W) {
@@ -102419,11 +100151,11 @@ class v5 {
     return this._sign(Y, Z, $);
   }
   _signBRC77(z, J, W) {
-    let Q = this._refVin === -1 ? this._targetVout : this._refVin, Y = J.toAddress(), Z = sign2(z, J, W), L = `${F6} ${O8(X4("BRC77"))} ${O8(X4(Y))} ${O8(Z)} ${O8(X4(Q.toString()))}`, $ = { algorithm: "BRC77", address: Y, signature: V3(Z), vin: Q, targetVout: this._targetVout };
+    let Q = this._refVin === -1 ? this._targetVout : this._refVin, Y = J.toAddress(), Z = sign2(z, J, W), L = `${F5} ${O7(X4("BRC77"))} ${O7(X4(Y))} ${O7(Z)} ${O7(X4(Q.toString()))}`, $ = { algorithm: "BRC77", address: Y, signature: V3(Z), vin: Q, targetVout: this._targetVout };
     return this._applySignature(L, $);
   }
   async remoteSign(z, J) {
-    let W = J ? { [J.key]: J.value } : {}, Q = `${z}/sign${J?.type === "query" ? `?${J?.key}=${J?.value}` : ""}`, Y = { message: O8(this.getMessageHash()), encoding: "hex" };
+    let W = J ? { [J.key]: J.value } : {}, Q = `${z}/sign${J?.type === "query" ? `?${J?.key}=${J?.value}` : ""}`, Y = { message: O7(this.getMessageHash()), encoding: "hex" };
     try {
       let Z = await fetch(Q, { method: "POST", headers: { ...W, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(Y) });
       if (!Z.ok) {
@@ -102458,7 +100190,7 @@ class v5 {
   _getInputHashByVin = (z) => {
     let J = this._transaction.inputs[z];
     if (J?.sourceTXID) {
-      let W = T4(J.sourceTXID), Q = C4(J.sourceOutputIndex), Y = [...W, ...Q];
+      let W = T3(J.sourceTXID), Q = C3(J.sourceOutputIndex), Y = [...W, ...Q];
       return sha256(Y);
     }
     return sha256(Array(32).fill(0));
@@ -102469,7 +100201,7 @@ class v5 {
     let z = this._transaction?.outputs[this._targetVout].lockingScript, J = z.chunks, W = 0;
     for (let Q = 0;Q < J.length; Q++) {
       let Y = J[Q];
-      if (Y.data && N6(Y.data) === j3) {
+      if (Y.data && N5(Y.data) === j2) {
         if (W === this._sigmaInstance) {
           let Z = J.slice(0, Q - 1), L = new Script;
           for (let $ of Z)
@@ -102484,7 +100216,7 @@ class v5 {
         try {
           let Z = Script.fromBinary(Y.data);
           for (let L of Z.chunks)
-            if (L.data && N6(L.data) === j3) {
+            if (L.data && N5(L.data) === j2) {
               if (W === this._sigmaInstance) {
                 let $ = J.slice(0, Q), q = new Script;
                 for (let D of $)
@@ -102507,7 +100239,7 @@ class v5 {
     let z = this._transaction.outputs[this._targetVout];
     if (!z?.lockingScript)
       return this._sig;
-    let J = H4(z.lockingScript, this._targetVout);
+    let J = H3(z.lockingScript, this._targetVout);
     if (J.length === 0)
       return this._sig;
     return J[this._sigmaInstance] ?? null;
@@ -102516,23 +100248,23 @@ class v5 {
     let z = this.targetTxOut?.lockingScript;
     if (!z)
       return 0;
-    return S6(z);
+    return S5(z);
   }
   getSigInstancePosition() {
     let z = this.targetTxOut?.lockingScript;
     if (!z)
       return -1;
-    return m5(z, this._sigmaInstance);
+    return m4(z, this._sigmaInstance);
   }
 }
-var l6, O8, X4, N6, V3, j3 = "SIGMA", F6 = "5349474d41", T4 = (z) => {
+var l6, O7, X4, N5, V3, j2 = "SIGMA", F5 = "5349474d41", T3 = (z) => {
   let J = [];
   for (let W = 0;W < z.length; W += 2)
     J.push(Number.parseInt(z.substring(W, W + 2), 16));
   return J;
-}, C4 = (z) => {
+}, C3 = (z) => {
   return [z & 255, z >> 8 & 255, z >> 16 & 255, z >> 24 & 255];
-}, x6, y7 = (z, J, W) => {
+}, x5, y7 = (z, J, W) => {
   for (let Q = 0;Q < 4; Q++)
     try {
       let Y = z.RecoverPublicKey(Q, new BigNumber(l6(J)));
@@ -102544,11 +100276,11 @@ var l6, O8, X4, N6, V3, j3 = "SIGMA", F6 = "5349474d41", T4 = (z) => {
 var init_index_module = __esm(() => {
   init_mod();
   ({ magicHash: l6 } = exports_BSM);
-  ({ toHex: O8, toArray: X4, toUTF8: N6, toBase64: V3 } = exports_utils);
+  ({ toHex: O7, toArray: X4, toUTF8: N5, toBase64: V3 } = exports_utils);
   ((W) => {
     W.BSM = "BSM";
     W.BRC77 = "BRC77";
-  })(x6 ||= {});
+  })(x5 ||= {});
 });
 
 // node_modules/js-1sat-ord/dist/index.modern.js
@@ -102559,7 +100291,7 @@ function g1(w, ...z) {
       J.push(X22(z[Z]));
     return J.join(" ");
   }
-  var Z = 0, $ = z.length, Y = String(w).replace(m52, function(q) {
+  var Z = 0, $ = z.length, Y = String(w).replace(m5, function(q) {
     if (q === "%%")
       return "%";
     if (Z >= $)
@@ -102604,14 +100336,14 @@ function l52(w, z) {
   }
   return Z;
 }
-function d52(w, z) {
+function d5(w, z) {
   var J = X22.styles[z];
   if (J)
     return "\x1B[" + X22.colors[J][0] + "m" + w + "\x1B[" + X22.colors[J][1] + "m";
   else
     return w;
 }
-function p52(w, z) {
+function p5(w, z) {
   return w;
 }
 function r5(w) {
@@ -102950,7 +100682,7 @@ function n0(w) {
   if (w > g22)
     throw RangeError('The value "' + w + '" is invalid for option "size"');
   let z = new Uint8Array(w);
-  return Object.setPrototypeOf(z, r4.prototype), z;
+  return Object.setPrototypeOf(z, r3.prototype), z;
 }
 function i1(w, z, J) {
   return class extends J {
@@ -102969,7 +100701,7 @@ function i1(w, z, J) {
     }
   };
 }
-function r4(w, z, J) {
+function r3(w, z, J) {
   if (typeof w === "number") {
     if (typeof z === "string")
       throw TypeError('The "string" argument must be of type string. Received type number');
@@ -102992,34 +100724,34 @@ function A8(w, z, J) {
     throw TypeError('The "value" argument must not be of type number. Received type number');
   let Z = w.valueOf && w.valueOf();
   if (Z != null && Z !== w)
-    return r4.from(Z, z, J);
+    return r3.from(Z, z, J);
   let $ = L9(w);
   if ($)
     return $;
   if (typeof Symbol < "u" && Symbol.toPrimitive != null && typeof w[Symbol.toPrimitive] === "function")
-    return r4.from(w[Symbol.toPrimitive]("string"), z, J);
+    return r3.from(w[Symbol.toPrimitive]("string"), z, J);
   throw TypeError("The first argument must be one of type string, Buffer, ArrayBuffer, Array, or Array-like Object. Received type " + typeof w);
 }
-function O82(w) {
+function O8(w) {
   if (typeof w !== "number")
     throw TypeError('"size" argument must be of type number');
   else if (w < 0)
     throw RangeError('The value "' + w + '" is invalid for option "size"');
 }
 function H9(w, z, J) {
-  if (O82(w), w <= 0)
+  if (O8(w), w <= 0)
     return n0(w);
   if (z !== undefined)
     return typeof J === "string" ? n0(w).fill(z, J) : n0(w).fill(z);
   return n0(w);
 }
 function n1(w) {
-  return O82(w), n0(w < 0 ? 0 : o1(w) | 0);
+  return O8(w), n0(w < 0 ? 0 : o1(w) | 0);
 }
 function F9(w, z) {
   if (typeof z !== "string" || z === "")
     z = "utf8";
-  if (!r4.isEncoding(z))
+  if (!r3.isEncoding(z))
     throw TypeError("Unknown encoding: " + z);
   let J = C8(w, z) | 0, Z = n0(J), $ = Z.write(w, z);
   if ($ !== J)
@@ -103051,10 +100783,10 @@ function p1(w, z, J) {
     Z = new Uint8Array(w, z);
   else
     Z = new Uint8Array(w, z, J);
-  return Object.setPrototypeOf(Z, r4.prototype), Z;
+  return Object.setPrototypeOf(Z, r3.prototype), Z;
 }
 function L9(w) {
-  if (r4.isBuffer(w)) {
+  if (r3.isBuffer(w)) {
     let z = o1(w.length) | 0, J = n0(z);
     if (J.length === 0)
       return J;
@@ -103074,7 +100806,7 @@ function o1(w) {
   return w | 0;
 }
 function C8(w, z) {
-  if (r4.isBuffer(w))
+  if (r3.isBuffer(w))
     return w.length;
   if (ArrayBuffer.isView(w) || d0(w, ArrayBuffer))
     return w.byteLength;
@@ -103175,8 +100907,8 @@ function I8(w, z, J, Z, $) {
     else
       return -1;
   if (typeof z === "string")
-    z = r4.from(z, Z);
-  if (r4.isBuffer(z)) {
+    z = r3.from(z, Z);
+  if (r3.isBuffer(z)) {
     if (z.length === 0)
       return -1;
     return h8(w, z, J, Z, $);
@@ -103358,7 +101090,7 @@ function U0(w, z, J) {
     throw RangeError("Trying to access beyond buffer length");
 }
 function T0(w, z, J, Z, $, Y) {
-  if (!r4.isBuffer(w))
+  if (!r3.isBuffer(w))
     throw TypeError('"buffer" argument must be a Buffer instance');
   if (z > $ || z < Y)
     throw RangeError('"value" argument is out of bounds');
@@ -103701,22 +101433,22 @@ function B42(w, z) {
     return z;
   return v22(w, false, true).resolveObject(z);
 }
-var L1, u42, k42, m42, K6, E0 = (w) => {
+var L1, u4, k42, m42, K6, E0 = (w) => {
   var z = K6.get(w), J;
   if (z)
     return z;
   if (z = L1({}, "__esModule", { value: true }), w && typeof w === "object" || typeof w === "function")
-    u42(w).map((Z) => !m42.call(z, Z) && L1(z, Z, { get: () => w[Z], enumerable: !(J = k42(w, Z)) || J.enumerable }));
+    u4(w).map((Z) => !m42.call(z, Z) && L1(z, Z, { get: () => w[Z], enumerable: !(J = k42(w, Z)) || J.enumerable }));
   return K6.set(w, z), z;
 }, l42 = (w, z) => () => (z || w((z = { exports: {} }).exports, z), z.exports), E22 = (w, z) => {
   for (var J in z)
     L1(w, J, { get: z[J], enumerable: true, configurable: true, set: (Z) => z[J] = () => Z });
-}, L22 = (w, z) => () => (w && (z = w(w = 0)), z), y22, m52, c5, X22, s5 = () => {}, z9, V8, M8, H8, Z9, b22, b0, c0, k0, l1 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", G2, F8, L8, f82 = 50, g22 = 2147483647, U8 = 536870888, G9, N9, W9, j9, V9, B9, M9, c1, K8 = 4096, P9, g9, u9, k9, m9 = (w) => {
+}, L22 = (w, z) => () => (w && (z = w(w = 0)), z), y22, m5, c5, X22, s5 = () => {}, z9, V8, M8, H8, Z9, b22, b0, c0, k0, l1 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", G2, F8, L8, f8 = 50, g22 = 2147483647, U8 = 536870888, G9, N9, W9, j9, V9, B9, M9, c1, K8 = 4096, P9, g9, u9, k9, m9 = (w) => {
   for (let z of w)
     if (z.charCodeAt(0) > 127)
       return false;
   return true;
-}, l9, c9, g0, O22, e1, W22, m8, d9, p9, x8, l8, u8, j22 = 10, z22 = function(w) {
+}, l9, c9, g0, O22, e1, W22, m8, d9, p9, x8, l8, u8, j22 = 10, z2 = function(w) {
   if (this._events === undefined || this._events === this.__proto__._events)
     this._events = { __proto__: null }, this._eventsCount = 0;
   if (this._maxListeners ??= undefined, this[W22] = w?.captureRejections ? Boolean(w?.captureRejections) : L0[W22])
@@ -103785,14 +101517,14 @@ var L1, u42, k42, m42, K6, E0 = (w) => {
       r9(this, G, w, z);
   }
   return true;
-}, a1, e9, C22, l22, X6, q6, N42, Yw, Xw, Gw, Nw, Ww, Z6, Y4, X42, jw = 255, G4, Vw, Bw, Q6, D2, $6, Mw, G6, W6, Hw, Fw, M42, Ew, Lw, hw = (w, z, J) => {
+}, a1, e9, C22, l22, X6, q6, N42, Yw, Xw, Gw, Nw, Ww, Z6, Y4, X42, jw = 255, G4, Vw, Bw, Q6, D22, $6, Mw, G6, W6, Hw, Fw, M4, Ew, Lw, hw = (w, z, J) => {
   J = w != null ? Hw(Fw(w)) : {};
-  let Z = z || !w || !w.__esModule ? M42(J, "default", { value: w, enumerable: true }) : J;
+  let Z = z || !w || !w.__esModule ? M4(J, "default", { value: w, enumerable: true }) : J;
   for (let $ of Ew(w))
     if (!Lw.call(Z, $))
-      M42(Z, $, { get: () => w[$], enumerable: true });
+      M4(Z, $, { get: () => w[$], enumerable: true });
   return Z;
-}, h0 = (w, z) => () => (z || w((z = { exports: {} }).exports, z), z.exports), F42, Kw, B22, _w, E42, M22, L42, Rw, h42, T22, fw, H42, N62, Uw, Aw, K42, _4, Ow, Cw, R42, f42, Iw, Dw, vw, Tw, U42, Pw, Sw, yw, bw, gw, xw, uw, kw, mw, j6, C42, lw, cw, A42, dw, pw, rw = (w, z, J) => {
+}, h0 = (w, z) => () => (z || w((z = { exports: {} }).exports, z), z.exports), F42, Kw, B22, _w, E4, M22, L42, Rw, h4, T22, fw, H4, N6, Uw, Aw, K4, _4, Ow, Cw, R42, f42, Iw, Dw, vw, Tw, U42, Pw, Sw, yw, bw, gw, xw, uw, kw, mw, j6, C4, lw, cw, A42, dw, pw, rw = (w, z, J) => {
   J = w != null ? lw(cw(w)) : {};
   let Z = z || !w || !w.__esModule ? A42(J, "default", { value: w, enumerable: true }) : J;
   for (let $ of dw(w))
@@ -103802,11 +101534,11 @@ var L1, u42, k42, m42, K6, E0 = (w) => {
 }, iw = (w, z) => () => (z || w((z = { exports: {} }).exports, z), z.exports), nw, O42, ow, sw, aw, ew, tw, wz, zz, Jz, Zz, Qz, $z, qz, Yz, Xz, Gz, Nz, Wz, I42, c22 = "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5", f0 = 100, $22 = "https://ordinals.gorillapool.io/api", y0 = async (w, z) => {
   let J = z?.idKey, Z = z?.keyHost;
   if (J) {
-    let $ = new v5(w), { signedTx: Y } = $.sign(J);
+    let $ = new v4(w), { signedTx: Y } = $.sign(J);
     return Y;
   }
   if (Z) {
-    let $ = z?.authToken, Y = new v5(w);
+    let $ = z?.authToken, Y = new v4(w);
     try {
       let { signedTx: X } = await Y.remoteSign(Z, $);
       return X;
@@ -103852,7 +101584,7 @@ var L1, u42, k42, m42, K6, E0 = (w) => {
       else
         z[J] = String(Z);
   return z;
-}, a0, f62, h22, U62, A62, s4 = 107, B0 = (w, z) => {
+}, a0, f62, h22, U6, A62, s4 = 107, B0 = (w, z) => {
   let J = { ...w, script: Buffer.from(w.script, "base64").toString("hex") };
   if (z)
     return fromUtxo(J, z);
@@ -103945,7 +101677,7 @@ var L1, u42, k42, m42, K6, E0 = (w) => {
     M.satoshis = N.satoshis, M.txid = V.id("hex");
   }
   return { tx: V, spentOutpoints: V.inputs.map((N) => `${N.sourceTXID}_${N.sourceOutputIndex}`), payChange: M };
-}, v6, T6, t0, P6, S62, y62, tJ, wZ, QZ, $Z, z8, J8, w8, v1;
+}, v6, T6, t0, P6, S6, y62, tJ, wZ, QZ, $Z, z8, J8, w8, v1;
 var init_index_modern2 = __esm(() => {
   init_mod();
   init_index_module();
@@ -103956,13 +101688,13 @@ var init_index_modern2 = __esm(() => {
   init_mod();
   init_dist8();
   init_dist8();
-  ({ defineProperty: L1, getOwnPropertyNames: u42, getOwnPropertyDescriptor: k42 } = Object);
+  ({ defineProperty: L1, getOwnPropertyNames: u4, getOwnPropertyDescriptor: k42 } = Object);
   m42 = Object.prototype.hasOwnProperty;
   K6 = new WeakMap;
   y22 = {};
   E22(y22, { types: () => s5, promisify: () => V8, log: () => N8, isUndefined: () => R22, isSymbol: () => e5, isString: () => $1, isRegExp: () => w1, isPrimitive: () => t5, isObject: () => f22, isNumber: () => G8, isNullOrUndefined: () => a5, isNull: () => Q1, isFunction: () => J1, isError: () => z1, isDate: () => b1, isBuffer: () => w9, isBoolean: () => x1, isArray: () => X8, inspect: () => X22, inherits: () => W8, format: () => g1, deprecate: () => l52, default: () => Z9, debuglog: () => c5, callbackifyOnRejected: () => m1, callbackify: () => B8, _extend: () => k1, TextEncoder: () => M8, TextDecoder: () => H8 });
   b22 = L22(() => {
-    m52 = /%[sdj%]/g;
+    m5 = /%[sdj%]/g;
     c5 = ((w = {}, z = {}, J) => ((J = typeof process < "u" && false) && (J = J.replace(/[|\\{}()[\]^$+?.]/g, "\\$&").replace(/\*/g, ".*").replace(/,/g, "$|^").toUpperCase()), z = new RegExp("^" + J + "$", "i"), (Z) => {
       if (Z = Z.toUpperCase(), !w[Z])
         if (z.test(Z))
@@ -103973,7 +101705,7 @@ var init_index_modern2 = __esm(() => {
           w[Z] = function() {};
       return w[Z];
     }))(), X22 = ((w) => (w.colors = { bold: [1, 22], italic: [3, 23], underline: [4, 24], inverse: [7, 27], white: [37, 39], grey: [90, 39], black: [30, 39], blue: [34, 39], cyan: [36, 39], green: [32, 39], magenta: [35, 39], red: [31, 39], yellow: [33, 39] }, w.styles = { special: "cyan", number: "yellow", boolean: "yellow", undefined: "grey", null: "bold", string: "green", date: "magenta", regexp: "red" }, w.custom = Symbol.for("nodejs.util.inspect.custom"), w))(function(w, z, ...J) {
-      var Z = { seen: [], stylize: p52 };
+      var Z = { seen: [], stylize: p5 };
       if (J.length >= 1)
         Z.depth = J[0];
       if (J.length >= 2)
@@ -103989,7 +101721,7 @@ var init_index_modern2 = __esm(() => {
       if (R22(Z.colors))
         Z.colors = false;
       if (Z.colors)
-        Z.stylize = d52;
+        Z.stylize = d5;
       return Z1(Z, w, Z.depth);
     });
     z9 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -104026,7 +101758,7 @@ var init_index_modern2 = __esm(() => {
     ({ TextEncoder: M8, TextDecoder: H8 } = globalThis), Z9 = { TextEncoder: M8, TextDecoder: H8, promisify: V8, log: N8, inherits: W8, _extend: k1, callbackifyOnRejected: m1, callbackify: B8 };
   });
   b0 = {};
-  E22(b0, { transcode: () => l9, resolveObjectURL: () => u9, kStringMaxLength: () => U8, kMaxLength: () => g22, isUtf8: () => k9, isAscii: () => m9, default: () => c9, constants: () => V9, btoa: () => G9, atob: () => N9, INSPECT_MAX_BYTES: () => f82, File: () => W9, Buffer: () => r4, Blob: () => j9 });
+  E22(b0, { transcode: () => l9, resolveObjectURL: () => u9, kStringMaxLength: () => U8, kMaxLength: () => g22, isUtf8: () => k9, isAscii: () => m9, default: () => c9, constants: () => V9, btoa: () => G9, atob: () => N9, INSPECT_MAX_BYTES: () => f8, File: () => W9, Buffer: () => r3, Blob: () => j9 });
   g0 = L22(() => {
     c0 = [], k0 = [];
     for (G2 = 0, F8 = l1.length;G2 < F8; ++G2)
@@ -104051,40 +101783,40 @@ var init_index_modern2 = __esm(() => {
       }
       return Z += ` It must be ${z}. Received ${$}`, Z;
     }, RangeError);
-    Object.defineProperty(r4.prototype, "parent", { enumerable: true, get: function() {
-      if (!r4.isBuffer(this))
+    Object.defineProperty(r3.prototype, "parent", { enumerable: true, get: function() {
+      if (!r3.isBuffer(this))
         return;
       return this.buffer;
     } });
-    Object.defineProperty(r4.prototype, "offset", { enumerable: true, get: function() {
-      if (!r4.isBuffer(this))
+    Object.defineProperty(r3.prototype, "offset", { enumerable: true, get: function() {
+      if (!r3.isBuffer(this))
         return;
       return this.byteOffset;
     } });
-    r4.poolSize = 8192;
-    r4.from = function(w, z, J) {
+    r3.poolSize = 8192;
+    r3.from = function(w, z, J) {
       return A8(w, z, J);
     };
-    Object.setPrototypeOf(r4.prototype, Uint8Array.prototype);
-    Object.setPrototypeOf(r4, Uint8Array);
-    r4.alloc = function(w, z, J) {
+    Object.setPrototypeOf(r3.prototype, Uint8Array.prototype);
+    Object.setPrototypeOf(r3, Uint8Array);
+    r3.alloc = function(w, z, J) {
       return H9(w, z, J);
     };
-    r4.allocUnsafe = function(w) {
+    r3.allocUnsafe = function(w) {
       return n1(w);
     };
-    r4.allocUnsafeSlow = function(w) {
+    r3.allocUnsafeSlow = function(w) {
       return n1(w);
     };
-    r4.isBuffer = function(w) {
-      return w != null && w._isBuffer === true && w !== r4.prototype;
+    r3.isBuffer = function(w) {
+      return w != null && w._isBuffer === true && w !== r3.prototype;
     };
-    r4.compare = function(w, z) {
+    r3.compare = function(w, z) {
       if (d0(w, Uint8Array))
-        w = r4.from(w, w.offset, w.byteLength);
+        w = r3.from(w, w.offset, w.byteLength);
       if (d0(z, Uint8Array))
-        z = r4.from(z, z.offset, z.byteLength);
-      if (!r4.isBuffer(w) || !r4.isBuffer(z))
+        z = r3.from(z, z.offset, z.byteLength);
+      if (!r3.isBuffer(w) || !r3.isBuffer(z))
         throw TypeError('The "buf1", "buf2" arguments must be one of type Buffer or Uint8Array');
       if (w === z)
         return 0;
@@ -104100,7 +101832,7 @@ var init_index_modern2 = __esm(() => {
         return 1;
       return 0;
     };
-    r4.isEncoding = function(w) {
+    r3.isEncoding = function(w) {
       switch (String(w).toLowerCase()) {
         case "hex":
         case "utf8":
@@ -104118,28 +101850,28 @@ var init_index_modern2 = __esm(() => {
           return false;
       }
     };
-    r4.concat = function(w, z) {
+    r3.concat = function(w, z) {
       if (!Array.isArray(w))
         throw TypeError('"list" argument must be an Array of Buffers');
       if (w.length === 0)
-        return r4.alloc(0);
+        return r3.alloc(0);
       let J;
       if (z === undefined) {
         z = 0;
         for (J = 0;J < w.length; ++J)
           z += w[J].length;
       }
-      let Z = r4.allocUnsafe(z), $ = 0;
+      let Z = r3.allocUnsafe(z), $ = 0;
       for (J = 0;J < w.length; ++J) {
         let Y = w[J];
         if (d0(Y, Uint8Array))
           if ($ + Y.length > Z.length) {
-            if (!r4.isBuffer(Y))
-              Y = r4.from(Y);
+            if (!r3.isBuffer(Y))
+              Y = r3.from(Y);
             Y.copy(Z, $);
           } else
             Uint8Array.prototype.set.call(Z, Y, $);
-        else if (!r4.isBuffer(Y))
+        else if (!r3.isBuffer(Y))
           throw TypeError('"list" argument must be an Array of Buffers');
         else
           Y.copy(Z, $);
@@ -104147,9 +101879,9 @@ var init_index_modern2 = __esm(() => {
       }
       return Z;
     };
-    r4.byteLength = C8;
-    r4.prototype._isBuffer = true;
-    r4.prototype.swap16 = function() {
+    r3.byteLength = C8;
+    r3.prototype._isBuffer = true;
+    r3.prototype.swap16 = function() {
       let w = this.length;
       if (w % 2 !== 0)
         throw RangeError("Buffer size must be a multiple of 16-bits");
@@ -104157,7 +101889,7 @@ var init_index_modern2 = __esm(() => {
         N22(this, z, z + 1);
       return this;
     };
-    r4.prototype.swap32 = function() {
+    r3.prototype.swap32 = function() {
       let w = this.length;
       if (w % 4 !== 0)
         throw RangeError("Buffer size must be a multiple of 32-bits");
@@ -104165,7 +101897,7 @@ var init_index_modern2 = __esm(() => {
         N22(this, z, z + 3), N22(this, z + 1, z + 2);
       return this;
     };
-    r4.prototype.swap64 = function() {
+    r3.prototype.swap64 = function() {
       let w = this.length;
       if (w % 8 !== 0)
         throw RangeError("Buffer size must be a multiple of 64-bits");
@@ -104173,7 +101905,7 @@ var init_index_modern2 = __esm(() => {
         N22(this, z, z + 7), N22(this, z + 1, z + 6), N22(this, z + 2, z + 5), N22(this, z + 3, z + 4);
       return this;
     };
-    r4.prototype.toString = function() {
+    r3.prototype.toString = function() {
       let w = this.length;
       if (w === 0)
         return "";
@@ -104181,26 +101913,26 @@ var init_index_modern2 = __esm(() => {
         return D8(this, 0, w);
       return h9.apply(this, arguments);
     };
-    r4.prototype.toLocaleString = r4.prototype.toString;
-    r4.prototype.equals = function(w) {
-      if (!r4.isBuffer(w))
+    r3.prototype.toLocaleString = r3.prototype.toString;
+    r3.prototype.equals = function(w) {
+      if (!r3.isBuffer(w))
         throw TypeError("Argument must be a Buffer");
       if (this === w)
         return true;
-      return r4.compare(this, w) === 0;
+      return r3.compare(this, w) === 0;
     };
-    r4.prototype.inspect = function() {
-      let w = "", z = f82;
+    r3.prototype.inspect = function() {
+      let w = "", z = f8;
       if (w = this.toString("hex", 0, z).replace(/(.{2})/g, "$1 ").trim(), this.length > z)
         w += " ... ";
       return "<Buffer " + w + ">";
     };
     if (L8)
-      r4.prototype[L8] = r4.prototype.inspect;
-    r4.prototype.compare = function(w, z, J, Z, $) {
+      r3.prototype[L8] = r3.prototype.inspect;
+    r3.prototype.compare = function(w, z, J, Z, $) {
       if (d0(w, Uint8Array))
-        w = r4.from(w, w.offset, w.byteLength);
-      if (!r4.isBuffer(w))
+        w = r3.from(w, w.offset, w.byteLength);
+      if (!r3.isBuffer(w))
         throw TypeError('The "target" argument must be one of type Buffer or Uint8Array. Received type ' + typeof w);
       if (z === undefined)
         z = 0;
@@ -104232,16 +101964,16 @@ var init_index_modern2 = __esm(() => {
         return 1;
       return 0;
     };
-    r4.prototype.includes = function(w, z, J) {
+    r3.prototype.includes = function(w, z, J) {
       return this.indexOf(w, z, J) !== -1;
     };
-    r4.prototype.indexOf = function(w, z, J) {
+    r3.prototype.indexOf = function(w, z, J) {
       return I8(this, w, z, J, true);
     };
-    r4.prototype.lastIndexOf = function(w, z, J) {
+    r3.prototype.lastIndexOf = function(w, z, J) {
       return I8(this, w, z, J, false);
     };
-    r4.prototype.write = function(w, z, J, Z) {
+    r3.prototype.write = function(w, z, J, Z) {
       if (z === undefined)
         Z = "utf8", J = this.length, z = 0;
       else if (J === undefined && typeof z === "string")
@@ -104286,10 +102018,10 @@ var init_index_modern2 = __esm(() => {
             Z = ("" + Z).toLowerCase(), Y = true;
         }
     };
-    r4.prototype.toJSON = function() {
+    r3.prototype.toJSON = function() {
       return { type: "Buffer", data: Array.prototype.slice.call(this._arr || this, 0) };
     };
-    r4.prototype.slice = function(w, z) {
+    r3.prototype.slice = function(w, z) {
       let J = this.length;
       if (w = ~~w, z = z === undefined ? J : ~~z, w < 0) {
         if (w += J, w < 0)
@@ -104304,9 +102036,9 @@ var init_index_modern2 = __esm(() => {
       if (z < w)
         z = w;
       let Z = this.subarray(w, z);
-      return Object.setPrototypeOf(Z, r4.prototype), Z;
+      return Object.setPrototypeOf(Z, r3.prototype), Z;
     };
-    r4.prototype.readUintLE = r4.prototype.readUIntLE = function(w, z, J) {
+    r3.prototype.readUintLE = r3.prototype.readUIntLE = function(w, z, J) {
       if (w = w >>> 0, z = z >>> 0, !J)
         U0(w, z, this.length);
       let Z = this[w], $ = 1, Y = 0;
@@ -104314,7 +102046,7 @@ var init_index_modern2 = __esm(() => {
         Z += this[w + Y] * $;
       return Z;
     };
-    r4.prototype.readUintBE = r4.prototype.readUIntBE = function(w, z, J) {
+    r3.prototype.readUintBE = r3.prototype.readUIntBE = function(w, z, J) {
       if (w = w >>> 0, z = z >>> 0, !J)
         U0(w, z, this.length);
       let Z = this[w + --z], $ = 1;
@@ -104322,32 +102054,32 @@ var init_index_modern2 = __esm(() => {
         Z += this[w + --z] * $;
       return Z;
     };
-    r4.prototype.readUint8 = r4.prototype.readUInt8 = function(w, z) {
+    r3.prototype.readUint8 = r3.prototype.readUInt8 = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 1, this.length);
       return this[w];
     };
-    r4.prototype.readUint16LE = r4.prototype.readUInt16LE = function(w, z) {
+    r3.prototype.readUint16LE = r3.prototype.readUInt16LE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 2, this.length);
       return this[w] | this[w + 1] << 8;
     };
-    r4.prototype.readUint16BE = r4.prototype.readUInt16BE = function(w, z) {
+    r3.prototype.readUint16BE = r3.prototype.readUInt16BE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 2, this.length);
       return this[w] << 8 | this[w + 1];
     };
-    r4.prototype.readUint32LE = r4.prototype.readUInt32LE = function(w, z) {
+    r3.prototype.readUint32LE = r3.prototype.readUInt32LE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return (this[w] | this[w + 1] << 8 | this[w + 2] << 16) + this[w + 3] * 16777216;
     };
-    r4.prototype.readUint32BE = r4.prototype.readUInt32BE = function(w, z) {
+    r3.prototype.readUint32BE = r3.prototype.readUInt32BE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return this[w] * 16777216 + (this[w + 1] << 16 | this[w + 2] << 8 | this[w + 3]);
     };
-    r4.prototype.readBigUInt64LE = w22(function(w) {
+    r3.prototype.readBigUInt64LE = w22(function(w) {
       w = w >>> 0, U22(w, "offset");
       let z = this[w], J = this[w + 7];
       if (z === undefined || J === undefined)
@@ -104355,7 +102087,7 @@ var init_index_modern2 = __esm(() => {
       let Z = z + this[++w] * 256 + this[++w] * 65536 + this[++w] * 16777216, $ = this[++w] + this[++w] * 256 + this[++w] * 65536 + J * 16777216;
       return BigInt(Z) + (BigInt($) << BigInt(32));
     });
-    r4.prototype.readBigUInt64BE = w22(function(w) {
+    r3.prototype.readBigUInt64BE = w22(function(w) {
       w = w >>> 0, U22(w, "offset");
       let z = this[w], J = this[w + 7];
       if (z === undefined || J === undefined)
@@ -104363,7 +102095,7 @@ var init_index_modern2 = __esm(() => {
       let Z = z * 16777216 + this[++w] * 65536 + this[++w] * 256 + this[++w], $ = this[++w] * 16777216 + this[++w] * 65536 + this[++w] * 256 + J;
       return (BigInt(Z) << BigInt(32)) + BigInt($);
     });
-    r4.prototype.readIntLE = function(w, z, J) {
+    r3.prototype.readIntLE = function(w, z, J) {
       if (w = w >>> 0, z = z >>> 0, !J)
         U0(w, z, this.length);
       let Z = this[w], $ = 1, Y = 0;
@@ -104373,7 +102105,7 @@ var init_index_modern2 = __esm(() => {
         Z -= Math.pow(2, 8 * z);
       return Z;
     };
-    r4.prototype.readIntBE = function(w, z, J) {
+    r3.prototype.readIntBE = function(w, z, J) {
       if (w = w >>> 0, z = z >>> 0, !J)
         U0(w, z, this.length);
       let Z = z, $ = 1, Y = this[w + --Z];
@@ -104383,36 +102115,36 @@ var init_index_modern2 = __esm(() => {
         Y -= Math.pow(2, 8 * z);
       return Y;
     };
-    r4.prototype.readInt8 = function(w, z) {
+    r3.prototype.readInt8 = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 1, this.length);
       if (!(this[w] & 128))
         return this[w];
       return (255 - this[w] + 1) * -1;
     };
-    r4.prototype.readInt16LE = function(w, z) {
+    r3.prototype.readInt16LE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 2, this.length);
       let J = this[w] | this[w + 1] << 8;
       return J & 32768 ? J | 4294901760 : J;
     };
-    r4.prototype.readInt16BE = function(w, z) {
+    r3.prototype.readInt16BE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 2, this.length);
       let J = this[w + 1] | this[w] << 8;
       return J & 32768 ? J | 4294901760 : J;
     };
-    r4.prototype.readInt32LE = function(w, z) {
+    r3.prototype.readInt32LE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return this[w] | this[w + 1] << 8 | this[w + 2] << 16 | this[w + 3] << 24;
     };
-    r4.prototype.readInt32BE = function(w, z) {
+    r3.prototype.readInt32BE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return this[w] << 24 | this[w + 1] << 16 | this[w + 2] << 8 | this[w + 3];
     };
-    r4.prototype.readBigInt64LE = w22(function(w) {
+    r3.prototype.readBigInt64LE = w22(function(w) {
       w = w >>> 0, U22(w, "offset");
       let z = this[w], J = this[w + 7];
       if (z === undefined || J === undefined)
@@ -104420,7 +102152,7 @@ var init_index_modern2 = __esm(() => {
       let Z = this[w + 4] + this[w + 5] * 256 + this[w + 6] * 65536 + (J << 24);
       return (BigInt(Z) << BigInt(32)) + BigInt(z + this[++w] * 256 + this[++w] * 65536 + this[++w] * 16777216);
     });
-    r4.prototype.readBigInt64BE = w22(function(w) {
+    r3.prototype.readBigInt64BE = w22(function(w) {
       w = w >>> 0, U22(w, "offset");
       let z = this[w], J = this[w + 7];
       if (z === undefined || J === undefined)
@@ -104428,27 +102160,27 @@ var init_index_modern2 = __esm(() => {
       let Z = (z << 24) + this[++w] * 65536 + this[++w] * 256 + this[++w];
       return (BigInt(Z) << BigInt(32)) + BigInt(this[++w] * 16777216 + this[++w] * 65536 + this[++w] * 256 + J);
     });
-    r4.prototype.readFloatLE = function(w, z) {
+    r3.prototype.readFloatLE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return q1(this, w, true, 23, 4);
     };
-    r4.prototype.readFloatBE = function(w, z) {
+    r3.prototype.readFloatBE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 4, this.length);
       return q1(this, w, false, 23, 4);
     };
-    r4.prototype.readDoubleLE = function(w, z) {
+    r3.prototype.readDoubleLE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 8, this.length);
       return q1(this, w, true, 52, 8);
     };
-    r4.prototype.readDoubleBE = function(w, z) {
+    r3.prototype.readDoubleBE = function(w, z) {
       if (w = w >>> 0, !z)
         U0(w, 8, this.length);
       return q1(this, w, false, 52, 8);
     };
-    r4.prototype.writeUintLE = r4.prototype.writeUIntLE = function(w, z, J, Z) {
+    r3.prototype.writeUintLE = r3.prototype.writeUIntLE = function(w, z, J, Z) {
       if (w = +w, z = z >>> 0, J = J >>> 0, !Z) {
         let X = Math.pow(2, 8 * J) - 1;
         T0(this, w, z, J, X, 0);
@@ -104459,7 +102191,7 @@ var init_index_modern2 = __esm(() => {
         this[z + Y] = w / $ & 255;
       return z + J;
     };
-    r4.prototype.writeUintBE = r4.prototype.writeUIntBE = function(w, z, J, Z) {
+    r3.prototype.writeUintBE = r3.prototype.writeUIntBE = function(w, z, J, Z) {
       if (w = +w, z = z >>> 0, J = J >>> 0, !Z) {
         let X = Math.pow(2, 8 * J) - 1;
         T0(this, w, z, J, X, 0);
@@ -104470,38 +102202,38 @@ var init_index_modern2 = __esm(() => {
         this[z + $] = w / Y & 255;
       return z + J;
     };
-    r4.prototype.writeUint8 = r4.prototype.writeUInt8 = function(w, z, J) {
+    r3.prototype.writeUint8 = r3.prototype.writeUInt8 = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 1, 255, 0);
       return this[z] = w & 255, z + 1;
     };
-    r4.prototype.writeUint16LE = r4.prototype.writeUInt16LE = function(w, z, J) {
+    r3.prototype.writeUint16LE = r3.prototype.writeUInt16LE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 2, 65535, 0);
       return this[z] = w & 255, this[z + 1] = w >>> 8, z + 2;
     };
-    r4.prototype.writeUint16BE = r4.prototype.writeUInt16BE = function(w, z, J) {
+    r3.prototype.writeUint16BE = r3.prototype.writeUInt16BE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 2, 65535, 0);
       return this[z] = w >>> 8, this[z + 1] = w & 255, z + 2;
     };
-    r4.prototype.writeUint32LE = r4.prototype.writeUInt32LE = function(w, z, J) {
+    r3.prototype.writeUint32LE = r3.prototype.writeUInt32LE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 4, 4294967295, 0);
       return this[z + 3] = w >>> 24, this[z + 2] = w >>> 16, this[z + 1] = w >>> 8, this[z] = w & 255, z + 4;
     };
-    r4.prototype.writeUint32BE = r4.prototype.writeUInt32BE = function(w, z, J) {
+    r3.prototype.writeUint32BE = r3.prototype.writeUInt32BE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 4, 4294967295, 0);
       return this[z] = w >>> 24, this[z + 1] = w >>> 16, this[z + 2] = w >>> 8, this[z + 3] = w & 255, z + 4;
     };
-    r4.prototype.writeBigUInt64LE = w22(function(w, z = 0) {
+    r3.prototype.writeBigUInt64LE = w22(function(w, z = 0) {
       return v8(this, w, z, BigInt(0), BigInt("0xffffffffffffffff"));
     });
-    r4.prototype.writeBigUInt64BE = w22(function(w, z = 0) {
+    r3.prototype.writeBigUInt64BE = w22(function(w, z = 0) {
       return T8(this, w, z, BigInt(0), BigInt("0xffffffffffffffff"));
     });
-    r4.prototype.writeIntLE = function(w, z, J, Z) {
+    r3.prototype.writeIntLE = function(w, z, J, Z) {
       if (w = +w, z = z >>> 0, !Z) {
         let q = Math.pow(2, 8 * J - 1);
         T0(this, w, z, J, q - 1, -q);
@@ -104515,7 +102247,7 @@ var init_index_modern2 = __esm(() => {
       }
       return z + J;
     };
-    r4.prototype.writeIntBE = function(w, z, J, Z) {
+    r3.prototype.writeIntBE = function(w, z, J, Z) {
       if (w = +w, z = z >>> 0, !Z) {
         let q = Math.pow(2, 8 * J - 1);
         T0(this, w, z, J, q - 1, -q);
@@ -104529,55 +102261,55 @@ var init_index_modern2 = __esm(() => {
       }
       return z + J;
     };
-    r4.prototype.writeInt8 = function(w, z, J) {
+    r3.prototype.writeInt8 = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 1, 127, -128);
       if (w < 0)
         w = 255 + w + 1;
       return this[z] = w & 255, z + 1;
     };
-    r4.prototype.writeInt16LE = function(w, z, J) {
+    r3.prototype.writeInt16LE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 2, 32767, -32768);
       return this[z] = w & 255, this[z + 1] = w >>> 8, z + 2;
     };
-    r4.prototype.writeInt16BE = function(w, z, J) {
+    r3.prototype.writeInt16BE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 2, 32767, -32768);
       return this[z] = w >>> 8, this[z + 1] = w & 255, z + 2;
     };
-    r4.prototype.writeInt32LE = function(w, z, J) {
+    r3.prototype.writeInt32LE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 4, 2147483647, -2147483648);
       return this[z] = w & 255, this[z + 1] = w >>> 8, this[z + 2] = w >>> 16, this[z + 3] = w >>> 24, z + 4;
     };
-    r4.prototype.writeInt32BE = function(w, z, J) {
+    r3.prototype.writeInt32BE = function(w, z, J) {
       if (w = +w, z = z >>> 0, !J)
         T0(this, w, z, 4, 2147483647, -2147483648);
       if (w < 0)
         w = 4294967295 + w + 1;
       return this[z] = w >>> 24, this[z + 1] = w >>> 16, this[z + 2] = w >>> 8, this[z + 3] = w & 255, z + 4;
     };
-    r4.prototype.writeBigInt64LE = w22(function(w, z = 0) {
+    r3.prototype.writeBigInt64LE = w22(function(w, z = 0) {
       return v8(this, w, z, -BigInt("0x8000000000000000"), BigInt("0x7fffffffffffffff"));
     });
-    r4.prototype.writeBigInt64BE = w22(function(w, z = 0) {
+    r3.prototype.writeBigInt64BE = w22(function(w, z = 0) {
       return T8(this, w, z, -BigInt("0x8000000000000000"), BigInt("0x7fffffffffffffff"));
     });
-    r4.prototype.writeFloatLE = function(w, z, J) {
+    r3.prototype.writeFloatLE = function(w, z, J) {
       return S8(this, w, z, true, J);
     };
-    r4.prototype.writeFloatBE = function(w, z, J) {
+    r3.prototype.writeFloatBE = function(w, z, J) {
       return S8(this, w, z, false, J);
     };
-    r4.prototype.writeDoubleLE = function(w, z, J) {
+    r3.prototype.writeDoubleLE = function(w, z, J) {
       return y8(this, w, z, true, J);
     };
-    r4.prototype.writeDoubleBE = function(w, z, J) {
+    r3.prototype.writeDoubleBE = function(w, z, J) {
       return y8(this, w, z, false, J);
     };
-    r4.prototype.copy = function(w, z, J, Z) {
-      if (!r4.isBuffer(w))
+    r3.prototype.copy = function(w, z, J, Z) {
+      if (!r3.isBuffer(w))
         throw TypeError("argument should be a Buffer");
       if (!J)
         J = 0;
@@ -104610,7 +102342,7 @@ var init_index_modern2 = __esm(() => {
         Uint8Array.prototype.set.call(w, this.subarray(J, Z), z);
       return $;
     };
-    r4.prototype.fill = function(w, z, J, Z) {
+    r3.prototype.fill = function(w, z, J, Z) {
       if (typeof w === "string") {
         if (typeof z === "string")
           Z = z, z = 0, J = this.length;
@@ -104618,7 +102350,7 @@ var init_index_modern2 = __esm(() => {
           Z = J, J = this.length;
         if (Z !== undefined && typeof Z !== "string")
           throw TypeError("encoding must be a string");
-        if (typeof Z === "string" && !r4.isEncoding(Z))
+        if (typeof Z === "string" && !r3.isEncoding(Z))
           throw TypeError("Unknown encoding: " + Z);
         if (w.length === 1) {
           let Y = w.charCodeAt(0);
@@ -104640,7 +102372,7 @@ var init_index_modern2 = __esm(() => {
         for ($ = z;$ < J; ++$)
           this[$] = w;
       else {
-        let Y = r4.isBuffer(w) ? w : r4.from(w, Z), X = Y.length;
+        let Y = r3.isBuffer(w) ? w : r3.from(w, Z), X = Y.length;
         if (X === 0)
           throw TypeError('The value "' + w + '" is invalid for argument "value"');
         for ($ = 0;$ < J - z; ++$)
@@ -104658,19 +102390,19 @@ var init_index_modern2 = __esm(() => {
       }
       return w;
     }();
-    u9 = s1("resolveObjectURL"), k9 = s1("isUtf8"), l9 = s1("transcode"), c9 = r4;
+    u9 = s1("resolveObjectURL"), k9 = s1("isUtf8"), l9 = s1("transcode"), c9 = r3;
   });
   O22 = {};
-  E22(O22, { setMaxListeners: () => n8, once: () => r8, listenerCount: () => o8, init: () => z22, getMaxListeners: () => a8, getEventListeners: () => i8, default: () => e9, captureRejectionSymbol: () => l8, addAbortListener: () => e8, EventEmitter: () => z22 });
+  E22(O22, { setMaxListeners: () => n8, once: () => r8, listenerCount: () => o8, init: () => z2, getMaxListeners: () => a8, getEventListeners: () => i8, default: () => e9, captureRejectionSymbol: () => l8, addAbortListener: () => e8, EventEmitter: () => z2 });
   C22 = L22(() => {
-    e1 = Symbol.for, W22 = Symbol("kCapture"), m8 = e1("events.errorMonitor"), d9 = Symbol("events.maxEventTargetListeners"), p9 = Symbol("events.maxEventTargetListenersWarned"), x8 = e1("nodejs.rejection"), l8 = e1("nodejs.rejection"), u8 = Array.prototype.slice, L0 = z22.prototype = {};
+    e1 = Symbol.for, W22 = Symbol("kCapture"), m8 = e1("events.errorMonitor"), d9 = Symbol("events.maxEventTargetListeners"), p9 = Symbol("events.maxEventTargetListenersWarned"), x8 = e1("nodejs.rejection"), l8 = e1("nodejs.rejection"), u8 = Array.prototype.slice, L0 = z2.prototype = {};
     L0._events = undefined;
     L0._eventsCount = 0;
     L0._maxListeners = undefined;
     L0.setMaxListeners = function(w) {
       return t1(w, "setMaxListeners", 0), this._maxListeners = w, this;
     };
-    L0.constructor = z22;
+    L0.constructor = z2;
     L0.getMaxListeners = function() {
       return this?._maxListeners ?? j22;
     };
@@ -104793,7 +102525,7 @@ var init_index_modern2 = __esm(() => {
         this.code = "ABORT_ERR", this.name = "AbortError";
       }
     };
-    Object.defineProperties(z22, { captureRejections: { get() {
+    Object.defineProperties(z2, { captureRejections: { get() {
       return L0[W22];
     }, set(w) {
       a9(w, "EventEmitter.captureRejections"), L0[W22] = w;
@@ -104802,8 +102534,8 @@ var init_index_modern2 = __esm(() => {
     }, set: (w) => {
       t1(w, "defaultMaxListeners", 0), j22 = w;
     } }, kMaxEventTargetListeners: { value: d9, enumerable: false, configurable: false, writable: false }, kMaxEventTargetListenersWarned: { value: p9, enumerable: false, configurable: false, writable: false } });
-    Object.assign(z22, { once: r8, getEventListeners: i8, getMaxListeners: a8, setMaxListeners: n8, EventEmitter: z22, usingDomains: false, captureRejectionSymbol: l8, errorMonitor: m8, addAbortListener: e8, init: z22, listenerCount: o8 });
-    e9 = z22;
+    Object.assign(z2, { once: r8, getEventListeners: i8, getMaxListeners: a8, setMaxListeners: n8, EventEmitter: z2, usingDomains: false, captureRejectionSymbol: l8, errorMonitor: m8, addAbortListener: e8, init: z2, listenerCount: o8 });
+    e9 = z2;
   });
   l22 = l42((F7, q4) => {
     var H0 = (w, z) => () => (z || w((z = { exports: {} }).exports, z), z.exports), _0 = H0((w, z) => {
@@ -108592,7 +106324,7 @@ var init_index_modern2 = __esm(() => {
   G6 = L22(() => {
     ({ URL: q6, URLSearchParams: N42 } = globalThis);
     Yw = /^([a-z0-9.+-]+:)/i, Xw = /:[0-9]*$/, Gw = /^(\/\/?(?!\/)[^\?\s]*)(\?[^\s]*)?$/, Nw = ["<", ">", '"', "`", " ", "\r", `
-`, "\t"], Ww = ["{", "}", "|", "\\", "^", "`"].concat(Nw), Z6 = ["'"].concat(Ww), Y4 = ["%", "/", "?", ";", "#"].concat(Z6), X42 = ["/", "?", "#"], G4 = /^[+a-z0-9A-Z_-]{0,63}$/, Vw = /^([+a-z0-9A-Z_-]{0,63})(.*)$/, Bw = { javascript: true, "javascript:": true }, Q6 = { javascript: true, "javascript:": true }, D2 = { http: true, https: true, ftp: true, gopher: true, file: true, "http:": true, "https:": true, "ftp:": true, "gopher:": true, "file:": true }, $6 = { parse(w) {
+`, "\t"], Ww = ["{", "}", "|", "\\", "^", "`"].concat(Nw), Z6 = ["'"].concat(Ww), Y4 = ["%", "/", "?", ";", "#"].concat(Z6), X42 = ["/", "?", "#"], G4 = /^[+a-z0-9A-Z_-]{0,63}$/, Vw = /^([+a-z0-9A-Z_-]{0,63})(.*)$/, Bw = { javascript: true, "javascript:": true }, Q6 = { javascript: true, "javascript:": true }, D22 = { http: true, https: true, ftp: true, gopher: true, file: true, "http:": true, "https:": true, "ftp:": true, "gopher:": true, "file:": true }, $6 = { parse(w) {
       var z = decodeURIComponent;
       return (w + "").replace(/\+/g, " ").split("&").filter(Boolean).reduce(function(J, Z, $) {
         var Y = Z.split("="), X = z(Y[0] || ""), q = z(Y[1] || ""), G = J[X];
@@ -108636,7 +106368,7 @@ var init_index_modern2 = __esm(() => {
         if (M && !(j && Q6[j]))
           q = q.substr(2), this.slashes = true;
       }
-      if (!Q6[j] && (M || j && !D2[j])) {
+      if (!Q6[j] && (M || j && !D22[j])) {
         var B = -1;
         for (var H = 0;H < X42.length; H++) {
           var U = q.indexOf(X42[H]);
@@ -108719,7 +106451,7 @@ var init_index_modern2 = __esm(() => {
         this.search = "", this.query = {};
       if (q)
         this.pathname = q;
-      if (D2[V] && this.hostname && !this.pathname)
+      if (D22[V] && this.hostname && !this.pathname)
         this.pathname = "/";
       if (this.pathname || this.search) {
         var u = this.pathname || "", Z0 = this.search || "";
@@ -108743,7 +106475,7 @@ var init_index_modern2 = __esm(() => {
       var X = this.search || Y && "?" + Y || "";
       if (z && z.substr(-1) !== ":")
         z += ":";
-      if (this.slashes || (!z || D2[z]) && $ !== false) {
+      if (this.slashes || (!z || D22[z]) && $ !== false) {
         if ($ = "//" + ($ || ""), J && J.charAt(0) !== "/")
           J = "/" + J;
       } else if (!$)
@@ -108778,12 +106510,12 @@ var init_index_modern2 = __esm(() => {
           if (G !== "protocol")
             J[G] = w[G];
         }
-        if (D2[J.protocol] && J.hostname && !J.pathname)
+        if (D22[J.protocol] && J.hostname && !J.pathname)
           J.path = J.pathname = "/";
         return J.href = J.format(), J;
       }
       if (w.protocol && w.protocol !== J.protocol) {
-        if (!D2[w.protocol]) {
+        if (!D22[w.protocol]) {
           var j = Object.keys(w);
           for (var V = 0;V < j.length; V++) {
             var M = j[V];
@@ -108812,7 +106544,7 @@ var init_index_modern2 = __esm(() => {
         }
         return J.slashes = J.slashes || w.slashes, J.href = J.format(), J;
       }
-      var U = J.pathname && J.pathname.charAt(0) === "/", R = w.host || w.pathname && w.pathname.charAt(0) === "/", F = R || U || J.host && w.pathname, h = F, Q = J.pathname && J.pathname.split("/") || [], N = w.pathname && w.pathname.split("/") || [], E = J.protocol && !D2[J.protocol];
+      var U = J.pathname && J.pathname.charAt(0) === "/", R = w.host || w.pathname && w.pathname.charAt(0) === "/", F = R || U || J.host && w.pathname, h = F, Q = J.pathname && J.pathname.split("/") || [], N = w.pathname && w.pathname.split("/") || [], E = J.protocol && !D22[J.protocol];
       if (E) {
         if (J.hostname = "", J.port = null, J.host)
           if (Q[0] === "")
@@ -108900,7 +106632,7 @@ var init_index_modern2 = __esm(() => {
   W6 = {};
   E22(W6, { request: () => Pw, globalAgent: () => xw, get: () => Sw, default: () => mw, STATUS_CODES: () => uw, METHODS: () => kw, IncomingMessage: () => bw, ClientRequest: () => yw, Agent: () => gw });
   j6 = L22(() => {
-    Hw = Object.create, { getPrototypeOf: Fw, defineProperty: M42, getOwnPropertyNames: Ew } = Object, Lw = Object.prototype.hasOwnProperty, F42 = h0((w) => {
+    Hw = Object.create, { getPrototypeOf: Fw, defineProperty: M4, getOwnPropertyNames: Ew } = Object, Lw = Object.prototype.hasOwnProperty, F42 = h0((w) => {
       w.fetch = $(globalThis.fetch) && $(globalThis.ReadableStream), w.writableStream = $(globalThis.WritableStream), w.abortController = $(globalThis.AbortController);
       var z;
       function J() {
@@ -109118,7 +106850,7 @@ var init_index_modern2 = __esm(() => {
           return H(this, Z(Z({}, Q), {}, { depth: 0, customInspect: false }));
         } }]), F;
       }();
-    }), E42 = h0((w, z) => {
+    }), E4 = h0((w, z) => {
       function J(G, j) {
         var V = this, M = this._readableState && this._readableState.destroyed, B = this._writableState && this._writableState.destroyed;
         if (M || B) {
@@ -109266,7 +106998,7 @@ var init_index_modern2 = __esm(() => {
       z.exports = { getHighWaterMark: $ };
     }), Rw = h0((w, z) => {
       z.exports = (b22(), E0(y22)).deprecate;
-    }), h42 = h0((w, z) => {
+    }), h4 = h0((w, z) => {
       z.exports = v;
       function J(b) {
         var g = this;
@@ -109283,7 +107015,7 @@ var init_index_modern2 = __esm(() => {
       function j(b) {
         return X.isBuffer(b) || b instanceof q;
       }
-      var V = E42(), M = L42(), B = M.getHighWaterMark, H = M22().codes, { ERR_INVALID_ARG_TYPE: U, ERR_METHOD_NOT_IMPLEMENTED: R, ERR_MULTIPLE_CALLBACK: F, ERR_STREAM_CANNOT_PIPE: h, ERR_STREAM_DESTROYED: Q, ERR_STREAM_NULL_VALUES: N, ERR_STREAM_WRITE_AFTER_END: E, ERR_UNKNOWN_ENCODING: A } = H, C = V.errorOrDestroy;
+      var V = E4(), M = L42(), B = M.getHighWaterMark, H = M22().codes, { ERR_INVALID_ARG_TYPE: U, ERR_METHOD_NOT_IMPLEMENTED: R, ERR_MULTIPLE_CALLBACK: F, ERR_STREAM_CANNOT_PIPE: h, ERR_STREAM_DESTROYED: Q, ERR_STREAM_NULL_VALUES: N, ERR_STREAM_WRITE_AFTER_END: E, ERR_UNKNOWN_ENCODING: A } = H, C = V.errorOrDestroy;
       B22()(v, Y);
       function p() {}
       function l(b, g, T) {
@@ -109575,7 +107307,7 @@ var init_index_modern2 = __esm(() => {
         return B;
       };
       z.exports = G;
-      var Z = K42(), $ = h42();
+      var Z = K4(), $ = h4();
       B22()(G, Z);
       {
         Y = J($.prototype);
@@ -109659,7 +107391,7 @@ var init_index_modern2 = __esm(() => {
           throw TypeError("Argument must be a number");
         return J.SlowBuffer(X);
       };
-    }), H42 = h0((w) => {
+    }), H4 = h0((w) => {
       var z = fw().Buffer, J = z.isEncoding || function(Q) {
         switch (Q = "" + Q, Q && Q.toLowerCase()) {
           case "hex":
@@ -109865,7 +107597,7 @@ var init_index_modern2 = __esm(() => {
       function h(Q) {
         return Q && Q.length ? this.write(Q) : "";
       }
-    }), N62 = h0((w, z) => {
+    }), N6 = h0((w, z) => {
       var J = M22().codes.ERR_STREAM_PREMATURE_CLOSE;
       function Z(q) {
         var G = false;
@@ -109955,7 +107687,7 @@ var init_index_modern2 = __esm(() => {
         }
         return (C === "string" ? String : Number)(A);
       }
-      var X = N62(), q = Symbol("lastResolve"), G = Symbol("lastReject"), j = Symbol("error"), V = Symbol("ended"), M = Symbol("lastPromise"), B = Symbol("handlePromise"), H = Symbol("stream");
+      var X = N6(), q = Symbol("lastResolve"), G = Symbol("lastReject"), j = Symbol("error"), V = Symbol("ended"), M = Symbol("lastPromise"), B = Symbol("handlePromise"), H = Symbol("stream");
       function U(A, C) {
         return { value: A, done: C };
       }
@@ -110153,7 +107885,7 @@ var init_index_modern2 = __esm(() => {
         return R;
       }
       z.exports = V;
-    }), K42 = h0((w, z) => {
+    }), K4 = h0((w, z) => {
       z.exports = f;
       var J;
       f.ReadableState = u;
@@ -110171,7 +107903,7 @@ var init_index_modern2 = __esm(() => {
         M = V.debuglog("stream");
       else
         M = function() {};
-      var B = _w(), H = E42(), U = L42(), R = U.getHighWaterMark, F = M22().codes, { ERR_INVALID_ARG_TYPE: h, ERR_STREAM_PUSH_AFTER_EOF: Q, ERR_METHOD_NOT_IMPLEMENTED: N, ERR_STREAM_UNSHIFT_AFTER_END_EVENT: E } = F, A, C, p;
+      var B = _w(), H = E4(), U = L42(), R = U.getHighWaterMark, F = M22().codes, { ERR_INVALID_ARG_TYPE: h, ERR_STREAM_PUSH_AFTER_EOF: Q, ERR_METHOD_NOT_IMPLEMENTED: N, ERR_STREAM_UNSHIFT_AFTER_END_EVENT: E } = F, A, C, p;
       B22()(f, Y);
       var l = H.errorOrDestroy, m = ["error", "close", "destroy", "pause", "resume"];
       function v(L, W, _) {
@@ -110191,7 +107923,7 @@ var init_index_modern2 = __esm(() => {
           this.objectMode = this.objectMode || !!L.readableObjectMode;
         if (this.highWaterMark = R(this, L, "readableHighWaterMark", _), this.buffer = new B, this.length = 0, this.pipes = null, this.pipesCount = 0, this.flowing = null, this.ended = false, this.endEmitted = false, this.reading = false, this.sync = true, this.needReadable = false, this.emittedReadable = false, this.readableListening = false, this.resumeScheduled = false, this.paused = true, this.emitClose = L.emitClose !== false, this.autoDestroy = !!L.autoDestroy, this.destroyed = false, this.defaultEncoding = L.defaultEncoding || "utf8", this.awaitDrain = 0, this.readingMore = false, this.decoder = null, this.encoding = null, L.encoding) {
           if (!A)
-            A = H42().StringDecoder;
+            A = H4().StringDecoder;
           this.decoder = new A(L.encoding), this.encoding = L.encoding;
         }
       }
@@ -110289,7 +108021,7 @@ var init_index_modern2 = __esm(() => {
         return this._readableState.flowing === false;
       }, f.prototype.setEncoding = function(L) {
         if (!A)
-          A = H42().StringDecoder;
+          A = H4().StringDecoder;
         var W = new A(L);
         this._readableState.decoder = W, this._readableState.encoding = this._readableState.decoder.encoding;
         var _ = this._readableState.buffer.head, S = "";
@@ -110774,7 +108506,7 @@ var init_index_modern2 = __esm(() => {
         if (U.on("close", function() {
           Q = true;
         }), J === undefined)
-          J = N62();
+          J = N6();
         J(U, { readable: R, writable: F }, function(E) {
           if (E)
             return h(E);
@@ -110831,7 +108563,7 @@ var init_index_modern2 = __esm(() => {
       z.exports = H;
     }), R42 = h0((w, z) => {
       var J = l22();
-      w = z.exports = K42(), w.Stream = J || w, w.Readable = w, w.Writable = h42(), w.Duplex = T22(), w.Transform = _4(), w.PassThrough = Ow(), w.finished = N62(), w.pipeline = Cw();
+      w = z.exports = K4(), w.Stream = J || w, w.Readable = w, w.Writable = h4(), w.Duplex = T22(), w.Transform = _4(), w.PassThrough = Ow(), w.finished = N6(), w.pipeline = Cw();
     }), f42 = h0((w) => {
       var z = F42(), J = B22(), Z = R42(), $ = w.readyStates = { UNSENT: 0, OPENED: 1, HEADERS_RECEIVED: 2, LOADING: 3, DONE: 4 }, Y = w.IncomingMessage = function(X, q, G, j) {
         var V = this;
@@ -111181,8 +108913,8 @@ var init_index_modern2 = __esm(() => {
       }, X.ClientRequest = z, X.IncomingMessage = J.IncomingMessage, X.Agent = function() {}, X.Agent.defaultMaxSockets = 4, X.globalAgent = new X.Agent, X.STATUS_CODES = $, X.METHODS = ["CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCOL", "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH", "PURGE", "PUT", "REPORT", "SEARCH", "SUBSCRIBE", "TRACE", "UNLOCK", "UNSUBSCRIBE"];
     }), U42 = hw(Tw(), 1), { request: Pw, get: Sw, ClientRequest: yw, IncomingMessage: bw, Agent: gw, globalAgent: xw, STATUS_CODES: uw, METHODS: kw } = U42.default, mw = U42.default;
   });
-  C42 = {};
-  E22(C42, { validateHeaderValue: () => Nz, validateHeaderName: () => Gz, setMaxIdleHTTPParsers: () => Xz, request: () => Yz, maxHeaderSize: () => qz, globalAgent: () => $z, get: () => Qz, default: () => Wz, createServer: () => Zz, ServerResponse: () => Jz, Server: () => zz, STATUS_CODES: () => wz, OutgoingMessage: () => tw, METHODS: () => ew, IncomingMessage: () => aw, ClientRequest: () => sw, Agent: () => ow });
+  C4 = {};
+  E22(C4, { validateHeaderValue: () => Nz, validateHeaderName: () => Gz, setMaxIdleHTTPParsers: () => Xz, request: () => Yz, maxHeaderSize: () => qz, globalAgent: () => $z, get: () => Qz, default: () => Wz, createServer: () => Zz, ServerResponse: () => Jz, Server: () => zz, STATUS_CODES: () => wz, OutgoingMessage: () => tw, METHODS: () => ew, IncomingMessage: () => aw, ClientRequest: () => sw, Agent: () => ow });
   I42 = L22(() => {
     lw = Object.create, { getPrototypeOf: cw, defineProperty: A42, getOwnPropertyNames: dw } = Object, pw = Object.prototype.hasOwnProperty, nw = iw((w, z) => {
       var J = (j6(), E0(W6)), Z = (G6(), E0(X6)), $ = w;
@@ -111227,7 +108959,7 @@ var init_index_modern2 = __esm(() => {
     Z.Paymail = "paymail";
     Z.Address = "address";
     Z.Script = "script";
-  })(U62 ||= {});
+  })(U6 ||= {});
   ((J) => {
     J.All = "all";
     J.Needed = "needed";
@@ -111246,7 +108978,7 @@ var init_index_modern2 = __esm(() => {
   })(P6 || (P6 = {}));
   (function(w) {
     w.TX = "tx", w.CHANNEL = "channel", w.BAP_ID = "bapID", w.PROVIDER = "provider", w.VIDEO_ID = "videoID", w.GEOHASH = "geohash", w.BTC_TX = "btcTx", w.ETH_TX = "ethTx";
-  })(S62 || (S62 = {}));
+  })(S6 || (S6 = {}));
   (function(w) {
     w.ID = "ID", w.ATTEST = "ATTEST", w.REVOKE = "REVOKE", w.ALIAS = "ALIAS";
   })(y62 || (y62 = {}));
@@ -111509,11 +109241,11 @@ var init_mintCollection = __esm(() => {
   init_index_modern2();
   init_zod();
   init_broadcaster();
-  mintCollectionArgsSchema = object2({
+  mintCollectionArgsSchema = object({
     folderPath: string2().describe("Path to folder containing images to mint as a collection"),
     collectionName: string2().describe("Name of the collection"),
     description: string2().describe("Description of the collection"),
-    rarityLabels: array(object2({
+    rarityLabels: array(object({
       label: string2(),
       percentage: number2().min(0).max(100)
     })).optional().describe("Rarity labels and their percentages"),
@@ -111573,7 +109305,7 @@ var opnsDeregisterArgsSchema;
 var init_opnsDeregister = __esm(() => {
   init_dist7();
   init_zod();
-  opnsDeregisterArgsSchema = object2({
+  opnsDeregisterArgsSchema = object({
     id: string2().describe("Tracking id of the OpNS name in the wallet's OPNS basket")
   });
 });
@@ -111629,18 +109361,18 @@ var opnsRegisterArgsSchema;
 var init_opnsRegister2 = __esm(() => {
   init_dist7();
   init_zod();
-  opnsRegisterArgsSchema = object2({
+  opnsRegisterArgsSchema = object({
     id: string2().describe("Tracking id of the OpNS name in the wallet's OPNS basket")
   });
 });
 
 // tools/wallet/schemas.ts
 var emptyArgsSchema, getPublicKeyArgsSchema, walletEncryptionArgsSchema, getAddressArgsSchema, purchaseListingArgsSchema;
-var init_schemas4 = __esm(() => {
+var init_schemas3 = __esm(() => {
   init_zod();
-  emptyArgsSchema = object2({});
-  getPublicKeyArgsSchema = object2({});
-  walletEncryptionArgsSchema = object2({
+  emptyArgsSchema = object({});
+  getPublicKeyArgsSchema = object({});
+  walletEncryptionArgsSchema = object({
     mode: _enum(["encrypt", "decrypt"]).describe("Operation mode: 'encrypt' to encrypt plaintext or 'decrypt' to decrypt data"),
     data: union([
       string2().describe("Text data to encrypt or decrypt"),
@@ -111657,8 +109389,8 @@ var init_schemas4 = __esm(() => {
       });
     }
   });
-  getAddressArgsSchema = object2({});
-  purchaseListingArgsSchema = object2({
+  getAddressArgsSchema = object({});
+  purchaseListingArgsSchema = object({
     listingOutpoint: string2().describe("The outpoint of the listing to purchase (txid_vout format)"),
     listingType: _enum(["nft", "token"]).default("nft").describe("Type of listing: 'nft' for ordinal NFTs, 'token' for BSV21 tokens"),
     tokenID: string2().optional().describe("Token ID (txid_vout of deploy transaction) — required when listingType is 'token'"),
@@ -111778,14 +109510,14 @@ var init_purchaseListing = __esm(() => {
   init_dist7();
   init_backends();
   init_constants2();
-  init_schemas4();
+  init_schemas3();
 });
 
 // tools/wallet/refreshUtxos.ts
 function registerRefreshUtxosTool(server, ctx) {
   server.registerTool("wallet_refreshUtxos", {
     description: "Syncs external payments sent to BRC-29 deposit addresses into the wallet. Triggers lazy indexing on the server, classifies outputs (funding, ordinals, tokens), and internalizes them.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       if (!ctx) {
@@ -111956,8 +109688,8 @@ var init_revealDelegation = __esm(() => {
   publicKey = string2().regex(/^(02|03)[a-f0-9]{64}$/);
   base642 = string2().min(4).max(16384).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
   fields = record(string2().min(1).max(49), base642).refine((v) => Object.keys(v).length > 0 && Object.keys(v).length <= 32);
-  handoffSchema = object2({
-    certificate: object2({
+  handoffSchema = object({
+    certificate: object({
       type: literal("30kchAJIGfLxzCNloCJNLI3AtkgA8UbkxlXU2Cj4PpA="),
       serialNumber: base642.refine((v) => Buffer.from(v, "base64").length === 32),
       subject: publicKey,
@@ -111985,7 +109717,7 @@ var init_revealDelegation = __esm(() => {
 function registerRevealDelegationTool(server, ctx) {
   server.registerTool("wallet_revealDelegation", {
     description: "Receive the human owner's BRC-169 certificate handoff, acquire and prove it with this connected agent wallet, and reveal its restrictions to the specified Sigma verifier. Imports a certificate and activates its existing delegation. Never pays, broadcasts, follows redirects, or retries an ambiguous POST. The subject keyring stays with the wallet.",
-    inputSchema: object2({
+    inputSchema: object({
       sigmaOrigin: string2().max(2048).describe("Explicit Sigma HTTPS origin, or HTTP loopback for local testing"),
       handoffJSON: string2().max(131072).describe("JSON package copied by the owner: certificate, subjectKeyring, revealTo, revelationPath")
     }),
@@ -112072,7 +109804,7 @@ var sendAllBsvArgsSchema;
 var init_sendAllBsv = __esm(() => {
   init_dist7();
   init_zod();
-  sendAllBsvArgsSchema = object2({
+  sendAllBsvArgsSchema = object({
     destination: string2().describe("Destination P2PKH address to send all funds to")
   });
 });
@@ -112100,9 +109832,9 @@ function registerSendBsvTool(server, ctx) {
         if (r.currency === "USD") {
           if (!bsvPrice)
             bsvPrice = await getBsvPriceWithCache();
-          satoshis = W2(r.amount / bsvPrice);
+          satoshis = W3(r.amount / bsvPrice);
         } else {
-          satoshis = W2(r.amount);
+          satoshis = W3(r.amount);
         }
         return {
           ...r.address && { address: r.address },
@@ -112151,13 +109883,13 @@ var init_sendBsv = __esm(() => {
   init_dist8();
   init_zod();
   init_getPrice();
-  recipientSchema = object2({
+  recipientSchema = object({
     address: string2().optional().describe("Destination P2PKH address"),
     paymail: string2().optional().describe("Destination paymail address"),
     amount: number2().positive().finite().describe("Amount to send; must be greater than zero"),
     currency: _enum(["BSV", "USD"]).optional().default("BSV").describe("Currency of amount (default: BSV)")
   });
-  sendBsvArgsSchema = object2({
+  sendBsvArgsSchema = object({
     recipients: array(recipientSchema).describe("Array of payment recipients")
   });
 });
@@ -112166,7 +109898,7 @@ var init_sendBsv = __esm(() => {
 function registerSignBsmTool(server, ctx) {
   server.registerTool("wallet_signBsm", {
     description: "Sign a message using BSM (Bitcoin Signed Message) format",
-    inputSchema: object2({
+    inputSchema: object({
       message: string2().describe("The message to sign"),
       encoding: _enum(["utf8", "hex", "base64"]).optional().describe("Message encoding format")
     })
@@ -112265,12 +109997,12 @@ var init_sweepBsv = __esm(() => {
   init_mod();
   init_zod();
   init_redact();
-  sweepInputSchema = object2({
+  sweepInputSchema = object({
     outpoint: string2().describe("Outpoint (txid_vout)"),
     satoshis: number2().int().describe("Satoshis in output"),
     lockingScript: string2().describe("Locking script hex")
   });
-  sweepBsvSchema = object2({
+  sweepBsvSchema = object({
     inputs: array(sweepInputSchema).describe("UTXOs to sweep (use prepareSweepInputs to build these)"),
     wif: string2().describe("WIF private key controlling the inputs"),
     amount: number2().int().optional().describe("Amount to sweep (satoshis). If omitted, sweeps all input value.")
@@ -112336,14 +110068,14 @@ var init_sweepBsv21 = __esm(() => {
   init_mod();
   init_zod();
   init_redact();
-  sweepBsv21InputSchema = object2({
+  sweepBsv21InputSchema = object({
     outpoint: string2().describe("Outpoint (txid_vout)"),
     satoshis: number2().int().describe("Satoshis (should be 1)"),
     lockingScript: string2().describe("Locking script hex"),
     tokenId: string2().describe("Token ID (txid_vout format)"),
     amount: string2().describe("Token amount as string")
   });
-  sweepBsv21Schema = object2({
+  sweepBsv21Schema = object({
     inputs: array(sweepBsv21InputSchema).describe("Token UTXOs to sweep (must all be same tokenId)"),
     wif: string2().describe("WIF private key controlling the inputs")
   });
@@ -112408,12 +110140,12 @@ var init_sweepOrdinals = __esm(() => {
   init_mod();
   init_zod();
   init_redact();
-  sweepInputSchema2 = object2({
+  sweepInputSchema2 = object({
     outpoint: string2().describe("Outpoint (txid_vout)"),
     satoshis: number2().int().describe("Satoshis (should be 1)"),
     lockingScript: string2().describe("Locking script hex")
   });
-  sweepOrdinalsSchema = object2({
+  sweepOrdinalsSchema = object({
     inputs: array(sweepInputSchema2).describe("Ordinal UTXOs to sweep"),
     wif: string2().describe("WIF private key controlling the inputs")
   });
@@ -112521,7 +110253,7 @@ var transferOrdTokenArgsSchema;
 var init_transferOrdToken = __esm(() => {
   init_dist7();
   init_zod();
-  transferOrdTokenArgsSchema = object2({
+  transferOrdTokenArgsSchema = object({
     type: _enum(["ordinal", "bsv21"]).describe("'ordinal' to transfer an inscription/NFT, 'bsv21' to send fungible BSV21 tokens"),
     id: string2().optional().describe("Tracking id of the ordinal in the ordinals basket (the 'id:' tag from wallet_getOrdinals). Required when type='ordinal'"),
     tokenId: string2().optional().describe("Token ID (txid_vout format). Required when type='bsv21'"),
@@ -112535,7 +110267,7 @@ var init_transferOrdToken = __esm(() => {
 function registerUnlockBsvTool(server, ctx) {
   server.registerTool("wallet_unlockBsv", {
     description: "Unlock all matured time-locked BSV",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     if (!ctx) {
       return {
@@ -112876,7 +110608,7 @@ function familySchema(operations) {
   const ids = [...operations.keys()];
   if (ids.length === 0)
     throw new Error("Cannot register an empty compact family");
-  return object2({
+  return object({
     operation: string2().meta({ enum: ids }),
     args: record(string2(), unknown()).default({})
   });
@@ -113330,15 +111062,15 @@ var init_accounts = __esm(() => {
   });
   compressedPublicKeySchema = string2().regex(/^0[23][0-9a-fA-F]{64}$/, "Invalid compressed public key");
   nonEmptyStringSchema = string2().min(1);
-  vaultPaymentSchema = object2({
+  vaultPaymentSchema = object({
     entryId: nonEmptyStringSchema,
     publicKey: compressedPublicKeySchema
   }).strict();
-  vaultHdSchema = object2({
+  vaultHdSchema = object({
     entryId: nonEmptyStringSchema,
     expectedXpub: nonEmptyStringSchema
   }).strict();
-  embeddedVaultBindingSchema = object2({
+  embeddedVaultBindingSchema = object({
     version: literal(1),
     contract: literal("embedded-roots-v1"),
     vaultId: nonEmptyStringSchema,
@@ -113346,11 +111078,11 @@ var init_accounts = __esm(() => {
     identity: vaultPaymentSchema.optional(),
     hd: vaultHdSchema.optional()
   }).strict();
-  vaultBindingHistoryItemSchema = object2({
+  vaultBindingHistoryItemSchema = object({
     binding: embeddedVaultBindingSchema,
     changedAt: string2().datetime()
   }).strict();
-  accountConfigSchema = object2({
+  accountConfigSchema = object({
     chain: _enum(["main", "test"]),
     storageIdentityKey: string2().min(1).max(200),
     activeRemote: remote.optional(),
@@ -113362,11 +111094,1059 @@ var init_accounts = __esm(() => {
   }).strict();
 });
 
+// node_modules/@noble/hashes/utils.js
+function isBytes2(a) {
+  return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
+}
+function anumber2(n, title = "") {
+  if (typeof n !== "number")
+    throw new TypeError(atitle(title) + "expected number, got " + typeof n);
+  if (!Number.isSafeInteger(n) || n < 0)
+    throw new RangeError(atitle(title) + "expected integer >= 0, got " + n);
+  return n;
+}
+function abytes2(value, length, title = "") {
+  if (isBytes2(value) && (length === undefined || value.length === length))
+    return value;
+  if (length !== undefined)
+    anumber2(length, "length");
+  const bytes = isBytes2(value);
+  const ofLen = length !== undefined ? ` of length ${length}` : "";
+  const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
+  const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
+  if (!bytes)
+    throw new TypeError(message);
+  throw new RangeError(message);
+}
+function copyBytes(bytes) {
+  return Uint8Array.from(abytes2(bytes));
+}
+function aexists2(instance, checkFinished = true) {
+  if (instance.destroyed)
+    throw new Error("hash was destroyed");
+  if (checkFinished && instance.finished)
+    throw new Error("digest() was already called");
+}
+function aoutput2(out, instance) {
+  abytes2(out, undefined, "output");
+  const min = instance.outputLen;
+  if (!(out.length >= min)) {
+    throw new RangeError('"output" expected length >= ' + min);
+  }
+}
+function u82(arr) {
+  return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+function u32(arr) {
+  return new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
+}
+function clean2(...arrays) {
+  for (let i = 0;i < arrays.length; i++) {
+    arrays[i].fill(0);
+  }
+}
+function byteSwap(word) {
+  return word << 24 & 4278190080 | word << 8 & 16711680 | word >>> 8 & 65280 | word >>> 24 & 255;
+}
+function byteSwap32(arr) {
+  for (let i = 0;i < arr.length; i++) {
+    arr[i] = byteSwap(arr[i]);
+  }
+  return arr;
+}
+function utf8ToBytes2(str) {
+  if (typeof str !== "string")
+    throw new TypeError("string expected");
+  const encoded = new TextEncoder().encode(str);
+  try {
+    return new Uint8Array(encoded);
+  } finally {
+    clean2(encoded);
+  }
+}
+function kdfInputToBytes2(data, errorTitle = "") {
+  if (typeof data === "string")
+    return utf8ToBytes2(data);
+  return abytes2(data, undefined, errorTitle);
+}
+function checkOpts(defaults, opts, title = "opts") {
+  aopts(defaults, "defaults");
+  if (opts !== undefined)
+    aopts(opts, title);
+  const merged = Object.assign(Object.create(null), defaults, opts);
+  return merged;
+}
+function createHasher2(hashCons, info = {}) {
+  if (typeof hashCons !== "function")
+    throw new TypeError('"hashCons" expected function, got type=' + typeof hashCons);
+  info = checkOpts({}, info, "info");
+  const hashC = (msg, opts) => hashCons(opts).update(msg).digest();
+  const tmp = hashCons(undefined);
+  hashC.outputLen = tmp.outputLen;
+  hashC.blockLen = tmp.blockLen;
+  hashC.canXOF = tmp.canXOF;
+  hashC.create = (opts) => hashCons(opts);
+  Object.assign(hashC, info);
+  return Object.freeze(hashC);
+}
+var atitle = (title) => title ? `"${title}" ` : "", aobject = (value, label) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new TypeError((label === "object" ? "" : `"${label}" `) + "expected object, got type=" + typeof value);
+}, aopts = (value, label) => {
+  aobject(value, label);
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null)
+    throw new TypeError(`"${label}" expected plain object`);
+  if (Object.hasOwn(value, "__proto__"))
+    throw new TypeError(`"${label}.__proto__" is not allowed`);
+}, isLE, swap8IfBE, swap32IfBE;
+var init_utils5 = __esm(() => {
+  isLE = /* @__PURE__ */ (() => new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68)();
+  swap8IfBE = isLE ? (n) => n : (n) => byteSwap(n) >>> 0;
+  swap32IfBE = isLE ? (u) => u : byteSwap32;
+});
+
+// node_modules/@noble/hashes/_blake.js
+var BSIGMA;
+var init__blake = __esm(() => {
+  BSIGMA = /* @__PURE__ */ Uint8Array.from([
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    14,
+    10,
+    4,
+    8,
+    9,
+    15,
+    13,
+    6,
+    1,
+    12,
+    0,
+    2,
+    11,
+    7,
+    5,
+    3,
+    11,
+    8,
+    12,
+    0,
+    5,
+    2,
+    15,
+    13,
+    10,
+    14,
+    3,
+    6,
+    7,
+    1,
+    9,
+    4,
+    7,
+    9,
+    3,
+    1,
+    13,
+    12,
+    11,
+    14,
+    2,
+    6,
+    5,
+    10,
+    4,
+    0,
+    15,
+    8,
+    9,
+    0,
+    5,
+    7,
+    2,
+    4,
+    10,
+    15,
+    14,
+    1,
+    11,
+    12,
+    6,
+    8,
+    3,
+    13,
+    2,
+    12,
+    6,
+    10,
+    0,
+    11,
+    8,
+    3,
+    4,
+    13,
+    7,
+    5,
+    15,
+    14,
+    1,
+    9,
+    12,
+    5,
+    1,
+    15,
+    14,
+    13,
+    4,
+    10,
+    0,
+    7,
+    6,
+    3,
+    9,
+    2,
+    8,
+    11,
+    13,
+    11,
+    7,
+    14,
+    12,
+    1,
+    3,
+    9,
+    5,
+    0,
+    15,
+    4,
+    8,
+    6,
+    2,
+    10,
+    6,
+    15,
+    14,
+    9,
+    11,
+    3,
+    0,
+    8,
+    12,
+    2,
+    13,
+    7,
+    1,
+    4,
+    10,
+    5,
+    10,
+    2,
+    8,
+    4,
+    7,
+    6,
+    1,
+    5,
+    15,
+    11,
+    9,
+    14,
+    3,
+    12,
+    13,
+    0,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    14,
+    10,
+    4,
+    8,
+    9,
+    15,
+    13,
+    6,
+    1,
+    12,
+    0,
+    2,
+    11,
+    7,
+    5,
+    3,
+    11,
+    8,
+    12,
+    0,
+    5,
+    2,
+    15,
+    13,
+    10,
+    14,
+    3,
+    6,
+    7,
+    1,
+    9,
+    4,
+    7,
+    9,
+    3,
+    1,
+    13,
+    12,
+    11,
+    14,
+    2,
+    6,
+    5,
+    10,
+    4,
+    0,
+    15,
+    8,
+    9,
+    0,
+    5,
+    7,
+    2,
+    4,
+    10,
+    15,
+    14,
+    1,
+    11,
+    12,
+    6,
+    8,
+    3,
+    13,
+    2,
+    12,
+    6,
+    10,
+    0,
+    11,
+    8,
+    3,
+    4,
+    13,
+    7,
+    5,
+    15,
+    14,
+    1,
+    9
+  ]);
+});
+
+// node_modules/@noble/hashes/_u64.js
+function add2(Ah, Al, Bh, Bl) {
+  const l = (Al >>> 0) + (Bl >>> 0);
+  return { h: Ah + Bh + (l / 2 ** 32 | 0) | 0, l: l | 0 };
+}
+var fromNumH = (n) => n / 2 ** 32 | 0, fromNumL = (n) => n >>> 0, rotrSH2 = (h, l, s) => h >>> s | l << 32 - s, rotrSL2 = (h, l, s) => h << 32 - s | l >>> s, rotrBH2 = (h, l, s) => h << 64 - s | l >>> s - 32, rotrBL2 = (h, l, s) => h >>> s - 32 | l << 64 - s, rotr32H = (_h, l) => l, rotr32L = (h, _l) => h, add3L2 = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0), add3H2 = (low, Ah, Bh, Ch) => Ah + Bh + Ch + (low / 2 ** 32 | 0) | 0;
+var init__u64 = () => {};
+
+// node_modules/@noble/hashes/blake2.js
+function G1b(a, b, c, d, msg, x) {
+  const Xl = msg[x], Xh = msg[x + 1];
+  let Al = BBUF[2 * a], Ah = BBUF[2 * a + 1];
+  let Bl = BBUF[2 * b], Bh = BBUF[2 * b + 1];
+  let Cl = BBUF[2 * c], Ch = BBUF[2 * c + 1];
+  let Dl = BBUF[2 * d], Dh = BBUF[2 * d + 1];
+  const ll = add3L2(Al, Bl, Xl);
+  Ah = add3H2(ll, Ah, Bh, Xh);
+  Al = ll | 0;
+  let xh = Dh ^ Ah, xl = Dl ^ Al;
+  Dh = rotr32H(xh, xl);
+  Dl = rotr32L(xh, xl);
+  ({ h: Ch, l: Cl } = add2(Ch, Cl, Dh, Dl));
+  xh = Bh ^ Ch;
+  xl = Bl ^ Cl;
+  Bh = rotrSH2(xh, xl, 24);
+  Bl = rotrSL2(xh, xl, 24);
+  BBUF[2 * a] = Al;
+  BBUF[2 * a + 1] = Ah;
+  BBUF[2 * b] = Bl;
+  BBUF[2 * b + 1] = Bh;
+  BBUF[2 * c] = Cl;
+  BBUF[2 * c + 1] = Ch;
+  BBUF[2 * d] = Dl;
+  BBUF[2 * d + 1] = Dh;
+}
+function G2b(a, b, c, d, msg, x) {
+  const Xl = msg[x], Xh = msg[x + 1];
+  let Al = BBUF[2 * a], Ah = BBUF[2 * a + 1];
+  let Bl = BBUF[2 * b], Bh = BBUF[2 * b + 1];
+  let Cl = BBUF[2 * c], Ch = BBUF[2 * c + 1];
+  let Dl = BBUF[2 * d], Dh = BBUF[2 * d + 1];
+  const ll = add3L2(Al, Bl, Xl);
+  Ah = add3H2(ll, Ah, Bh, Xh);
+  Al = ll | 0;
+  let xh = Dh ^ Ah, xl = Dl ^ Al;
+  Dh = rotrSH2(xh, xl, 16);
+  Dl = rotrSL2(xh, xl, 16);
+  ({ h: Ch, l: Cl } = add2(Ch, Cl, Dh, Dl));
+  xh = Bh ^ Ch;
+  xl = Bl ^ Cl;
+  Bh = rotrBH2(xh, xl, 63);
+  Bl = rotrBL2(xh, xl, 63);
+  BBUF[2 * a] = Al;
+  BBUF[2 * a + 1] = Ah;
+  BBUF[2 * b] = Bl;
+  BBUF[2 * b + 1] = Bh;
+  BBUF[2 * c] = Cl;
+  BBUF[2 * c + 1] = Ch;
+  BBUF[2 * d] = Dl;
+  BBUF[2 * d + 1] = Dh;
+}
+function checkBlake2Opts(outputLen, opts = {}, keyLen, saltLen, persLen) {
+  anumber2(keyLen);
+  if (outputLen <= 0 || outputLen > keyLen)
+    throw new Error('"dkLen" must be 1..' + keyLen + ", got " + outputLen);
+  const { key, salt, personalization } = opts;
+  if (key !== undefined && (key.length < 1 || key.length > keyLen))
+    throw new Error('"key" expected to be undefined or of length=1..' + keyLen);
+  if (salt !== undefined)
+    abytes2(salt, saltLen, "salt");
+  if (personalization !== undefined)
+    abytes2(personalization, persLen, "personalization");
+}
+
+class _BLAKE2 {
+  buffer;
+  buffer32;
+  finished = false;
+  destroyed = false;
+  length = 0;
+  pos = 0;
+  blockLen;
+  outputLen;
+  canXOF = false;
+  constructor(blockLen, outputLen) {
+    anumber2(blockLen);
+    anumber2(outputLen);
+    this.blockLen = blockLen;
+    this.outputLen = outputLen;
+    this.buffer = new Uint8Array(blockLen);
+    this.buffer32 = u32(this.buffer);
+  }
+  update(data) {
+    aexists2(this);
+    abytes2(data);
+    const { blockLen, buffer, buffer32 } = this;
+    const len = data.length;
+    const offset = data.byteOffset;
+    const buf = data.buffer;
+    for (let pos = 0;pos < len; ) {
+      if (this.pos === blockLen) {
+        swap32IfBE(buffer32);
+        this.compress(buffer32, 0, false);
+        swap32IfBE(buffer32);
+        this.pos = 0;
+      }
+      const take = Math.min(blockLen - this.pos, len - pos);
+      const dataOffset = offset + pos;
+      if (take === blockLen && !(dataOffset % 4) && pos + take < len) {
+        const data32 = new Uint32Array(buf, dataOffset, Math.floor((len - pos) / 4));
+        swap32IfBE(data32);
+        for (let pos32 = 0;pos + blockLen < len; pos32 += buffer32.length, pos += blockLen) {
+          this.length += blockLen;
+          this.compress(data32, pos32, false);
+        }
+        swap32IfBE(data32);
+        continue;
+      }
+      buffer.set(pos === 0 && take === len ? data : data.subarray(pos, pos + take), this.pos);
+      this.pos += take;
+      this.length += take;
+      pos += take;
+    }
+    return this;
+  }
+  digestInto(out) {
+    aexists2(this);
+    aoutput2(out, this);
+    if (out.byteOffset & 3)
+      throw new RangeError('"output" expected 4-byte aligned byteOffset, got ' + out.byteOffset);
+    const { pos, buffer32 } = this;
+    this.finished = true;
+    this.buffer.fill(0, pos);
+    swap32IfBE(buffer32);
+    this.compress(buffer32, 0, true);
+    swap32IfBE(buffer32);
+    const state = this.get();
+    const out32 = out === this.buffer ? buffer32 : u32(out);
+    const full = Math.floor(this.outputLen / 4);
+    for (let i = 0;i < full; i++)
+      out32[i] = swap8IfBE(state[i]);
+    const tail = this.outputLen % 4;
+    if (!tail)
+      return;
+    const off = full * 4;
+    const word = state[full];
+    for (let i = 0;i < tail; i++)
+      out[off + i] = word >>> 8 * i;
+  }
+  digest() {
+    const { buffer, outputLen } = this;
+    this.digestInto(buffer);
+    const res = buffer.slice(0, outputLen);
+    this.destroy();
+    return res;
+  }
+  _cloneInto(to) {
+    const { buffer, length, finished, destroyed, outputLen, pos } = this;
+    to ||= new this.constructor({ dkLen: outputLen });
+    to.set(...this.get());
+    to.buffer.set(buffer);
+    to.destroyed = destroyed;
+    to.finished = finished;
+    to.length = length;
+    to.pos = pos;
+    to.outputLen = outputLen;
+    return to;
+  }
+  clone() {
+    return this._cloneInto();
+  }
+}
+var B2B_IV, BBUF, _BLAKE2b, blake2b;
+var init_blake2 = __esm(() => {
+  init__blake();
+  init__u64();
+  init_utils5();
+  B2B_IV = /* @__PURE__ */ Uint32Array.from([
+    4089235720,
+    1779033703,
+    2227873595,
+    3144134277,
+    4271175723,
+    1013904242,
+    1595750129,
+    2773480762,
+    2917565137,
+    1359893119,
+    725511199,
+    2600822924,
+    4215389547,
+    528734635,
+    327033209,
+    1541459225
+  ]);
+  BBUF = /* @__PURE__ */ new Uint32Array(32);
+  _BLAKE2b = class _BLAKE2b extends _BLAKE2 {
+    v0l = B2B_IV[0] | 0;
+    v0h = B2B_IV[1] | 0;
+    v1l = B2B_IV[2] | 0;
+    v1h = B2B_IV[3] | 0;
+    v2l = B2B_IV[4] | 0;
+    v2h = B2B_IV[5] | 0;
+    v3l = B2B_IV[6] | 0;
+    v3h = B2B_IV[7] | 0;
+    v4l = B2B_IV[8] | 0;
+    v4h = B2B_IV[9] | 0;
+    v5l = B2B_IV[10] | 0;
+    v5h = B2B_IV[11] | 0;
+    v6l = B2B_IV[12] | 0;
+    v6h = B2B_IV[13] | 0;
+    v7l = B2B_IV[14] | 0;
+    v7h = B2B_IV[15] | 0;
+    constructor(opts = {}) {
+      opts = checkOpts({}, opts);
+      const olen = opts.dkLen === undefined ? 64 : opts.dkLen;
+      super(128, olen);
+      checkBlake2Opts(olen, opts, 64, 16, 16);
+      let { key, personalization, salt } = opts;
+      let keyLength = 0;
+      if (key !== undefined) {
+        abytes2(key, undefined, "key");
+        keyLength = key.length;
+      }
+      this.v0l ^= this.outputLen | keyLength << 8 | 1 << 16 | 1 << 24;
+      if (salt !== undefined) {
+        abytes2(salt, undefined, "salt");
+        const slt = u32(copyBytes(salt));
+        this.v4l ^= swap8IfBE(slt[0]);
+        this.v4h ^= swap8IfBE(slt[1]);
+        this.v5l ^= swap8IfBE(slt[2]);
+        this.v5h ^= swap8IfBE(slt[3]);
+      }
+      if (personalization !== undefined) {
+        abytes2(personalization, undefined, "personalization");
+        const pers = u32(copyBytes(personalization));
+        this.v6l ^= swap8IfBE(pers[0]);
+        this.v6h ^= swap8IfBE(pers[1]);
+        this.v7l ^= swap8IfBE(pers[2]);
+        this.v7h ^= swap8IfBE(pers[3]);
+      }
+      if (key !== undefined) {
+        const tmp = new Uint8Array(this.blockLen);
+        tmp.set(key);
+        this.update(tmp);
+        clean2(tmp);
+      }
+    }
+    get() {
+      let { v0l, v0h, v1l, v1h, v2l, v2h, v3l, v3h, v4l, v4h, v5l, v5h, v6l, v6h, v7l, v7h } = this;
+      return [v0l, v0h, v1l, v1h, v2l, v2h, v3l, v3h, v4l, v4h, v5l, v5h, v6l, v6h, v7l, v7h];
+    }
+    set(v0l, v0h, v1l, v1h, v2l, v2h, v3l, v3h, v4l, v4h, v5l, v5h, v6l, v6h, v7l, v7h) {
+      this.v0l = v0l | 0;
+      this.v0h = v0h | 0;
+      this.v1l = v1l | 0;
+      this.v1h = v1h | 0;
+      this.v2l = v2l | 0;
+      this.v2h = v2h | 0;
+      this.v3l = v3l | 0;
+      this.v3h = v3h | 0;
+      this.v4l = v4l | 0;
+      this.v4h = v4h | 0;
+      this.v5l = v5l | 0;
+      this.v5h = v5h | 0;
+      this.v6l = v6l | 0;
+      this.v6h = v6h | 0;
+      this.v7l = v7l | 0;
+      this.v7h = v7h | 0;
+    }
+    compress(msg, offset, isLast) {
+      const { v0l, v0h, v1l, v1h, v2l, v2h, v3l, v3h, v4l, v4h, v5l, v5h, v6l, v6h, v7l, v7h } = this;
+      {
+        BBUF[0] = v0l;
+        BBUF[1] = v0h;
+        BBUF[2] = v1l;
+        BBUF[3] = v1h;
+        BBUF[4] = v2l;
+        BBUF[5] = v2h;
+        BBUF[6] = v3l;
+        BBUF[7] = v3h;
+        BBUF[8] = v4l;
+        BBUF[9] = v4h;
+        BBUF[10] = v5l;
+        BBUF[11] = v5h;
+        BBUF[12] = v6l;
+        BBUF[13] = v6h;
+        BBUF[14] = v7l;
+        BBUF[15] = v7h;
+      }
+      BBUF.set(B2B_IV, 16);
+      const l = fromNumL(this.length);
+      const h = fromNumH(this.length);
+      BBUF[24] = B2B_IV[8] ^ l;
+      BBUF[25] = B2B_IV[9] ^ h;
+      if (isLast) {
+        BBUF[28] = ~BBUF[28];
+        BBUF[29] = ~BBUF[29];
+      }
+      let j = 0;
+      const s = BSIGMA;
+      for (let i = 0;i < 12; i++) {
+        G1b(0, 4, 8, 12, msg, offset + 2 * s[j++]);
+        G2b(0, 4, 8, 12, msg, offset + 2 * s[j++]);
+        G1b(1, 5, 9, 13, msg, offset + 2 * s[j++]);
+        G2b(1, 5, 9, 13, msg, offset + 2 * s[j++]);
+        G1b(2, 6, 10, 14, msg, offset + 2 * s[j++]);
+        G2b(2, 6, 10, 14, msg, offset + 2 * s[j++]);
+        G1b(3, 7, 11, 15, msg, offset + 2 * s[j++]);
+        G2b(3, 7, 11, 15, msg, offset + 2 * s[j++]);
+        G1b(0, 5, 10, 15, msg, offset + 2 * s[j++]);
+        G2b(0, 5, 10, 15, msg, offset + 2 * s[j++]);
+        G1b(1, 6, 11, 12, msg, offset + 2 * s[j++]);
+        G2b(1, 6, 11, 12, msg, offset + 2 * s[j++]);
+        G1b(2, 7, 8, 13, msg, offset + 2 * s[j++]);
+        G2b(2, 7, 8, 13, msg, offset + 2 * s[j++]);
+        G1b(3, 4, 9, 14, msg, offset + 2 * s[j++]);
+        G2b(3, 4, 9, 14, msg, offset + 2 * s[j++]);
+      }
+      this.v0l ^= BBUF[0] ^ BBUF[16];
+      this.v0h ^= BBUF[1] ^ BBUF[17];
+      this.v1l ^= BBUF[2] ^ BBUF[18];
+      this.v1h ^= BBUF[3] ^ BBUF[19];
+      this.v2l ^= BBUF[4] ^ BBUF[20];
+      this.v2h ^= BBUF[5] ^ BBUF[21];
+      this.v3l ^= BBUF[6] ^ BBUF[22];
+      this.v3h ^= BBUF[7] ^ BBUF[23];
+      this.v4l ^= BBUF[8] ^ BBUF[24];
+      this.v4h ^= BBUF[9] ^ BBUF[25];
+      this.v5l ^= BBUF[10] ^ BBUF[26];
+      this.v5h ^= BBUF[11] ^ BBUF[27];
+      this.v6l ^= BBUF[12] ^ BBUF[28];
+      this.v6h ^= BBUF[13] ^ BBUF[29];
+      this.v7l ^= BBUF[14] ^ BBUF[30];
+      this.v7h ^= BBUF[15] ^ BBUF[31];
+      clean2(BBUF);
+    }
+    destroy() {
+      this.destroyed = true;
+      clean2(this.buffer32);
+      this.set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
+  };
+  blake2b = /* @__PURE__ */ createHasher2((opts) => new _BLAKE2b(opts));
+});
+
+// node_modules/@noble/hashes/argon2.js
+function G(a, b, c, d) {
+  let Al = A2_BUF[2 * a], Ah = A2_BUF[2 * a + 1];
+  let Bl = A2_BUF[2 * b], Bh = A2_BUF[2 * b + 1];
+  let Cl = A2_BUF[2 * c], Ch = A2_BUF[2 * c + 1];
+  let Dl = A2_BUF[2 * d], Dh = A2_BUF[2 * d + 1];
+  let ml = 0, mh = 0, rl = 0, xh = 0, xl = 0;
+  ml = Math.imul(Al, Bl);
+  mh = ((Al >>> 0) * (Bl >>> 0) - (ml >>> 0)) / 4294967296 + 0.5 | 0;
+  rl = (Al >>> 0) + (Bl >>> 0) + (ml << 1 >>> 0);
+  Ah = Ah + Bh + (mh << 1 | ml >>> 31) + (rl / 4294967296 | 0) | 0;
+  Al = rl | 0;
+  xh = Dh ^ Ah;
+  xl = Dl ^ Al;
+  Dh = xl;
+  Dl = xh;
+  ml = Math.imul(Cl, Dl);
+  mh = ((Cl >>> 0) * (Dl >>> 0) - (ml >>> 0)) / 4294967296 + 0.5 | 0;
+  rl = (Cl >>> 0) + (Dl >>> 0) + (ml << 1 >>> 0);
+  Ch = Ch + Dh + (mh << 1 | ml >>> 31) + (rl / 4294967296 | 0) | 0;
+  Cl = rl | 0;
+  xh = Bh ^ Ch;
+  xl = Bl ^ Cl;
+  Bh = xh >>> 24 | xl << 8;
+  Bl = xh << 8 | xl >>> 24;
+  ml = Math.imul(Al, Bl);
+  mh = ((Al >>> 0) * (Bl >>> 0) - (ml >>> 0)) / 4294967296 + 0.5 | 0;
+  rl = (Al >>> 0) + (Bl >>> 0) + (ml << 1 >>> 0);
+  Ah = Ah + Bh + (mh << 1 | ml >>> 31) + (rl / 4294967296 | 0) | 0;
+  Al = rl | 0;
+  xh = Dh ^ Ah;
+  xl = Dl ^ Al;
+  Dh = xh >>> 16 | xl << 16;
+  Dl = xh << 16 | xl >>> 16;
+  ml = Math.imul(Cl, Dl);
+  mh = ((Cl >>> 0) * (Dl >>> 0) - (ml >>> 0)) / 4294967296 + 0.5 | 0;
+  rl = (Cl >>> 0) + (Dl >>> 0) + (ml << 1 >>> 0);
+  Ch = Ch + Dh + (mh << 1 | ml >>> 31) + (rl / 4294967296 | 0) | 0;
+  Cl = rl | 0;
+  xh = Bh ^ Ch;
+  xl = Bl ^ Cl;
+  Bh = xh << 1 | xl >>> 31;
+  Bl = xh >>> 31 | xl << 1;
+  A2_BUF[2 * a] = Al, A2_BUF[2 * a + 1] = Ah;
+  A2_BUF[2 * b] = Bl, A2_BUF[2 * b + 1] = Bh;
+  A2_BUF[2 * c] = Cl, A2_BUF[2 * c + 1] = Ch;
+  A2_BUF[2 * d] = Dl, A2_BUF[2 * d + 1] = Dh;
+}
+function P(v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15) {
+  G(v00, v04, v08, v12);
+  G(v01, v05, v09, v13);
+  G(v02, v06, v10, v14);
+  G(v03, v07, v11, v15);
+  G(v00, v05, v10, v15);
+  G(v01, v06, v11, v12);
+  G(v02, v07, v08, v13);
+  G(v03, v04, v09, v14);
+}
+function block(x, xPos, yPos, outPos, needXor) {
+  if (needXor) {
+    for (let i = 0;i < 256; i++) {
+      const r = x[xPos + i] ^ x[yPos + i];
+      A2_BUF[i] = r;
+      x[outPos + i] ^= r;
+    }
+  } else {
+    for (let i = 0;i < 256; i++) {
+      const r = x[xPos + i] ^ x[yPos + i];
+      A2_BUF[i] = r;
+      x[outPos + i] = r;
+    }
+  }
+  for (let i = 0;i < 128; i += 16) {
+    P(i, i + 1, i + 2, i + 3, i + 4, i + 5, i + 6, i + 7, i + 8, i + 9, i + 10, i + 11, i + 12, i + 13, i + 14, i + 15);
+  }
+  for (let i = 0;i < 16; i += 2) {
+    P(i, i + 1, i + 16, i + 17, i + 32, i + 33, i + 48, i + 49, i + 64, i + 65, i + 80, i + 81, i + 96, i + 97, i + 112, i + 113);
+  }
+  for (let i = 0;i < 256; i++)
+    x[outPos + i] ^= A2_BUF[i];
+  clean2(A2_BUF);
+}
+function Hp(A, dkLen) {
+  const A8 = u82(A);
+  const T = new Uint32Array(1);
+  const T8 = u82(T);
+  T[0] = swap8IfBE(dkLen);
+  if (dkLen <= 64)
+    return blake2b.create({ dkLen }).update(T8).update(A8).digest();
+  const out = new Uint8Array(dkLen);
+  let V = blake2b.create({}).update(T8).update(A8).digest();
+  let pos = 0;
+  out.set(V.subarray(0, 32));
+  pos += 32;
+  for (;dkLen - pos > 64; pos += 32) {
+    const Vh = blake2b.create({}).update(V);
+    Vh.digestInto(V);
+    Vh.destroy();
+    out.set(V.subarray(0, 32), pos);
+  }
+  out.set(blake2b(V, { dkLen: dkLen - pos }), pos);
+  clean2(V, T);
+  return out;
+}
+function indexAlpha(r, s, laneLen, segmentLen, index, randL, sameLane = false) {
+  let area;
+  if (r === 0) {
+    if (s === 0)
+      area = index - 1;
+    else if (sameLane)
+      area = s * segmentLen + index - 1;
+    else
+      area = s * segmentLen + (index == 0 ? -1 : 0);
+  } else if (sameLane)
+    area = laneLen - segmentLen + index - 1;
+  else
+    area = laneLen - segmentLen + (index == 0 ? -1 : 0);
+  const startPos = r !== 0 && s !== ARGON2_SYNC_POINTS - 1 ? (s + 1) * segmentLen : 0;
+  const randLow = Math.imul(randL, randL);
+  const randHigh = ((randL >>> 0) * (randL >>> 0) - (randLow >>> 0)) / 4294967296 + 0.5 | 0;
+  const areaLow = Math.imul(area, randHigh);
+  const areaHigh = ((area >>> 0) * (randHigh >>> 0) - (areaLow >>> 0)) / 4294967296 + 0.5 | 0;
+  const rel = area - 1 - areaHigh;
+  return (startPos + rel) % laneLen;
+}
+function isU32(num) {
+  return Number.isSafeInteger(num) && num >= 0 && num < maxUint32;
+}
+function argon2Opts(opts = {}) {
+  opts = checkOpts({}, opts);
+  const merged = {
+    t: 3,
+    m: ARGON2_DEFAULT_MEMORY,
+    p: 1,
+    version: 19,
+    dkLen: 32,
+    maxmem: ARGON2_DEFAULT_MAXMEM,
+    asyncTick: 10
+  };
+  for (let [k, v] of Object.entries(opts))
+    if (v !== undefined)
+      merged[k] = v;
+  const { dkLen, p, m, t, version, onProgress, asyncTick } = merged;
+  if (!isU32(dkLen) || dkLen < 4)
+    throw new Error('"dkLen" must be 4..');
+  if (!isU32(p) || p < 1 || p >= Math.pow(2, 24))
+    throw new Error('"p" must be 1..2^24');
+  if (!isU32(m))
+    throw new Error('"m" must be 0..2^32');
+  if (!isU32(t) || t < 1)
+    throw new Error('"t" (iterations) must be 1..2^32');
+  if (onProgress !== undefined && typeof onProgress !== "function")
+    throw new Error('"onProgress" must be a function');
+  anumber2(asyncTick, "asyncTick");
+  if (!isU32(m) || m < 8 * p)
+    throw new Error('"m" (memory) must be at least 8*p bytes');
+  if (version !== 16 && version !== 19)
+    throw new Error('"version" must be 0x10 or 0x13, got ' + version);
+  return merged;
+}
+function argon2InitialHash(password, salt, type, opts) {
+  const ownedInputs = [];
+  const BUF = new Uint32Array(1);
+  const BUF8 = u82(BUF);
+  let h;
+  let H0;
+  let succeeded = false;
+  const rememberOwned = (input, bytes) => {
+    if (typeof input === "string")
+      ownedInputs.push(bytes);
+    return bytes;
+  };
+  try {
+    const passwordBytes = rememberOwned(password, kdfInputToBytes2(password, "password"));
+    const saltBytes = rememberOwned(salt, kdfInputToBytes2(salt, "salt"));
+    if (!isU32(passwordBytes.length))
+      throw new Error('"password" must be less of length 1..4Gb');
+    if (!isU32(saltBytes.length) || saltBytes.length < 8)
+      throw new Error('"salt" must be of length 8..4Gb');
+    if (!Object.values(AT).includes(type))
+      throw new Error('"type" was invalid');
+    let { p, dkLen, m, t, version, key, personalization, maxmem, onProgress, asyncTick } = argon2Opts(opts);
+    const keyInput = key;
+    key = rememberOwned(keyInput, abytesOrZero(keyInput, "key"));
+    const personalizationInput = personalization;
+    personalization = rememberOwned(personalizationInput, abytesOrZero(personalizationInput, "personalization"));
+    h = blake2b.create();
+    for (let item of [p, dkLen, m, t, version, type]) {
+      BUF[0] = swap8IfBE(item);
+      h.update(BUF8);
+    }
+    for (let i of [passwordBytes, saltBytes, key, personalization]) {
+      BUF[0] = swap8IfBE(i.length);
+      h.update(BUF8).update(i);
+    }
+    H0 = new Uint32Array(18);
+    h.digestInto(u82(H0));
+    succeeded = true;
+    return { H0, p, dkLen, m, t, version, maxmem, onProgress, asyncTick };
+  } finally {
+    if (h)
+      h.destroy();
+    clean2(BUF, ...ownedInputs);
+    if (!succeeded && H0)
+      clean2(H0);
+  }
+}
+function argon2Init(password, salt, type, opts) {
+  const { H0, p, dkLen, m, t, version, maxmem, onProgress, asyncTick } = argon2InitialHash(password, salt, type, opts);
+  try {
+    const lanes = p;
+    const mP = 4 * p * Math.floor(m / (ARGON2_SYNC_POINTS * p));
+    const laneLen = Math.floor(mP / p);
+    const segmentLen = Math.floor(laneLen / ARGON2_SYNC_POINTS);
+    const memUsed = mP * 1024;
+    if (!isU32(maxmem))
+      throw new Error('"maxmem" expected <2**32, got ' + maxmem);
+    if (memUsed > maxmem)
+      throw new Error('"maxmem" limit was hit: memUsed(mP*1024)=' + memUsed + ", maxmem=" + maxmem);
+    const B = new Uint32Array(memUsed / 4);
+    for (let l = 0;l < p; l++) {
+      const i = 256 * laneLen * l;
+      H0[17] = swap8IfBE(l);
+      H0[16] = swap8IfBE(0);
+      B.set(swap32IfBE(u32(Hp(H0, 1024))), i);
+      H0[16] = swap8IfBE(1);
+      B.set(swap32IfBE(u32(Hp(H0, 1024))), i + 256);
+    }
+    let perBlock = () => {};
+    if (onProgress) {
+      const totalBlock = t * ARGON2_SYNC_POINTS * p * segmentLen - 2 * p;
+      const callbackPer = Math.max(Math.floor(totalBlock / 1e4), 1);
+      let blockCnt = 0;
+      perBlock = () => {
+        blockCnt++;
+        if (onProgress && (!(blockCnt % callbackPer) || blockCnt === totalBlock))
+          onProgress(blockCnt / totalBlock);
+      };
+    }
+    return { type, mP, p, t, version, B, laneLen, lanes, segmentLen, dkLen, perBlock, asyncTick };
+  } finally {
+    clean2(H0);
+  }
+}
+function argon2Output(B, p, laneLen, dkLen) {
+  const B_final = new Uint32Array(256);
+  for (let l = 0;l < p; l++)
+    for (let j = 0;j < 256; j++)
+      B_final[j] ^= B[256 * (laneLen * l + laneLen - 1) + j];
+  const res = Hp(swap32IfBE(B_final), dkLen);
+  clean2(B, B_final);
+  return res;
+}
+function* argon2Blocks(ctx, address) {
+  const { type, mP, p, t, version, B, laneLen, lanes, segmentLen, perBlock } = ctx;
+  address[256 + 6] = mP;
+  address[256 + 8] = t;
+  address[256 + 10] = type;
+  for (let r = 0;r < t; r++) {
+    const needXor = r !== 0 && version === 19;
+    address[256 + 0] = r;
+    for (let s = 0;s < ARGON2_SYNC_POINTS; s++) {
+      address[256 + 4] = s;
+      const dataIndependent = type == AT.Argon2i || type == AT.Argon2id && r === 0 && s < 2;
+      for (let l = 0;l < p; l++) {
+        address[256 + 2] = l;
+        address[256 + 12] = 0;
+        let startPos = 0;
+        if (r === 0 && s === 0) {
+          startPos = 2;
+          if (dataIndependent) {
+            address[256 + 12]++;
+            block(address, 256, 2 * 256, 0, false);
+            block(address, 0, 2 * 256, 0, false);
+          }
+        }
+        let offset = l * laneLen + s * segmentLen + startPos;
+        for (let index = startPos;index < segmentLen; index++, offset++) {
+          perBlock();
+          const prev = offset % laneLen ? offset - 1 : offset + laneLen - 1;
+          let randL, randH;
+          if (dataIndependent) {
+            let i128 = index % 128;
+            if (i128 === 0) {
+              address[256 + 12]++;
+              block(address, 256, 2 * 256, 0, false);
+              block(address, 0, 2 * 256, 0, false);
+            }
+            randL = address[2 * i128];
+            randH = address[2 * i128 + 1];
+          } else {
+            const T = 256 * prev;
+            randL = B[T];
+            randH = B[T + 1];
+          }
+          const refLane = r === 0 && s === 0 ? l : randH % lanes;
+          const refPos = indexAlpha(r, s, laneLen, segmentLen, index, randL, refLane == l);
+          const refBlock = laneLen * refLane + refPos;
+          block(B, 256 * prev, 256 * refBlock, offset * 256, needXor);
+          yield;
+        }
+      }
+    }
+  }
+  clean2(address);
+}
+function argon2(type, password, salt, opts) {
+  const ctx = argon2Init(password, salt, type, opts);
+  const blocks = argon2Blocks(ctx, new Uint32Array(3 * 256));
+  while (!blocks.next().done) {}
+  return argon2Output(ctx.B, ctx.p, ctx.laneLen, ctx.dkLen);
+}
+var AT, ARGON2_SYNC_POINTS = 4, abytesOrZero = (buf, errorTitle = "") => {
+  if (buf === undefined)
+    return Uint8Array.of();
+  return kdfInputToBytes2(buf, errorTitle);
+}, A2_BUF, maxUint32, ARGON2_DEFAULT_MEMORY, ARGON2_DEFAULT_MAXMEM, argon2id2 = (password, salt, opts = {}) => argon2(AT.Argon2id, password, salt, opts);
+var init_argon2 = __esm(() => {
+  init_blake2();
+  init_utils5();
+  AT = { Argon2d: 0, Argon2i: 1, Argon2id: 2 };
+  A2_BUF = new Uint32Array(256);
+  maxUint32 = Math.pow(2, 32);
+  ARGON2_DEFAULT_MEMORY = 1024 ** 2;
+  ARGON2_DEFAULT_MAXMEM = ARGON2_DEFAULT_MEMORY * 1024;
+});
+
 // node_modules/bitcoin-backup/dist/index.js
 function __accessProp2(key) {
   return this[key];
 }
-function object4(value) {
+function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 function index(value) {
@@ -113377,7 +112157,7 @@ function json(value, ancestors = new Set) {
     return true;
   if (typeof value === "number")
     return Number.isFinite(value);
-  if (!Array.isArray(value) && !object4(value))
+  if (!Array.isArray(value) && !object2(value))
     return false;
   if (ancestors.has(value))
     return false;
@@ -113399,7 +112179,7 @@ function hasSigmaSeedMarker(value) {
   return "scheme" in value && (!("encryptedVault" in value) || value.scheme === "brc157-peer-profiles" || ["rootPk", "xprv", "wif"].some((key) => (key in value)));
 }
 function isSigmaSeedBackup(value) {
-  if (!object4(value) || Object.keys(value).some((key) => !fields2.has(key)))
+  if (!object2(value) || Object.keys(value).some((key) => !fields2.has(key)))
     return false;
   if (value.format !== "sigma-seed" || value.version !== 1)
     return false;
@@ -113416,13 +112196,13 @@ function isSigmaSeedBackup(value) {
   const indices = new Set;
   const ids = new Set;
   for (const profile of value.profiles) {
-    if (!object4(profile) || Object.keys(profile).some((key) => !profileFields2.has(key)))
+    if (!object2(profile) || Object.keys(profile).some((key) => !profileFields2.has(key)))
       return false;
     if (!index(profile.index) || profile.index >= value.nextProfileIndex || indices.has(profile.index))
       return false;
     if (typeof profile.bapId !== "string" || !profile.bapId.trim() || ids.has(profile.bapId))
       return false;
-    if ("metadata" in profile && (!object4(profile.metadata) || !json(profile.metadata)))
+    if ("metadata" in profile && (!object2(profile.metadata) || !json(profile.metadata)))
       return false;
     indices.add(profile.index);
     ids.add(profile.bapId);
@@ -113562,6 +112342,42 @@ async function decryptData(encryptedBackup, passphrase, attemptIterations) {
     throw new Error("Decryption failed: Invalid passphrase or corrupted data across all attempted iteration counts.");
   }
   throw lastError || new Error("Decryption failed: Invalid passphrase or corrupted data across all attempted iteration counts.");
+}
+function validateArgon2idParams(params) {
+  const { memoryKiB, iterations, parallelism } = params;
+  if (!Number.isSafeInteger(memoryKiB) || memoryKiB < MIN_MEMORY_KIB || memoryKiB > MAX_MEMORY_KIB) {
+    throw new Error("Invalid argon2id memory: must be an integer KiB between 8 and 2097152.");
+  }
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > MAX_ITERATIONS) {
+    throw new Error("Invalid argon2id iterations: must be an integer between 1 and 1024.");
+  }
+  if (!Number.isSafeInteger(parallelism) || parallelism < 1 || parallelism > MAX_PARALLELISM) {
+    throw new Error("Invalid argon2id parallelism: must be an integer between 1 and 16.");
+  }
+  return { memoryKiB, iterations, parallelism };
+}
+function resolveArgon2idParams(partial) {
+  return validateArgon2idParams({
+    memoryKiB: partial?.memoryKiB ?? ARGON2ID_DEFAULTS.memoryKiB,
+    iterations: partial?.iterations ?? ARGON2ID_DEFAULTS.iterations,
+    parallelism: partial?.parallelism ?? ARGON2ID_DEFAULTS.parallelism
+  });
+}
+function deriveArgon2idRaw(passphrase, salt, params) {
+  const checked = validateArgon2idParams(params);
+  if (salt.length < 16)
+    throw new Error("argon2id salt must be at least 16 bytes.");
+  return argon2id2(passphrase, salt, {
+    t: checked.iterations,
+    m: checked.memoryKiB,
+    p: checked.parallelism,
+    dkLen: DK_LEN,
+    maxmem: Math.max(checked.memoryKiB * 1024 * 2, 32 * 1024 * 1024)
+  });
+}
+async function deriveArgon2idKey(passphrase, salt, params) {
+  const raw = deriveArgon2idRaw(passphrase, salt, params);
+  return globalThis.crypto.subtle.importKey("raw", raw, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 function hexToBytes3(hex) {
   return Uint8Array.from(toArray22(hex, "hex"));
@@ -113713,6 +112529,40 @@ function getBackupType(backup) {
     return "YoursWallet";
   return "Unknown";
 }
+function assertLegacyPassphrase(passphrase) {
+  if (typeof passphrase !== "string" || passphrase.length === 0) {
+    throw new Error("Invalid passphrase: Passphrase must be a non-empty string.");
+  }
+  if (passphrase.length < 8) {
+    throw new Error("Invalid passphrase: Passphrase must be at least 8 characters long.");
+  }
+}
+function assertPassphrase(passphrase) {
+  if (typeof passphrase !== "string" || passphrase.length === 0) {
+    throw new Error("Invalid passphrase: Passphrase must be a non-empty string.");
+  }
+  if (passphrase.length > MAX_PASSPHRASE_LENGTH) {
+    throw new Error("Invalid passphrase: Passphrase is too long.");
+  }
+  if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
+    throw new Error(`Invalid passphrase: Passphrase must be at least ${MIN_PASSPHRASE_LENGTH} characters long.`);
+  }
+  if (/^\s+$/u.test(passphrase)) {
+    throw new Error("Invalid passphrase: Passphrase cannot be only whitespace.");
+  }
+  if (COMMON_PASSPHRASES.has(passphrase.toLowerCase())) {
+    throw new Error("Invalid passphrase: Choose a less common passphrase.");
+  }
+  const classes = [
+    /[a-z]/u.test(passphrase),
+    /[A-Z]/u.test(passphrase),
+    /[0-9]/u.test(passphrase),
+    /[^A-Za-z0-9]/u.test(passphrase)
+  ].filter(Boolean).length;
+  if (passphrase.length < LONG_PASSPHRASE_LENGTH && classes < 3) {
+    throw new Error(`Invalid passphrase: Use at least ${LONG_PASSPHRASE_LENGTH} characters, or mix upper, lower, and digits.`);
+  }
+}
 function b64encode(bytes) {
   return toBase6432(Array.from(bytes));
 }
@@ -113754,7 +112604,7 @@ function getDescriptorFromPayload(payload) {
 function validateSlotSpecShape(slot, seen) {
   if (!slot || typeof slot !== "object")
     throw new Error("Invalid slot: must be an object.");
-  if (slot.type !== "pbkdf2" && slot.type !== "device-p256") {
+  if (slot.type !== "pbkdf2" && slot.type !== "argon2id" && slot.type !== "device-p256") {
     throw new Error(`Unknown slot type '${slot.type}'.`);
   }
   validateSlotId(slot.id);
@@ -113762,34 +112612,49 @@ function validateSlotSpecShape(slot, seen) {
     throw new Error(`Duplicate slot id '${slot.id}'.`);
   seen.add(slot.id);
   if (slot.type === "pbkdf2") {
-    if (typeof slot.passphrase !== "string" || slot.passphrase.length === 0) {
-      throw new Error("Invalid passphrase: Passphrase must be a non-empty string.");
-    }
-    if (slot.passphrase.length < 8) {
-      throw new Error("Invalid passphrase: Passphrase must be at least 8 characters long.");
-    }
+    assertLegacyPassphrase(slot.passphrase);
     if (slot.iterations !== undefined)
       validateIterations(slot.iterations);
+  } else if (slot.type === "argon2id") {
+    assertPassphrase(slot.passphrase);
+    resolveArgon2idParams(slot);
   } else {
     assertP256PublicKeyHex(slot.publicKey, "Invalid device publicKey");
   }
+}
+async function wrapAesGcm(kek, contentKey) {
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
+  const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, kek, contentKey));
+  const wrapped = new Uint8Array(iv.length + ct.length);
+  wrapped.set(iv, 0);
+  wrapped.set(ct, iv.length);
+  return b64encode(wrapped);
 }
 async function wrapContentKey(slot, contentKey) {
   if (slot.type === "pbkdf2") {
     const iterations = slot.iterations ?? RECOMMENDED_PBKDF2_ITERATIONS;
     const salt = globalThis.crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES2));
     const kek = await deriveKey(slot.passphrase, salt, iterations);
-    const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_LENGTH_BYTES2));
-    const ct = new Uint8Array(await globalThis.crypto.subtle.encrypt({ name: "AES-GCM", iv }, kek, contentKey));
-    const wrapped = new Uint8Array(iv.length + ct.length);
-    wrapped.set(iv, 0);
-    wrapped.set(ct, iv.length);
     return {
       type: "pbkdf2",
       id: slot.id,
       salt: b64encode(salt),
       iterations,
-      wrapped: b64encode(wrapped)
+      wrapped: await wrapAesGcm(kek, contentKey)
+    };
+  }
+  if (slot.type === "argon2id") {
+    const params = resolveArgon2idParams(slot);
+    const salt = globalThis.crypto.getRandomValues(new Uint8Array(SALT_LENGTH_BYTES2));
+    const kek = await deriveArgon2idKey(slot.passphrase, salt, params);
+    return {
+      type: "argon2id",
+      id: slot.id,
+      salt: b64encode(salt),
+      memoryKiB: params.memoryKiB,
+      iterations: params.iterations,
+      parallelism: params.parallelism,
+      wrapped: await wrapAesGcm(kek, contentKey)
     };
   }
   const wrappedBytes = await eciesEncrypt(slot.publicKey, contentKey);
@@ -113800,20 +112665,42 @@ async function wrapContentKey(slot, contentKey) {
     wrapped: b64encode(wrappedBytes)
   };
 }
+async function unwrapAesGcm(kek, wrapped, label) {
+  if (wrapped.length < IV_LENGTH_BYTES2 + GCM_TAG_LENGTH) {
+    throw new Error(`Malformed envelope header: ${label} wrapped bytes are truncated.`);
+  }
+  const iv = wrapped.slice(0, IV_LENGTH_BYTES2);
+  const ct = wrapped.slice(IV_LENGTH_BYTES2);
+  const pt = await globalThis.crypto.subtle.decrypt({ name: "AES-GCM", iv }, kek, ct);
+  return new Uint8Array(pt);
+}
 async function unwrapPbkdf2Slot(slot, passphrase) {
   const salt = b64decode(slot.salt, "pbkdf2 slot salt");
   if (salt.length !== SALT_LENGTH_BYTES2) {
     throw new Error("Malformed envelope header: pbkdf2 salt must decode to 16 bytes.");
   }
   const wrapped = b64decode(slot.wrapped, "pbkdf2 slot wrapped");
-  if (wrapped.length < IV_LENGTH_BYTES2 + GCM_TAG_LENGTH) {
-    throw new Error("Malformed envelope header: pbkdf2 wrapped bytes are truncated.");
-  }
-  const iv = wrapped.slice(0, IV_LENGTH_BYTES2);
-  const ct = wrapped.slice(IV_LENGTH_BYTES2);
   const kek = await deriveKey(passphrase, salt, slot.iterations);
-  const pt = await globalThis.crypto.subtle.decrypt({ name: "AES-GCM", iv }, kek, ct);
-  return new Uint8Array(pt);
+  return unwrapAesGcm(kek, wrapped, "pbkdf2");
+}
+async function unwrapArgon2idSlot(slot, passphrase) {
+  const salt = b64decode(slot.salt, "argon2id slot salt");
+  if (salt.length !== SALT_LENGTH_BYTES2) {
+    throw new Error("Malformed envelope header: argon2id salt must decode to 16 bytes.");
+  }
+  const wrapped = b64decode(slot.wrapped, "argon2id slot wrapped");
+  const kek = await deriveArgon2idKey(passphrase, salt, {
+    memoryKiB: slot.memoryKiB,
+    iterations: slot.iterations,
+    parallelism: slot.parallelism
+  });
+  return unwrapAesGcm(kek, wrapped, "argon2id");
+}
+function isPassphraseSlot(slot) {
+  return slot.type === "pbkdf2" || slot.type === "argon2id";
+}
+async function unwrapPassphraseSlot(slot, passphrase) {
+  return slot.type === "argon2id" ? unwrapArgon2idSlot(slot, passphrase) : unwrapPbkdf2Slot(slot, passphrase);
 }
 function decodeBase64Envelope(encrypted) {
   let numbers;
@@ -113872,7 +112759,7 @@ function parseEnvelope(decoded) {
       throw new Error("Malformed envelope header: slot must be an object.");
     }
     const s = raw;
-    if (s.type !== "pbkdf2" && s.type !== "device-p256") {
+    if (s.type !== "pbkdf2" && s.type !== "argon2id" && s.type !== "device-p256") {
       throw new Error(`Unknown slot type '${String(s.type)}'.`);
     }
     if (typeof s.id !== "string" || s.id.length < 1 || s.id.length > 63 || !SLOT_ID_RE.test(s.id)) {
@@ -113882,38 +112769,62 @@ function parseEnvelope(decoded) {
       throw new Error(`Malformed envelope header: duplicate slot id '${s.id}'.`);
     }
     seen.add(s.id);
-    if (s.type === "pbkdf2") {
+    if (s.type === "pbkdf2" || s.type === "argon2id") {
+      const label = s.type;
       if (typeof s.salt !== "string" || typeof s.wrapped !== "string") {
-        throw new Error("Malformed envelope header: pbkdf2 slot missing salt/wrapped.");
+        throw new Error(`Malformed envelope header: ${label} slot missing salt/wrapped.`);
       }
       if (typeof s.iterations !== "number" || !Number.isSafeInteger(s.iterations) || s.iterations < 1 || s.iterations > 4294967295) {
-        throw new Error("Malformed envelope header: invalid pbkdf2 iterations.");
+        throw new Error(`Malformed envelope header: invalid ${label} iterations.`);
+      }
+      if (s.type === "argon2id") {
+        try {
+          resolveArgon2idParams({
+            memoryKiB: s.memoryKiB,
+            iterations: s.iterations,
+            parallelism: s.parallelism
+          });
+        } catch {
+          throw new Error("Malformed envelope header: invalid argon2id parameters.");
+        }
       }
       let saltBytes;
       let wrappedBytes;
       try {
-        saltBytes = b64decode(s.salt, "pbkdf2 slot salt");
+        saltBytes = b64decode(s.salt, `${label} slot salt`);
       } catch {
-        throw new Error("Malformed envelope header: pbkdf2 salt is not valid Base64.");
+        throw new Error(`Malformed envelope header: ${label} salt is not valid Base64.`);
       }
       if (saltBytes.length !== SALT_LENGTH_BYTES2) {
-        throw new Error("Malformed envelope header: pbkdf2 salt must decode to 16 bytes.");
+        throw new Error(`Malformed envelope header: ${label} salt must decode to 16 bytes.`);
       }
       try {
-        wrappedBytes = b64decode(s.wrapped, "pbkdf2 slot wrapped");
+        wrappedBytes = b64decode(s.wrapped, `${label} slot wrapped`);
       } catch {
-        throw new Error("Malformed envelope header: pbkdf2 wrapped is not valid Base64.");
+        throw new Error(`Malformed envelope header: ${label} wrapped is not valid Base64.`);
       }
       if (wrappedBytes.length < IV_LENGTH_BYTES2 + GCM_TAG_LENGTH) {
-        throw new Error("Malformed envelope header: pbkdf2 wrapped bytes are truncated.");
+        throw new Error(`Malformed envelope header: ${label} wrapped bytes are truncated.`);
       }
-      slots.push({
-        type: "pbkdf2",
-        id: s.id,
-        salt: s.salt,
-        iterations: s.iterations,
-        wrapped: s.wrapped
-      });
+      if (s.type === "argon2id") {
+        slots.push({
+          type: "argon2id",
+          id: s.id,
+          salt: s.salt,
+          memoryKiB: s.memoryKiB,
+          iterations: s.iterations,
+          parallelism: s.parallelism,
+          wrapped: s.wrapped
+        });
+      } else {
+        slots.push({
+          type: "pbkdf2",
+          id: s.id,
+          salt: s.salt,
+          iterations: s.iterations,
+          wrapped: s.wrapped
+        });
+      }
     } else {
       if (typeof s.publicKey !== "string" || typeof s.wrapped !== "string") {
         throw new Error("Malformed envelope header: device-p256 slot missing publicKey/wrapped.");
@@ -113992,11 +112903,11 @@ async function resolveContentKey(header, unlock) {
     const slot = header.slots.find((s) => s.id === unlock.slotId);
     if (!slot)
       throw new Error(`Slot '${unlock.slotId}' not found.`);
-    if (slot.type !== "pbkdf2") {
-      throw new Error(`Slot '${unlock.slotId}' is not a pbkdf2 slot.`);
+    if (!isPassphraseSlot(slot)) {
+      throw new Error(`Slot '${unlock.slotId}' is not a passphrase slot.`);
     }
     try {
-      const contentKey = await unwrapPbkdf2Slot(slot, unlock.passphrase);
+      const contentKey = await unwrapPassphraseSlot(slot, unlock.passphrase);
       if (contentKey.length !== CONTENT_KEY_LENGTH_BYTES) {
         throw new Error("Decryption failed: Invalid content key.");
       }
@@ -114009,13 +112920,13 @@ async function resolveContentKey(header, unlock) {
     }
   }
   if ("passphrase" in unlock && !("slotId" in unlock)) {
-    const pbkdf2Slots = header.slots.filter((s) => s.type === "pbkdf2");
-    if (pbkdf2Slots.length === 0) {
-      throw new Error("Decryption failed: No pbkdf2 slot available.");
+    const passphraseSlots = header.slots.filter(isPassphraseSlot);
+    if (passphraseSlots.length === 0) {
+      throw new Error("Decryption failed: No passphrase slot available.");
     }
-    for (const slot of pbkdf2Slots) {
+    for (const slot of passphraseSlots) {
       try {
-        const contentKey = await unwrapPbkdf2Slot(slot, unlock.passphrase);
+        const contentKey = await unwrapPassphraseSlot(slot, unlock.passphrase);
         if (contentKey.length === CONTENT_KEY_LENGTH_BYTES)
           return contentKey;
       } catch (error) {
@@ -114089,17 +113000,17 @@ async function openV2WithPassphrase(encrypted, passphrase, attemptIterations) {
     allowed = [attemptIterations];
   else if (Array.isArray(attemptIterations))
     allowed = attemptIterations;
-  const candidates = header.slots.filter((s) => s.type === "pbkdf2");
-  const filtered = allowed === undefined ? candidates : candidates.filter((s) => allowed.includes(s.iterations));
+  const passphraseSlots = header.slots.filter(isPassphraseSlot);
+  const filtered = allowed === undefined ? passphraseSlots : passphraseSlots.filter((s) => s.type === "argon2id" || allowed.includes(s.iterations));
   if (filtered.length === 0) {
-    if (allowed !== undefined && candidates.length > 0) {
+    if (allowed !== undefined && passphraseSlots.length > 0) {
       throw new Error("Decryption failed: No v2 slot matches the attempted iterations.");
     }
     throw new Error("Decryption failed: Invalid passphrase or corrupted data.");
   }
   for (const slot of filtered) {
     try {
-      const contentKey = await unwrapPbkdf2Slot(slot, passphrase);
+      const contentKey = await unwrapPassphraseSlot(slot, passphrase);
       if (contentKey.length !== CONTENT_KEY_LENGTH_BYTES)
         continue;
       return await decryptPayload(contentKey, iv, ciphertext);
@@ -114125,7 +113036,13 @@ function inspectEnvelope(encrypted) {
   const { header } = parseEnvelope(decoded);
   return {
     version: 2,
-    slots: header.slots.map((s) => s.type === "pbkdf2" ? { type: s.type, id: s.id, iterations: s.iterations } : { type: s.type, id: s.id, publicKey: s.publicKey }),
+    slots: header.slots.map((s) => s.type === "pbkdf2" ? { type: s.type, id: s.id, iterations: s.iterations } : s.type === "argon2id" ? {
+      type: s.type,
+      id: s.id,
+      iterations: s.iterations,
+      memoryKiB: s.memoryKiB,
+      parallelism: s.parallelism
+    } : { type: s.type, id: s.id, publicKey: s.publicKey }),
     ...header.descriptor !== undefined ? { descriptor: header.descriptor } : {}
   };
 }
@@ -114231,12 +113148,7 @@ async function encryptBackup(payload, passphrase, iterations) {
   if (!isValidPayload(payload)) {
     throw new Error("Invalid payload: Payload must be an object matching SigmaSeedBackup, BapMasterBackup, BapAccountBackup, WifBackup, OneSatBackup, VaultBackup, YoursWalletBackup, or YoursWalletZipBackup structure.");
   }
-  if (typeof passphrase !== "string" || passphrase.length === 0) {
-    throw new Error("Invalid passphrase: Passphrase must be a non-empty string.");
-  }
-  if (passphrase.length < 8) {
-    throw new Error("Invalid passphrase: Passphrase must be at least 8 characters long.");
-  }
+  assertLegacyPassphrase(passphrase);
   return encryptData(payload, passphrase, iterations);
 }
 async function decryptBackup(encryptedString, passphrase, attemptIterations) {
@@ -114278,10 +113190,11 @@ var __create3, __getProtoOf3, __defProp5, __getOwnPropNames3, __hasOwnProp3, __t
   if (canCache)
     cache.set(mod, to);
   return to;
-}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray9, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, toArray22, toBase6422, INFO = "se-vault-v1", toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
+}, __commonJS2 = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports), require_utf8, require_ExtData, require_DecodeError, require_int, require_timestamp, require_ExtensionCodec, require_typedArrays, require_Encoder, require_encode, require_prettyByte, require_CachedKeyDecoder, require_Decoder, require_decode, require_stream2, require_decodeAsync, require_dist2, MAX_INDEX = 2147483647, fields2, profileFields2, toArray9, toBase644, RECOMMENDED_PBKDF2_ITERATIONS = 600000, LEGACY_PBKDF2_ITERATIONS = 1e5, SALT_LENGTH_BYTES = 16, IV_LENGTH_BYTES = 12, AES_KEY_LENGTH_BITS = 256, ARGON2ID_DEFAULTS, ARGON2ID_FAST, MIN_MEMORY_KIB = 8, MAX_MEMORY_KIB, MAX_ITERATIONS = 1024, MAX_PARALLELISM = 16, DK_LEN = 32, toArray22, toBase6422, INFO = "se-vault-v1", MIN_PASSPHRASE_LENGTH = 12, LONG_PASSPHRASE_LENGTH = 16, MAX_PASSPHRASE_LENGTH = 1024, COMMON_PASSPHRASES, toArray32, toBase6432, ENVELOPE_VERSION = 2, MAGIC_BYTES, SALT_LENGTH_BYTES2 = 16, IV_LENGTH_BYTES2 = 12, CONTENT_KEY_LENGTH_BYTES = 32, EPHEMERAL_PUB_LENGTH = 65, NONCE_LENGTH = 12, GCM_TAG_LENGTH = 16, SLOT_ID_RE, import_msgpack;
 var init_dist9 = __esm(() => {
   init_mod();
   init_mod();
+  init_argon2();
   init_mod();
   __create3 = Object.create;
   __getProtoOf3 = Object.getPrototypeOf;
@@ -115911,7 +114824,30 @@ var init_dist9 = __esm(() => {
   ]);
   profileFields2 = new Set(["index", "bapId", "metadata"]);
   ({ toArray: toArray9, toBase64: toBase644 } = exports_utils);
+  ARGON2ID_DEFAULTS = {
+    memoryKiB: 65536,
+    iterations: 3,
+    parallelism: 1
+  };
+  ARGON2ID_FAST = {
+    memoryKiB: 32,
+    iterations: 1,
+    parallelism: 1
+  };
+  MAX_MEMORY_KIB = 2 * 1024 * 1024;
   ({ toArray: toArray22, toBase64: toBase6422 } = exports_utils);
+  COMMON_PASSPHRASES = new Set([
+    "password",
+    "password123",
+    "password1234",
+    "123456789012",
+    "1234567890123456",
+    "qwertyuiopas",
+    "letmein12345",
+    "bitcoin12345",
+    "passphrase123",
+    "correcthorsebatterystaple"
+  ]);
   ({ toArray: toArray32, toBase64: toBase6432 } = exports_utils);
   MAGIC_BYTES = [66, 69, 80, 50];
   SLOT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u;
@@ -116436,7 +115372,7 @@ var init_generate = __esm(() => {
   init_fetchPaymentUtxos();
   ({ toArray: toArray11 } = exports_utils);
   KEY_DIR = accountDir();
-  bapGenerateArgsSchema = object2({
+  bapGenerateArgsSchema = object({
     alternateName: string2().optional().describe("Alternate name for the BAP identity profile"),
     description: string2().optional().describe("Description for the BAP identity profile")
   });
@@ -116446,7 +115382,7 @@ var init_generate = __esm(() => {
 function registerBapGetCurrentAddressTool(server, identityPk) {
   server.registerTool("bap_getCurrentAddress", {
     description: "Retrieves the current BAP identity's Bitcoin SV address. This address is derived from the server's configured identity key.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       let pkToUse = identityPk;
@@ -116604,7 +115540,7 @@ var init_getId = __esm(() => {
   init_mod();
   init_zod();
   init_constants2();
-  bapGetIdArgsSchema = object2({
+  bapGetIdArgsSchema = object({
     idKey: string2().optional().describe("Optional Identity Key (Paymail or public key). If not provided, attempts to use the server's configured identity key.")
   });
 });
@@ -116672,7 +115608,7 @@ function registerContextBapTools(server, ctx, disableBroadcasting = false) {
       }
     });
   }
-  register("bap_getIdentity", "Read the selected identity wallet's deterministic BAP ID, publication status and root signing address. Uses BRC-100 derivation; exports no private keys.", object2({}), async () => {
+  register("bap_getIdentity", "Read the selected identity wallet's deterministic BAP ID, publication status and root signing address. Uses BRC-100 derivation; exports no private keys.", object({}), async () => {
     const { publicKey } = await ctx.wallet.getPublicKey({
       protocolID: BAP_PROTOCOL_ID,
       keyID: "identity-0",
@@ -116685,16 +115621,16 @@ function registerContextBapTools(server, ctx, disableBroadcasting = false) {
       rootAddress: PublicKey.fromString(publicKey).toAddress()
     };
   }, false, true);
-  register("bap_publishIdentity", "Publish the selected identity wallet's BAP ID with an AIP signature. The identity wallet funds the transaction and retains its BAP records; its signer controls approval.", object2({}), (input) => publishIdentity.execute(ctx, input), true);
-  register("bap_rotateIdentity", "Rotate the selected identity wallet's BAP signing key, publish its signed successor record, and retire the preceding wallet record.", object2({}), (input) => rotateIdentity.execute(ctx, input), true);
-  register("bap_attest", "Publish a BAP attestation signed by the selected identity wallet's current derived signing key.", object2({
+  register("bap_publishIdentity", "Publish the selected identity wallet's BAP ID with an AIP signature. The identity wallet funds the transaction and retains its BAP records; its signer controls approval.", object({}), (input) => publishIdentity.execute(ctx, input), true);
+  register("bap_rotateIdentity", "Rotate the selected identity wallet's BAP signing key, publish its signed successor record, and retire the preceding wallet record.", object({}), (input) => rotateIdentity.execute(ctx, input), true);
+  register("bap_attest", "Publish a BAP attestation signed by the selected identity wallet's current derived signing key.", object({
     attestationHash: string2().regex(/^[0-9a-f]{64}$/i),
     counter: string2().regex(/^\d+$/).max(20).optional()
   }), (input) => attest.execute(ctx, input), true);
-  register("bap_updateProfile", "Publish a BAP profile using the selected identity wallet. Publishes its initial identity if needed. Profile data becomes public on chain.", object2({
+  register("bap_updateProfile", "Publish a BAP profile using the selected identity wallet. Publishes its initial identity if needed. Profile data becomes public on chain.", object({
     profile: record(string2(), unknown()).refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 1e5, "Profile exceeds 100 KB")
   }), (input) => updateProfile.execute(ctx, input), true);
-  register("bap_getProfile", "Read the current profile from the selected identity wallet's BAP basket. The SDK also relinquishes duplicate stale profile records in that wallet.", object2({}), (input) => getProfile.execute(ctx, input), false);
+  register("bap_getProfile", "Read the current profile from the selected identity wallet's BAP basket. The SDK also relinquishes duplicate stale profile records in that wallet.", object({}), (input) => getProfile.execute(ctx, input), false);
 }
 var response = (value) => ({
   content: [{ type: "text", text: JSON.stringify(value) }],
@@ -117086,7 +116022,7 @@ async function readRecords(q) {
     const identity = await fetchProfile(q.authorBapId);
     const addresses = array(union([
       string2(),
-      object2({ address: string2() }).transform((a) => a.address)
+      object({ address: string2() }).transform((a) => a.address)
     ])).min(1).max(1000).parse(identity?.addresses);
     match["AIP.address"] = { $in: addresses };
   }
@@ -117410,7 +116346,7 @@ var init_x402_protocol = __esm(() => {
   hex = string2().regex(/^[0-9a-f]{64}$/);
   script2 = string2().regex(/^(?:[0-9a-fA-F]{2})+$/).max(20000);
   amount = number2().int().positive().max(2100000000000000);
-  compact = object2({
+  compact = object({
     version: literal("bsv-tx-v1"),
     challenge_id: string2().min(1).max(256),
     amount_sats: amount,
@@ -117419,7 +116355,7 @@ var init_x402_protocol = __esm(() => {
     expires_at: string2().datetime({ offset: true }),
     pay_url: string2().optional()
   }).passthrough();
-  bound = object2({
+  bound = object({
     v: literal(1),
     scheme: literal("bsv-tx-v1"),
     domain: string2(),
@@ -117430,7 +116366,7 @@ var init_x402_protocol = __esm(() => {
     req_body_sha256: hex,
     amount_sats: amount,
     payee_locking_script_hex: script2,
-    nonce_utxo: object2({
+    nonce_utxo: object({
       txid: hex,
       vout: number2().int().nonnegative().max(4294967295),
       satoshis: amount,
@@ -117868,7 +116804,7 @@ function registerX402Tools(server, config) {
   };
   server.registerTool("x402_request", {
     description: "Request any HTTPS service without automatically paying. Returns the response if free, or a BSV payment quote for approval. POST/PUT/PATCH/DELETE may execute if the service does not require payment. Use auth=brc31 for BSV-authenticated/BRC-105 services. No API key required by the client; optional service credentials are scoped by X402_SERVICE_HEADERS. Supports BRC-105, bound BRC-120 with OP_TRUE nonces, and compact bsv-tx-v1 challenges.",
-    inputSchema: object2({
+    inputSchema: object({
       url: string2().url(),
       method: _enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]).default("GET"),
       body: string2().max(1398104).optional(),
@@ -117893,7 +116829,7 @@ function registerX402Tools(server, config) {
   if (paymentWallet && !broadcastingDisabled) {
     server.registerTool("x402_payQuote", {
       description: "Pay a previously quoted BSV service request from the connected wallet, then return its response. Only call after authorization for the service, amount, and total limit including mining fees. Reuses the stored URL, method, body and credentials. Wallet permission checks apply. Does not automatically pay changed terms or retry a failed payment.",
-      inputSchema: object2({
+      inputSchema: object({
         quoteId: string2().uuid(),
         maxTotalSats: number2().int().positive().max(2100000000000000)
       }),
@@ -120307,16 +119243,16 @@ class SHA512HMAC2 {
     return bytesToHex2(this.h.digest());
   }
 }
-function isBytes2(a) {
+function isBytes3(a) {
   return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
 }
-function anumber2(n) {
+function anumber3(n) {
   if (!Number.isSafeInteger(n) || n < 0) {
     throw new Error(`positive integer expected, got ${n}`);
   }
 }
-function abytes2(b, ...lengths) {
-  if (!isBytes2(b))
+function abytes3(b, ...lengths) {
+  if (!isBytes3(b))
     throw new Error("Uint8Array expected");
   if (lengths.length > 0 && !lengths.includes(b.length)) {
     const lens = lengths.join(",");
@@ -120327,24 +119263,24 @@ function ahash2(h) {
   if (typeof h !== "function" || typeof h.create !== "function") {
     throw new Error("Hash should be wrapped by utils.createHasher");
   }
-  anumber2(h.outputLen);
-  anumber2(h.blockLen);
+  anumber3(h.outputLen);
+  anumber3(h.blockLen);
 }
-function aexists2(instance, checkFinished = true) {
+function aexists3(instance, checkFinished = true) {
   if (instance.destroyed === true)
     throw new Error("Hash instance has been destroyed");
   if (checkFinished && instance.finished === true) {
     throw new Error("Hash#digest() has already been called");
   }
 }
-function aoutput2(out, instance) {
-  abytes2(out);
+function aoutput3(out, instance) {
+  abytes3(out);
   const min = instance.outputLen;
   if (out.length < min) {
     throw new Error(`digestInto() expects output buffer of length at least ${min}`);
   }
 }
-function clean2(...arrays) {
+function clean3(...arrays) {
   for (let i = 0;i < arrays.length; i++)
     arrays[i].fill(0);
 }
@@ -120353,25 +119289,25 @@ function createView2(arr) {
 }
 function toBytes2(data) {
   if (typeof data === "string")
-    data = utf8ToBytes2(data);
-  abytes2(data);
+    data = utf8ToBytes3(data);
+  abytes3(data);
   return data;
 }
-function utf8ToBytes2(str) {
+function utf8ToBytes3(str) {
   if (typeof str !== "string")
     throw new Error("string expected");
   return new Uint8Array(new TextEncoder().encode(str));
 }
-function kdfInputToBytes2(data) {
+function kdfInputToBytes3(data) {
   if (typeof data === "string")
-    data = utf8ToBytes2(data);
-  abytes2(data);
+    data = utf8ToBytes3(data);
+  abytes3(data);
   return data;
 }
 
 class Hash2 {
 }
-function createHasher2(hashCons) {
+function createHasher3(hashCons) {
   const hashC = (msg) => hashCons().update(toBytes2(msg)).digest();
   const tmp = hashCons();
   hashC.outputLen = tmp.outputLen;
@@ -120395,7 +119331,7 @@ function split2(lst, le = false) {
   }
   return [Ah, Al];
 }
-function add2(Ah, Al, Bh, Bl) {
+function add3(Ah, Al, Bh, Bl) {
   const l = (Al >>> 0) + (Bl >>> 0);
   return { h: Ah + Bh + (l / 2 ** 32 | 0) | 0, l: l | 0 };
 }
@@ -120414,12 +119350,12 @@ function setBigUint642(view, byteOffset, value, isLE) {
 function pbkdf2Core2(hash, password, salt, opts) {
   ahash2(hash);
   const { c, dkLen } = Object.assign({ dkLen: 32 }, opts);
-  anumber2(c);
-  anumber2(dkLen);
+  anumber3(c);
+  anumber3(dkLen);
   if (c < 1)
     throw new Error("iterations (c) should be >= 1");
-  const pwd = kdfInputToBytes2(password);
-  const slt = kdfInputToBytes2(salt);
+  const pwd = kdfInputToBytes3(password);
+  const slt = kdfInputToBytes3(salt);
   const DK = new Uint8Array(dkLen);
   const PRF = hmac2.create(hash, pwd);
   const PRFSalt = PRF._cloneInto().update(slt);
@@ -120442,7 +119378,7 @@ function pbkdf2Core2(hash, password, salt, opts) {
   PRFSalt.destroy();
   if (prfW != null)
     prfW.destroy();
-  clean2(u);
+  clean3(u);
   return DK;
 }
 function pbkdf2Fast2(password, salt, iterations, keylen) {
@@ -120473,7 +119409,7 @@ var assert2 = (expression, message = "Hash assertion failed") => {
   if (!expression) {
     throw new Error(message);
   }
-}, r6, rh2, s6, sh2, RIPEMD1602, SHA12, ripemd1602 = (msg, enc) => {
+}, r4, rh2, s6, sh2, RIPEMD1602, SHA12, ripemd1602 = (msg, enc) => {
   return new RIPEMD1602().update(msg, enc).digest();
 }, sha12 = (msg, enc) => {
   return new SHA12().update(msg, enc).digest();
@@ -120489,10 +119425,10 @@ var assert2 = (expression, message = "Hash assertion failed") => {
   return new SHA256HMAC2(key).update(msg, enc).digest();
 }, sha512hmac2 = (key, msg, enc) => {
   return new SHA512HMAC2(key).update(msg, enc).digest();
-}, U32_MASK642, _32n2, shrSH2 = (h, _l, s) => h >>> s, shrSL2 = (h, l, s) => h << 32 - s | l >>> s, rotrSH2 = (h, l, s) => h >>> s | l << 32 - s, rotrSL2 = (h, l, s) => h << 32 - s | l >>> s, rotrBH2 = (h, l, s) => h << 64 - s | l >>> s - 32, rotrBL2 = (h, l, s) => h >>> s - 32 | l << 64 - s, add3L2 = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0), add3H2 = (low, Ah, Bh, Ch) => Ah + Bh + Ch + (low / 2 ** 32 | 0) | 0, add4L2 = (Al, Bl, Cl, Dl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0), add4H2 = (low, Ah, Bh, Ch, Dh) => Ah + Bh + Ch + Dh + (low / 2 ** 32 | 0) | 0, add5L2 = (Al, Bl, Cl, Dl, El) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0) + (El >>> 0), add5H2 = (low, Ah, Bh, Ch, Dh, Eh) => Ah + Bh + Ch + Dh + Eh + (low / 2 ** 32 | 0) | 0, HashMD2, SHA256_IV2, K2564, SHA256_W2, FastSHA2562, sha256Fast2, SHA512_IV2, K5122, SHA512_Kh2, SHA512_Kl2, SHA512_W_H2, SHA512_W_L2, FastSHA5122, sha512Fast2, HMAC2, hmac2 = (hash, key, message) => new HMAC2(hash, key).update(message).digest(), isLittleEndian2;
+}, U32_MASK642, _32n2, shrSH2 = (h, _l, s) => h >>> s, shrSL2 = (h, l, s) => h << 32 - s | l >>> s, rotrSH3 = (h, l, s) => h >>> s | l << 32 - s, rotrSL3 = (h, l, s) => h << 32 - s | l >>> s, rotrBH3 = (h, l, s) => h << 64 - s | l >>> s - 32, rotrBL3 = (h, l, s) => h >>> s - 32 | l << 64 - s, add3L3 = (Al, Bl, Cl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0), add3H3 = (low, Ah, Bh, Ch) => Ah + Bh + Ch + (low / 2 ** 32 | 0) | 0, add4L2 = (Al, Bl, Cl, Dl) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0), add4H2 = (low, Ah, Bh, Ch, Dh) => Ah + Bh + Ch + Dh + (low / 2 ** 32 | 0) | 0, add5L2 = (Al, Bl, Cl, Dl, El) => (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0) + (Dl >>> 0) + (El >>> 0), add5H2 = (low, Ah, Bh, Ch, Dh, Eh) => Ah + Bh + Ch + Dh + Eh + (low / 2 ** 32 | 0) | 0, HashMD2, SHA256_IV2, K2564, SHA256_W2, FastSHA2562, sha256Fast2, SHA512_IV2, K5122, SHA512_Kh2, SHA512_Kl2, SHA512_W_H2, SHA512_W_L2, FastSHA5122, sha512Fast2, HMAC2, hmac2 = (hash, key, message) => new HMAC2(hash, key).update(message).digest(), isLittleEndian2;
 var init_Hash2 = __esm(() => {
   init_hex2();
-  r6 = [
+  r4 = [
     0,
     1,
     2,
@@ -120841,7 +119777,7 @@ var init_Hash2 = __esm(() => {
       let Eh = E;
       let T;
       for (let j = 0;j < 80; j++) {
-        T = sum322(rotl322(SUM32_42(A, f10(j, B, C, D), msg[r6[j] + start], K5(j)), s6[j]), E);
+        T = sum322(rotl322(SUM32_42(A, f10(j, B, C, D), msg[r4[j] + start], K5(j)), s6[j]), E);
         A = E;
         E = D;
         D = rotl322(C, 10);
@@ -120940,9 +119876,9 @@ var init_Hash2 = __esm(() => {
       this.view = createView2(this.buffer);
     }
     update(data) {
-      aexists2(this);
+      aexists3(this);
       data = toBytes2(data);
-      abytes2(data);
+      abytes3(data);
       const { view, buffer, blockLen } = this;
       const len = data.length;
       for (let pos = 0;pos < len; ) {
@@ -120966,13 +119902,13 @@ var init_Hash2 = __esm(() => {
       return this;
     }
     digestInto(out) {
-      aexists2(this);
-      aoutput2(out, this);
+      aexists3(this);
+      aoutput3(out, this);
       this.finished = true;
       const { buffer, view, blockLen, isLE } = this;
       let { pos } = this;
       buffer[pos++] = 128;
-      clean2(this.buffer.subarray(pos));
+      clean3(this.buffer.subarray(pos));
       if (this.padOffset > blockLen - pos) {
         this.process(view, 0);
         pos = 0;
@@ -121152,14 +120088,14 @@ var init_Hash2 = __esm(() => {
       this.H = sum322(this.H, H);
     }
     roundClean() {
-      clean2(SHA256_W2);
+      clean3(SHA256_W2);
     }
     destroy() {
-      clean2(this.buffer);
+      clean3(this.buffer);
       this.set(0, 0, 0, 0, 0, 0, 0, 0);
     }
   };
-  sha256Fast2 = createHasher2(() => new FastSHA2562);
+  sha256Fast2 = createHasher3(() => new FastSHA2562);
   SHA512_IV2 = Uint32Array.from([
     1779033703,
     4089235720,
@@ -121314,12 +120250,12 @@ var init_Hash2 = __esm(() => {
       for (let i = 16;i < 80; i++) {
         const W15h = SHA512_W_H2[i - 15] | 0;
         const W15l = SHA512_W_L2[i - 15] | 0;
-        const s0h = rotrSH2(W15h, W15l, 1) ^ rotrSH2(W15h, W15l, 8) ^ shrSH2(W15h, W15l, 7);
-        const s0l = rotrSL2(W15h, W15l, 1) ^ rotrSL2(W15h, W15l, 8) ^ shrSL2(W15h, W15l, 7);
+        const s0h = rotrSH3(W15h, W15l, 1) ^ rotrSH3(W15h, W15l, 8) ^ shrSH2(W15h, W15l, 7);
+        const s0l = rotrSL3(W15h, W15l, 1) ^ rotrSL3(W15h, W15l, 8) ^ shrSL2(W15h, W15l, 7);
         const W2h = SHA512_W_H2[i - 2] | 0;
         const W2l = SHA512_W_L2[i - 2] | 0;
-        const s1h = rotrSH2(W2h, W2l, 19) ^ rotrBH2(W2h, W2l, 61) ^ shrSH2(W2h, W2l, 6);
-        const s1l = rotrSL2(W2h, W2l, 19) ^ rotrBL2(W2h, W2l, 61) ^ shrSL2(W2h, W2l, 6);
+        const s1h = rotrSH3(W2h, W2l, 19) ^ rotrBH3(W2h, W2l, 61) ^ shrSH2(W2h, W2l, 6);
+        const s1l = rotrSL3(W2h, W2l, 19) ^ rotrBL3(W2h, W2l, 61) ^ shrSL2(W2h, W2l, 6);
         const SUMl = add4L2(s0l, s1l, SHA512_W_L2[i - 7], SHA512_W_L2[i - 16]);
         const SUMh = add4H2(SUMl, s0h, s1h, SHA512_W_H2[i - 7], SHA512_W_H2[i - 16]);
         SHA512_W_H2[i] = SUMh | 0;
@@ -121327,15 +120263,15 @@ var init_Hash2 = __esm(() => {
       }
       let { Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl } = this;
       for (let i = 0;i < 80; i++) {
-        const sigma1h = rotrSH2(Eh, El, 14) ^ rotrSH2(Eh, El, 18) ^ rotrBH2(Eh, El, 41);
-        const sigma1l = rotrSL2(Eh, El, 14) ^ rotrSL2(Eh, El, 18) ^ rotrBL2(Eh, El, 41);
+        const sigma1h = rotrSH3(Eh, El, 14) ^ rotrSH3(Eh, El, 18) ^ rotrBH3(Eh, El, 41);
+        const sigma1l = rotrSL3(Eh, El, 14) ^ rotrSL3(Eh, El, 18) ^ rotrBL3(Eh, El, 41);
         const CHIh = Eh & Fh ^ ~Eh & Gh;
         const CHIl = El & Fl ^ ~El & Gl;
         const T1ll = add5L2(Hl, sigma1l, CHIl, SHA512_Kl2[i], SHA512_W_L2[i]);
         const T1h = add5H2(T1ll, Hh, sigma1h, CHIh, SHA512_Kh2[i], SHA512_W_H2[i]);
         const T1l = T1ll | 0;
-        const sigma0h = rotrSH2(Ah, Al, 28) ^ rotrBH2(Ah, Al, 34) ^ rotrBH2(Ah, Al, 39);
-        const sigma0l = rotrSL2(Ah, Al, 28) ^ rotrBL2(Ah, Al, 34) ^ rotrBL2(Ah, Al, 39);
+        const sigma0h = rotrSH3(Ah, Al, 28) ^ rotrBH3(Ah, Al, 34) ^ rotrBH3(Ah, Al, 39);
+        const sigma0l = rotrSL3(Ah, Al, 28) ^ rotrBL3(Ah, Al, 34) ^ rotrBL3(Ah, Al, 39);
         const MAJh = Ah & Bh ^ Ah & Ch ^ Bh & Ch;
         const MAJl = Al & Bl ^ Al & Cl ^ Bl & Cl;
         Hh = Gh | 0;
@@ -121344,36 +120280,36 @@ var init_Hash2 = __esm(() => {
         Gl = Fl | 0;
         Fh = Eh | 0;
         Fl = El | 0;
-        ({ h: Eh, l: El } = add2(Dh | 0, Dl | 0, T1h | 0, T1l | 0));
+        ({ h: Eh, l: El } = add3(Dh | 0, Dl | 0, T1h | 0, T1l | 0));
         Dh = Ch | 0;
         Dl = Cl | 0;
         Ch = Bh | 0;
         Cl = Bl | 0;
         Bh = Ah | 0;
         Bl = Al | 0;
-        const T2l = add3L2(sigma0l, MAJl, T1l);
-        Ah = add3H2(T2l, sigma0h, MAJh, T1h);
+        const T2l = add3L3(sigma0l, MAJl, T1l);
+        Ah = add3H3(T2l, sigma0h, MAJh, T1h);
         Al = T2l | 0;
       }
-      ({ h: Ah, l: Al } = add2(Ah, Al, this.Ah, this.Al));
-      ({ h: Bh, l: Bl } = add2(Bh, Bl, this.Bh, this.Bl));
-      ({ h: Ch, l: Cl } = add2(Ch, Cl, this.Ch, this.Cl));
-      ({ h: Dh, l: Dl } = add2(Dh, Dl, this.Dh, this.Dl));
-      ({ h: Eh, l: El } = add2(Eh, El, this.Eh, this.El));
-      ({ h: Fh, l: Fl } = add2(Fh, Fl, this.Fh, this.Fl));
-      ({ h: Gh, l: Gl } = add2(Gh, Gl, this.Gh, this.Gl));
-      ({ h: Hh, l: Hl } = add2(Hh, Hl, this.Hh, this.Hl));
+      ({ h: Ah, l: Al } = add3(Ah, Al, this.Ah, this.Al));
+      ({ h: Bh, l: Bl } = add3(Bh, Bl, this.Bh, this.Bl));
+      ({ h: Ch, l: Cl } = add3(Ch, Cl, this.Ch, this.Cl));
+      ({ h: Dh, l: Dl } = add3(Dh, Dl, this.Dh, this.Dl));
+      ({ h: Eh, l: El } = add3(Eh, El, this.Eh, this.El));
+      ({ h: Fh, l: Fl } = add3(Fh, Fl, this.Fh, this.Fl));
+      ({ h: Gh, l: Gl } = add3(Gh, Gl, this.Gh, this.Gl));
+      ({ h: Hh, l: Hl } = add3(Hh, Hl, this.Hh, this.Hl));
       this.set(Ah, Al, Bh, Bl, Ch, Cl, Dh, Dl, Eh, El, Fh, Fl, Gh, Gl, Hh, Hl);
     }
     roundClean() {
-      clean2(SHA512_W_H2, SHA512_W_L2);
+      clean3(SHA512_W_H2, SHA512_W_L2);
     }
     destroy() {
-      clean2(this.buffer);
+      clean3(this.buffer);
       this.set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
   };
-  sha512Fast2 = createHasher2(() => new FastSHA5122);
+  sha512Fast2 = createHasher3(() => new FastSHA5122);
   HMAC2 = class HMAC2 extends Hash2 {
     oHash;
     iHash;
@@ -121401,16 +120337,16 @@ var init_Hash2 = __esm(() => {
       for (let i = 0;i < pad.length; i++)
         pad[i] ^= 54 ^ 92;
       this.oHash.update(pad);
-      clean2(pad);
+      clean3(pad);
     }
     update(buf) {
-      aexists2(this);
+      aexists3(this);
       this.iHash.update(buf);
       return this;
     }
     digestInto(out) {
-      aexists2(this);
-      abytes2(out, this.outputLen);
+      aexists3(this);
+      abytes3(out, this.outputLen);
       this.finished = true;
       this.iHash.digestInto(out);
       this.oHash.update(out);
@@ -121601,7 +120537,7 @@ class WriterUint8Array2 {
 }
 var init_WriterUint8Array2 = __esm(() => {
   init_BigNumber2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/ReaderUint8Array.js
@@ -121762,7 +120698,7 @@ class ReaderUint8Array2 {
 }
 var init_ReaderUint8Array2 = __esm(() => {
   init_BigNumber2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/utils.js
@@ -122315,7 +121251,7 @@ var BufferCtor7, CAN_USE_BUFFER5, HEX_DIGITS3 = "0123456789abcdef", HEX_BYTE_STR
     emitReplacement();
   }
   return result;
-}, encode5 = (arr, enc) => {
+}, encode4 = (arr, enc) => {
   switch (enc) {
     case "hex":
       return toHex7(arr);
@@ -122420,7 +121356,7 @@ var BufferCtor7, CAN_USE_BUFFER5, HEX_DIGITS3 = "0123456789abcdef", HEX_BYTE_STR
   }
   return [];
 }, OverflowInt642, OverflowUint642;
-var init_utils5 = __esm(() => {
+var init_utils6 = __esm(() => {
   init_BigNumber2();
   init_Hash2();
   init_hex2();
@@ -122608,7 +121544,7 @@ var init_Point2 = __esm(() => {
   init_BasePoint2();
   init_JacobianPoint2();
   init_BigNumber2();
-  init_utils5();
+  init_utils6();
   MASK_2562 = (1n << 256n) - 1n;
   P_PLUS1_DIV42 = P_BIGINT2 + 1n >> 2n;
   GX_BIGINT2 = BigInt("0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798");
@@ -124341,7 +123277,7 @@ var init_Curve2 = __esm(() => {
   init_ReductionContext2();
   init_MontgomoryMethod2();
   init_Point2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/Signature.js
@@ -124538,7 +123474,7 @@ var init_Signature2 = __esm(() => {
   init_PublicKey2();
   init_ECDSA2();
   init_Hash2();
-  init_utils5();
+  init_utils6();
   init_Point2();
   init_Curve2();
 });
@@ -124594,7 +123530,7 @@ class DRBG2 {
 }
 var init_DRBG2 = __esm(() => {
   init_Hash2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/ECDSA.js
@@ -124732,7 +123668,7 @@ var init_PublicKey2 = __esm(() => {
   init_BigNumber2();
   init_Hash2();
   init_Signature2();
-  init_utils5();
+  init_utils6();
   PublicKey2 = class PublicKey2 extends Point2 {
     static fromPrivateKey(key) {
       const c = new Curve2;
@@ -124950,7 +123886,7 @@ class Polynomial2 {
 var init_Polynomial2 = __esm(() => {
   init_BigNumber2();
   init_Curve2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/PrivateKey.js
@@ -125000,7 +123936,7 @@ var init_PrivateKey2 = __esm(() => {
   init_Curve2();
   init_ECDSA2();
   init_Hash2();
-  init_utils5();
+  init_utils6();
   init_Polynomial2();
   PrivateKey2 = class PrivateKey2 extends BigNumber2 {
     static fromRandom() {
@@ -125169,7 +124105,7 @@ var init_PrivateKey2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/AESGCM.js
-var SBox2, Rcon2, mul22, mul32, R7;
+var SBox2, Rcon2, mul22, mul32, R6;
 var init_AESGCM2 = __esm(() => {
   SBox2 = new Uint8Array([
     99,
@@ -125449,7 +124385,7 @@ var init_AESGCM2 = __esm(() => {
     mul22[i] = m2;
     mul32[i] = m2 ^ i;
   }
-  R7 = (() => {
+  R6 = (() => {
     const r = new Uint8Array(16);
     r[0] = 225;
     return r;
@@ -125460,7 +124396,7 @@ var init_AESGCM2 = __esm(() => {
 var init_SymmetricKey2 = __esm(() => {
   init_BigNumber2();
   init_AESGCM2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/TransactionSignature.js
@@ -125469,7 +124405,7 @@ var init_TransactionSignature2 = __esm(() => {
   init_Signature2();
   init_BigNumber2();
   init_Hash2();
-  init_utils5();
+  init_utils6();
   EMPTY_SCRIPT2 = new Uint8Array(0);
   TransactionSignature2 = class TransactionSignature2 extends Signature2 {
     static SIGHASH_ALL = 1;
@@ -125634,13 +124570,13 @@ var init_Schnorr2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/primitives/Secp256r1.js
-var P2, N7, A10, B5, GX, GY, HALF_N;
+var P2, N7, A7, B5, GX, GY, HALF_N;
 var init_Secp256r1 = __esm(() => {
   init_Hash2();
-  init_utils5();
+  init_utils6();
   P2 = BigInt("0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
   N7 = BigInt("0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
-  A10 = P2 - 3n;
+  A7 = P2 - 3n;
   B5 = BigInt("0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b");
   GX = BigInt("0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
   GY = BigInt("0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5");
@@ -125657,7 +124593,7 @@ var init_primitives2 = __esm(() => {
   init_PrivateKey2();
   init_SymmetricKey2();
   init_ECDSA2();
-  init_utils5();
+  init_utils6();
   init_Hash2();
   init_TransactionSignature2();
   init_Polynomial2();
@@ -125898,7 +124834,7 @@ class Script2 {
           hex = "0" + hex;
         }
         const arr = toArray13(hex, "hex");
-        if (encode5(arr, "hex") !== hex) {
+        if (encode4(arr, "hex") !== hex) {
           throw new Error("invalid hex string in script");
         }
         const len = arr.length;
@@ -125988,7 +124924,7 @@ class Script2 {
     if (this.rawBytesCache == null) {
       this.rawBytesCache = this.serializeChunksToBytes();
     }
-    const hex = BufferCtor8 != null ? BufferCtor8.from(this.rawBytesCache).toString("hex") : encode5(Array.from(this.rawBytesCache), "hex");
+    const hex = BufferCtor8 != null ? BufferCtor8.from(this.rawBytesCache).toString("hex") : encode4(Array.from(this.rawBytesCache), "hex");
     this.hexCache = hex;
     return hex;
   }
@@ -126258,7 +125194,7 @@ class Script2 {
 var BufferCtor8;
 var init_Script2 = __esm(() => {
   init_OP2();
-  init_utils5();
+  init_utils6();
   init_BigNumber2();
   BufferCtor8 = typeof globalThis !== "undefined" ? globalThis.Buffer : undefined;
 });
@@ -126294,7 +125230,7 @@ var init_UnlockingScript2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/script/ScriptEvaluationError.js
 var ScriptEvaluationError2;
 var init_ScriptEvaluationError2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   ScriptEvaluationError2 = class ScriptEvaluationError2 extends Error {
     txid;
     outputIndex;
@@ -127410,7 +126346,7 @@ var init_Spend2 = __esm(() => {
   init_Script2();
   init_BigNumber2();
   init_OP2();
-  init_utils5();
+  init_utils6();
   init_ScriptEvaluationError2();
   init_Hash2();
   init_TransactionSignature2();
@@ -127510,7 +126446,7 @@ class P2PKH2 {
 }
 var init_P2PKH2 = __esm(() => {
   init_OP2();
-  init_utils5();
+  init_utils6();
   init_LockingScript2();
   init_UnlockingScript2();
   init_TransactionSignature2();
@@ -127532,7 +126468,7 @@ var init_RPuzzle = __esm(() => {
 var init_PushDrop2 = __esm(() => {
   init_script2();
   init_primitives2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/script/templates/index.js
@@ -127901,7 +126837,7 @@ class ARC3 {
 }
 var init_ARC2 = __esm(() => {
   init_DefaultHttpClient2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/transaction/broadcasters/DefaultBroadcaster.js
@@ -128251,7 +127187,7 @@ class MerklePath2 {
   }
 }
 var init_MerklePath2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_Hash2();
   init_ReaderUint8Array2();
 });
@@ -128423,7 +127359,7 @@ class BeefTx2 {
 }
 var init_BeefTx2 = __esm(() => {
   init_Hash2();
-  init_utils5();
+  init_utils6();
   init_Transaction2();
   init_Beef2();
 });
@@ -129024,7 +127960,7 @@ var BEEF_V12 = 4022206465, BEEF_V22 = 4022206466, ATOMIC_BEEF2 = 16843009, TX_DA
 var init_Beef2 = __esm(() => {
   init_MerklePath2();
   init_BeefTx2();
-  init_utils5();
+  init_utils6();
   init_Hash2();
   (function(TX_DATA_FORMAT) {
     TX_DATA_FORMAT[TX_DATA_FORMAT["RAWTX"] = 0] = "RAWTX";
@@ -129711,7 +128647,7 @@ class Transaction2 {
 var init_Transaction2 = __esm(() => {
   init_UnlockingScript2();
   init_LockingScript2();
-  init_utils5();
+  init_utils6();
   init_Hash2();
   init_LivePolicy2();
   init_Spend2();
@@ -129784,14 +128720,14 @@ var init_SignedMessage2 = __esm(() => {
   init_PrivateKey2();
   init_Signature2();
   init_Curve2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/messages/EncryptedMessage.js
 var init_EncryptedMessage = __esm(() => {
   init_PublicKey2();
   init_SymmetricKey2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/messages/index.js
@@ -129803,7 +128739,7 @@ var init_messages2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/compat/BSM.js
 var init_BSM2 = __esm(() => {
   init_BigNumber2();
-  init_utils5();
+  init_utils6();
   init_ECDSA2();
   init_Hash2();
 });
@@ -129998,7 +128934,7 @@ class HD2 {
   }
 }
 var init_HD2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_Hash2();
   init_Curve2();
   init_PrivateKey2();
@@ -132095,7 +131031,7 @@ class Mnemonic2 {
     const br = new Reader2(bin);
     const mnemoniclen = br.readVarIntNum();
     if (mnemoniclen > 0) {
-      this.mnemonic = encode5(br.read(mnemoniclen), "utf8");
+      this.mnemonic = encode4(br.read(mnemoniclen), "utf8");
     }
     const seedlen = br.readVarIntNum();
     if (seedlen > 0) {
@@ -132229,7 +131165,7 @@ class Mnemonic2 {
 }
 var init_Mnemonic2 = __esm(() => {
   init_bip_39_wordlist_en2();
-  init_utils5();
+  init_utils6();
   init_Hash2();
 });
 
@@ -132272,7 +131208,7 @@ var init_ECIES2 = __esm(() => {
   init_PublicKey2();
   init_Point2();
   init_Hash2();
-  init_utils5();
+  init_utils6();
   AES3.prototype = {
     encrypt: function(data) {
       return this._crypt(data, 0);
@@ -132393,7 +131329,7 @@ var init_compat3 = __esm(() => {
 var init_totp3 = __esm(() => {
   init_Hash2();
   init_BigNumber2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/totp/index.js
@@ -132426,7 +131362,7 @@ var init_CachedKeyDeriver2 = __esm(() => {
 var init_ProtoWallet2 = __esm(() => {
   init_CachedKeyDeriver2();
   init_primitives2();
-  init_utils5();
+  init_utils6();
 });
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/WalletError.js
 var walletErrors2;
@@ -132444,13 +131380,13 @@ var init_WalletError2 = __esm(() => {
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/substrates/XDM.js
 var init_XDM2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_WalletError2();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/certificates/Certificate.js
 var init_Certificate2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_ProtoWallet2();
   init_Signature2();
 });
@@ -132494,7 +131430,7 @@ var init_WalletWireCalls2 = __esm(() => {
 var init_WalletWireTransceiver2 = __esm(() => {
   init_Wallet_interfaces2();
   init_Certificate2();
-  init_utils5();
+  init_utils6();
   init_WalletWireCalls2();
   init_WalletError2();
 });
@@ -132502,7 +131438,7 @@ var init_WalletWireTransceiver2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/substrates/HTTPWalletWire.js
 var init_HTTPWalletWire2 = __esm(() => {
   init_WalletWireCalls2();
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/WERR_REVIEW_ACTIONS.js
@@ -132522,13 +131458,13 @@ var init_HTTPWalletJSON2 = __esm(() => {
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/substrates/ReactNativeWebView.js
 var init_ReactNativeWebView2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_WalletError2();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/validationHelpers.js
 var init_validationHelpers2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_WERR_INVALID_PARAMETER2();
   init_Beef2();
 });
@@ -132549,7 +131485,7 @@ var init_WalletWire2 = () => {};
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/wallet/substrates/WalletWireProcessor.js
 var init_WalletWireProcessor = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_WalletWireCalls2();
   init_Certificate2();
 });
@@ -132589,14 +131525,14 @@ var init_wallet2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/certificates/MasterCertificate.js
 var init_MasterCertificate2 = __esm(() => {
   init_Certificate2();
-  init_utils5();
+  init_utils6();
   init_SymmetricKey2();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/certificates/VerifiableCertificate.js
 var init_VerifiableCertificate2 = __esm(() => {
   init_SymmetricKey2();
-  init_utils5();
+  init_utils6();
   init_Certificate2();
 });
 
@@ -132615,12 +131551,12 @@ var init_certificates2 = __esm(() => {
 });
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/utils/verifyNonce.js
 var init_verifyNonce2 = __esm(() => {
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/utils/createNonce.js
 var init_createNonce2 = __esm(() => {
-  init_utils5();
+  init_utils6();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/utils/getVerifiableCertificates.js
@@ -132634,7 +131570,7 @@ var init_validateCertificates2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/utils/index.js
-var init_utils6 = __esm(() => {
+var init_utils7 = __esm(() => {
   init_verifyNonce2();
   init_createNonce2();
   init_getVerifiableCertificates2();
@@ -132644,30 +131580,30 @@ var init_utils6 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/Peer.js
 var BufferCtor9;
 var init_Peer2 = __esm(() => {
+  init_utils7();
   init_utils6();
-  init_utils5();
   BufferCtor9 = typeof globalThis !== "undefined" ? globalThis.Buffer : undefined;
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/types.js
-var init_types10 = () => {};
+var init_types9 = () => {};
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/transports/SimplifiedFetchTransport.js
 var defaultFetch4;
 var init_SimplifiedFetchTransport2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   defaultFetch4 = typeof globalThis !== "undefined" && typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : fetch;
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/clients/AuthFetch.js
 var init_AuthFetch2 = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_P2PKH2();
   init_PublicKey2();
   init_createNonce2();
   init_Peer2();
   init_SimplifiedFetchTransport2();
-  init_utils6();
+  init_utils7();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/auth/clients/index.js
@@ -132684,8 +131620,8 @@ var init_transports3 = __esm(() => {
 var init_auth2 = __esm(() => {
   init_certificates2();
   init_Peer2();
-  init_types10();
-  init_utils6();
+  init_types9();
+  init_utils7();
   init_clients2();
   init_transports3();
 });
@@ -132887,7 +131823,7 @@ var defaultFetch5;
 var init_LookupResolver2 = __esm(() => {
   init_transaction2();
   init_OverlayAdminTokenTemplate2();
-  init_utils5();
+  init_utils6();
   init_HostReputationTracker2();
   defaultFetch5 = typeof globalThis !== "undefined" && typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : fetch;
 });
@@ -132895,7 +131831,7 @@ var init_LookupResolver2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/overlay-tools/SHIPBroadcaster.js
 var init_SHIPBroadcaster2 = __esm(() => {
   init_transaction2();
-  init_utils5();
+  init_utils6();
   init_LookupResolver2();
   init_OverlayAdminTokenTemplate2();
 });
@@ -132919,7 +131855,7 @@ var init_overlay_tools2 = __esm(() => {
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/storage/StorageUtils.js
 var init_StorageUtils = __esm(() => {
-  init_utils5();
+  init_utils6();
   init_primitives2();
 });
 
@@ -132946,7 +131882,7 @@ var init_storage2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/identity/types/index.js
-var init_types11 = () => {};
+var init_types10 = () => {};
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/identity/ContactsManager.js
 var init_ContactsManager = __esm(() => {
@@ -132958,7 +131894,7 @@ var init_ContactsManager = __esm(() => {
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/identity/IdentityClient.js
 var init_IdentityClient2 = __esm(() => {
-  init_types11();
+  init_types10();
   init_wallet2();
   init_transaction2();
   init_Certificate2();
@@ -132973,7 +131909,7 @@ var init_IdentityClient2 = __esm(() => {
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/identity/index.js
 var init_identity3 = __esm(() => {
   init_IdentityClient2();
-  init_types11();
+  init_types10();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/registry/RegistryClient.js
@@ -132986,43 +131922,43 @@ var init_RegistryClient2 = __esm(() => {
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/registry/types/index.js
-var init_types12 = () => {};
+var init_types11 = () => {};
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/registry/index.js
 var init_registry4 = __esm(() => {
   init_RegistryClient2();
-  init_types12();
+  init_types11();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/kvstore/LocalKVStore.js
 var init_LocalKVStore = __esm(() => {
   init_PushDrop2();
-  init_utils5();
+  init_utils6();
   init_WalletClient2();
   init_Transaction2();
   init_Beef2();
 });
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/kvstore/types.js
-var init_types13 = () => {};
+var init_types12 = () => {};
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/kvstore/kvStoreInterpreter.js
 var init_kvStoreInterpreter = __esm(() => {
   init_script2();
-  init_utils5();
-  init_types13();
+  init_utils6();
+  init_types12();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/kvstore/GlobalKVStore.js
 var init_GlobalKVStore = __esm(() => {
   init_Transaction2();
-  init_utils5();
+  init_utils6();
   init_overlay_tools2();
   init_script2();
   init_WalletClient2();
   init_Beef2();
   init_kvStoreInterpreter();
   init_ProtoWallet2();
-  init_types13();
+  init_types12();
 });
 
 // node_modules/mnee/node_modules/@bsv/sdk/dist/esm/src/kvstore/index.js
@@ -155249,7 +154185,7 @@ class M5 {
   }
 }
 
-class F7 {
+class F6 {
   constructor(t) {
     if (this.mneeApiKey = undefined, this.mneeConfig = undefined, this.mneeApi = undefined, t.environment !== "production" && t.environment !== "sandbox")
       throw m6('Invalid environment. Must be either "production" or "sandbox"');
@@ -155279,7 +154215,7 @@ class F7 {
   }
   async createInscriptionOutput(t, e, r) {
     const s = { p: "bsv-20", op: "transfer", id: r.tokenId, amt: e.toString() };
-    return { lockingScript: w4(new g6().lock(t, PublicKey2.fromString(r.approver)), { dataB64: Buffer.from(JSON.stringify(s)).toString("base64"), contentType: "application/bsv-20" }), satoshis: 1 };
+    return { lockingScript: w3(new g6().lock(t, PublicKey2.fromString(r.approver)), { dataB64: Buffer.from(JSON.stringify(s)).toString("base64"), contentType: "application/bsv-20" }), satoshis: 1 };
   }
   async getUtxos(t, e, r, s) {
     try {
@@ -155542,7 +154478,7 @@ class F7 {
     try {
       const n = e.id("hex") === r.tokenId.split("_")[0], i = e.outputs.map((t) => t.lockingScript), o = S7(i), a = e.outputs.map((e, r) => {
         var s;
-        const n = o[r], i = T5(e.lockingScript);
+        const n = o[r], i = T4(e.lockingScript);
         let a = null;
         if (i != null && (s = i.file) != null && s.content)
           try {
@@ -155571,7 +154507,7 @@ class F7 {
       const d = new Set(u.map((t) => t.inscription.op)), h = d.has("burn"), l = u.some((t) => {
         var e;
         return t.inscription.op === "transfer" && ((e = t.inscription.metadata) == null ? undefined : e.action) === "redeem";
-      }), f = l && a.some((t) => t.address === b6 || t.address === I6);
+      }), f = l && a.some((t) => t.address === b6 || t.address === I5);
       if ((d.has("transfer") && !l || h || l && !f) && !c)
         throw m6("Cosigner not found in transaction with transfer/burn/redeem operation");
       const p = u.filter((t) => {
@@ -155644,7 +154580,7 @@ class F7 {
         return { address: t, history: [], nextScore: e || 0 };
       const a = [];
       for (const e of o) {
-        const r = k6(e, t, n);
+        const r = k5(e, t, n);
         r && a.push(r);
       }
       const c = a.length > 0 ? a[a.length - 1].score : e || 0;
@@ -155689,7 +154625,7 @@ class F7 {
             return { address: e, history: [], nextScore: (n == null ? undefined : n.fromScore) || 0 };
           const i = [], o = new Set;
           for (const s of r) {
-            const r = k6(s, e, t);
+            const r = k5(s, e, t);
             r && !o.has(r.txid) && (o.add(r.txid), i.push(r));
           }
           const a = i.length > 0 ? i[i.length - 1].score : (n == null ? undefined : n.fromScore) || 0, c = n == null ? undefined : n.limit;
@@ -155704,7 +154640,7 @@ class F7 {
   parseInscriptionData(e) {
     try {
       var r;
-      const s = T5(e), n = s == null || (r = s.file) == null ? undefined : r.content;
+      const s = T4(e), n = s == null || (r = s.file) == null ? undefined : r.content;
       if (!n)
         return null;
       const i = toUTF83(n);
@@ -155714,10 +154650,10 @@ class F7 {
     }
   }
   determineEnvironment(t, e, r, s) {
-    return t === A11.split("_")[0] ? "production" : t === x7.split("_")[0] ? "sandbox" : e === A11 && r === "020a177d6a5e6f3a8689acd2e313bd1cf0dcf5a243d1cc67b7218602aee9e04b2f" ? "production" : e === x7 && r === "02bed35e894cc41cc9879b4002ad03d33533b615c1b476068c8dd6822a09f93f6c" ? "sandbox" : r === "" && s === I6 ? "production" : "sandbox";
+    return t === A10.split("_")[0] ? "production" : t === x6.split("_")[0] ? "sandbox" : e === A10 && r === "020a177d6a5e6f3a8689acd2e313bd1cf0dcf5a243d1cc67b7218602aee9e04b2f" ? "production" : e === x6 && r === "02bed35e894cc41cc9879b4002ad03d33533b615c1b476068c8dd6822a09f93f6c" ? "sandbox" : r === "" && s === I5 ? "production" : "sandbox";
   }
   determineTransactionType(t, e, r, s, n) {
-    return t === "burn" ? "burn" : t === "deploy+mint" || e === s ? r === n.split("_")[0] ? "deploy" : "mint" : e === I6 || e === b6 ? "mint" : "transfer";
+    return t === "burn" ? "burn" : t === "deploy+mint" || e === s ? r === n.split("_")[0] ? "deploy" : "mint" : e === I5 || e === b6 ? "mint" : "transfer";
   }
   async processTransactionInputs(t, e) {
     var r = this;
@@ -155773,7 +154709,7 @@ class F7 {
   async parseTransaction(t, e, r) {
     const s = t.id("hex"), n = await this.processTransactionInputs(t, e), i = this.processTransactionOutputs(t, e), o = i.environment || n.environment || "sandbox";
     let a = i.type || n.type || "transfer";
-    a === "transfer" && n.inputs.some((t) => t.inscription && (t.address === I6 || t.address === b6)) && (a = "mint"), a !== "transfer" && a !== "mint" || i.outputs.some((t) => {
+    a === "transfer" && n.inputs.some((t) => t.inscription && (t.address === I5 || t.address === b6)) && (a = "mint"), a !== "transfer" && a !== "mint" || i.outputs.some((t) => {
       var e;
       return ((e = t.inscription) == null || (e = e.metadata) == null ? undefined : e.action) === "redeem";
     }) && (a = "redeem"), n.inputs.filter((t) => t.inscription).length === 0 && n.inputs.length > 0 && (a = "deploy");
@@ -155808,7 +154744,7 @@ class F7 {
     return await this.parseTransaction(r, s, e);
   }
   parseInscription(t) {
-    return T5(t);
+    return T4(t);
   }
   parseCosignerScripts(t) {
     return S7(t);
@@ -156148,9 +155084,9 @@ class D3 {
   }
 }
 
-class _5 {
+class _3 {
   constructor(t) {
-    this.service = undefined, this._batch = undefined, this.service = new F7(t);
+    this.service = undefined, this._batch = undefined, this.service = new F6(t);
   }
   async validateMneeTx(t, e) {
     return this.service.validateMneeTx(t, e);
@@ -156234,13 +155170,13 @@ class _5 {
     return this.service.buildUnsignedMneeTransaction(t);
   }
 }
-var f11, v7 = (t) => Buffer.from(t).toString("hex"), w4 = (t, r, s, n = false) => {
+var f11, v5 = (t) => Buffer.from(t).toString("hex"), w3 = (t, r, s, n = false) => {
   let i = "";
   if ((r == null ? undefined : r.dataB64) !== undefined && (r == null ? undefined : r.contentType) !== undefined) {
-    const t = v7("ord"), e = Buffer.from(r.dataB64, "base64").toString("hex").trim();
+    const t = v5("ord"), e = Buffer.from(r.dataB64, "base64").toString("hex").trim();
     if (!e)
       throw m6("Invalid file data");
-    const s = v7(r.contentType);
+    const s = v5(r.contentType);
     if (!s)
       throw m6("Invalid media type");
     i = `OP_0 OP_IF ${t} OP_1 ${s} OP_0 ${e} OP_ENDIF`;
@@ -156249,12 +155185,12 @@ var f11, v7 = (t) => Buffer.from(t).toString("hex"), w4 = (t, r, s, n = false) =
   if (s && (!s.app || !s.type))
     throw m6("MAP.app and MAP.type are required fields");
   if (s != null && s.app && s != null && s.type) {
-    o = `${o ? `${o} ` : ""}OP_RETURN ${v7("1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5")} ${v7("SET")}`;
+    o = `${o ? `${o} ` : ""}OP_RETURN ${v5("1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5")} ${v5("SET")}`;
     for (const [t, e] of Object.entries(s))
-      t !== "cmd" && (o = `${o} ${v7(t)} ${v7(e)}`);
+      t !== "cmd" && (o = `${o} ${v5(t)} ${v5(e)}`);
   }
   return LockingScript2.fromASM(o);
-}, y10 = 0.00001, A11 = "ae59f3b898ec61acbdb6cc7a245fabeded0c094bf046f35206a3aec60ef88127_0", I6 = "1inHbiwj2jrEcZPiSYnfgJ8FmS1Bmk4Dh", x7 = "833a7720966a2a435db28d967385e8aa7284b6150ebb39482cc5228b73e1703f_0", b6 = "1AZNdbFYBDFTAEgzZMfPzANxyNrpGJZAUY", T5 = (e) => {
+}, y10 = 0.00001, A10 = "ae59f3b898ec61acbdb6cc7a245fabeded0c094bf046f35206a3aec60ef88127_0", I5 = "1inHbiwj2jrEcZPiSYnfgJ8FmS1Bmk4Dh", x6 = "833a7720966a2a435db28d967385e8aa7284b6150ebb39482cc5228b73e1703f_0", b6 = "1AZNdbFYBDFTAEgzZMfPzANxyNrpGJZAUY", T4 = (e) => {
   var s, i;
   let o;
   for (let s = 0;s < e.chunks.length; s++) {
@@ -156298,11 +155234,11 @@ var f11, v7 = (t) => Buffer.from(t).toString("hex"), w4 = (t, r, s, n = false) =
     if (s[0 + e].op === OP_default2.OP_DUP && s[1 + e].op === OP_default2.OP_HASH160 && ((o = s[2 + e].data) == null ? undefined : o.length) === 20 && s[3 + e].op === OP_default2.OP_EQUALVERIFY && s[4 + e].op === OP_default2.OP_CHECKSIG)
       return { cosigner: "", address: toBase58Check2(s[2 + e].data || [], [0]) };
   }
-}).filter((t) => t !== undefined), k6 = (e, r, s) => {
+}).filter((t) => t !== undefined), k5 = (e, r, s) => {
   const n = e.senders.includes(r) ? "send" : "receive", i = e.height > 0 ? "confirmed" : "unconfirmed";
   if (!e.rawtx)
     return null;
-  const a = toArray13(e.rawtx, "base64"), c = toHex7(a), u = Transaction2.fromHex(c).outputs.map((t) => t.lockingScript), d = S7(u), h = u.map(T5), l = d.map((t) => t.address), f = l.indexOf(s.feeAddress), p = e.senders[0];
+  const a = toArray13(e.rawtx, "base64"), c = toHex7(a), u = Transaction2.fromHex(c).outputs.map((t) => t.lockingScript), d = S7(u), h = u.map(T4), l = d.map((t) => t.address), f = l.indexOf(s.feeAddress), p = e.senders[0];
   let m = 0;
   const g = new Map;
   h.forEach((e, n) => {
@@ -156374,7 +155310,7 @@ var init_index_modern3 = __esm(() => {
     }
   };
   N10 = ["parseOptions"];
-  _5.HDWallet = D3;
+  _3.HDWallet = D3;
 });
 
 // tools/mnee/provider.ts
@@ -156383,7 +155319,7 @@ function resolveMneeClient(source) {
 }
 async function createMneeClient() {
   await Promise.resolve().then(() => init_index_modern3());
-  return new _5({ environment: "production" });
+  return new _3({ environment: "production" });
 }
 function createMneeProvider(factory = createMneeClient) {
   let pending;
@@ -156409,7 +155345,7 @@ var init_provider = () => {};
 function registerGetBalanceTool(server, getMnee) {
   server.registerTool("mnee_getBalance", {
     description: "Retrieves the current MNEE token balance for the wallet. Returns the balance in MNEE tokens.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async (_params, _extra) => {
     try {
       const privateKeyWif = process.env.PRIVATE_KEY_WIF;
@@ -156449,7 +155385,7 @@ var init_getBalance2 = __esm(() => {
   init_mod();
   init_zod();
   init_provider();
-  getBalanceArgsSchema = object2({});
+  getBalanceArgsSchema = object({});
 });
 
 // tools/mnee/parseTx.ts
@@ -156479,7 +155415,7 @@ var parseTxArgsSchema;
 var init_parseTx = __esm(() => {
   init_zod();
   init_provider();
-  parseTxArgsSchema = object2({
+  parseTxArgsSchema = object({
     txid: string2().describe("Transaction ID to parse")
   });
 });
@@ -156559,7 +155495,7 @@ var sendMneeArgsSchema;
 var init_sendMnee = __esm(() => {
   init_zod();
   init_provider();
-  sendMneeArgsSchema = object2({
+  sendMneeArgsSchema = object({
     address: string2().min(1).describe("The recipient's address"),
     amount: number2().positive().finite().describe("Amount to send; must be greater than zero"),
     currency: _enum(["MNEE", "USD"]).default("MNEE").describe("Currency of the amount (MNEE or USD)")
@@ -156841,13 +155777,13 @@ function registerAccountTools(server) {
   };
   server.registerTool("wallet_list", {
     description: "List named local accounts by public address. Does not unlock wallets, reveal keys or contact a service.",
-    inputSchema: object2({}),
+    inputSchema: object({}),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async () => run(async () => ({ accounts: listAccounts() })));
   for (const importing of [false, true]) {
     server.registerTool(importing ? "wallet_import" : "wallet_generate", {
       description: importing ? "Import an encrypted bitcoin-backup WIF account after human approval. Never provide a plaintext key or password. BSV_MCP_PASSWORD must already be configured locally; use the terminal wallet_import command for a WIF." : "Explicitly create a named encrypted account after human approval. Requires BSV_MCP_PASSWORD configured locally. Returns only its public address; back up keys.bep and config.json before funding.",
-      inputSchema: object2({
+      inputSchema: object({
         name: accountNameSchema,
         chain: _enum(["main", "test"]),
         ...importing ? { encryptedBackup: string2().max(1024 * 1024) } : {}
@@ -156870,7 +155806,7 @@ function registerAccountTools(server) {
   }
   server.registerTool("wallet_use", {
     description: "Validate an account and give its restart configuration. Does not replace the wallet of a running session or modify client settings.",
-    inputSchema: object2({ name: accountNameSchema }),
+    inputSchema: object({ name: accountNameSchema }),
     annotations: { readOnlyHint: true, idempotentHint: true }
   }, async ({ name }) => run(async () => {
     if (!readAccount(name))
@@ -156883,7 +155819,7 @@ function registerAccountTools(server) {
   }));
   server.registerTool("wallet_remove", {
     description: "Remove a local account only with force, backup confirmation and human approval. Fund absence cannot be proven across all derived addresses. Cannot remove the active account; never sweeps funds.",
-    inputSchema: object2({
+    inputSchema: object({
       name: accountNameSchema,
       force: boolean2().default(false),
       backupConfirmed: boolean2().default(false)
@@ -157165,8 +156101,8 @@ var init_droplit = __esm(() => {
       this.details = details;
     }
   };
-  publicSponsorsSchema = object2({
-    sponsors: array(object2({
+  publicSponsorsSchema = object({
+    sponsors: array(object({
       name: string2(),
       slug: string2().min(1),
       approval_required: literal(true)
@@ -157193,7 +156129,7 @@ function errorResult2(error) {
 function registerDroplitTools(server, client, disableBroadcasting = false) {
   server.registerTool("droplit_getAccess", {
     description: "Read this connected wallet's sponsor authorization and quotas. If unauthorized, a human sponsor owner must approve the wallet manually. Does not create, fund, or approve anything.",
-    inputSchema: object2({}),
+    inputSchema: object({}),
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -157222,7 +156158,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
   });
   server.registerTool("droplit_push", {
     description: "Submit one sponsored data transaction. Subject to sponsor approval and quotas. An unknown outcome requires checking transaction history before retrying.",
-    inputSchema: object2({
+    inputSchema: object({
       data: array(string2()).min(1),
       encoding: _enum(["hex", "utf8"])
     }),
@@ -157244,7 +156180,7 @@ function registerDroplitTools(server, client, disableBroadcasting = false) {
   });
   server.registerTool("droplit_fund", {
     description: "Submit one raw transaction for sponsor funding and broadcast. Subject to sponsor approval and quotas. Unknown outcomes must be reconciled before retrying.",
-    inputSchema: object2({
+    inputSchema: object({
       rawtx: string2().min(2).regex(/^(?:[0-9a-fA-F]{2})+$/, "Expected raw transaction hex")
     }),
     annotations: {
@@ -157274,7 +156210,7 @@ function registerDroplitDiscoveryTool(server, apiUrl) {
   const baseUrl = droplitApiBaseUrl(apiUrl);
   server.registerTool("droplit_discover", {
     description: "List publicly opted-in sponsors. No wallet or sponsor selection is required. Listing grants no access or funding; choose a slug, then request the sponsor owner's approval separately.",
-    inputSchema: object2({
+    inputSchema: object({
       limit: number2().int().min(1).max(50).optional(),
       after: string2().optional()
     }),
@@ -157310,7 +156246,7 @@ var init_droplitDiscovery = __esm(() => {
 function registerWalletGetBalanceDroplitTool(server, droplitClient) {
   server.registerTool("wallet_getBalance", {
     description: "Gets the current balance of the wallet (Droplit mode)",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       const status = await droplitClient.getFaucetStatus();
@@ -157364,7 +156300,7 @@ async function failIfNotOk(response, attempted) {
 function registerSetupDroplitTools(server, integratedWallet) {
   server.registerTool("wallet_registerDroplitKey", {
     description: "Registers public authentication material. Registration does not grant sponsor access; a sponsor owner must approve the wallet separately.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       const { apiUrl, publicKeyHex } = await requireDroplit(integratedWallet);
@@ -157384,7 +156320,7 @@ function registerSetupDroplitTools(server, integratedWallet) {
   });
   server.registerTool("wallet_createDroplitFaucet", {
     description: "Creates a faucet owned by this wallet which must be funded before use. This does not provide free credit or approval for another sponsor.",
-    inputSchema: object2({
+    inputSchema: object({
       faucetName: string2().min(1).describe("Identifier for the new faucet; must be unique"),
       fixedDropSats: number2().int().positive().optional().describe("Satoshis paid out per tap. Server default applies if unset."),
       maxConsolidationInputs: number2().int().positive().optional().describe("Cap on inputs the faucet consolidates in one transaction")
@@ -157416,7 +156352,7 @@ function registerSetupDroplitTools(server, integratedWallet) {
   });
   server.registerTool("wallet_checkDroplitFaucetStatus", {
     description: "Reads public faucet balance and payout settings. This is not proof of caller authorization; use droplit_getAccess for that.",
-    inputSchema: object2({})
+    inputSchema: object({})
   }, async () => {
     try {
       const { client } = await requireDroplit(integratedWallet);
@@ -157480,7 +156416,7 @@ function registerAllTools(server, config = {}) {
     if (!config.bapPublicOnly && identityContext) {
       registerBapGetIdTool(server);
       registerContextBapTools(server, identityContext, config.disableBroadcasting);
-    } else if (!config.bapPublicOnly && (!config.ctx || config.wallet)) {
+    } else if (!config.bapPublicOnly && (config.identityPk || config.xprv || config.wallet || config.localAccountAvailable)) {
       registerBapTools(server, bapConfig);
     } else {
       registerBapGetIdTool(server, config.identityPk);
@@ -157515,7 +156451,7 @@ function registerAllTools(server, config = {}) {
       registerPeerPaymentsTool(server, paymentContext, PEER_PAYMENT_MESSAGEBOX_HOST, externalWallet);
     }
   }
-  if (enableMneeTools && (!config.ctx || config.wallet)) {
+  if (enableMneeTools && (config.payPk || config.wallet || config.roleContexts?.payments)) {
     registerMneeTools(server);
   }
   if (isWalletOnboardingAvailable(config) && config.openWalletSetup) {
@@ -157854,9 +156790,9 @@ async function confirm(label) {
     throw new Error("Cancelled");
 }
 async function newPassword() {
-  const value = await terminalInput("Encryption password (at least 8 characters)", true);
-  if (value.length < 8)
-    throw new Error("Password must contain at least 8 characters");
+  const value = await terminalInput("Encryption password (at least 12 characters; 16+ as a passphrase)", true);
+  if (value.length < 12)
+    throw new Error("Password must contain at least 12 characters");
   if (value !== await terminalInput("Repeat password", true))
     throw new Error("Passwords do not match");
   return value;
@@ -157912,62 +156848,255 @@ var init_localUiAssets = __esm(() => {
   };
 });
 
-// utils/walletSettings.ts
+// utils/mcpClientKeySources.ts
+import { randomBytes as randomBytes3 } from "node:crypto";
 import {
   closeSync as closeSync2,
   constants as constants3,
   fstatSync as fstatSync2,
+  lstatSync as lstatSync2,
   openSync as openSync2,
-  readFileSync as readFileSync3
+  readFileSync as readFileSync3,
+  renameSync as renameSync3,
+  rmSync as rmSync4,
+  writeFileSync
 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
 import { isAbsolute as isAbsolute3, join as join5 } from "node:path";
-function readWalletSettings(home = homedir2()) {
+function isJson(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+function readJsonFile(path) {
+  if (!isAbsolute3(path))
+    return;
   let fd;
   try {
-    fd = openSync2(join5(home, ".bsv-mcp", "settings.json"), constants3.O_RDONLY | constants3.O_NOFOLLOW);
+    fd = openSync2(path, constants3.O_RDONLY | constants3.O_NOFOLLOW);
+  } catch (error) {
+    if (error.code === "ENOENT")
+      return;
+    return;
+  }
+  try {
+    const stat = fstatSync2(fd);
+    if (!stat.isFile() || stat.size > 2 * 1024 * 1024)
+      return;
+    const parsed = JSON.parse(readFileSync3(fd, "utf8"));
+    return isJson(parsed) ? parsed : undefined;
+  } catch {
+    return;
+  } finally {
+    closeSync2(fd);
+  }
+}
+function slugAccount(client, server, envVar) {
+  const role = envVar === "IDENTITY_KEY_WIF" ? "identity" : "payment";
+  const raw = `${client}-${server}-${role}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+  return accountNameSchema.safeParse(raw).success ? raw : `${client}-${role}`.slice(0, 64);
+}
+function serversFromConfig(config) {
+  const out = [];
+  const root = config.mcpServers;
+  if (isJson(root)) {
+    for (const [name, value] of Object.entries(root)) {
+      if (isJson(value))
+        out.push([name, value]);
+    }
+  }
+  const projects = config.projects;
+  if (isJson(projects)) {
+    for (const project of Object.values(projects)) {
+      if (!isJson(project) || !isJson(project.mcpServers))
+        continue;
+      for (const [name, value] of Object.entries(project.mcpServers)) {
+        if (isJson(value))
+          out.push([name, value]);
+      }
+    }
+  }
+  return out;
+}
+function envString(server, name) {
+  if (!isJson(server.env))
+    return;
+  const value = server.env[name];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+function candidateFiles(home) {
+  return [
+    { client: "cursor", path: join5(home, ".cursor", "mcp.json") },
+    {
+      client: "claude-desktop",
+      path: join5(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")
+    },
+    {
+      client: "claude-desktop",
+      path: join5(home, ".config", "Claude", "claude_desktop_config.json")
+    },
+    {
+      client: "claude-desktop",
+      path: join5(home, "AppData", "Roaming", "Claude", "claude_desktop_config.json")
+    },
+    { client: "claude-code", path: join5(home, ".claude.json") }
+  ];
+}
+function inspectMcpClientKeySources(home = homedir2()) {
+  if (!isAbsolute3(home))
+    return [];
+  const found = [];
+  const used = new Set;
+  for (const { client, path } of candidateFiles(home)) {
+    const config = readJsonFile(path);
+    if (!config)
+      continue;
+    for (const [serverName, server] of serversFromConfig(config)) {
+      if (!envString(server, "PRIVATE_KEY_WIF"))
+        continue;
+      let account = slugAccount(client, serverName, "PRIVATE_KEY_WIF");
+      let n = 2;
+      while (used.has(account)) {
+        account = `${slugAccount(client, serverName, "PRIVATE_KEY_WIF").slice(0, 62)}${n}`;
+        n += 1;
+      }
+      used.add(account);
+      found.push({
+        account,
+        location: "mcp-client",
+        client,
+        serverName,
+        configPath: path,
+        envVar: "PRIVATE_KEY_WIF",
+        encryptedBackup: false,
+        plaintextKeys: true,
+        walletDatabases: []
+      });
+    }
+  }
+  return found;
+}
+function readMcpClientEnvValue(source) {
+  const config = readJsonFile(source.configPath);
+  if (!config)
+    return;
+  for (const [name, server] of serversFromConfig(config)) {
+    if (name !== source.serverName)
+      continue;
+    return envString(server, source.envVar);
+  }
+  return;
+}
+function serverObjects(config, serverName) {
+  const out = [];
+  if (isJson(config.mcpServers) && isJson(config.mcpServers[serverName]))
+    out.push(config.mcpServers[serverName]);
+  if (isJson(config.projects)) {
+    for (const project of Object.values(config.projects)) {
+      if (isJson(project) && isJson(project.mcpServers) && isJson(project.mcpServers[serverName]))
+        out.push(project.mcpServers[serverName]);
+    }
+  }
+  return out;
+}
+function writeJsonFile(path, value) {
+  const stat = lstatSync2(path);
+  if (stat.isSymbolicLink() || !stat.isFile())
+    throw new Error("MCP client config must be a regular file.");
+  const tmp = `${path}.${randomBytes3(8).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}
+`, {
+      mode: 384,
+      flag: "wx"
+    });
+    renameSync3(tmp, path);
+  } catch (error) {
+    try {
+      rmSync4(tmp, { force: true });
+    } catch {}
+    throw error;
+  }
+}
+function eraseMcpClientEnvValue(source) {
+  const config = readJsonFile(source.configPath);
+  if (!config)
+    return false;
+  let changed = false;
+  for (const server of serverObjects(config, source.serverName)) {
+    if (!isJson(server.env))
+      continue;
+    if (!(source.envVar in server.env))
+      continue;
+    delete server.env[source.envVar];
+    if (Object.keys(server.env).length === 0)
+      delete server.env;
+    changed = true;
+  }
+  if (!changed)
+    return false;
+  writeJsonFile(source.configPath, config);
+  return true;
+}
+var init_mcpClientKeySources = __esm(() => {
+  init_accounts();
+});
+
+// utils/walletSettings.ts
+import {
+  closeSync as closeSync3,
+  constants as constants4,
+  fstatSync as fstatSync3,
+  openSync as openSync3,
+  readFileSync as readFileSync4
+} from "node:fs";
+import { homedir as homedir3 } from "node:os";
+import { isAbsolute as isAbsolute4, join as join6 } from "node:path";
+function readWalletSettings(home = homedir3()) {
+  let fd;
+  try {
+    fd = openSync3(join6(home, ".bsv-mcp", "settings.json"), constants4.O_RDONLY | constants4.O_NOFOLLOW);
   } catch (error) {
     if (error.code === "ENOENT")
       return { sources: [] };
     throw error;
   }
   try {
-    const stat = fstatSync2(fd);
+    const stat = fstatSync3(fd);
     if (!stat.isFile() || stat.size > 1024 * 1024)
       throw new Error("Invalid wallet settings file");
-    const settings = settingsSchema.parse(JSON.parse(readFileSync3(fd, "utf8")));
+    const settings = settingsSchema.parse(JSON.parse(readFileSync4(fd, "utf8")));
     const { sources } = settings;
     if (new Set(sources.map((source) => source.name)).size !== sources.length)
       throw new Error("Wallet source names must be unique");
     return settings;
   } finally {
-    closeSync2(fd);
+    closeSync3(fd);
   }
 }
-function readWalletSources(home = homedir2()) {
+function readWalletSources(home = homedir3()) {
   return readWalletSettings(home).sources;
 }
 var walletSourceSchema, settingsSchema;
 var init_walletSettings = __esm(() => {
   init_zod();
   init_accounts();
-  walletSourceSchema = object2({
+  walletSourceSchema = object({
     name: accountNameSchema,
-    directory: string2().min(1).refine(isAbsolute3, "Wallet source directory must be absolute"),
+    directory: string2().min(1).refine(isAbsolute4, "Wallet source directory must be absolute"),
     keyFile: _enum(["keys.json", "root.wif"]).default("keys.json"),
     storageIdentityKey: string2().min(1).max(200).optional(),
     depositPrefix: _enum(["mcp", "1sat"]).optional()
   }).strict();
-  settingsSchema = object2({ sources: array(walletSourceSchema).default([]) }).passthrough();
+  settingsSchema = object({ sources: array(walletSourceSchema).default([]) }).passthrough();
 });
 
 // utils/vaultMigration.ts
-import { lstatSync as lstatSync2, readdirSync as readdirSync3 } from "node:fs";
-import { homedir as homedir3 } from "node:os";
-import { join as join6 } from "node:path";
+import { timingSafeEqual } from "node:crypto";
+import { lstatSync as lstatSync3, readdirSync as readdirSync3 } from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { join as join7 } from "node:path";
 function exists(file, directory = false) {
   try {
-    const stat = lstatSync2(file);
+    const stat = lstatSync3(file);
     if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile()))
       throw new Error("Migration paths must be regular files or directories");
     return true;
@@ -157978,20 +157107,20 @@ function exists(file, directory = false) {
   }
 }
 function inspectMigration(options = {}) {
-  const home = options.home ?? homedir3();
+  const home = options.home ?? homedir4();
   const env = options.env ?? process.env;
-  const base = join6(home, ".bsv-mcp");
+  const base = join7(home, ".bsv-mcp");
   const sources = [];
   const inspect = (dir, account, location2, metadata = {}) => {
     if (!exists(dir, true))
       return;
-    const encryptedBackup = exists(join6(dir, "keys.bep"));
-    const plaintextKeys = exists(join6(dir, metadata.keyFile ?? "keys.json"));
+    const encryptedBackup = exists(join7(dir, "keys.bep"));
+    const plaintextKeys = exists(join7(dir, metadata.keyFile ?? "keys.json"));
     const walletDatabases = [
       "wallet-main.db",
       "wallet-test.db",
       "wallet.db"
-    ].filter((name) => exists(join6(dir, name)));
+    ].filter((name) => exists(join7(dir, name)));
     if (encryptedBackup || plaintextKeys || walletDatabases.length)
       sources.push({
         directory: dir,
@@ -158005,11 +157134,11 @@ function inspectMigration(options = {}) {
   };
   if (exists(base, true)) {
     inspect(base, "default", "legacy-root");
-    const root = join6(base, "accounts");
+    const root = join7(base, "accounts");
     if (exists(root, true)) {
       for (const name of readdirSync3(root).sort()) {
         if (accountNameSchema.safeParse(name).success)
-          inspect(join6(root, name), name, "account");
+          inspect(join7(root, name), name, "account");
       }
     }
   }
@@ -158018,17 +157147,40 @@ function inspectMigration(options = {}) {
   }
   if (env.VAULT_PATH === "")
     throw new Error("VAULT_PATH is set but empty");
-  const vaultPath = env.VAULT_PATH ?? join6(home, ".bsv", "vault.bep");
+  const vaultPath = env.VAULT_PATH ?? join7(home, ".bsv", "vault.bep");
   if (env.VAULT_PATH === undefined)
-    exists(join6(home, ".bsv"), true);
+    exists(join7(home, ".bsv"), true);
   const environmentKeys = {
     payment: env.PRIVATE_KEY_WIF !== undefined,
     identity: env.IDENTITY_KEY_WIF !== undefined,
     empty: env.PRIVATE_KEY_WIF === "" || env.IDENTITY_KEY_WIF === ""
   };
+  const clientSources = inspectMcpClientKeySources(home);
+  sources.push(...clientSources);
+  const envPayment = env.PRIVATE_KEY_WIF;
+  if (typeof envPayment === "string" && envPayment.length > 0) {
+    const listedByClient = clientSources.some((item) => {
+      if (item.envVar !== "PRIVATE_KEY_WIF")
+        return false;
+      const value = readMcpClientEnvValue(item);
+      if (typeof value !== "string" || value.length !== envPayment.length)
+        return false;
+      return timingSafeEqual(Buffer.from(value), Buffer.from(envPayment));
+    });
+    if (!listedByClient) {
+      sources.push({
+        account: "env-payment",
+        location: "environment",
+        encryptedBackup: false,
+        plaintextKeys: true,
+        walletDatabases: [],
+        envVar: "PRIVATE_KEY_WIF"
+      });
+    }
+  }
   return {
     sources,
-    boundAccounts: listAccounts(join6(base, "accounts")).filter((item) => readAccount(item.name, join6(base, "accounts"))?.vaultBinding).map(({ name, address }) => ({ name, address })),
+    boundAccounts: listAccounts(join7(base, "accounts")).filter((item) => readAccount(item.name, join7(base, "accounts"))?.vaultBinding).map(({ name, address }) => ({ name, address })),
     vaultExists: exists(vaultPath),
     environmentKeys,
     migrationRequired: sources.some((s) => s.encryptedBackup || s.plaintextKeys) || environmentKeys.payment || environmentKeys.identity
@@ -158036,6 +157188,7 @@ function inspectMigration(options = {}) {
 }
 var init_vaultMigration = __esm(() => {
   init_accounts();
+  init_mcpClientKeySources();
   init_walletSettings();
 });
 
@@ -158790,17 +157943,17 @@ var init_vaultMigrationWizard = __esm(() => {
 
 // utils/walletRoleDefaults.ts
 import {
-  closeSync as closeSync3,
+  closeSync as closeSync4,
   fsyncSync as fsyncSync2,
   mkdirSync as mkdirSync2,
-  openSync as openSync3,
-  renameSync as renameSync3,
+  openSync as openSync4,
+  renameSync as renameSync4,
   unlinkSync,
-  writeFileSync
+  writeFileSync as writeFileSync2
 } from "node:fs";
-import { homedir as homedir4 } from "node:os";
-import { join as join7 } from "node:path";
-function getWalletRoleSettings(home = homedir4(), env = process.env) {
+import { homedir as homedir5 } from "node:os";
+import { join as join8 } from "node:path";
+function getWalletRoleSettings(home = homedir5(), env = process.env) {
   const settings = readWalletSettings(home);
   const defaults = walletRoleDefaultsSchema.parse(settings.defaults ?? {});
   const effective = { ...defaults };
@@ -158810,7 +157963,7 @@ function getWalletRoleSettings(home = homedir4(), env = process.env) {
       effective[role] = env[envNames[role]] === "none" ? null : selector.parse(env[envNames[role]]);
       overrides.push(role);
     }
-  const root = join7(home, ".bsv-mcp", "accounts");
+  const root = join8(home, ".bsv-mcp", "accounts");
   const keys = listAccounts(root).flatMap(({ name }) => {
     const binding = readAccount(name, root)?.vaultBinding;
     return binding ? ["payment", "identity"].flatMap((kind) => binding[kind] ? [
@@ -158830,14 +157983,14 @@ function getWalletRoleSettings(home = homedir4(), env = process.env) {
     revision: typeof settings.revision === "number" ? settings.revision : 0
   };
 }
-function saveWalletRoleDefaults(defaults, expectedRevision, home = homedir4()) {
+function saveWalletRoleDefaults(defaults, expectedRevision, home = homedir5()) {
   const parsed = walletRoleDefaultsSchema.parse(defaults);
-  const base = join7(home, ".bsv-mcp");
+  const base = join8(home, ".bsv-mcp");
   regularPath(base, true);
   mkdirSync2(base, { recursive: true, mode: 448 });
-  const lock = join7(base, "settings.json.lock");
-  const fd = openSync3(lock, "wx", 384);
-  const temp = join7(base, `settings.${process.pid}.tmp`);
+  const lock = join8(base, "settings.json.lock");
+  const fd = openSync4(lock, "wx", 384);
+  const temp = join8(base, `settings.${process.pid}.tmp`);
   try {
     const current = getWalletRoleSettings(home, {});
     if (current.revision !== expectedRevision)
@@ -158850,21 +158003,21 @@ function saveWalletRoleDefaults(defaults, expectedRevision, home = homedir4()) {
       defaults: parsed,
       revision: current.revision + 1
     };
-    const out = openSync3(temp, "wx", 384);
+    const out = openSync4(temp, "wx", 384);
     try {
-      writeFileSync(out, `${JSON.stringify(settings, null, 2)}
+      writeFileSync2(out, `${JSON.stringify(settings, null, 2)}
 `);
       fsyncSync2(out);
     } finally {
-      closeSync3(out);
+      closeSync4(out);
     }
-    renameSync3(temp, join7(base, "settings.json"));
+    renameSync4(temp, join8(base, "settings.json"));
     return getWalletRoleSettings(home);
   } finally {
     try {
       unlinkSync(temp);
     } catch {}
-    closeSync3(fd);
+    closeSync4(fd);
     unlinkSync(lock);
   }
 }
@@ -158875,7 +158028,7 @@ var init_walletRoleDefaults = __esm(() => {
   init_walletSettings();
   WALLET_ROLES = ["payments", "identity", "ordinals"];
   selector = string2().regex(/^[a-z0-9][a-z0-9_-]{0,63}:(payment|identity)$/);
-  walletRoleDefaultsSchema = object2({
+  walletRoleDefaultsSchema = object({
     payments: selector.nullable().optional(),
     identity: selector.nullable().optional(),
     ordinals: selector.nullable().optional()
@@ -158888,7 +158041,7 @@ var init_walletRoleDefaults = __esm(() => {
 });
 
 // utils/vaultSetup.ts
-import { randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes4, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 import { createServer } from "node:http";
 function unavailableMigrationBackend() {
   const reason = "The local Vault migration backend could not be initialized. Check the Vault package and project configuration, then reopen setup.";
@@ -158918,7 +158071,7 @@ async function startVaultSetup(options = {}) {
       migrationBackend = unavailableMigrationBackend();
     }
   }
-  const token = randomBytes3(32).toString("hex");
+  const token = randomBytes4(32).toString("hex");
   const assetsDirectory = options.assetsDirectory ?? localUiAssetsDirectory();
   let origin = "";
   let wizard;
@@ -158958,7 +158111,7 @@ async function startVaultSetup(options = {}) {
     }
     const supplied = Buffer.from(req.headers.authorization ?? "");
     const expected = Buffer.from(`Bearer ${token}`);
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    if (supplied.length !== expected.length || !timingSafeEqual2(supplied, expected)) {
       res.writeHead(403).end();
       return;
     }
@@ -260399,7 +259552,7 @@ var require_timestamp2 = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/migrate/MigrationGenerator.js
 var require_MigrationGenerator = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/consolidate-social/node_modules/knex/lib/migrations/migrate";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/.worktrees/ship-session/node_modules/knex/lib/migrations/migrate";
   var path = __require("path");
   var { writeJsFileUsingTemplate } = require_template2();
   var { getMergedConfig } = require_migrator_configuration_merger();
@@ -261106,7 +260259,7 @@ var require_seeder_configuration_merger = __commonJS(function(exports, module) {
 
 // node_modules/knex/lib/migrations/seed/Seeder.js
 var require_Seeder = __commonJS(function(exports, module) {
-  var __dirname = "/Users/satchmo/.codex/worktrees/consolidate-social/node_modules/knex/lib/migrations/seed";
+  var __dirname = "/Users/satchmo/code/bsv-mcp/.worktrees/ship-session/node_modules/knex/lib/migrations/seed";
   var path = __require("path");
   var { ensureDirectoryExists } = require_fs();
   var { writeJsFileUsingTemplate } = require_template2();
@@ -287648,7 +286801,7 @@ function buildTxLabelFilterSql(labelIds, isQueryModeAll) {
     params: [...labelIds]
   };
 }
-var import_wallet_toolbox, import_WERR_errors, import_WERR_errors2, import_WERR_errors3, import_WERR_errors4, import_types67, import_StorageProvider, import_ListActionsSpecOp, import_ListOutputsSpecOp, import_TableOutput, import_TableTransaction, import_utilityHelpers, import_utilityHelpers_noBuffer, TRX_BRAND, StorageBunSqlite;
+var import_wallet_toolbox, import_WERR_errors, import_WERR_errors2, import_WERR_errors3, import_WERR_errors4, import_types63, import_StorageProvider, import_ListActionsSpecOp, import_ListOutputsSpecOp, import_TableOutput, import_TableTransaction, import_utilityHelpers, import_utilityHelpers_noBuffer, TRX_BRAND, StorageBunSqlite;
 var init_storage_bun_sqlite = __esm(() => {
   init_mod();
   import_wallet_toolbox = __toESM(require_src6(), 1);
@@ -287656,7 +286809,7 @@ var init_storage_bun_sqlite = __esm(() => {
   import_WERR_errors2 = __toESM(require_WERR_errors(), 1);
   import_WERR_errors3 = __toESM(require_WERR_errors(), 1);
   import_WERR_errors4 = __toESM(require_WERR_errors(), 1);
-  import_types67 = __toESM(require_types7(), 1);
+  import_types63 = __toESM(require_types7(), 1);
   import_StorageProvider = __toESM(require_StorageProvider(), 1);
   import_ListActionsSpecOp = __toESM(require_ListActionsSpecOp(), 1);
   import_ListOutputsSpecOp = __toESM(require_ListOutputsSpecOp(), 1);
@@ -289275,7 +288428,7 @@ var init_storage_bun_sqlite = __esm(() => {
       let specOpLabels = [];
       let labels = [];
       for (const label of ordinaryLabelsPreSpecOp) {
-        if (import_types67.isListActionsSpecOp(label)) {
+        if (import_types63.isListActionsSpecOp(label)) {
           specOp = import_ListActionsSpecOp.getLabelToSpecOp()[label];
         } else {
           labels.push(label);
@@ -290011,7 +289164,7 @@ function buildTxLabelFilterSql2(labelIds, isQueryModeAll) {
     params: [...labelIds]
   };
 }
-var import_wallet_toolbox2, import_WERR_errors5, import_WERR_errors6, import_WERR_errors7, import_WERR_errors8, import_types68, import_StorageProvider2, import_ListActionsSpecOp2, import_ListOutputsSpecOp2, import_TableOutput2, import_TableTransaction2, import_utilityHelpers2, import_utilityHelpers_noBuffer2, TRX_BRAND2, StoragePg;
+var import_wallet_toolbox2, import_WERR_errors5, import_WERR_errors6, import_WERR_errors7, import_WERR_errors8, import_types64, import_StorageProvider2, import_ListActionsSpecOp2, import_ListOutputsSpecOp2, import_TableOutput2, import_TableTransaction2, import_utilityHelpers2, import_utilityHelpers_noBuffer2, TRX_BRAND2, StoragePg;
 var init_storage_pg = __esm(() => {
   init_mod();
   import_wallet_toolbox2 = __toESM(require_src6(), 1);
@@ -290019,7 +289172,7 @@ var init_storage_pg = __esm(() => {
   import_WERR_errors6 = __toESM(require_WERR_errors(), 1);
   import_WERR_errors7 = __toESM(require_WERR_errors(), 1);
   import_WERR_errors8 = __toESM(require_WERR_errors(), 1);
-  import_types68 = __toESM(require_types7(), 1);
+  import_types64 = __toESM(require_types7(), 1);
   import_StorageProvider2 = __toESM(require_StorageProvider(), 1);
   import_ListActionsSpecOp2 = __toESM(require_ListActionsSpecOp(), 1);
   import_ListOutputsSpecOp2 = __toESM(require_ListOutputsSpecOp(), 1);
@@ -291697,7 +290850,7 @@ var init_storage_pg = __esm(() => {
       let specOpLabels = [];
       let labels = [];
       for (const label of ordinaryLabelsPreSpecOp) {
-        if (import_types68.isListActionsSpecOp(label)) {
+        if (import_types64.isListActionsSpecOp(label)) {
           specOp = import_ListActionsSpecOp2.getLabelToSpecOp()[label];
         } else {
           labels.push(label);
@@ -292402,7 +291555,7 @@ async function denyStoragePayment(_info) {
 
 // utils/signer.ts
 import { chmodSync as chmodSync2, existsSync as existsSync5 } from "node:fs";
-import { join as join8 } from "node:path";
+import { join as join9 } from "node:path";
 function signerRequestAllowed(request, token, allowed) {
   const parts = new URL(request.url).pathname.split("/");
   const method = parts.length === 3 ? parts[2] : undefined;
@@ -292439,7 +291592,7 @@ async function serveSigner(name) {
     throw new Error("Account has no payment key");
   const dir = accountDir(name);
   secureDirectory(dir);
-  const filename = join8(dir, `wallet-${config.chain}.db`);
+  const filename = join9(dir, `wallet-${config.chain}.db`);
   regularPath(filename);
   const previousMask = process.umask(63);
   const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
@@ -292458,7 +291611,7 @@ async function serveSigner(name) {
   const result = await createNodeWallet(nodeWalletConfig).finally(() => process.umask(previousMask));
   if (existsSync5(filename))
     chmodSync2(filename, 384);
-  if (existsSync5(join8(dir, ".env"))) {
+  if (existsSync5(join9(dir, ".env"))) {
     await result.destroy();
     throw new Error("Signer account directory must not contain a .env file");
   }
@@ -292546,44 +291699,44 @@ var init_signer2 = __esm(() => {
 // utils/accountCommands.ts
 import {
   chmodSync as chmodSync3,
-  closeSync as closeSync4,
+  closeSync as closeSync5,
   existsSync as existsSync6,
   fsyncSync as fsyncSync3,
-  openSync as openSync4,
+  openSync as openSync5,
   readdirSync as readdirSync4,
-  readFileSync as readFileSync4,
-  rmSync as rmSync4,
+  readFileSync as readFileSync5,
+  rmSync as rmSync5,
   writeSync as writeSync2
 } from "node:fs";
-import { homedir as homedir5 } from "node:os";
-import { isAbsolute as isAbsolute4, join as join9 } from "node:path";
+import { homedir as homedir6 } from "node:os";
+import { isAbsolute as isAbsolute5, join as join10 } from "node:path";
 function erasePlaintext(file) {
   regularPath(file);
-  const fd = openSync4(file, "r+");
+  const fd = openSync5(file, "r+");
   try {
-    const size = readFileSync4(fd).length;
+    const size = readFileSync5(fd).length;
     const zeros = new Uint8Array(Math.min(size, 65536));
     for (let offset = 0;offset < size; offset += zeros.length)
       writeSync2(fd, zeros, 0, Math.min(zeros.length, size - offset), offset);
     fsyncSync3(fd);
   } finally {
-    closeSync4(fd);
+    closeSync5(fd);
   }
-  rmSync4(file);
+  rmSync5(file);
 }
-async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join9(homedir5(), ".bsv-mcp") : "", storageIdentityKey) {
-  if (!isAbsolute4(sourceDir) || source === "one-sat" && !storageIdentityKey)
+async function migrateAccount(name, source, password, root = accountsRoot(), sourceDir = source === "legacy" ? join10(homedir6(), ".bsv-mcp") : "", storageIdentityKey) {
+  if (!isAbsolute5(sourceDir) || source === "one-sat" && !storageIdentityKey)
     throw new Error("OneSat migration requires an absolute source directory and storage identity");
-  const sourceFile = join9(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+  const sourceFile = join10(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
   const target = accountDir(name, root);
   const expectedStorage = source === "legacy" ? "bsv-mcp" : storageIdentityKey ?? "";
   const verifyDestination = () => {
     const config = readAccount(name, root);
-    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "one-sat" && !existsSync6(join9(target, "wallet-main.db")))
+    if (!config || config.storageIdentityKey !== expectedStorage || config.chain !== "main" || source === "one-sat" && !existsSync6(join10(target, "wallet-main.db")))
       throw new Error("Incomplete migration destination; source will not be erased. Preserve it and repair the account first.");
   };
   if (!existsSync6(sourceFile)) {
-    if (existsSync6(join9(target, "keys.bep"))) {
+    if (existsSync6(join10(target, "keys.bep"))) {
       await new SecureKeyManager({ keyDir: target }).loadEncryptedKeys(password);
       verifyDestination();
       return { name, alreadyMigrated: true };
@@ -292595,7 +291748,7 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
   let keys;
   try {
     keys = source === "legacy" ? new SecureKeyManager({ keyDir: sourceDir }).loadLegacyKeys() : {
-      payPk: PrivateKey.fromWif(readFileSync4(sourceFile, "utf8").trim())
+      payPk: PrivateKey.fromWif(readFileSync5(sourceFile, "utf8").trim())
     };
   } catch {
     throw new Error("Cannot read migration source; no files changed");
@@ -292624,7 +291777,7 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
     })).publicKey).toAddress() : keys.payPk.toAddress(),
     depositPrefix: source === "legacy" ? "mcp" : "1sat"
   };
-  const dbSource = join9(sourceDir, "wallet.db");
+  const dbSource = join10(sourceDir, "wallet.db");
   if (source === "one-sat" && !existsSync6(dbSource))
     throw new Error("Source wallet database is missing; refusing an incomplete migration");
   await createAccount(name, keys, password, config, root);
@@ -292634,14 +291787,14 @@ async function migrateAccount(name, source, password, root = accountsRoot(), sou
       const { Database } = await import("bun:sqlite");
       const db = new Database(dbSource, { readonly: true });
       try {
-        db.exec(`VACUUM INTO '${join9(target, "wallet-main.db").replaceAll("'", "''")}'`);
+        db.exec(`VACUUM INTO '${join10(target, "wallet-main.db").replaceAll("'", "''")}'`);
       } finally {
         db.close();
       }
-      chmodSync3(join9(target, "wallet-main.db"), 384);
+      chmodSync3(join10(target, "wallet-main.db"), 384);
     }
   } catch {
-    rmSync4(target, { recursive: true, force: true });
+    rmSync5(target, { recursive: true, force: true });
     throw new Error("Database snapshot failed; migration source was not changed");
   }
   return { name, alreadyMigrated: false };
@@ -292693,8 +291846,8 @@ async function runAccountCommand(args) {
     if (source !== "legacy" && source !== "one-sat")
       throw new Error("Use --source legacy or --source one-sat --source-directory <path> --storage-identity <id>");
     await confirm("Stop all processes using the source wallet before migrating. Source wallet stopped?");
-    const password = existsSync6(join9(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
-    const sourceDir = source === "legacy" ? join9(homedir5(), ".bsv-mcp") : args[args.indexOf("--source-directory") + 1];
+    const password = existsSync6(join10(accountDir(name), "keys.bep")) ? await terminalInput("Account password", true) : await newPassword();
+    const sourceDir = source === "legacy" ? join10(homedir6(), ".bsv-mcp") : args[args.indexOf("--source-directory") + 1];
     const storageIdentity = args.includes("--storage-identity") ? args[args.indexOf("--storage-identity") + 1] : undefined;
     if (source === "one-sat" && !args.includes("--source-directory"))
       throw new Error("An explicit source directory is required");
@@ -292702,7 +291855,7 @@ async function runAccountCommand(args) {
     console.log(JSON.stringify(result));
     if (args.includes("--erase-source")) {
       await confirm("Encrypted keys and the account database are backed up and verified? Source overwrite cannot erase SSD snapshots");
-      const sourceFile = join9(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
+      const sourceFile = join10(sourceDir, source === "legacy" ? "keys.json" : "root.wif");
       if (existsSync6(sourceFile))
         erasePlaintext(sourceFile);
     }
@@ -292717,8 +291870,8 @@ async function runAccountCommand(args) {
     const dir = accountDir(name);
     regularPath(dir, true);
     for (const file of readdirSync4(dir))
-      regularPath(join9(dir, file));
-    rmSync4(dir, { recursive: true });
+      regularPath(join10(dir, file));
+    rmSync5(dir, { recursive: true });
     console.log(`Removed account ${name}`);
     return true;
   }
@@ -292741,7 +291894,7 @@ async function runAccountCommand(args) {
   const address = key.toAddress(chainInput === "test" ? [111] : [0]);
   await createAccount(name, { payPk: key }, password, newAccountConfig(chainInput, address));
   console.log(`Account ${name} created. Address: ${address}
-Back up ${join9(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
+Back up ${join10(accountDir(name), "keys.bep")} and config.json. Keep the password separately.`);
   return true;
 }
 var init_accountCommands = __esm(() => {
@@ -293003,15 +292156,21 @@ var init_appSweep = __esm(() => {
   init_dist2();
   init_mod();
   init_zod();
-  appSweepInputSchema = object2({
+  appSweepInputSchema = object({
     sweepType: _enum(["bsv", "ordinals", "bsv21"]),
-    inputs: array(object2({
+    inputs: array(object({
       outpoint: string2().regex(/^[0-9a-f]{64}_[0-9]+$/i),
       satoshis: number2().int().nonnegative().safe(),
       lockingScript: string2().regex(/^(?:[0-9a-f]{2})+$/i)
     })).min(1).max(100)
   });
   pendingByWallet = new WeakMap;
+});
+
+// utils/vaultPassphrasePolicy.ts
+var init_vaultPassphrasePolicy = __esm(() => {
+  init_dist9();
+  init_dist9();
 });
 
 // node_modules/@opl.dev/vault/dist/index.js
@@ -293067,7 +292226,7 @@ __export(exports_dist, {
   privateKeyToHex: () => privateKeyToHex,
   providerToUnlock: () => providerToUnlock,
   publicKeyHex: () => publicKeyHex,
-  randomBytes: () => randomBytes4,
+  randomBytes: () => randomBytes5,
   randomId: () => randomId,
   randomSuffix: () => randomSuffix,
   recoverEntropy: () => recoverEntropy,
@@ -293083,11 +292242,11 @@ __export(exports_dist, {
 });
 import { spawnSync } from "child_process";
 import { existsSync as existsSync7 } from "fs";
-import { dirname as dirname3, join as join10, resolve as resolve2 } from "path";
+import { dirname as dirname3, join as join11, resolve as resolve2 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { dirname as dirname22, join as join22 } from "path";
-import { homedir as homedir6 } from "os";
+import { homedir as homedir7 } from "os";
 import { join as join33 } from "path";
 function concat(...parts) {
   const total = parts.reduce((n, p) => n + p.length, 0);
@@ -293113,7 +292272,7 @@ function fromHexString(hex) {
     out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
 }
-function randomBytes4(length) {
+function randomBytes5(length) {
   const out = new Uint8Array(length);
   crypto.getRandomValues(out);
   return out;
@@ -293316,39 +292475,70 @@ function subtle() {
   }
   return crypto.subtle;
 }
-async function deriveKek2(passphrase, salt, iterations) {
+function u32be(value) {
+  const out = new Uint8Array(4);
+  out[0] = value >>> 24 & 255;
+  out[1] = value >>> 16 & 255;
+  out[2] = value >>> 8 & 255;
+  out[3] = value & 255;
+  return out;
+}
+function readU32be(bytes, offset) {
+  return (bytes[offset] << 24 | bytes[offset + 1] << 16 | bytes[offset + 2] << 8 | bytes[offset + 3]) >>> 0;
+}
+function defaultArgon2() {
+  if (typeof process !== "undefined" && process.env?.VAULT_ARGON2_FAST === "1")
+    return ARGON2ID_FAST;
+  return ARGON2ID_DEFAULTS;
+}
+async function derivePbkdf2Kek(passphrase, salt, iterations) {
   const base = await subtle().importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
   return subtle().deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 
 class PassphraseProvider {
   passphrase;
-  iterations;
   type = "passphrase";
-  constructor(passphrase, iterations = DEFAULT_PBKDF2_ITERATIONS) {
+  argon2;
+  constructor(passphrase, iterationsOrOptions = {}) {
     this.passphrase = passphrase;
-    this.iterations = iterations;
-    if (passphrase.length === 0)
-      throw new Error("empty passphrase");
+    assertPassphrase(passphrase);
+    const options = typeof iterationsOrOptions === "number" ? {} : iterationsOrOptions ?? {};
+    this.argon2 = resolveArgon2idParams(options.argon2 ?? defaultArgon2());
   }
   isSupported() {
     return typeof crypto !== "undefined" && !!crypto.subtle;
   }
   async wrap(contentKey) {
-    const salt = randomBytes4(SALT_BYTES);
-    const iv = randomBytes4(IV_BYTES);
-    const kek = await deriveKek2(this.passphrase, salt, this.iterations);
+    const salt = randomBytes5(SALT_BYTES);
+    const iv = randomBytes5(IV_BYTES);
+    const kek = await deriveArgon2idKey(this.passphrase, salt, this.argon2);
     const sealed = new Uint8Array(await subtle().encrypt({ name: "AES-GCM", iv }, kek, contentKey));
-    const out = concat(salt, iv, sealed);
-    return out;
+    return concat(new Uint8Array([ARGON2_WRAP_VERSION]), salt, u32be(this.argon2.memoryKiB), u32be(this.argon2.iterations), u32be(this.argon2.parallelism), iv, sealed);
   }
   async unwrap(wrapped) {
+    if (wrapped.length >= 1 + SALT_BYTES + 12 + IV_BYTES + 16 && wrapped[0] === ARGON2_WRAP_VERSION) {
+      const salt2 = wrapped.slice(1, 1 + SALT_BYTES);
+      const memoryKiB = readU32be(wrapped, 1 + SALT_BYTES);
+      const iterations = readU32be(wrapped, 1 + SALT_BYTES + 4);
+      const parallelism = readU32be(wrapped, 1 + SALT_BYTES + 8);
+      const ivStart = 1 + SALT_BYTES + 12;
+      const iv2 = wrapped.slice(ivStart, ivStart + IV_BYTES);
+      const sealed2 = wrapped.slice(ivStart + IV_BYTES);
+      const kek2 = await deriveArgon2idKey(this.passphrase, salt2, {
+        memoryKiB,
+        iterations,
+        parallelism
+      });
+      const plain2 = await subtle().decrypt({ name: "AES-GCM", iv: iv2 }, kek2, sealed2);
+      return new Uint8Array(plain2);
+    }
     if (wrapped.length < SALT_BYTES + IV_BYTES + 16)
       throw new Error("wrapped key too short");
     const salt = wrapped.slice(0, SALT_BYTES);
     const iv = wrapped.slice(SALT_BYTES, SALT_BYTES + IV_BYTES);
     const sealed = wrapped.slice(SALT_BYTES + IV_BYTES);
-    const kek = await deriveKek2(this.passphrase, salt, this.iterations);
+    const kek = await derivePbkdf2Kek(this.passphrase, salt, DEFAULT_PBKDF2_ITERATIONS);
     const plain = await subtle().decrypt({ name: "AES-GCM", iv }, kek, sealed);
     return new Uint8Array(plain);
   }
@@ -293362,7 +292552,7 @@ function subtle2() {
 async function importDevicePublicKey(raw65) {
   return subtle2().importKey("raw", raw65, { name: "ECDH", namedCurve: "P-256" }, true, []);
 }
-async function deriveKek22(sharedX) {
+async function deriveKek2(sharedX) {
   const base = await subtle2().importKey("raw", sharedX, "HKDF", false, [
     "deriveKey"
   ]);
@@ -293379,8 +292569,8 @@ async function eciesWrap(recipientRaw65, contentKey) {
     "deriveBits"
   ]);
   const shared = new Uint8Array(await subtle2().deriveBits({ name: "ECDH", public: recipient }, ephemeral.privateKey, 256));
-  const kek = await deriveKek22(shared);
-  const nonce = randomBytes4(12);
+  const kek = await deriveKek2(shared);
+  const nonce = randomBytes5(12);
   const sealed = new Uint8Array(await subtle2().encrypt({ name: "AES-GCM", iv: nonce }, kek, contentKey));
   const ephemeralPub = new Uint8Array(await subtle2().exportKey("raw", ephemeral.publicKey));
   shared.fill(0);
@@ -293394,7 +292584,7 @@ async function eciesUnwrap(devicePrivateKey, wrapped) {
   const sealed = wrapped.slice(77);
   const ephemeralPub = await importDevicePublicKey(ephemeralRaw);
   const shared = new Uint8Array(await subtle2().deriveBits({ name: "ECDH", public: ephemeralPub }, devicePrivateKey, 256));
-  const kek = await deriveKek22(shared);
+  const kek = await deriveKek2(shared);
   const plain = await subtle2().decrypt({ name: "AES-GCM", iv: nonce }, kek, sealed);
   shared.fill(0);
   return new Uint8Array(plain);
@@ -293448,16 +292638,16 @@ function helperDir() {
   const here = dirname3(fileURLToPath2(import.meta.url));
   const candidates = [resolve2(here, "../../swift"), resolve2(here, "../swift")];
   for (const dir of candidates) {
-    if (existsSync7(join10(dir, "build.sh")))
+    if (existsSync7(join11(dir, "build.sh")))
       return dir;
   }
   return candidates[0];
 }
 function enclaveBinaryPath() {
-  return join10(helperDir(), "enclave");
+  return join11(helperDir(), "enclave");
 }
 function enclaveBuildScript() {
-  return join10(helperDir(), "build.sh");
+  return join11(helperDir(), "build.sh");
 }
 function ensureBinary() {
   const binary = enclaveBinaryPath();
@@ -294095,7 +293285,7 @@ function defaultVaultPath() {
       throw new Error(`${VAULT_PATH_ENV} is set but empty`);
     return override;
   }
-  return join33(homedir6(), ".bsv", "vault.bep");
+  return join33(homedir7(), ".bsv", "vault.bep");
 }
 function randomSuffix() {
   const bytes = new Uint8Array(4);
@@ -294113,9 +293303,14 @@ function passphraseOf(provider) {
   }
   throw new Error(`provider type '${provider.type}' is not a passphrase provider`);
 }
+function argon2Of(provider) {
+  if (provider instanceof PassphraseProvider)
+    return provider.argon2;
+  throw new Error("passphrase provider does not expose argon2 parameters");
+}
 async function providerToSlotSpec(provider, id) {
   if (provider.type === "passphrase") {
-    return { type: "pbkdf2", id, passphrase: passphraseOf(provider) };
+    return { type: "argon2id", id, passphrase: passphraseOf(provider), ...argon2Of(provider) };
   }
   if (provider.type === "device-p256" || provider.type === "enclave") {
     if (!provider.publicKey)
@@ -294235,11 +293430,16 @@ async function rewrapVault(path, unlockProvider) {
   const unlock = await providerToUnlock(unlockProvider, inspected.slots);
   const specs = [];
   for (const slot of inspected.slots) {
-    if (slot.type === "pbkdf2") {
+    if (slot.type === "pbkdf2" || slot.type === "argon2id") {
       if (!(unlockProvider instanceof PassphraseProvider)) {
-        throw new Error("rewrap needs the passphrase provider to rebuild pbkdf2 slots");
+        throw new Error("rewrap needs the passphrase provider to rebuild passphrase slots");
       }
-      specs.push({ type: "pbkdf2", id: slot.id, passphrase: unlockProvider.passphrase });
+      specs.push({
+        type: "argon2id",
+        id: slot.id,
+        passphrase: unlockProvider.passphrase,
+        ...unlockProvider.argon2
+      });
     } else if (slot.type === "device-p256") {
       if (!slot.publicKey)
         throw new Error(`slot '${slot.id}' is missing its public key`);
@@ -294344,9 +293544,10 @@ async function exportDocument(vault, passphrase) {
   };
   return sealBackup(payload, [{ type: "pbkdf2", id: `export-${randomSuffix()}`, passphrase }]);
 }
-var SE_VAULT_HKDF_INFO = "se-vault-v1", SECP256K1_N, WORD_COUNTS, BRC157_PHRASE = "legal winner thank year wave sausage worth useful legal winner thank yellow", bytesToHex3, ENTRY_KINDS, DERIVATION_SCHEMES, DEFAULT_PBKDF2_ITERATIONS = 600000, SALT_BYTES = 16, IV_BYTES = 12, SessionExpired, LOCK_STALE_MS = 60000, FileLocked, VAULT_SCHEME = "opl-vault-v1", VAULT_PATH_ENV = "VAULT_PATH", VAULT_ENTRY_SCHEME = "opl-vault-entry-v1";
+var SE_VAULT_HKDF_INFO = "se-vault-v1", SECP256K1_N, WORD_COUNTS, BRC157_PHRASE = "legal winner thank year wave sausage worth useful legal winner thank yellow", bytesToHex3, ENTRY_KINDS, DERIVATION_SCHEMES, DEFAULT_PBKDF2_ITERATIONS = 600000, SALT_BYTES = 16, IV_BYTES = 12, ARGON2_WRAP_VERSION = 162, SessionExpired, LOCK_STALE_MS = 60000, FileLocked, VAULT_SCHEME = "opl-vault-v1", VAULT_PATH_ENV = "VAULT_PATH", VAULT_ENTRY_SCHEME = "opl-vault-entry-v1";
 var init_dist11 = __esm(() => {
   init_mod();
+  init_dist9();
   init_mod();
   init_mod();
   init_dist9();
@@ -294390,7 +293591,7 @@ var init_dist11 = __esm(() => {
 
 // utils/embeddedVaultIo.ts
 import { createHash as createHash5, randomUUID as randomUUID4 } from "node:crypto";
-import { existsSync as existsSync8, lstatSync as lstatSync3, realpathSync as realpathSync2 } from "node:fs";
+import { existsSync as existsSync8, lstatSync as lstatSync4, realpathSync as realpathSync2 } from "node:fs";
 import {
   chmod as chmod2,
   copyFile,
@@ -294402,42 +293603,63 @@ import {
   rm as rm2,
   stat
 } from "node:fs/promises";
-import { basename, dirname as dirname4, isAbsolute as isAbsolute5, join as join11, resolve as resolve3 } from "node:path";
+import { basename, dirname as dirname4, isAbsolute as isAbsolute6, join as join12, resolve as resolve3 } from "node:path";
 function assertLabel(label) {
   if (typeof label !== "string" || label.trim().length === 0)
-    throw failure("INVALID_LABEL");
+    throw failure2("INVALID_LABEL");
   return label;
 }
 function assertPassword(password) {
-  if (typeof password !== "string" || password.length < 8)
-    throw failure("INVALID_PASSWORD");
-  return password;
+  try {
+    assertPassphrase(password);
+    return password;
+  } catch {
+    throw failure2("INVALID_PASSWORD");
+  }
+}
+function hardwareUnlockEnabled(options) {
+  if (options.useEnclave === false)
+    return false;
+  if (process.env.BSV_MCP_PASSWORD)
+    return false;
+  if (process.env.BSV_MCP_ENCLAVE === "false")
+    return false;
+  return options.useEnclave === true || process.env.BSV_MCP_ENCLAVE !== "false";
+}
+function sealingProviders(module, passwordProvider, enabled) {
+  if (!enabled || typeof module.EnclaveProvider !== "function" || typeof module.isEnclaveSupported === "function" && !module.isEnclaveSupported())
+    return [passwordProvider];
+  try {
+    return [passwordProvider, new module.EnclaveProvider("bsv-mcp")];
+  } catch {
+    return [passwordProvider];
+  }
 }
 function assertConfirmation(password, confirmation) {
   if (typeof confirmation !== "string" || confirmation !== password)
-    throw failure("PASSWORD_MISMATCH");
+    throw failure2("PASSWORD_MISMATCH");
 }
 function parseKeys(keys) {
   if (!keys || typeof keys !== "object")
-    throw failure("INVALID_KEY");
+    throw failure2("INVALID_KEY");
   let payPub;
   try {
     payPub = PrivateKey.fromWif(keys.payPk).toPublicKey().toString();
   } catch {
-    throw failure("INVALID_KEY");
+    throw failure2("INVALID_KEY");
   }
   if (!COMPRESSED_PUBKEY.test(payPub))
-    throw failure("INVALID_KEY");
+    throw failure2("INVALID_KEY");
   const parsed = { payWif: keys.payPk, payPub };
   if (keys.identityPk !== undefined) {
     let identityPub;
     try {
       identityPub = PrivateKey.fromWif(keys.identityPk).toPublicKey().toString();
     } catch {
-      throw failure("INVALID_KEY");
+      throw failure2("INVALID_KEY");
     }
     if (!COMPRESSED_PUBKEY.test(identityPub))
-      throw failure("INVALID_KEY");
+      throw failure2("INVALID_KEY");
     parsed.identityWif = keys.identityPk;
     parsed.identityPub = identityPub;
   }
@@ -294447,16 +293669,16 @@ function parseKeys(keys) {
     try {
       const hd = HD.fromString(keys.xprv);
       if (!hd.isPrivate())
-        throw failure("INVALID_KEY");
+        throw failure2("INVALID_KEY");
       expectedXpub = hd.toPublic().toString();
       hdPub = hd.pubKey.toString();
     } catch (error) {
       if (error instanceof EmbeddedVaultError)
         throw error;
-      throw failure("INVALID_KEY");
+      throw failure2("INVALID_KEY");
     }
     if (!COMPRESSED_PUBKEY.test(hdPub))
-      throw failure("INVALID_KEY");
+      throw failure2("INVALID_KEY");
     parsed.xprv = keys.xprv;
     parsed.expectedXpub = expectedXpub;
     parsed.hdPub = hdPub;
@@ -294464,14 +293686,14 @@ function parseKeys(keys) {
   return parsed;
 }
 function canonicalVaultPath(input) {
-  if (typeof input !== "string" || !isAbsolute5(input))
-    throw failure("INVALID_PATH");
+  if (typeof input !== "string" || !isAbsolute6(input))
+    throw failure2("INVALID_PATH");
   let parent = resolve3(input);
   const tail = [];
   while (!existsSync8(parent)) {
     const next = dirname4(parent);
     if (next === parent)
-      throw failure("INVALID_PATH");
+      throw failure2("INVALID_PATH");
     tail.unshift(basename(parent));
     parent = next;
   }
@@ -294479,22 +293701,22 @@ function canonicalVaultPath(input) {
   try {
     real = realpathSync2(parent);
   } catch {
-    throw failure("INVALID_PATH");
+    throw failure2("INVALID_PATH");
   }
-  return join11(real, ...tail);
+  return join12(real, ...tail);
 }
 function assertNoSymlinks(resolvedInput) {
   let cursor = resolvedInput;
   let previous = "";
   while (cursor !== undefined && cursor !== previous) {
     try {
-      if (lstatSync3(cursor).isSymbolicLink())
-        throw failure("INVALID_PATH");
+      if (lstatSync4(cursor).isSymbolicLink())
+        throw failure2("INVALID_PATH");
     } catch (error) {
       if (error instanceof EmbeddedVaultError)
         throw error;
       if (error?.code !== "ENOENT")
-        throw failure("INVALID_PATH");
+        throw failure2("INVALID_PATH");
     }
     previous = cursor;
     const next = dirname4(cursor);
@@ -294523,15 +293745,16 @@ async function loadVaultModule(loadModule) {
     if (candidate && typeof candidate === "object" && ["PassphraseProvider", "createVault", "openVault", "saveVault"].every((name) => typeof candidate[name] === "function"))
       return candidate;
   } catch {}
-  throw failure("VAULT_PACKAGE_INCOMPATIBLE");
+  throw failure2("VAULT_PACKAGE_INCOMPATIBLE");
 }
 function createEmbeddedVaultIo(options) {
   const now = options.now ?? Date.now;
+  const enclaveEnabled = hardwareUnlockEnabled(options);
   const requestedPath = options.vaultPath;
   const loadModule = options.loadModule;
   let held;
   let epoch = 0;
-  const asSafeWriteError = (error) => error instanceof EmbeddedVaultError ? error : failure("WRITE_FAILED");
+  const asSafeWriteError = (error) => error instanceof EmbeddedVaultError ? error : failure2("WRITE_FAILED");
   const lockPrevious = () => {
     epoch += 1;
     if (!held)
@@ -294557,8 +293780,8 @@ function createEmbeddedVaultIo(options) {
       lockHandle = await open2(lockPath, "wx", 384);
     } catch (error) {
       if (error?.code === "EEXIST")
-        throw failure("VAULT_BUSY");
-      throw failure("WRITE_FAILED");
+        throw failure2("VAULT_BUSY");
+      throw failure2("WRITE_FAILED");
     }
     let lockIno = -1;
     let lockDev = -1;
@@ -294571,7 +293794,7 @@ function createEmbeddedVaultIo(options) {
         await lockHandle.close();
       } catch {}
       lockHandle = undefined;
-      throw failure("WRITE_FAILED");
+      throw failure2("WRITE_FAILED");
     }
     const owned = async () => {
       try {
@@ -294589,7 +293812,7 @@ function createEmbeddedVaultIo(options) {
     };
     const assertOwned = async () => {
       if (!await owned())
-        throw failure("VAULT_CHANGED");
+        throw failure2("VAULT_CHANGED");
     };
     const releaseLock = async () => {
       try {
@@ -294635,13 +293858,13 @@ function createEmbeddedVaultIo(options) {
         await lockHandle.writeFile(JSON.stringify({ pid: process.pid, nonce, at: now() }));
         await lockHandle.sync();
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       let beforeBytes = null;
       try {
         beforeBytes = existsSync8(canonical) ? await readFile2(canonical) : null;
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       try {
         await mkdir2(stageDir, { mode: 448 });
@@ -294651,7 +293874,7 @@ function createEmbeddedVaultIo(options) {
         stageDev = identity.dev;
         stageOwned = true;
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       return await work({ stageDir, beforeBytes, release, assertOwned });
     } catch (error) {
@@ -294669,21 +293892,21 @@ function createEmbeddedVaultIo(options) {
       try {
         staged = await params.module.openVault(params.stagePath, new params.module.PassphraseProvider(params.password));
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       const active = staged;
       const document2 = active.toDocument();
       if (!document2.settings.revealEnabled)
-        throw failure("REVEAL_DISABLED");
+        throw failure2("REVEAL_DISABLED");
       if (params.vaultId !== null && document2.id !== params.vaultId)
-        throw failure("VAULT_CHANGED");
+        throw failure2("VAULT_CHANGED");
       const byId = new Map(document2.entries.map((entry) => [entry.id, entry]));
       const revealChecked = (entryId) => {
         active.unlock(VERIFY_REASON, 30);
         try {
           return active.reveal(entryId, VERIFY_REASON);
         } catch {
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         } finally {
           try {
             active.lock();
@@ -294693,20 +293916,20 @@ function createEmbeddedVaultIo(options) {
       const checkDirectEntry = (ref, secret, isHex) => {
         const entry = byId.get(ref.entryId);
         if (!entry || !KEY_KINDS.has(entry.kind))
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         if (typeof entry.publicKey !== "string" || entry.publicKey.toLowerCase() !== ref.publicKey.toLowerCase())
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         const revealed = revealChecked(ref.entryId);
         if (revealed !== secret)
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         let key;
         try {
           key = isHex ? PrivateKey.fromHex(revealed) : PrivateKey.fromWif(revealed);
         } catch {
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         }
         if (key.toPublicKey().toString().toLowerCase() !== ref.publicKey.toLowerCase())
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
       };
       checkDirectEntry(params.receipt.payment, params.parsed ? params.parsed.payWif : params.paymentHex ?? "", params.parsed === null);
       if (params.receipt.identity)
@@ -294714,12 +293937,12 @@ function createEmbeddedVaultIo(options) {
       if (params.receipt.hd) {
         const entry = byId.get(params.receipt.hd.entryId);
         if (entry?.kind !== "hd-private")
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey))
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         const revealed = revealChecked(params.receipt.hd.entryId);
         if (revealed !== (params.parsed?.xprv ?? ""))
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         let xpub;
         let hdPub;
         let isPrivate = false;
@@ -294729,27 +293952,27 @@ function createEmbeddedVaultIo(options) {
           xpub = hd.toPublic().toString();
           hdPub = hd.pubKey.toString();
         } catch {
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         }
         if (!isPrivate)
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         if (xpub !== params.receipt.hd.expectedXpub)
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         if (hdPub.toLowerCase() !== entry.publicKey.toLowerCase())
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
         if (params.parsed?.hdPub !== undefined && hdPub.toLowerCase() !== params.parsed.hdPub.toLowerCase())
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
       }
       for (const original of params.originals) {
         const current = byId.get(original.id);
         if (!current || JSON.stringify(current) !== JSON.stringify(original))
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
       }
       return document2.id;
     } catch (error) {
       if (error instanceof EmbeddedVaultError)
         throw error;
-      throw failure("WRITE_FAILED");
+      throw failure2("WRITE_FAILED");
     } finally {
       try {
         staged?.lock();
@@ -294762,18 +293985,18 @@ function createEmbeddedVaultIo(options) {
       try {
         await release("uncertain");
       } catch {}
-      throw failure(code);
+      throw failure2(code);
     };
     try {
       assertNoSymlinks(resolve3(canonical));
       assertNoSymlinks(canonical);
       const parentLink = await lstat(dirname4(canonical));
       if (parentLink.isSymbolicLink() || !parentLink.isDirectory())
-        throw failure("VAULT_CHANGED");
+        throw failure2("VAULT_CHANGED");
       if (existsSync8(canonical)) {
         const destLink = await lstat(canonical);
         if (destLink.isSymbolicLink() || !destLink.isFile())
-          throw failure("VAULT_CHANGED");
+          throw failure2("VAULT_CHANGED");
       }
     } catch (error) {
       if (error instanceof EmbeddedVaultError)
@@ -294788,7 +294011,7 @@ function createEmbeddedVaultIo(options) {
         await backupHandle.writeFile(beforeBytes);
         await backupHandle.sync();
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       } finally {
         try {
           await backupHandle?.close();
@@ -294797,23 +294020,23 @@ function createEmbeddedVaultIo(options) {
       try {
         await chmod2(backupPath, 384);
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
     }
     try {
       await syncFile(stagePath);
     } catch {
-      throw failure("WRITE_FAILED");
+      throw failure2("WRITE_FAILED");
     }
     let actual = null;
     try {
       actual = existsSync8(canonical) ? await readFile2(canonical) : null;
     } catch {
-      throw failure("WRITE_FAILED");
+      throw failure2("WRITE_FAILED");
     }
     if (actual === null !== (beforeBytes === null) || actual !== null && beforeBytes !== null && digest(actual) !== digest(beforeBytes)) {
       await release("uncertain");
-      throw failure("VAULT_CHANGED");
+      throw failure2("VAULT_CHANGED");
     }
     try {
       await assertOwned();
@@ -294835,13 +294058,13 @@ function createEmbeddedVaultIo(options) {
     try {
       await release("commit");
     } catch {
-      throw failure("WRITE_FAILED");
+      throw failure2("WRITE_FAILED");
     }
   };
   return {
     async listKeys(password) {
       if (typeof password !== "string" || !password)
-        throw failure("UNLOCK_FAILED");
+        throw failure2("UNLOCK_FAILED");
       const module = await loadVaultModule(loadModule);
       const canonical = resolveCanonical();
       let vault;
@@ -294857,7 +294080,7 @@ function createEmbeddedVaultIo(options) {
         ] : []);
         return { vaultId, keys };
       } catch {
-        throw failure("UNLOCK_FAILED");
+        throw failure2("UNLOCK_FAILED");
       } finally {
         vault?.lock();
       }
@@ -294871,32 +294094,41 @@ function createEmbeddedVaultIo(options) {
       try {
         await mkdir2(dirname4(canonical), { recursive: true, mode: 448 });
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       return await withExclusiveWrite(canonical, async (ctx) => {
         if (ctx.beforeBytes !== null) {
           try {
             await ctx.release("abort");
           } catch {
-            throw failure("WRITE_FAILED");
+            throw failure2("WRITE_FAILED");
           }
-          throw failure("VAULT_EXISTS");
+          throw failure2("VAULT_EXISTS");
         }
-        const stagePath = join11(ctx.stageDir, "vault.bep");
+        const stagePath = join12(ctx.stageDir, "vault.bep");
         const provider = new module.PassphraseProvider(password);
+        const providers = sealingProviders(module, provider, enclaveEnabled);
         let vault;
         let paymentId = "";
         try {
-          vault = await module.createVault(stagePath, [provider], {
-            revealEnabled: true
-          });
+          try {
+            vault = await module.createVault(stagePath, providers, {
+              revealEnabled: true
+            });
+          } catch {
+            if (providers.length === 1)
+              throw failure2("WRITE_FAILED");
+            vault = await module.createVault(stagePath, [provider], {
+              revealEnabled: true
+            });
+          }
           const payment = vault.generateKey(label);
           paymentId = payment.id;
           await module.saveVault(stagePath, vault, provider);
         } catch (error) {
           if (error instanceof EmbeddedVaultError)
             throw error;
-          throw failure("WRITE_FAILED");
+          throw failure2("WRITE_FAILED");
         } finally {
           try {
             vault?.lock();
@@ -294909,11 +294141,11 @@ function createEmbeddedVaultIo(options) {
           try {
             staged = await module.openVault(stagePath, new module.PassphraseProvider(password));
           } catch {
-            throw failure("WRITE_FAILED");
+            throw failure2("WRITE_FAILED");
           }
           const entry = staged.get(paymentId);
           if (entry.kind !== "private" || typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey))
-            throw failure("VAULT_CHANGED");
+            throw failure2("VAULT_CHANGED");
           staged.unlock(VERIFY_REASON, 30);
           try {
             paymentHex = staged.reveal(paymentId, VERIFY_REASON);
@@ -294922,7 +294154,7 @@ function createEmbeddedVaultIo(options) {
           }
           const publicKey = PrivateKey.fromHex(paymentHex).toPublicKey().toString();
           if (publicKey.toLowerCase() !== entry.publicKey.toLowerCase())
-            throw failure("VAULT_CHANGED");
+            throw failure2("VAULT_CHANGED");
           stagedVaultId = staged.toDocument().id;
           const receipt = {
             vaultId: stagedVaultId,
@@ -294951,7 +294183,7 @@ function createEmbeddedVaultIo(options) {
         } catch (error) {
           if (error instanceof EmbeddedVaultError)
             throw error;
-          throw failure("WRITE_FAILED");
+          throw failure2("WRITE_FAILED");
         } finally {
           try {
             staged?.lock();
@@ -294964,7 +294196,7 @@ function createEmbeddedVaultIo(options) {
       const parsed = parseKeys(input?.keys ?? {});
       const passwordCandidate = input?.password;
       if (typeof passwordCandidate !== "string" || !passwordCandidate)
-        throw failure("INVALID_PASSWORD");
+        throw failure2("INVALID_PASSWORD");
       const probeResolved = resolve3(requestedPath);
       assertNoSymlinks(probeResolved);
       if (!existsSync8(canonicalVaultPath(requestedPath))) {
@@ -294976,7 +294208,7 @@ function createEmbeddedVaultIo(options) {
       try {
         await mkdir2(dirname4(canonical), { recursive: true, mode: 448 });
       } catch {
-        throw failure("WRITE_FAILED");
+        throw failure2("WRITE_FAILED");
       }
       return await withExclusiveWrite(canonical, async (ctx) => {
         const password = passwordCandidate;
@@ -294985,7 +294217,7 @@ function createEmbeddedVaultIo(options) {
           assertPassword(password);
           assertConfirmation(password, input?.passwordConfirmation);
         }
-        const stagePath = join11(ctx.stageDir, "vault.bep");
+        const stagePath = join12(ctx.stageDir, "vault.bep");
         const provider = new module.PassphraseProvider(password);
         let vault;
         let originals = [];
@@ -294995,39 +294227,48 @@ function createEmbeddedVaultIo(options) {
         let hdId;
         try {
           if (fresh) {
+            const providers = sealingProviders(module, provider, enclaveEnabled);
             try {
-              vault = await module.createVault(stagePath, [provider], {
+              vault = await module.createVault(stagePath, providers, {
                 revealEnabled: true
               });
             } catch {
-              throw failure("WRITE_FAILED");
+              if (providers.length === 1)
+                throw failure2("WRITE_FAILED");
+              try {
+                vault = await module.createVault(stagePath, [provider], {
+                  revealEnabled: true
+                });
+              } catch {
+                throw failure2("WRITE_FAILED");
+              }
             }
           } else {
             try {
               await copyFile(canonical, stagePath);
               await chmod2(stagePath, 384);
             } catch {
-              throw failure("WRITE_FAILED");
+              throw failure2("WRITE_FAILED");
             }
             try {
               vault = await module.openVault(stagePath, provider);
             } catch {
-              throw failure("UNLOCK_FAILED");
+              throw failure2("UNLOCK_FAILED");
             }
             if (!vault.toDocument().settings.revealEnabled)
-              throw failure("REVEAL_DISABLED");
+              throw failure2("REVEAL_DISABLED");
             originals = structuredClone(vault.toDocument().entries);
             vaultId = vault.toDocument().id;
           }
           const active = vault;
           const payment = active.importPlain({ wif: parsed.payWif }, `${label} payment`)[0];
           if (!payment)
-            throw failure("WRITE_FAILED");
+            throw failure2("WRITE_FAILED");
           paymentId = payment.id;
           if (parsed.identityWif !== undefined) {
             const identity = active.importPlain({ wif: parsed.identityWif }, `${label} identity`)[0];
             if (!identity)
-              throw failure("WRITE_FAILED");
+              throw failure2("WRITE_FAILED");
             identityId = identity.id;
           }
           if (parsed.xprv !== undefined) {
@@ -295044,18 +294285,18 @@ function createEmbeddedVaultIo(options) {
               metadata: {}
             }, "Import retained HD key");
             if (!adopted)
-              throw failure("WRITE_FAILED");
+              throw failure2("WRITE_FAILED");
             hdId = adopted.id;
           }
           try {
             await module.saveVault(stagePath, active, provider);
           } catch {
-            throw failure("WRITE_FAILED");
+            throw failure2("WRITE_FAILED");
           }
         } catch (error) {
           if (error instanceof EmbeddedVaultError)
             throw error;
-          throw failure("WRITE_FAILED");
+          throw failure2("WRITE_FAILED");
         } finally {
           try {
             vault?.lock();
@@ -295098,10 +294339,10 @@ function createEmbeddedVaultIo(options) {
     async unlock(input) {
       lockPrevious();
       const myEpoch = epoch;
-      const password = input?.password;
+      const password = typeof input?.password === "string" ? input.password : "";
       const binding = input?.binding;
-      if (typeof password !== "string" || !password || !binding || typeof binding !== "object" || typeof binding.vaultId !== "string" || !binding.payment || typeof binding.payment !== "object" || typeof binding.payment.entryId !== "string" || typeof binding.payment.publicKey !== "string")
-        throw failure("BINDING_MISMATCH");
+      if (!binding || typeof binding !== "object" || typeof binding.vaultId !== "string" || !binding.payment || typeof binding.payment !== "object" || typeof binding.payment.entryId !== "string" || typeof binding.payment.publicKey !== "string")
+        throw failure2("BINDING_MISMATCH");
       const pinnedPayment = {
         entryId: binding.payment.entryId,
         publicKey: binding.payment.publicKey
@@ -295110,7 +294351,7 @@ function createEmbeddedVaultIo(options) {
       if (binding.identity !== undefined) {
         const candidate = binding.identity;
         if (!candidate || typeof candidate !== "object" || typeof candidate.entryId !== "string" || typeof candidate.publicKey !== "string")
-          throw failure("BINDING_MISMATCH");
+          throw failure2("BINDING_MISMATCH");
         pinnedIdentity = {
           entryId: candidate.entryId,
           publicKey: candidate.publicKey
@@ -295120,7 +294361,7 @@ function createEmbeddedVaultIo(options) {
       if (binding.hd !== undefined) {
         const candidate = binding.hd;
         if (!candidate || typeof candidate !== "object" || typeof candidate.entryId !== "string" || typeof candidate.expectedXpub !== "string" || candidate.expectedXpub.length === 0)
-          throw failure("BINDING_MISMATCH");
+          throw failure2("BINDING_MISMATCH");
         pinnedHd = {
           entryId: candidate.entryId,
           expectedXpub: candidate.expectedXpub
@@ -295137,41 +294378,48 @@ function createEmbeddedVaultIo(options) {
       let vault;
       try {
         try {
-          vault = await module.openVault(canonical, new module.PassphraseProvider(password));
-        } catch {
-          throw failure("UNLOCK_FAILED");
+          if (password)
+            vault = await module.openVault(canonical, new module.PassphraseProvider(password));
+          else if (enclaveEnabled && typeof module.EnclaveProvider === "function" && (typeof module.isEnclaveSupported !== "function" || module.isEnclaveSupported()))
+            vault = await module.openVault(canonical, new module.EnclaveProvider("bsv-mcp"));
+          else
+            throw failure2("UNLOCK_FAILED");
+        } catch (error) {
+          if (error instanceof EmbeddedVaultError)
+            throw error;
+          throw failure2("UNLOCK_FAILED");
         }
         const active = vault;
         try {
           if (active.toDocument().id !== pinned.vaultId)
-            throw failure("BINDING_MISMATCH");
+            throw failure2("BINDING_MISMATCH");
           if (!active.toDocument().settings.revealEnabled)
-            throw failure("REVEAL_DISABLED");
+            throw failure2("REVEAL_DISABLED");
           const readDirectKey = (ref) => {
             let entry;
             try {
               entry = active.get(ref.entryId);
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             if (!KEY_KINDS.has(entry.kind))
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(ref.publicKey) || entry.publicKey.toLowerCase() !== ref.publicKey.toLowerCase())
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             let revealed;
             try {
               revealed = active.reveal(ref.entryId, UNLOCK_REASON);
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             let key;
             try {
               key = entry.kind === "private" ? PrivateKey.fromHex(revealed) : PrivateKey.fromWif(revealed);
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             if (key.toPublicKey().toString().toLowerCase() !== ref.publicKey.toLowerCase())
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             return key;
           };
           const payPk = readDirectKey(pinned.payment);
@@ -295184,17 +294432,17 @@ function createEmbeddedVaultIo(options) {
             try {
               entry = active.get(pinned.hd.entryId);
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             if (entry.kind !== "hd-private")
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             if (typeof entry.publicKey !== "string" || !COMPRESSED_PUBKEY.test(entry.publicKey) || typeof pinned.hd.expectedXpub !== "string" || pinned.hd.expectedXpub.length === 0)
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             let revealed;
             try {
               revealed = active.reveal(pinned.hd.entryId, UNLOCK_REASON);
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             let xpub;
             let hdPub;
@@ -295205,21 +294453,21 @@ function createEmbeddedVaultIo(options) {
               xpub = hd.toPublic().toString();
               hdPub = hd.pubKey.toString();
             } catch {
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             }
             if (!isPrivate)
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             if (xpub !== pinned.hd.expectedXpub)
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             if (hdPub.toLowerCase() !== entry.publicKey.toLowerCase())
-              throw failure("BINDING_MISMATCH");
+              throw failure2("BINDING_MISMATCH");
             xprv = revealed;
           }
           if (myEpoch !== epoch) {
             try {
               active.lock();
             } catch {}
-            throw failure("UNLOCK_FAILED");
+            throw failure2("UNLOCK_FAILED");
           }
           held = active;
           vault = undefined;
@@ -295243,7 +294491,7 @@ function createEmbeddedVaultIo(options) {
         }
         if (error instanceof EmbeddedVaultError)
           throw error;
-        throw failure("UNLOCK_FAILED");
+        throw failure2("UNLOCK_FAILED");
       }
     },
     lock() {
@@ -295251,9 +294499,10 @@ function createEmbeddedVaultIo(options) {
     }
   };
 }
-var EmbeddedVaultError, MESSAGES, failure = (code) => new EmbeddedVaultError(code, MESSAGES[code]), COMPRESSED_PUBKEY, KEY_KINDS, VERIFY_REASON = "Embedded vault verify", UNLOCK_REASON = "Embedded vault unlock", digest = (data) => createHash5("sha256").update(data).digest("hex");
+var EmbeddedVaultError, MESSAGES, failure2 = (code) => new EmbeddedVaultError(code, MESSAGES[code]), COMPRESSED_PUBKEY, KEY_KINDS, VERIFY_REASON = "Embedded vault verify", UNLOCK_REASON = "Embedded vault unlock", digest = (data) => createHash5("sha256").update(data).digest("hex");
 var init_embeddedVaultIo = __esm(() => {
   init_mod();
+  init_vaultPassphrasePolicy();
   EmbeddedVaultError = class EmbeddedVaultError extends Error {
     code;
     constructor(code, message) {
@@ -295264,7 +294513,7 @@ var init_embeddedVaultIo = __esm(() => {
   };
   MESSAGES = {
     INVALID_PATH: "The vault destination path is invalid.",
-    INVALID_PASSWORD: "The vault password must be at least eight characters.",
+    INVALID_PASSWORD: "The vault password must be at least 12 characters, or 16+ characters without mixed classes.",
     PASSWORD_MISMATCH: "The vault password confirmation does not match.",
     INVALID_LABEL: "The vault entry label is invalid.",
     INVALID_KEY: "One or more imported keys are invalid.",
@@ -295283,24 +294532,24 @@ var init_embeddedVaultIo = __esm(() => {
 
 // utils/embeddedFirstRunBackend.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { existsSync as existsSync9, constants as fsConstants2, lstatSync as lstatSync4 } from "node:fs";
+import { existsSync as existsSync9, constants as fsConstants2, lstatSync as lstatSync5 } from "node:fs";
 import { chmod as chmod3, mkdir as mkdir3, open as open3, readFile as readFile3, rm as rm3 } from "node:fs/promises";
-import { isAbsolute as isAbsolute6, join as join12 } from "node:path";
+import { isAbsolute as isAbsolute7, join as join13 } from "node:path";
 function lockPathFor(accountsDirectory, accountName) {
-  return join12(accountsDirectory, `.${accountName}.first-run.lock`);
+  return join13(accountsDirectory, `.${accountName}.first-run.lock`);
 }
 function accountPathFor(accountsDirectory, accountName) {
-  return join12(accountsDirectory, accountName);
+  return join13(accountsDirectory, accountName);
 }
 function createEmbeddedFirstRunBackend(options) {
   const requestedVaultPath = options?.vaultPath;
   const requestedAccountsDirectory = options?.accountsDirectory;
   const requestedChain = options?.chain ?? "main";
   const writeAccountImpl = options?.writeAccountImpl ?? writeAccount;
-  if (typeof requestedVaultPath !== "string" || !isAbsolute6(requestedVaultPath)) {
+  if (typeof requestedVaultPath !== "string" || !isAbsolute7(requestedVaultPath)) {
     throw fail2("FAILED");
   }
-  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute6(requestedAccountsDirectory))) {
+  if (requestedAccountsDirectory !== undefined && (typeof requestedAccountsDirectory !== "string" || !isAbsolute7(requestedAccountsDirectory))) {
     throw fail2("FAILED");
   }
   if (requestedChain !== "main" && requestedChain !== "test") {
@@ -295335,7 +294584,7 @@ function createEmbeddedFirstRunBackend(options) {
   const withReservation = async (accountsDirectory, name, work) => {
     const lockPath = lockPathFor(accountsDirectory, name);
     try {
-      lstatSync4(lockPath);
+      lstatSync5(lockPath);
       throw fail2("BUSY");
     } catch (error) {
       if (error instanceof EmbeddedFirstRunError)
@@ -295366,7 +294615,7 @@ function createEmbeddedFirstRunBackend(options) {
       if (heldDev === undefined || heldIno === undefined)
         return true;
       try {
-        const current = lstatSync4(lockPath);
+        const current = lstatSync5(lockPath);
         return current.dev === heldDev && current.ino === heldIno;
       } catch {
         return false;
@@ -295403,7 +294652,7 @@ function createEmbeddedFirstRunBackend(options) {
   };
   const assertAccountAbsent = (accountsDirectory, name) => {
     try {
-      lstatSync4(accountPathFor(accountsDirectory, name));
+      lstatSync5(accountPathFor(accountsDirectory, name));
     } catch (error) {
       if (error?.code === "ENOENT")
         return;
@@ -295538,78 +294787,88 @@ import {
   chmodSync as chmodSync4,
   existsSync as existsSync10,
   constants as fsConstants3,
-  lstatSync as lstatSync5,
-  readFileSync as readFileSync5
+  lstatSync as lstatSync6,
+  readFileSync as readFileSync6
 } from "node:fs";
 import { copyFile as copyFile2 } from "node:fs/promises";
-import { homedir as homedir7 } from "node:os";
-import { isAbsolute as isAbsolute7, join as join13, resolve as resolve4 } from "node:path";
+import { homedir as homedir8 } from "node:os";
+import { isAbsolute as isAbsolute8, join as join14, resolve as resolve4 } from "node:path";
 function digest2(data) {
   return createHash6("sha256").update(data).digest("hex");
 }
 function assertConfirmation2(value) {
   if (value !== IMPORT_CONFIRMATION)
-    throw failure2("CONFIRMATION_REQUIRED", MESSAGES3.CONFIRMATION_REQUIRED);
+    throw failure3("CONFIRMATION_REQUIRED", MESSAGES3.CONFIRMATION_REQUIRED);
 }
 function resolveTrustedHome(home) {
-  const candidate = home ?? homedir7();
-  if (typeof candidate !== "string" || !isAbsolute7(candidate))
-    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  const candidate = home ?? homedir8();
+  if (typeof candidate !== "string" || !isAbsolute8(candidate))
+    throw failure3("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
 }
 function resolveVaultPath(vaultPath) {
-  if (typeof vaultPath !== "string" || !isAbsolute7(vaultPath))
-    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  if (typeof vaultPath !== "string" || !isAbsolute8(vaultPath))
+    throw failure3("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return vaultPath;
 }
 function resolveDestRoot(accountsDirectory, home) {
-  const candidate = accountsDirectory ?? join13(home, ".bsv-mcp", "accounts");
-  if (typeof candidate !== "string" || !isAbsolute7(candidate))
-    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+  const candidate = accountsDirectory ?? join14(home, ".bsv-mcp", "accounts");
+  if (typeof candidate !== "string" || !isAbsolute8(candidate))
+    throw failure3("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   return candidate;
 }
 function rejectUnsafePath(candidate) {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.includes("\x00"))
-    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   try {
     regularPath(candidate);
   } catch {
-    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   }
 }
 function rejectUnsafeDir(candidate) {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.includes("\x00"))
-    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   try {
     regularPath(candidate, true);
   } catch {
-    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+    throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   }
 }
 function selectTrustedSource(source, home, destRoot, vaultPath) {
   const account = typeof source?.account === "string" ? source.account : undefined;
   const location2 = source?.location;
-  if (account === undefined || accountNameSchema.safeParse(account).success !== true || location2 !== "account" && location2 !== "legacy-root" && location2 !== "custom")
-    throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+  if (account === undefined || accountNameSchema.safeParse(account).success !== true || location2 !== "account" && location2 !== "legacy-root" && location2 !== "custom" && location2 !== "environment" && location2 !== "mcp-client")
+    throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
   let inventory;
   try {
     inventory = inspectMigration({
       home,
-      env: { VAULT_PATH: vaultPath }
+      env: { ...process.env, VAULT_PATH: vaultPath }
     });
   } catch {
-    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
   }
   const entry = inventory.sources.find((candidate) => candidate.account === account && candidate.location === location2);
   if (!entry)
-    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+    throw failure3("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
   const destName = entry.account;
   if (accountNameSchema.safeParse(destName).success !== true)
-    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+    throw failure3("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
   const sourceDir = entry.directory;
+  if ((location2 === "environment" || location2 === "mcp-client") && entry.envVar) {
+    return {
+      entry,
+      destName,
+      destDir: join14(destRoot, destName),
+      destRoot,
+      home,
+      vaultPath
+    };
+  }
   if (!sourceDir)
-    throw failure2("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
-  const destDir = join13(destRoot, destName);
+    throw failure3("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
+  const destDir = join14(destRoot, destName);
   return {
     entry,
     sourceDir,
@@ -295625,67 +294884,107 @@ function toOriginalKeys(input) {
   const identityPk = input.identityPk;
   const xprv = input.xprv;
   if (!(payPk instanceof PrivateKey))
-    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
   let payPub;
   let payWif;
   try {
     payPub = payPk.toPublicKey().toString();
     payWif = payPk.toWif();
   } catch {
-    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
   }
   const out = { payWif, payPub };
   if (identityPk !== undefined) {
     if (!(identityPk instanceof PrivateKey))
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     try {
       out.identityPub = identityPk.toPublicKey().toString();
       out.identityWif = identityPk.toWif();
     } catch {
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
   }
   if (xprv !== undefined) {
     if (typeof xprv !== "string" || xprv.length === 0)
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     try {
       const hd = HD.fromString(xprv);
       if (!hd.isPrivate())
-        throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+        throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
       out.expectedXpub = hd.toPublic().toString();
       out.xprv = xprv;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
   }
   return out;
 }
+function loadEnvOrClientKeys(selection) {
+  const { entry } = selection;
+  if (entry.envVar !== "PRIVATE_KEY_WIF")
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  let payment;
+  let identity;
+  if (entry.location === "environment") {
+    const envPayment = process.env.PRIVATE_KEY_WIF;
+    const envIdentity = process.env.IDENTITY_KEY_WIF;
+    payment = typeof envPayment === "string" && envPayment.length > 0 ? envPayment : undefined;
+    identity = typeof envIdentity === "string" && envIdentity.length > 0 ? envIdentity : undefined;
+  } else if (entry.location === "mcp-client" && entry.configPath && entry.serverName) {
+    payment = readMcpClientEnvValue({
+      configPath: entry.configPath,
+      serverName: entry.serverName,
+      envVar: "PRIVATE_KEY_WIF"
+    });
+    identity = readMcpClientEnvValue({
+      configPath: entry.configPath,
+      serverName: entry.serverName,
+      envVar: "IDENTITY_KEY_WIF"
+    });
+  }
+  if (!payment)
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  try {
+    const payPk = PrivateKey.fromWif(payment);
+    const identityPk = identity ? PrivateKey.fromWif(identity) : undefined;
+    return toOriginalKeys({ payPk, identityPk });
+  } catch (error) {
+    if (error instanceof EmbeddedImportError)
+      throw error;
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+  }
+}
 async function loadSourceKeys(selection, sourcePassphrase) {
   const { entry, sourceDir } = selection;
+  if (entry.location === "environment" || entry.location === "mcp-client") {
+    return loadEnvOrClientKeys(selection);
+  }
+  if (!sourceDir)
+    throw failure3("UNKNOWN_SOURCE", MESSAGES3.UNKNOWN_SOURCE);
   rejectUnsafeDir(sourceDir);
   if (!entry.encryptedBackup && !entry.plaintextKeys)
-    throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+    throw failure3("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
   if (entry.keyFile === "root.wif" && entry.plaintextKeys) {
-    const file = join13(sourceDir, "root.wif");
+    const file = join14(sourceDir, "root.wif");
     rejectUnsafePath(file);
     let wif;
     try {
-      wif = readFileSync5(file, "utf8").trim();
+      wif = readFileSync6(file, "utf8").trim();
     } catch {
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
     try {
       const payPk = PrivateKey.fromWif(wif);
       return toOriginalKeys({ payPk });
     } catch {
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
   }
   if (entry.encryptedBackup) {
     if (typeof sourcePassphrase !== "string" || !sourcePassphrase)
-      throw failure2("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
+      throw failure3("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
     try {
       const manager = new SecureKeyManager({ keyDir: sourceDir });
       const { keys } = await manager.loadKeys(sourcePassphrase);
@@ -295693,7 +294992,7 @@ async function loadSourceKeys(selection, sourcePassphrase) {
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("UNLOCK_FAILED", MESSAGES3.UNLOCK_FAILED);
+      throw failure3("UNLOCK_FAILED", MESSAGES3.UNLOCK_FAILED);
     }
   }
   try {
@@ -295702,7 +295001,7 @@ async function loadSourceKeys(selection, sourcePassphrase) {
   } catch (error) {
     if (error instanceof EmbeddedImportError)
       throw error;
-    throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+    throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
   }
 }
 function rootAddressFor(payWif, chain) {
@@ -295710,7 +295009,7 @@ function rootAddressFor(payWif, chain) {
     const key = PrivateKey.fromWif(payWif);
     return chain === "test" ? key.toAddress([111]) : key.toAddress();
   } catch {
-    throw failure2("INVALID_KEYS", MESSAGES3.INVALID_KEYS);
+    throw failure3("INVALID_KEYS", MESSAGES3.INVALID_KEYS);
   }
 }
 async function addressMatchesKnown(payWif, chain, prefix, configured) {
@@ -295747,12 +295046,12 @@ function readExistingConfig(destName, destRoot) {
     const config = readAccount(destName, destRoot);
     const revisionAfter = readAccountRevision(destName, destRoot);
     if (revisionBefore !== revisionAfter)
-      throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
     return { config, revision: revisionAfter };
   } catch (error) {
     if (error instanceof EmbeddedImportError)
       throw error;
-    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+    throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
   }
 }
 function assertBindingMatchesExisting(keys, existing) {
@@ -295760,22 +295059,22 @@ function assertBindingMatchesExisting(keys, existing) {
   if (!pinned)
     return;
   if (keys.payPub.toLowerCase() !== pinned.payment.publicKey.toLowerCase())
-    throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+    throw failure3("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
   if (pinned.identity !== undefined) {
     if (keys.identityPub === undefined || keys.identityPub.toLowerCase() !== pinned.identity.publicKey.toLowerCase())
-      throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+      throw failure3("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
   }
   if (pinned.hd !== undefined) {
     if (keys.expectedXpub === undefined || keys.expectedXpub !== pinned.hd.expectedXpub)
-      throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+      throw failure3("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
   }
 }
 function assertStoredMatchesCommitted(stored, expected, binding) {
   if (stored.chain !== expected.chain || (stored.address ?? undefined) !== (expected.address ?? undefined) || (stored.storageIdentityKey ?? undefined) !== (expected.storageIdentityKey ?? undefined) || (stored.depositPrefix ?? undefined) !== (expected.depositPrefix ?? undefined) || (stored.activeRemote ?? undefined) !== (expected.activeRemote ?? undefined) || JSON.stringify(stored.backups ?? null) !== JSON.stringify(expected.backups ?? null))
-    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+    throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
   const storedBinding = stored.vaultBinding;
   if (!storedBinding || !bindingsMatchCommitted(storedBinding, binding))
-    throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+    throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
 }
 function bindingsMatchCommitted(stored, committed) {
   if (stored.version !== committed.version || stored.contract !== committed.contract || stored.vaultId !== committed.vaultId || stored.payment.entryId !== committed.payment.entryId || stored.payment.publicKey.toLowerCase() !== committed.payment.publicKey.toLowerCase())
@@ -295796,63 +295095,69 @@ function bindingsMatchCommitted(stored, committed) {
 }
 function resolveChain(existing, requested) {
   if (existing && requested !== undefined && requested !== existing.chain)
-    throw failure2("CHAIN_MISMATCH", MESSAGES3.CHAIN_MISMATCH);
+    throw failure3("CHAIN_MISMATCH", MESSAGES3.CHAIN_MISMATCH);
   return existing?.chain ?? requested ?? "main";
 }
 function assertDatabasesCopyable(selection) {
+  if (!selection.sourceDir)
+    return;
   if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
-      throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+      throw failure3("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
     for (const suffix of ["-wal", "-shm"]) {
-      const sidecar = join13(selection.sourceDir, `${name}${suffix}`);
+      const sidecar = join14(selection.sourceDir, `${name}${suffix}`);
       try {
-        lstatSync5(sidecar);
-        throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+        lstatSync6(sidecar);
+        throw failure3("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
       } catch (error) {
         if (error instanceof EmbeddedImportError)
           throw error;
         const code = error?.code;
         if (code !== undefined && code !== "ENOENT")
-          throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+          throw failure3("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
       }
     }
   }
 }
 function assertNoDestinationDbCollision(selection) {
+  if (!selection.sourceDir)
+    return;
   if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
-      throw failure2("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
-    const from = join13(selection.sourceDir, name);
-    const to = join13(selection.destDir, name);
+      throw failure3("DB_UNSAFE", MESSAGES3.DB_UNSAFE);
+    const from = join14(selection.sourceDir, name);
+    const to = join14(selection.destDir, name);
     let fromBytes = null;
     let toBytes = null;
     try {
       rejectUnsafePath(from);
-      fromBytes = existsSync10(from) ? readFileSync5(from) : null;
+      fromBytes = existsSync10(from) ? readFileSync6(from) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
+      throw failure3("SOURCE_UNAVAILABLE", MESSAGES3.SOURCE_UNAVAILABLE);
     }
     if (fromBytes === null)
       continue;
     try {
       rejectUnsafePath(to);
-      toBytes = existsSync10(to) ? readFileSync5(to) : null;
+      toBytes = existsSync10(to) ? readFileSync6(to) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     }
     if (toBytes !== null && digest2(toBytes) !== digest2(fromBytes))
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
   }
 }
 async function copyInventoryDatabases(selection) {
+  if (!selection.sourceDir)
+    return;
   if (resolve4(selection.sourceDir) === resolve4(selection.destDir))
     return;
   if (selection.entry.walletDatabases.length === 0)
@@ -295860,47 +295165,47 @@ async function copyInventoryDatabases(selection) {
   try {
     secureDirectory(selection.destDir);
   } catch {
-    throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
   }
   for (const name of selection.entry.walletDatabases) {
     if (!DB_NAME_PATTERN.test(name))
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
-    const from = join13(selection.sourceDir, name);
-    const to = join13(selection.destDir, name);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+    const from = join14(selection.sourceDir, name);
+    const to = join14(selection.destDir, name);
     let fromBytes;
     try {
       rejectUnsafePath(from);
-      fromBytes = readFileSync5(from);
+      fromBytes = readFileSync6(from);
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     }
     let toBytes = null;
     try {
       rejectUnsafePath(to);
-      toBytes = existsSync10(to) ? readFileSync5(to) : null;
+      toBytes = existsSync10(to) ? readFileSync6(to) : null;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     }
     if (toBytes !== null) {
       if (digest2(toBytes) === digest2(fromBytes))
         continue;
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     }
     try {
       rejectUnsafeDir(selection.destDir);
       await copyFile2(from, to, fsConstants3.COPYFILE_EXCL);
       chmodSync4(to, 384);
-      const copied = readFileSync5(to);
+      const copied = readFileSync6(to);
       if (digest2(copied) !== digest2(fromBytes))
-        throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+        throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
+      throw failure3("DB_CONFLICT", MESSAGES3.DB_CONFLICT);
     }
   }
 }
@@ -295909,7 +295214,7 @@ async function importKeysToVault(vaultPath, loadModule, input) {
   try {
     io = createEmbeddedVaultIo({ vaultPath, loadModule });
   } catch {
-    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+    throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
   }
   let receipt;
   try {
@@ -295926,7 +295231,7 @@ async function importKeysToVault(vaultPath, loadModule, input) {
   } catch (error) {
     if (error instanceof EmbeddedImportError)
       throw error;
-    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+    throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
   }
   try {
     const unlocked = await io.unlock({
@@ -295935,26 +295240,26 @@ async function importKeysToVault(vaultPath, loadModule, input) {
     });
     try {
       if (unlocked.payPk?.toPublicKey().toString().toLowerCase() !== input.keys.payPub.toLowerCase() || unlocked.payPk?.toPublicKey().toString().toLowerCase() !== receipt.payment.publicKey.toLowerCase())
-        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+        throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
       if (input.keys.identityPub !== undefined) {
         if (unlocked.identityPk?.toPublicKey().toString().toLowerCase() !== input.keys.identityPub.toLowerCase() || receipt.identity?.publicKey.toLowerCase() !== input.keys.identityPub.toLowerCase())
-          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+          throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
       } else if (receipt.identity !== undefined) {
-        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+        throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
       }
       if (input.keys.xprv !== undefined) {
         if (unlocked.xprv !== input.keys.xprv)
-          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+          throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
         let xpub;
         try {
           xpub = HD.fromString(unlocked.xprv).toPublic().toString();
         } catch {
-          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+          throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
         }
         if (receipt.hd === undefined || xpub !== receipt.hd.expectedXpub || xpub !== input.keys.expectedXpub)
-          throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+          throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
       } else if (receipt.hd !== undefined) {
-        throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+        throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
       }
     } finally {
       try {
@@ -295967,7 +295272,7 @@ async function importKeysToVault(vaultPath, loadModule, input) {
     try {
       io.lock();
     } catch {}
-    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+    throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
   }
   return receipt;
 }
@@ -295982,7 +295287,7 @@ function bindingFromReceipt(receipt) {
       ...receipt.hd !== undefined ? { hd: receipt.hd } : {}
     });
   } catch {
-    throw failure2("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
+    throw failure3("VAULT_FAILED", MESSAGES3.VAULT_FAILED);
   }
 }
 function parsePlaintextBackupKeys(backupText) {
@@ -295990,46 +295295,46 @@ function parsePlaintextBackupKeys(backupText) {
   try {
     raw = JSON.parse(backupText);
   } catch {
-    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
   }
   if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
   const record = raw;
   const nested = record.bsvMcp !== undefined && typeof record.bsvMcp === "object" && record.bsvMcp !== null ? record.bsvMcp : {};
   const wif = record.wif ?? record.payPk;
   const identityPk = nested.identityPk ?? record.identityPk;
   const xprv = nested.xprv ?? record.xprv;
   if (typeof wif !== "string" || wif.length === 0)
-    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
   let payPk;
   try {
     payPk = PrivateKey.fromWif(wif);
   } catch {
-    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
   }
   let identity;
   if (identityPk !== undefined) {
     if (typeof identityPk !== "string" || identityPk.length === 0)
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     try {
       identity = PrivateKey.fromWif(identityPk);
     } catch {
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     }
   }
   let xprvValue;
   if (xprv !== undefined) {
     if (typeof xprv !== "string" || xprv.length === 0)
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     try {
       const hd = HD.fromString(xprv);
       if (!hd.isPrivate())
-        throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+        throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
       xprvValue = xprv;
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     }
   }
   return toOriginalBackupKeys(payPk, identity, xprvValue);
@@ -296050,7 +295355,7 @@ function toOriginalBackupKeys(payPk, identityPk, xprv) {
     }
     return out;
   } catch {
-    throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+    throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
   }
 }
 async function parseBackupKeys(backupText, sourcePassphrase) {
@@ -296058,12 +295363,12 @@ async function parseBackupKeys(backupText, sourcePassphrase) {
     try {
       const keys = await decodeEncryptedKeys(backupText, sourcePassphrase);
       if (!keys.payPk)
-        throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+        throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
       return toOriginalBackupKeys(keys.payPk, keys.identityPk, keys.xprv);
     } catch (error) {
       if (error instanceof EmbeddedImportError)
         throw error;
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     }
   }
   return parsePlaintextBackupKeys(backupText);
@@ -296074,17 +295379,17 @@ function createEmbeddedImportBackend(options) {
   const destRoot = resolveDestRoot(options?.accountsDirectory, home);
   const requestedChain = options?.chain;
   if (requestedChain !== undefined && requestedChain !== "main" && requestedChain !== "test")
-    throw failure2("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
+    throw failure3("INVALID_OPTIONS", MESSAGES3.INVALID_OPTIONS);
   const loadModule = options?.loadModule;
   async function runImport(input) {
     if (!input || typeof input !== "object")
-      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+      throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
     if (typeof input.password !== "string" || input.password.length === 0)
-      throw failure2("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
+      throw failure3("CREDENTIALS_REQUIRED", MESSAGES3.CREDENTIALS_REQUIRED);
     const selection = selectTrustedSource(input.source, home, destRoot, vaultPath);
     assertConfirmation2(input.confirmation);
     if (input.passwordConfirmation !== undefined && typeof input.passwordConfirmation !== "string")
-      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+      throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
     assertDatabasesCopyable(selection);
     assertNoDestinationDbCollision(selection);
     const snapshot = readExistingConfig(selection.destName, selection.destRoot);
@@ -296092,14 +295397,14 @@ function createEmbeddedImportBackend(options) {
     const keys = await loadSourceKeys(selection, input.sourcePassphrase);
     const rechecked = readExistingConfig(selection.destName, selection.destRoot);
     if (rechecked.revision !== snapshot.revision)
-      throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
     const liveConfig = rechecked.config;
     const rootAddress = rootAddressFor(keys.payWif, chain);
     if (liveConfig?.address !== undefined) {
       const prefix = liveConfig.depositPrefix ?? "mcp";
       const matches = await addressMatchesKnown(keys.payWif, chain, prefix, liveConfig.address);
       if (!matches)
-        throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+        throw failure3("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
     }
     assertBindingMatchesExisting(keys, liveConfig);
     const receipt = await importKeysToVault(vaultPath, loadModule, {
@@ -296129,7 +295434,7 @@ function createEmbeddedImportBackend(options) {
       });
       const reread = readAccount(selection.destName, selection.destRoot);
       if (!reread)
-        throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+        throw failure3("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
       assertStoredMatchesCommitted(reread, next, binding);
       stored = reread;
     } catch (error) {
@@ -296137,32 +295442,32 @@ function createEmbeddedImportBackend(options) {
         throw error;
       const message = error instanceof Error ? error.message : "";
       if (message.includes("ACCOUNT_CONFIG_CHANGED"))
-        throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
-      throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+        throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure3("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
     }
     const address = stored.address ?? rootAddress;
     return { accountName: selection.destName, address, binding };
   }
   async function runImportBackup(input) {
     if (!input || typeof input !== "object")
-      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+      throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
     assertConfirmation2(input.confirmation);
     if (typeof input.backupText !== "string" || input.backupText.length === 0 || typeof input.backupName !== "string" || input.backupName.length === 0 || typeof input.accountName !== "string" || typeof input.destinationPassphrase !== "string" || input.destinationPassphrase.length === 0)
-      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+      throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
     if (input.passwordConfirmation !== undefined && typeof input.passwordConfirmation !== "string")
-      throw failure2("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
+      throw failure3("INVALID_INPUT", MESSAGES3.INVALID_INPUT);
     if (accountNameSchema.safeParse(input.accountName).success !== true)
-      throw failure2("ACCOUNT_INVALID", MESSAGES3.ACCOUNT_INVALID);
+      throw failure3("ACCOUNT_INVALID", MESSAGES3.ACCOUNT_INVALID);
     let byteLength = 0;
     try {
       byteLength = Buffer2.byteLength(input.backupText, "utf8");
     } catch {
-      throw failure2("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
+      throw failure3("BACKUP_INVALID", MESSAGES3.BACKUP_INVALID);
     }
     if (byteLength === 0 || byteLength > MAX_BACKUP_BYTES)
-      throw failure2(byteLength > MAX_BACKUP_BYTES ? "BACKUP_TOO_LARGE" : "BACKUP_INVALID", byteLength > MAX_BACKUP_BYTES ? MESSAGES3.BACKUP_TOO_LARGE : MESSAGES3.BACKUP_INVALID);
+      throw failure3(byteLength > MAX_BACKUP_BYTES ? "BACKUP_TOO_LARGE" : "BACKUP_INVALID", byteLength > MAX_BACKUP_BYTES ? MESSAGES3.BACKUP_TOO_LARGE : MESSAGES3.BACKUP_INVALID);
     const destName = input.accountName;
-    const destDir = join13(destRoot, destName);
+    const destDir = join14(destRoot, destName);
     const keys = await parseBackupKeys(input.backupText, input.sourcePassphrase);
     const snapshot = readExistingConfig(destName, destRoot);
     const chain = resolveChain(snapshot.config, requestedChain);
@@ -296171,9 +295476,9 @@ function createEmbeddedImportBackend(options) {
       const prefix = snapshot.config.depositPrefix ?? "mcp";
       const matches = await addressMatchesKnown(keys.payWif, chain, prefix, snapshot.config.address);
       if (!matches)
-        throw failure2("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
+        throw failure3("ADDRESS_MISMATCH", MESSAGES3.ADDRESS_MISMATCH);
     } else if (snapshot.config !== undefined) {
-      throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+      throw failure3("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
     } else {
       try {
         rejectUnsafeDir(destRoot);
@@ -296184,24 +295489,24 @@ function createEmbeddedImportBackend(options) {
             "wallet-test.db",
             "wallet.db"
           ]) {
-            const candidate = join13(destDir, name);
+            const candidate = join14(destDir, name);
             try {
-              const stat = lstatSync5(candidate);
+              const stat = lstatSync6(candidate);
               if (!stat.isSymbolicLink() && stat.isFile())
-                throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+                throw failure3("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
             } catch (error) {
               if (error instanceof EmbeddedImportError)
                 throw error;
               const code = error?.code;
               if (code !== undefined && code !== "ENOENT")
-                throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+                throw failure3("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
             }
           }
         }
       } catch (error) {
         if (error instanceof EmbeddedImportError)
           throw error;
-        throw failure2("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
+        throw failure3("MATCHING_KEYS_REQUIRED", MESSAGES3.MATCHING_KEYS_REQUIRED);
       }
     }
     assertBindingMatchesExisting(keys, snapshot.config);
@@ -296222,7 +295527,7 @@ function createEmbeddedImportBackend(options) {
       });
       const reread = readAccount(destName, destRoot);
       if (!reread)
-        throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+        throw failure3("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
       assertStoredMatchesCommitted(reread, next, binding);
       return {
         accountName: destName,
@@ -296234,8 +295539,8 @@ function createEmbeddedImportBackend(options) {
         throw error;
       const message = error instanceof Error ? error.message : "";
       if (message.includes("ACCOUNT_CONFIG_CHANGED"))
-        throw failure2("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
-      throw failure2("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
+        throw failure3("CONFIG_CONFLICT", MESSAGES3.CONFIG_CONFLICT);
+      throw failure3("RECONCILIATION_NEEDED", MESSAGES3.RECONCILIATION_NEEDED);
     }
   }
   return {
@@ -296243,13 +295548,14 @@ function createEmbeddedImportBackend(options) {
     importBackup: runImportBackup
   };
 }
-var IMPORT_CONFIRMATION = "IMPORT_WALLET_CONFIRMED", MAX_BACKUP_BYTES, DB_NAME_PATTERN, EmbeddedImportError, failure2 = (code, message) => new EmbeddedImportError(code, message), MESSAGES3;
+var IMPORT_CONFIRMATION = "IMPORT_WALLET_CONFIRMED", MAX_BACKUP_BYTES, DB_NAME_PATTERN, EmbeddedImportError, failure3 = (code, message) => new EmbeddedImportError(code, message), MESSAGES3;
 var init_embeddedImportBackend = __esm(() => {
   init_dist7();
   init_mod();
   init_accounts();
   init_embeddedVaultIo();
   init_keyManager();
+  init_mcpClientKeySources();
   init_vaultMigration();
   MAX_BACKUP_BYTES = 1024 * 1024;
   DB_NAME_PATTERN = /^wallet(-(main|test))?\.db$/;
@@ -296538,13 +295844,13 @@ var init_spendingApproval = __esm(() => {
 
 // utils/walletInit.ts
 import { appendFileSync, chmodSync as chmodSync5, mkdirSync as mkdirSync3 } from "node:fs";
-import { homedir as homedir8 } from "node:os";
-import { join as join14 } from "node:path";
+import { homedir as homedir9 } from "node:os";
+import { join as join15 } from "node:path";
 function writeAuditLog(dataDir, entry) {
   try {
     mkdirSync3(dataDir, { recursive: true, mode: 448 });
     const serialized = JSON.stringify(entry, (_, value) => typeof value === "bigint" ? value.toString() : value);
-    appendFileSync(join14(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
+    appendFileSync(join15(dataDir, "audit.log"), `${redactKeyMaterial(serialized)}
 `, { encoding: "utf8", mode: 384 });
   } catch (error) {
     console.error("[wallet] failed to write audit log:", error);
@@ -296561,7 +295867,7 @@ async function initWallet(privateKeyInput, chain = "main", options = {}) {
     throw new Error("BSV_CHAIN conflicts with the selected account network");
   const dataDir = accountDir(options.accountName);
   secureDirectory(dataDir);
-  const filename = join14(dataDir, `wallet-${chain}.db`);
+  const filename = join15(dataDir, `wallet-${chain}.db`);
   regularPath(filename);
   const oldMask = process.umask(63);
   const storageConfig = resolveStorageConfig(config, process.env.REMOTE_STORAGE_URL ? backendUrl("REMOTE_STORAGE_URL", "") : undefined);
@@ -296664,7 +295970,7 @@ async function initExternalWallet(config, chain = "main") {
     throw new Error("External BRC-100 signer readiness failed. Check BRC100_WALLET_URL and approve identity access in the signer. This must be SDK signer RPC, not 1sat serve wallet storage RPC. No local wallet was created.", { cause: error });
   }
   const services = new OneSatServices(chain, onesatUrl(chain));
-  const dataDir = join14(homedir8(), ".bsv-mcp");
+  const dataDir = join15(homedir9(), ".bsv-mcp");
   const ctx = markExternalWalletContext(createContext(wallet, {
     services,
     chain,
@@ -296725,7 +296031,7 @@ function addressForKey(key, chain) {
   return key.toAddress(chain === "test" ? [111] : [0]);
 }
 function safeError(error) {
-  return error instanceof EmbeddedWalletActivationError ? error : failure3("FAILED");
+  return error instanceof EmbeddedWalletActivationError ? error : failure4("FAILED");
 }
 function createEmbeddedWalletActivation(options) {
   const io = options.io ?? createEmbeddedVaultIo({ vaultPath: options.vaultPath });
@@ -296734,7 +296040,7 @@ function createEmbeddedWalletActivation(options) {
   let active;
   const activate = async (request) => {
     if (inFlight || active !== undefined)
-      throw failure3("BUSY");
+      throw failure4("BUSY");
     inFlight = true;
     let initialized;
     let initializedDestroyed = false;
@@ -296749,37 +296055,37 @@ function createEmbeddedWalletActivation(options) {
     let activationError;
     try {
       if (!request || typeof request !== "object" || !accountNameSchema.safeParse(request.accountName).success || typeof request.password !== "string" || request.password.length === 0)
-        throw failure3("INVALID_REQUEST");
+        throw failure4("INVALID_REQUEST");
       const parsedBinding = embeddedVaultBindingSchema.safeParse(request.binding);
       if (!parsedBinding.success)
-        throw failure3("INVALID_REQUEST");
+        throw failure4("INVALID_REQUEST");
       let account;
       try {
         account = readAccount(request.accountName);
       } catch {
-        throw failure3("FAILED");
+        throw failure4("FAILED");
       }
       if (!account?.vaultBinding || !account.address)
-        throw failure3("BINDING_MISMATCH");
+        throw failure4("BINDING_MISMATCH");
       if (!sameBinding(account.vaultBinding, parsedBinding.data))
-        throw failure3("BINDING_MISMATCH");
+        throw failure4("BINDING_MISMATCH");
       const keys = await io.unlock({
         password: request.password,
         binding: asVaultReceipt(parsedBinding.data)
       });
       const payPk = keys?.payPk;
       if (!(payPk instanceof PrivateKey))
-        throw failure3("BINDING_MISMATCH");
+        throw failure4("BINDING_MISMATCH");
       if (payPk.toPublicKey().toString().toLowerCase() !== parsedBinding.data.payment.publicKey.toLowerCase())
-        throw failure3("BINDING_MISMATCH");
+        throw failure4("BINDING_MISMATCH");
       const rootAddressMatches = addressForKey(payPk, account.chain) === account.address;
       initialized = await initialize(payPk, account.chain, {
         accountName: request.accountName
       });
       if (!initialized || typeof initialized !== "object" || !initialized.wallet || !initialized.services || !initialized.ctx || typeof initialized.depositAddress !== "string" || typeof initialized.destroy !== "function")
-        throw failure3("FAILED");
+        throw failure4("FAILED");
       if (!rootAddressMatches && initialized.depositAddress !== account.address)
-        throw failure3("BINDING_MISMATCH");
+        throw failure4("BINDING_MISMATCH");
     } catch (error) {
       await destroyInitialized();
       activationError = safeError(error);
@@ -296788,14 +296094,14 @@ function createEmbeddedWalletActivation(options) {
       io.lock();
     } catch {
       await destroyInitialized();
-      activationError = failure3("FAILED");
+      activationError = failure4("FAILED");
     }
     inFlight = false;
     if (activationError)
       throw activationError;
     const result = initialized;
     if (!result)
-      throw failure3("FAILED");
+      throw failure4("FAILED");
     let destroyed = false;
     let trustedResult;
     const destroy = async () => {
@@ -296821,7 +296127,7 @@ function createEmbeddedWalletActivation(options) {
   };
   return { activate };
 }
-var EmbeddedWalletActivationError, failure3 = (code) => {
+var EmbeddedWalletActivationError, failure4 = (code) => {
   const message = {
     INVALID_REQUEST: "The embedded wallet activation request is invalid.",
     BUSY: "Another embedded wallet activation is already in progress.",
@@ -296843,6 +296149,34 @@ var init_embeddedWalletActivation = __esm(() => {
       this.code = code;
     }
   };
+});
+
+// utils/plaintextSourceErase.ts
+import { existsSync as existsSync11 } from "node:fs";
+import { isAbsolute as isAbsolute9, join as join16 } from "node:path";
+function eraseImportedPlaintextSource(source) {
+  if (source.location === "mcp-client" && source.configPath && source.serverName && source.envVar) {
+    return {
+      erased: eraseMcpClientEnvValue({
+        configPath: source.configPath,
+        serverName: source.serverName,
+        envVar: source.envVar
+      }),
+      kind: "mcp-client"
+    };
+  }
+  if (source.plaintextKeys && source.directory && isAbsolute9(source.directory) && (source.location === "legacy-root" || source.location === "custom" || source.location === "account")) {
+    const file = join16(source.directory, source.keyFile ?? "keys.json");
+    if (!existsSync11(file))
+      return { erased: false, kind: "none" };
+    erasePlaintext(file);
+    return { erased: true, kind: "file" };
+  }
+  return { erased: false, kind: "none" };
+}
+var init_plaintextSourceErase = __esm(() => {
+  init_accountCommands();
+  init_mcpClientKeySources();
 });
 
 // utils/walletKeyStorage.ts
@@ -296906,7 +296240,7 @@ async function activateWalletRoles(vaultPath, password, fallbackAccount) {
         const io = createEmbeddedVaultIo({ vaultPath });
         try {
           const keys = await io.unlock({
-            password,
+            ...password ? { password } : {},
             binding: { vaultId: binding.vaultId, payment: ref }
           });
           if (!keys.payPk)
@@ -296997,13 +296331,13 @@ function createEmbeddedSetupActions(options) {
   }
   return {
     vaultKeys: (body) => exclusive(async () => {
-      const { password } = object2({ password: string2().min(1) }).parse(body);
+      const { password } = object({ password: string2().min(1) }).parse(body);
       return createEmbeddedVaultIo({ vaultPath: options.vaultPath }).listKeys(password);
     }),
     linkKey: (body) => exclusive(async () => {
-      const input = object2({
+      const input = object({
         accountName: accountNameSchema,
-        password: string2().min(8),
+        password: string2().min(12),
         vaultId: string2().min(1),
         entryId: string2().min(1),
         publicKey: string2().regex(/^(02|03)[0-9a-fA-F]{64}$/)
@@ -297039,7 +296373,9 @@ function createEmbeddedSetupActions(options) {
     }),
     unlock: (body) => exclusive(async () => {
       const input = unlockInput.parse(body);
-      return activate(input.accountName, input.password);
+      if (!input.password && !input.useHardware)
+        throw new Error("Enter your Vault password, or unlock with this Mac.");
+      return activate(input.accountName, input.password ?? "");
     }),
     import: (body) => exclusive(async () => {
       const input = importInput.parse(body);
@@ -297061,44 +296397,53 @@ function createEmbeddedSetupActions(options) {
           confirmation: input.confirmation
         });
       }
-      if (!input.activate)
-        return {
-          accountName: saved.accountName,
-          address: readAccount(saved.accountName)?.address ?? "",
-          ready: false,
-          saved: true
-        };
-      return activate(saved.accountName, input.destinationPassphrase);
+      const result = input.activate ? await activate(saved.accountName, input.destinationPassphrase) : {
+        accountName: saved.accountName,
+        address: readAccount(saved.accountName)?.address ?? "",
+        ready: false,
+        saved: true
+      };
+      if (input.eraseSources && input.source)
+        eraseImportedPlaintextSource(input.source);
+      return result;
     })
   };
 }
 var createInput, unlockInput, importInput;
 var init_embeddedSetupActions = __esm(() => {
   init_zod();
-  init_embeddedVaultIo();
   init_accounts();
   init_embeddedFirstRunBackend();
   init_embeddedImportBackend();
+  init_embeddedVaultIo();
   init_embeddedWalletActivation();
-  init_walletRoleDefaults();
+  init_plaintextSourceErase();
   init_walletRoleActivation();
-  createInput = object2({
+  init_walletRoleDefaults();
+  createInput = object({
     activate: boolean2().default(true),
     accountName: accountNameSchema,
-    password: string2().min(8),
+    password: string2().min(12),
     passwordConfirmation: string2(),
     confirmation: literal("CREATE_NEW_CONFIRMED")
   });
-  unlockInput = object2({
+  unlockInput = object({
     accountName: accountNameSchema,
-    password: string2().min(1)
+    password: string2().min(1).optional(),
+    useHardware: boolean2().optional()
   });
-  importInput = object2({
+  importInput = object({
     activate: boolean2().default(true),
     accountName: accountNameSchema,
-    source: object2({
+    source: object({
       account: accountNameSchema,
-      location: _enum(["account", "legacy-root", "custom"]),
+      location: _enum([
+        "account",
+        "legacy-root",
+        "custom",
+        "environment",
+        "mcp-client"
+      ]),
       encryptedBackup: boolean2().default(false),
       plaintextKeys: boolean2().default(false),
       walletDatabases: array(string2()).default([])
@@ -297106,18 +296451,19 @@ var init_embeddedSetupActions = __esm(() => {
     backupText: string2().max(1024 * 1024).optional(),
     backupName: string2().max(255).optional(),
     sourcePassphrase: string2().optional(),
-    destinationPassphrase: string2().min(8),
+    destinationPassphrase: string2().min(12),
     passwordConfirmation: string2(),
-    confirmation: literal("IMPORT_WALLET_CONFIRMED")
+    confirmation: literal("IMPORT_WALLET_CONFIRMED"),
+    eraseSources: boolean2().optional()
   });
 });
 
 // utils/embeddedWalletRuntime.ts
-import { homedir as homedir9 } from "node:os";
-import { join as join15 } from "node:path";
+import { homedir as homedir10 } from "node:os";
+import { join as join17 } from "node:path";
 async function createEmbeddedWalletRuntime(payment, identity, chain) {
   if (process.env.BSV_MCP_PASSWORD) {
-    const selected = await activateWalletRoles(process.env.VAULT_PATH ?? join15(homedir9(), ".bsv", "vault.bep"), process.env.BSV_MCP_PASSWORD, accountName());
+    const selected = await activateWalletRoles(process.env.VAULT_PATH ?? join17(homedir10(), ".bsv", "vault.bep"), process.env.BSV_MCP_PASSWORD, accountName());
     if (selected)
       return selected;
   }
@@ -297201,7 +296547,7 @@ function concat2(...buffers) {
     buf.set(buffer, i), i += buffer.length;
   return buf;
 }
-function encode6(string) {
+function encode5(string) {
   if (typeof string == "string" && string.length >= 128) {
     if (NON_ASCII.test(string))
       throw new TypeError("non-ASCII string encountered in encode()");
@@ -297320,7 +296666,7 @@ var init_errors6 = __esm(() => {
 });
 
 // node_modules/jose/dist/webapi/util/base64url.js
-function decode4(input) {
+function decode3(input) {
   try {
     return decodeBase64(typeof input == "string" ? input : decoder.decode(input), true);
   } catch (cause) {
@@ -297355,14 +296701,14 @@ function isDisjoint(...headers) {
 }
 function decodeBase64url(value, label, ErrorClass) {
   try {
-    return decode4(value);
+    return decode3(value);
   } catch {
     throw new ErrorClass(`Failed to base64url decode the ${label}`);
   }
 }
 function encodeBase64url(value, label, ErrorClass) {
   try {
-    return encode6(value);
+    return encode5(value);
   } catch {
     throw new ErrorClass(`The ${label} is not a valid base64url string`);
   }
@@ -297370,7 +296716,7 @@ function encodeBase64url(value, label, ErrorClass) {
 function parseJoseHeader(b64, ErrorClass, message) {
   let parsed;
   try {
-    parsed = JSON.parse(strictDecoder.decode(decode4(b64)));
+    parsed = JSON.parse(strictDecoder.decode(decode3(b64)));
   } catch {
     throw new ErrorClass(message);
   }
@@ -297430,7 +296776,7 @@ async function prepareKey(entry, key, usage) {
     if (!(secret ? normalized.kty === "oct" && typeof normalized.k == "string" : normalized.kty !== "oct" && (privateKey ? normalized.kty === "AKP" && typeof normalized.priv == "string" || typeof normalized.d == "string" : normalized.d === undefined && normalized.priv === undefined)))
       throw new TypeError(secret ? 'JSON Web Key for symmetric algorithms must have JWK "kty" (Key Type) equal to "oct" and the JWK "k" (Key Value) present' : `JSON Web Key for this operation must be a ${privateKey ? "private" : "public"} JWK`);
     if (jwkMatchesOp(entry, normalized, usage), normalized.kty === "oct")
-      return decode4(normalized.k);
+      return decode3(normalized.k);
     if (!Object.isFrozen(key)) {
       const { key_ops } = key;
       Array.isArray(key_ops) && Object.freeze(key_ops), Object.freeze(key);
@@ -297642,7 +296988,7 @@ function parseProtectedHeader(encodedProtected) {
 }
 function encodeCompactUnencodedPayload(payload) {
   try {
-    return encode6(payload);
+    return encode5(payload);
   } catch {
     throw new JWSInvalid("JWS Compact Serialization payload must use only ASCII characters");
   }
@@ -297664,7 +297010,7 @@ async function verifySignature(jws, shared, key, encodeUnencodedPayload, parsedP
   const signingPayload = b64 || typeof inputPayload != "string" ? inputPayload : encodeUnencodedPayload(inputPayload);
   let resolvedKey = false;
   typeof key == "function" && (key = await key(parsedProt, jws), resolvedKey = true);
-  const entry = jwsAlgorithm(alg), data = concat2(encodedProtected !== undefined ? encode6(encodedProtected) : new Uint8Array, encode6("."), typeof signingPayload == "string" ? shared[2] ??= encodeBase64url(signingPayload, "payload", JWSInvalid) : signingPayload), signature = decodeBase64url(jws.signature, "signature", JWSInvalid), k = await prepareKey(entry, key, "verify"), cryptoKey = await rawKey(k, entry.subtle, "verify");
+  const entry = jwsAlgorithm(alg), data = concat2(encodedProtected !== undefined ? encode5(encodedProtected) : new Uint8Array, encode5("."), typeof signingPayload == "string" ? shared[2] ??= encodeBase64url(signingPayload, "payload", JWSInvalid) : signingPayload), signature = decodeBase64url(jws.signature, "signature", JWSInvalid), k = await prepareKey(entry, key, "verify"), cryptoKey = await rawKey(k, entry.subtle, "verify");
   entry.minRsaBits && checkModulusLength(entry.alg, cryptoKey);
   let verified = false;
   try {
@@ -298047,13 +297393,13 @@ function registerAppTool(server, name, config, cb) {
   return server.registerTool(name, { ...config, _meta: normalizedMeta }, cb);
 }
 function registerAppResource(server, name, uri, config, readCallback) {
-  return server.registerResource(name, uri, { mimeType: p, ...config }, readCallback);
+  return server.registerResource(name, uri, { mimeType: L, ...config }, readCallback);
 }
 function normalizeToolMeta(meta) {
   const uiMeta = meta.ui;
-  const legacyResourceUri = meta[C];
+  const legacyResourceUri = meta[D];
   if (uiMeta?.resourceUri && !legacyResourceUri) {
-    return { ...meta, [C]: uiMeta.resourceUri };
+    return { ...meta, [D]: uiMeta.resourceUri };
   }
   if (legacyResourceUri && !uiMeta?.resourceUri) {
     return {
@@ -298185,20 +297531,20 @@ function build$12() {
   const JSONObjectSchema$1 = record(string2(), JSONValueSchema$1);
   const ProgressTokenSchema$1 = union([string2(), number2().int()]);
   const CursorSchema$1 = string2();
-  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
-  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const TaskMetadataSchema$1 = object({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object({ taskId: string2() });
   const RequestMetaSchema$1 = looseObject({
     progressToken: ProgressTokenSchema$1.optional(),
     "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
   });
-  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const BaseRequestParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
   const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
-  const RequestSchema$1 = object2({
+  const RequestSchema$1 = object({
     method: string2(),
     params: BaseRequestParamsSchema$1.loose().optional()
   });
-  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
-  const NotificationSchema$1 = object2({
+  const NotificationsParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object({
     method: string2(),
     params: NotificationsParamsSchema$1.loose().optional()
   });
@@ -298213,14 +297559,14 @@ function build$12() {
     method: literal("notifications/cancelled"),
     params: CancelledNotificationParamsSchema$1
   });
-  const IconSchema$1 = object2({
+  const IconSchema$1 = object({
     src: string2(),
     mimeType: string2().optional(),
     sizes: array(string2()).optional(),
     theme: _enum(["light", "dark"]).optional()
   });
-  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
-  const BaseMetadataSchema$1 = object2({
+  const IconsSchema$1 = object({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object({
     name: string2(),
     title: string2().optional()
   });
@@ -298231,12 +297577,12 @@ function build$12() {
     websiteUrl: string2().optional(),
     description: string2().optional()
   });
-  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const FormElicitationCapabilitySchema = intersection(object({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
   const ElicitationCapabilitySchema = preprocess((value) => {
     if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
       return { form: {} };
     return value;
-  }, intersection(object2({
+  }, intersection(object({
     form: FormElicitationCapabilitySchema.optional(),
     url: JSONObjectSchema$1.optional()
   }), JSONObjectSchema$1.optional()));
@@ -298253,14 +297599,14 @@ function build$12() {
     cancel: JSONObjectSchema$1.optional(),
     requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
   });
-  const ClientCapabilitiesSchema$1 = object2({
+  const ClientCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
-    sampling: object2({
+    sampling: object({
       context: JSONObjectSchema$1.optional(),
       tools: JSONObjectSchema$1.optional()
     }).optional(),
     elicitation: ElicitationCapabilitySchema.optional(),
-    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    roots: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ClientTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
@@ -298273,16 +297619,16 @@ function build$12() {
     method: literal("initialize"),
     params: InitializeRequestParamsSchema$1
   });
-  const ServerCapabilitiesSchema$1 = object2({
+  const ServerCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
     logging: JSONObjectSchema$1.optional(),
     completions: JSONObjectSchema$1.optional(),
-    prompts: object2({ listChanged: boolean2().optional() }).optional(),
-    resources: object2({
+    prompts: object({ listChanged: boolean2().optional() }).optional(),
+    resources: object({
       subscribe: boolean2().optional(),
       listChanged: boolean2().optional()
     }).optional(),
-    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tools: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ServerTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
@@ -298300,12 +297646,12 @@ function build$12() {
     method: literal("ping"),
     params: BaseRequestParamsSchema$1.optional()
   });
-  const ProgressSchema$1 = object2({
+  const ProgressSchema$1 = object({
     progress: number2(),
     total: optional(number2()),
     message: optional(string2())
   });
-  const ProgressNotificationParamsSchema$1 = object2({
+  const ProgressNotificationParamsSchema$1 = object({
     ...NotificationsParamsSchema$1.shape,
     ...ProgressSchema$1.shape,
     progressToken: ProgressTokenSchema$1
@@ -298317,7 +297663,7 @@ function build$12() {
   const PaginatedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ cursor: CursorSchema$1.optional() });
   const PaginatedRequestSchema$1 = RequestSchema$1.extend({ params: PaginatedRequestParamsSchema$1.optional() });
   const PaginatedResultSchema$1 = ResultSchema$1.extend({ nextCursor: CursorSchema$1.optional() });
-  const ResourceContentsSchema$1 = object2({
+  const ResourceContentsSchema$1 = object({
     uri: string2(),
     mimeType: optional(string2()),
     _meta: record(string2(), unknown()).optional()
@@ -298333,12 +297679,12 @@ function build$12() {
   }, { message: "Invalid Base64 string" });
   const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
   const RoleSchema$1 = _enum(["user", "assistant"]);
-  const AnnotationsSchema$1 = object2({
+  const AnnotationsSchema$1 = object({
     audience: array(RoleSchema$1).optional(),
     priority: number2().min(0).max(1).optional(),
     lastModified: datetime2({ offset: true }).optional()
   });
-  const ResourceSchema$1 = object2({
+  const ResourceSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uri: string2(),
@@ -298348,7 +297694,7 @@ function build$12() {
     annotations: AnnotationsSchema$1.optional(),
     _meta: optional(looseObject({}))
   });
-  const ResourceTemplateSchema$1 = object2({
+  const ResourceTemplateSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uriTemplate: string2(),
@@ -298387,12 +297733,12 @@ function build$12() {
     method: literal("notifications/resources/updated"),
     params: ResourceUpdatedNotificationParamsSchema$1
   });
-  const PromptArgumentSchema$1 = object2({
+  const PromptArgumentSchema$1 = object({
     name: string2(),
     description: optional(string2()),
     required: optional(boolean2())
   });
-  const PromptSchema$1 = object2({
+  const PromptSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: optional(string2()),
@@ -298409,34 +297755,34 @@ function build$12() {
     method: literal("prompts/get"),
     params: GetPromptRequestParamsSchema$1
   });
-  const TextContentSchema$1 = object2({
+  const TextContentSchema$1 = object({
     type: literal("text"),
     text: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ImageContentSchema$1 = object2({
+  const ImageContentSchema$1 = object({
     type: literal("image"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const AudioContentSchema$1 = object2({
+  const AudioContentSchema$1 = object({
     type: literal("audio"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolUseContentSchema$1 = object2({
+  const ToolUseContentSchema$1 = object({
     type: literal("tool_use"),
     name: string2(),
     id: string2(),
     input: record(string2(), unknown()),
     _meta: record(string2(), unknown()).optional()
   });
-  const EmbeddedResourceSchema$1 = object2({
+  const EmbeddedResourceSchema$1 = object({
     type: literal("resource"),
     resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
     annotations: AnnotationsSchema$1.optional(),
@@ -298450,7 +297796,7 @@ function build$12() {
     ResourceLinkSchema$1,
     EmbeddedResourceSchema$1
   ]);
-  const PromptMessageSchema$1 = object2({
+  const PromptMessageSchema$1 = object({
     role: RoleSchema$1,
     content: ContentBlockSchema$1
   });
@@ -298462,28 +297808,28 @@ function build$12() {
     method: literal("notifications/prompts/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const ToolAnnotationsSchema$1 = object2({
+  const ToolAnnotationsSchema$1 = object({
     title: string2().optional(),
     readOnlyHint: boolean2().optional(),
     destructiveHint: boolean2().optional(),
     idempotentHint: boolean2().optional(),
     openWorldHint: boolean2().optional()
   });
-  const ToolExecutionSchema$1 = object2({ taskSupport: _enum([
+  const ToolExecutionSchema$1 = object({ taskSupport: _enum([
     "required",
     "optional",
     "forbidden"
   ]).optional() });
-  const ToolSchema$1 = object2({
+  const ToolSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: string2().optional(),
-    inputSchema: object2({
+    inputSchema: object({
       type: literal("object"),
       properties: record(string2(), JSONValueSchema$1).optional(),
       required: array(string2()).optional()
     }).catchall(unknown()),
-    outputSchema: object2({
+    outputSchema: object({
       type: literal("object"),
       properties: record(string2(), JSONValueSchema$1).optional(),
       required: array(string2()).optional()
@@ -298535,23 +297881,23 @@ function build$12() {
     method: literal("notifications/message"),
     params: LoggingMessageNotificationParamsSchema$1
   });
-  const ModelHintSchema$1 = object2({ name: string2().optional() });
-  const ModelPreferencesSchema$1 = object2({
+  const ModelHintSchema$1 = object({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object({
     hints: array(ModelHintSchema$1).optional(),
     costPriority: number2().min(0).max(1).optional(),
     speedPriority: number2().min(0).max(1).optional(),
     intelligencePriority: number2().min(0).max(1).optional()
   });
-  const ToolChoiceSchema$1 = object2({ mode: _enum([
+  const ToolChoiceSchema$1 = object({ mode: _enum([
     "auto",
     "required",
     "none"
   ]).optional() });
-  const ToolResultContentSchema$1 = object2({
+  const ToolResultContentSchema$1 = object({
     type: literal("tool_result"),
     toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
     content: array(ContentBlockSchema$1),
-    structuredContent: object2({}).loose().optional(),
+    structuredContent: object({}).loose().optional(),
     isError: boolean2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
@@ -298567,7 +297913,7 @@ function build$12() {
     ToolUseContentSchema$1,
     ToolResultContentSchema$1
   ]);
-  const SamplingMessageSchema$1 = object2({
+  const SamplingMessageSchema$1 = object({
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
     _meta: record(string2(), unknown()).optional()
@@ -298613,13 +297959,13 @@ function build$12() {
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)])
   });
-  const BooleanSchemaSchema$1 = object2({
+  const BooleanSchemaSchema$1 = object({
     type: literal("boolean"),
     title: string2().optional(),
     description: string2().optional(),
     default: boolean2().optional()
   });
-  const StringSchemaSchema$1 = object2({
+  const StringSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -298633,7 +297979,7 @@ function build$12() {
     ]).optional(),
     default: string2().optional()
   });
-  const NumberSchemaSchema$1 = object2({
+  const NumberSchemaSchema$1 = object({
     type: _enum(["number", "integer"]),
     title: string2().optional(),
     description: string2().optional(),
@@ -298641,24 +297987,24 @@ function build$12() {
     maximum: number2().optional(),
     default: number2().optional()
   });
-  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+  const UntitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
     enum: array(string2()),
     default: string2().optional()
   });
-  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+  const TitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
-    oneOf: array(object2({
+    oneOf: array(object({
       const: string2(),
       title: string2()
     })),
     default: string2().optional()
   });
-  const LegacyTitledEnumSchemaSchema$1 = object2({
+  const LegacyTitledEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -298667,25 +298013,25 @@ function build$12() {
     default: string2().optional()
   });
   const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
-  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+  const UntitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({
+    items: object({
       type: literal("string"),
       enum: array(string2())
     }),
     default: array(string2()).optional()
   });
-  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+  const TitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({ anyOf: array(object2({
+    items: object({ anyOf: array(object({
       const: string2(),
       title: string2()
     })) }),
@@ -298706,7 +298052,7 @@ function build$12() {
   const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
     mode: literal("form").optional(),
     message: string2(),
-    requestedSchema: object2({
+    requestedSchema: object({
       type: literal("object"),
       properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
       required: array(string2()).optional()
@@ -298741,21 +298087,21 @@ function build$12() {
       array(string2())
     ])).optional())
   });
-  const ResourceTemplateReferenceSchema$1 = object2({
+  const ResourceTemplateReferenceSchema$1 = object({
     type: literal("ref/resource"),
     uri: string2()
   });
-  const PromptReferenceSchema$1 = object2({
+  const PromptReferenceSchema$1 = object({
     type: literal("ref/prompt"),
     name: string2()
   });
   const CompleteRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({
     ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
-    argument: object2({
+    argument: object({
       name: string2(),
       value: string2()
     }),
-    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+    context: object({ arguments: record(string2(), string2()).optional() }).optional()
   });
   const CompleteRequestSchema$1 = RequestSchema$1.extend({
     method: literal("completion/complete"),
@@ -298766,7 +298112,7 @@ function build$12() {
     total: optional(number2().int()),
     hasMore: optional(boolean2())
   }) });
-  const RootSchema$1 = object2({
+  const RootSchema$1 = object({
     uri: string2().startsWith("file://"),
     name: string2().optional(),
     _meta: record(string2(), unknown()).optional()
@@ -298791,7 +298137,7 @@ function build$12() {
     "failed",
     "cancelled"
   ]);
-  const TaskSchema$1 = object2({
+  const TaskSchema$1 = object({
     taskId: string2(),
     status: TaskStatusSchema$1,
     ttl: union([number2(), _null3()]),
@@ -299241,27 +298587,27 @@ function build2() {
       return false;
     }
   }, { message: "Invalid Base64 string" });
-  const TaskMetadataSchema$1 = object2({ ttl: number2().optional() });
-  const RelatedTaskMetadataSchema$1 = object2({ taskId: string2() });
+  const TaskMetadataSchema$1 = object({ ttl: number2().optional() });
+  const RelatedTaskMetadataSchema$1 = object({ taskId: string2() });
   const RequestMetaSchema$1 = looseObject({
     progressToken: ProgressTokenSchema$1.optional(),
     "io.modelcontextprotocol/related-task": RelatedTaskMetadataSchema$1.optional()
   });
-  const BaseRequestParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
+  const BaseRequestParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
   const TaskAugmentedRequestParamsSchema$1 = BaseRequestParamsSchema$1.extend({ task: TaskMetadataSchema$1.optional() });
-  const NotificationsParamsSchema$1 = object2({ _meta: RequestMetaSchema$1.optional() });
-  const NotificationSchema$1 = object2({
+  const NotificationsParamsSchema$1 = object({ _meta: RequestMetaSchema$1.optional() });
+  const NotificationSchema$1 = object({
     method: string2(),
     params: NotificationsParamsSchema$1.loose().optional()
   });
-  const IconSchema$1 = object2({
+  const IconSchema$1 = object({
     src: string2(),
     mimeType: string2().optional(),
     sizes: array(string2()).optional(),
     theme: _enum(["light", "dark"]).optional()
   });
-  const IconsSchema$1 = object2({ icons: array(IconSchema$1).optional() });
-  const BaseMetadataSchema$1 = object2({
+  const IconsSchema$1 = object({ icons: array(IconSchema$1).optional() });
+  const BaseMetadataSchema$1 = object({
     name: string2(),
     title: string2().optional()
   });
@@ -299272,12 +298618,12 @@ function build2() {
     websiteUrl: string2().optional(),
     description: string2().optional()
   });
-  const FormElicitationCapabilitySchema = intersection(object2({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
+  const FormElicitationCapabilitySchema = intersection(object({ applyDefaults: boolean2().optional() }), JSONObjectSchema$1);
   const ElicitationCapabilitySchema = preprocess((value) => {
     if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0)
       return { form: {} };
     return value;
-  }, intersection(object2({
+  }, intersection(object({
     form: FormElicitationCapabilitySchema.optional(),
     url: JSONObjectSchema$1.optional()
   }), JSONObjectSchema$1.optional()));
@@ -299294,36 +298640,36 @@ function build2() {
     cancel: JSONObjectSchema$1.optional(),
     requests: looseObject({ tools: looseObject({ call: JSONObjectSchema$1.optional() }).optional() }).optional()
   });
-  const ClientCapabilitiesSchema$1 = object2({
+  const ClientCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
-    sampling: object2({
+    sampling: object({
       context: JSONObjectSchema$1.optional(),
       tools: JSONObjectSchema$1.optional()
     }).optional(),
     elicitation: ElicitationCapabilitySchema.optional(),
-    roots: object2({ listChanged: boolean2().optional() }).optional(),
+    roots: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ClientTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
-  const ServerCapabilitiesSchema$1 = object2({
+  const ServerCapabilitiesSchema$1 = object({
     experimental: record(string2(), JSONObjectSchema$1).optional(),
     logging: JSONObjectSchema$1.optional(),
     completions: JSONObjectSchema$1.optional(),
-    prompts: object2({ listChanged: boolean2().optional() }).optional(),
-    resources: object2({
+    prompts: object({ listChanged: boolean2().optional() }).optional(),
+    resources: object({
       subscribe: boolean2().optional(),
       listChanged: boolean2().optional()
     }).optional(),
-    tools: object2({ listChanged: boolean2().optional() }).optional(),
+    tools: object({ listChanged: boolean2().optional() }).optional(),
     tasks: ServerTasksCapabilitySchema$1.optional(),
     extensions: record(string2(), JSONObjectSchema$1).optional()
   });
-  const ProgressSchema$1 = object2({
+  const ProgressSchema$1 = object({
     progress: number2(),
     total: optional(number2()),
     message: optional(string2())
   });
-  const ProgressNotificationParamsSchema$1 = object2({
+  const ProgressNotificationParamsSchema$1 = object({
     ...NotificationsParamsSchema$1.shape,
     ...ProgressSchema$1.shape,
     progressToken: ProgressTokenSchema$1
@@ -299341,19 +298687,19 @@ function build2() {
     method: literal("notifications/message"),
     params: LoggingMessageNotificationParamsSchema$1
   });
-  const ResourceContentsSchema$1 = object2({
+  const ResourceContentsSchema$1 = object({
     uri: string2(),
     mimeType: optional(string2()),
     _meta: record(string2(), unknown()).optional()
   });
   const TextResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ text: string2() });
   const BlobResourceContentsSchema$1 = ResourceContentsSchema$1.extend({ blob: Base64Schema });
-  const AnnotationsSchema$1 = object2({
+  const AnnotationsSchema$1 = object({
     audience: array(RoleSchema$1).optional(),
     priority: number2().min(0).max(1).optional(),
     lastModified: datetime2({ offset: true }).optional()
   });
-  const ResourceSchema$1 = object2({
+  const ResourceSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uri: string2(),
@@ -299363,7 +298709,7 @@ function build2() {
     annotations: AnnotationsSchema$1.optional(),
     _meta: optional(looseObject({}))
   });
-  const ResourceTemplateSchema$1 = object2({
+  const ResourceTemplateSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     uriTemplate: string2(),
@@ -299381,12 +298727,12 @@ function build2() {
     method: literal("notifications/resources/updated"),
     params: ResourceUpdatedNotificationParamsSchema$1
   });
-  const PromptArgumentSchema$1 = object2({
+  const PromptArgumentSchema$1 = object({
     name: string2(),
     description: optional(string2()),
     required: optional(boolean2())
   });
-  const PromptSchema$1 = object2({
+  const PromptSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: optional(string2()),
@@ -299397,34 +298743,34 @@ function build2() {
     method: literal("notifications/prompts/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const TextContentSchema$1 = object2({
+  const TextContentSchema$1 = object({
     type: literal("text"),
     text: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ImageContentSchema$1 = object2({
+  const ImageContentSchema$1 = object({
     type: literal("image"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const AudioContentSchema$1 = object2({
+  const AudioContentSchema$1 = object({
     type: literal("audio"),
     data: Base64Schema,
     mimeType: string2(),
     annotations: AnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolUseContentSchema$1 = object2({
+  const ToolUseContentSchema$1 = object({
     type: literal("tool_use"),
     name: string2(),
     id: string2(),
     input: record(string2(), unknown()),
     _meta: record(string2(), unknown()).optional()
   });
-  const EmbeddedResourceSchema$1 = object2({
+  const EmbeddedResourceSchema$1 = object({
     type: literal("resource"),
     resource: union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]),
     annotations: AnnotationsSchema$1.optional(),
@@ -299438,11 +298784,11 @@ function build2() {
     ResourceLinkSchema$1,
     EmbeddedResourceSchema$1
   ]);
-  const PromptMessageSchema$1 = object2({
+  const PromptMessageSchema$1 = object({
     role: RoleSchema$1,
     content: ContentBlockSchema$1
   });
-  const ToolAnnotationsSchema$1 = object2({
+  const ToolAnnotationsSchema$1 = object({
     title: string2().optional(),
     readOnlyHint: boolean2().optional(),
     destructiveHint: boolean2().optional(),
@@ -299453,25 +298799,25 @@ function build2() {
     method: literal("notifications/tools/list_changed"),
     params: NotificationsParamsSchema$1.optional()
   });
-  const ModelHintSchema$1 = object2({ name: string2().optional() });
-  const ModelPreferencesSchema$1 = object2({
+  const ModelHintSchema$1 = object({ name: string2().optional() });
+  const ModelPreferencesSchema$1 = object({
     hints: array(ModelHintSchema$1).optional(),
     costPriority: number2().min(0).max(1).optional(),
     speedPriority: number2().min(0).max(1).optional(),
     intelligencePriority: number2().min(0).max(1).optional()
   });
-  const ToolChoiceSchema$1 = object2({ mode: _enum([
+  const ToolChoiceSchema$1 = object({ mode: _enum([
     "auto",
     "required",
     "none"
   ]).optional() });
-  const BooleanSchemaSchema$1 = object2({
+  const BooleanSchemaSchema$1 = object({
     type: literal("boolean"),
     title: string2().optional(),
     description: string2().optional(),
     default: boolean2().optional()
   });
-  const StringSchemaSchema$1 = object2({
+  const StringSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -299485,7 +298831,7 @@ function build2() {
     ]).optional(),
     default: string2().optional()
   });
-  const NumberSchemaSchema$1 = object2({
+  const NumberSchemaSchema$1 = object({
     type: _enum(["number", "integer"]),
     title: string2().optional(),
     description: string2().optional(),
@@ -299493,24 +298839,24 @@ function build2() {
     maximum: number2().optional(),
     default: number2().optional()
   });
-  const UntitledSingleSelectEnumSchemaSchema$1 = object2({
+  const UntitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
     enum: array(string2()),
     default: string2().optional()
   });
-  const TitledSingleSelectEnumSchemaSchema$1 = object2({
+  const TitledSingleSelectEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
-    oneOf: array(object2({
+    oneOf: array(object({
       const: string2(),
       title: string2()
     })),
     default: string2().optional()
   });
-  const LegacyTitledEnumSchemaSchema$1 = object2({
+  const LegacyTitledEnumSchemaSchema$1 = object({
     type: literal("string"),
     title: string2().optional(),
     description: string2().optional(),
@@ -299519,25 +298865,25 @@ function build2() {
     default: string2().optional()
   });
   const SingleSelectEnumSchemaSchema$1 = union([UntitledSingleSelectEnumSchemaSchema$1, TitledSingleSelectEnumSchemaSchema$1]);
-  const UntitledMultiSelectEnumSchemaSchema$1 = object2({
+  const UntitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({
+    items: object({
       type: literal("string"),
       enum: array(string2())
     }),
     default: array(string2()).optional()
   });
-  const TitledMultiSelectEnumSchemaSchema$1 = object2({
+  const TitledMultiSelectEnumSchemaSchema$1 = object({
     type: literal("array"),
     title: string2().optional(),
     description: string2().optional(),
     minItems: number2().optional(),
     maxItems: number2().optional(),
-    items: object2({ anyOf: array(object2({
+    items: object({ anyOf: array(object({
       const: string2(),
       title: string2()
     })) }),
@@ -299558,27 +298904,27 @@ function build2() {
   const ElicitRequestFormParamsSchema$1 = TaskAugmentedRequestParamsSchema$1.extend({
     mode: literal("form").optional(),
     message: string2(),
-    requestedSchema: object2({
+    requestedSchema: object({
       type: literal("object"),
       properties: record(string2(), PrimitiveSchemaDefinitionSchema$1),
       required: array(string2()).optional()
     }).catchall(unknown())
   });
-  const ResourceTemplateReferenceSchema$1 = object2({
+  const ResourceTemplateReferenceSchema$1 = object({
     type: literal("ref/resource"),
     uri: string2()
   });
-  const PromptReferenceSchema$1 = object2({
+  const PromptReferenceSchema$1 = object({
     type: literal("ref/prompt"),
     name: string2()
   });
-  const RootSchema$1 = object2({
+  const RootSchema$1 = object({
     uri: string2().startsWith("file://"),
     name: string2().optional(),
     _meta: record(string2(), unknown()).optional()
   });
   const sharedClientCapabilityShape = ClientCapabilitiesSchema$1.shape;
-  const ClientCapabilities2026Schema = object2({
+  const ClientCapabilities2026Schema = object({
     experimental: sharedClientCapabilityShape.experimental,
     sampling: sharedClientCapabilityShape.sampling,
     elicitation: sharedClientCapabilityShape.elicitation,
@@ -299586,7 +298932,7 @@ function build2() {
     extensions: sharedClientCapabilityShape.extensions
   });
   const sharedServerCapabilityShape = ServerCapabilitiesSchema$1.shape;
-  const ServerCapabilities2026Schema = object2({
+  const ServerCapabilities2026Schema = object({
     experimental: sharedServerCapabilityShape.experimental,
     logging: sharedServerCapabilityShape.logging,
     completions: sharedServerCapabilityShape.completions,
@@ -299602,7 +298948,7 @@ function build2() {
     [CLIENT_CAPABILITIES_META_KEY]: ClientCapabilities2026Schema,
     [LOG_LEVEL_META_KEY]: LoggingLevelSchema$1.optional()
   });
-  const ToolSchema$1 = object2({
+  const ToolSchema$1 = object({
     ...BaseMetadataSchema$1.shape,
     ...IconsSchema$1.shape,
     description: string2().optional(),
@@ -299614,7 +298960,7 @@ function build2() {
     annotations: ToolAnnotationsSchema$1.optional(),
     _meta: record(string2(), unknown()).optional()
   });
-  const ToolResultContentSchema$1 = object2({
+  const ToolResultContentSchema$1 = object({
     type: literal("tool_result"),
     toolUseId: string2(),
     content: array(ContentBlockSchema$1),
@@ -299629,7 +298975,7 @@ function build2() {
     ToolUseContentSchema$1,
     ToolResultContentSchema$1
   ]);
-  const SamplingMessageSchema$1 = object2({
+  const SamplingMessageSchema$1 = object({
     role: RoleSchema$1,
     content: union([SamplingMessageContentBlockSchema$1, array(SamplingMessageContentBlockSchema$1)]),
     _meta: record(string2(), unknown()).optional()
@@ -299684,7 +299030,7 @@ function build2() {
     cacheScope: _enum(["public", "private"]),
     contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
   });
-  const CompleteResultSchema$1 = wireResult({ completion: object2({
+  const CompleteResultSchema$1 = wireResult({ completion: object({
     values: array(string2()).max(100),
     total: number2().int().optional(),
     hasMore: boolean2().optional()
@@ -299700,7 +299046,7 @@ function build2() {
     capabilities: ServerCapabilities2026Schema,
     instructions: string2().optional()
   });
-  const CreateMessageRequestParamsSchema$1 = object2({
+  const CreateMessageRequestParamsSchema$1 = object({
     messages: array(SamplingMessageSchema$1),
     modelPreferences: ModelPreferencesSchema$1.optional(),
     systemPrompt: string2().optional(),
@@ -299716,21 +299062,21 @@ function build2() {
     tools: array(ToolSchema$1).optional(),
     toolChoice: ToolChoiceSchema$1.optional()
   });
-  const CreateMessageRequestSchema$1 = object2({
+  const CreateMessageRequestSchema$1 = object({
     method: literal("sampling/createMessage"),
     params: CreateMessageRequestParamsSchema$1
   });
-  const ListRootsRequestSchema$1 = object2({
+  const ListRootsRequestSchema$1 = object({
     method: literal("roots/list"),
-    params: object2({ _meta: record(string2(), unknown()).optional() }).optional()
+    params: object({ _meta: record(string2(), unknown()).optional() }).optional()
   });
-  const CreateMessageResultSchema$1 = object2({
+  const CreateMessageResultSchema$1 = object({
     ...SamplingMessageSchema$1.shape,
     model: string2(),
     stopReason: string2().optional()
   });
-  const ListRootsResultSchema$1 = object2({ roots: array(RootSchema$1) });
-  const ElicitResultSchema$1 = object2({
+  const ListRootsResultSchema$1 = object({ roots: array(RootSchema$1) });
+  const ElicitResultSchema$1 = object({
     action: _enum([
       "accept",
       "decline",
@@ -299743,13 +299089,13 @@ function build2() {
       array(string2())
     ])).optional()
   });
-  const ElicitRequestURLParamsSchema$1 = object2({
+  const ElicitRequestURLParamsSchema$1 = object({
     mode: literal("url"),
     message: string2(),
     url: string2().url()
   });
   const ElicitRequestParamsSchema$1 = union([ElicitRequestFormParamsSchema$1, ElicitRequestURLParamsSchema$1]);
-  const ElicitRequestSchema$1 = object2({
+  const ElicitRequestSchema$1 = object({
     method: literal("elicitation/create"),
     params: ElicitRequestParamsSchema$1
   });
@@ -299773,24 +299119,24 @@ function build2() {
     inputResponses: InputResponsesSchema.optional(),
     requestState: string2().optional()
   };
-  const InputResponseRequestParamsSchema = object2({
+  const InputResponseRequestParamsSchema = object({
     _meta: RequestMetaEnvelopeSchema,
     ...retryParamsShape
   });
   const DispatchRequestMetaSchema = looseObject({ progressToken: ProgressTokenSchema$1.optional() });
   function wireRequest(method, paramsShape) {
-    return object2({
+    return object({
       method: literal(method),
-      params: object2({
+      params: object({
         _meta: RequestMetaEnvelopeSchema,
         ...paramsShape
       })
     });
   }
   function dispatchRequest(method, paramsShape) {
-    return object2({
+    return object({
       method: literal(method),
-      params: object2({
+      params: object({
         _meta: DispatchRequestMetaSchema.optional(),
         ...paramsShape
       }).optional()
@@ -299818,15 +299164,15 @@ function build2() {
   });
   const completeParamsShape = {
     ref: union([PromptReferenceSchema$1, ResourceTemplateReferenceSchema$1]),
-    argument: object2({
+    argument: object({
       name: string2(),
       value: string2()
     }),
-    context: object2({ arguments: record(string2(), string2()).optional() }).optional()
+    context: object({ arguments: record(string2(), string2()).optional() }).optional()
   };
   const CompleteRequestSchema$1 = wireRequest("completion/complete", completeParamsShape);
   const DiscoverRequestSchema$1 = wireRequest("server/discover", {});
-  const SubscriptionFilterSchema$1 = object2({
+  const SubscriptionFilterSchema$1 = object({
     toolsListChanged: boolean2().optional(),
     promptsListChanged: boolean2().optional(),
     resourcesListChanged: boolean2().optional(),
@@ -299899,7 +299245,7 @@ function build2() {
       cacheScope: _enum(["public", "private"]),
       contents: array(union([TextResourceContentsSchema$1, BlobResourceContentsSchema$1]))
     }),
-    "completion/complete": liftedResult({ completion: object2({
+    "completion/complete": liftedResult({ completion: object({
       values: array(string2()).max(100),
       total: number2().int().optional(),
       hasMore: boolean2().optional()
@@ -299914,19 +299260,19 @@ function build2() {
     "subscriptions/listen": liftedResult({})
   };
   const NotificationMetaSchema = looseObject({ "io.modelcontextprotocol/subscriptionId": RequestIdSchema$1.optional() });
-  const SubscriptionsAcknowledgedNotificationSchema$1 = object2({
+  const SubscriptionsAcknowledgedNotificationSchema$1 = object({
     method: literal("notifications/subscriptions/acknowledged"),
-    params: object2({
+    params: object({
       _meta: NotificationMetaSchema.optional(),
       notifications: SubscriptionFilterSchema$1
     })
   });
-  const CancelledNotificationParamsSchema$1 = object2({
+  const CancelledNotificationParamsSchema$1 = object({
     _meta: NotificationMetaSchema.optional(),
     requestId: RequestIdSchema$1,
     reason: string2().optional()
   });
-  const CancelledNotificationSchema$1 = object2({
+  const CancelledNotificationSchema$1 = object({
     method: literal("notifications/cancelled"),
     params: CancelledNotificationParamsSchema$1
   });
@@ -299940,7 +299286,7 @@ function build2() {
     "notifications/prompts/list_changed": PromptListChangedNotificationSchema$1,
     "notifications/subscriptions/acknowledged": SubscriptionsAcknowledgedNotificationSchema$1
   };
-  const wireResultResponse = (result) => object2({
+  const wireResultResponse = (result) => object({
     jsonrpc: literal("2.0"),
     id: union([string2(), number2().int()]),
     result
@@ -300166,15 +299512,15 @@ function inputSchemaMaps2() {
   const s = buildSchemas20262();
   maps2 = {
     request: {
-      "elicitation/create": object2({
+      "elicitation/create": object({
         method: literal("elicitation/create"),
         params: s.ElicitRequestParamsSchema
       }),
-      "sampling/createMessage": object2({
+      "sampling/createMessage": object({
         method: literal("sampling/createMessage"),
         params: s.CreateMessageRequestParamsSchema
       }),
-      "roots/list": object2({
+      "roots/list": object({
         method: literal("roots/list"),
         params: looseObject({}).optional()
       })
@@ -300292,7 +299638,7 @@ function isSpecNotificationMethod2(method) {
   return ALL_CODECS2.some((codec) => codec.hasNotificationMethod(method));
 }
 function parseSchema2(schema, data) {
-  return safeParse3(schema, data);
+  return safeParse(schema, data);
 }
 function shapeKeys2(schemas) {
   return new Set(schemas.flatMap((schema) => Object.keys(schema.shape)));
@@ -300466,7 +299812,7 @@ function walkRequestedSchema2(converted, vendor) {
 function describeUnsupportedProperties2(pruned, fallback) {
   if (!isJsonObject2(pruned.properties))
     return fallback;
-  const offenders = Object.entries(pruned.properties).filter(([, node]) => !parseSchema2(PrimitiveSchemaDefinitionSchema2, node).success).map(([name]) => `properties.${name}`);
+  const offenders = Object.entries(pruned.properties).filter(([, node]) => !parseSchema2(PrimitiveSchemaDefinitionSchema, node).success).map(([name]) => `properties.${name}`);
   return offenders.length > 0 ? offenders.join(", ") : fallback;
 }
 function findDroppedConstraintPaths2(original, parsed, path = "") {
@@ -300490,7 +299836,7 @@ function normalizeElicitInputParams2(input) {
     };
   const vendor = input.requestedSchema["~standard"].vendor;
   const pruned = walkRequestedSchema2(convertStandardElicitationSchema2(input.requestedSchema), vendor);
-  const parsed = parseSchema2(ElicitRequestFormParamsSchema2.shape.requestedSchema, pruned);
+  const parsed = parseSchema2(ElicitRequestFormParamsSchema.shape.requestedSchema, pruned);
   if (!parsed.success)
     throw new ProtocolError2(ProtocolErrorCode2.InvalidParams, `Elicitation requestedSchema only supports flat primitive properties (string, number, integer, boolean, and string enums): ${describeUnsupportedProperties2(pruned, parsed.error.message)}`);
   const droppedConstraints = findDroppedConstraintPaths2(pruned, parsed.data);
@@ -300598,19 +299944,19 @@ function requestStateAccessor2(value) {
 function isPlainObject$12(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function isPlainObject4(value) {
+function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function partitionInputResponses2(inputResponses) {
   const accepted = {};
   const droppedKeys = [];
-  if (!isPlainObject4(inputResponses))
+  if (!isPlainObject3(inputResponses))
     return {
       accepted,
       droppedKeys
     };
   for (const [key, entry] of Object.entries(inputResponses)) {
-    if (!isPlainObject4(entry) || "method" in entry || "result" in entry) {
+    if (!isPlainObject3(entry) || "method" in entry || "result" in entry) {
       droppedKeys.push(key);
       continue;
     }
@@ -300628,7 +299974,7 @@ function manualInputRequiredValue2(decoded) {
     ...decoded.requestState !== undefined && { requestState: decoded.requestState }
   };
 }
-var BRANDS2, OAuthError2, SdkErrorCode2, SdkError2, SdkHttpError2, FIRST_MODERN_PROTOCOL_VERSION2 = "2026-07-28", TOOL_RESULT_FOREIGN_FAMILY_KEYS2, memo$12, REF_REWRITE_DATA_POSITION_KEYS2, REF_REWRITE_NAME_MAP_KEYS2, requestMethodKeys$12, notificationMethodKeys$12, resultMethodKeys2, maps$12, rev2025RequestMethods2, rev2025NotificationMethods2, NOT_IN_ERA$12, rev2025Codec2, memo3, CACHEABLE_RESULT_METHODS2, RESULT_CACHE_HINT_FALLBACK2, ProtocolErrorCode2, ProtocolError2, ResourceNotFoundError2, UrlElicitationRequiredError3, UnsupportedProtocolVersionError2, MissingRequiredClientCapabilityError2, DEFAULT_CACHE_TTL_MS2 = 0, DEFAULT_CACHE_SCOPE2 = "private", EXTENDED_RESULT_TYPE_METHODS2, INPUT_REQUEST_METHODS_20262, maps2, requestMethodKeys2, notificationMethodKeys2, rev2026RequestMethods2, rev2026NotificationMethods2, NOT_IN_ERA2, REQUIRED_ENVELOPE_KEYS2, rev2026Codec2, wireResultSchemasMemo2, MODERN_WIRE_REVISION2 = "2026-07-28", ALL_CODECS2, schemas_exports2, isJSONRPCRequest3 = (value) => JSONRPCRequestSchema2.safeParse(value).success, isJSONRPCNotification3 = (value) => JSONRPCNotificationSchema2.safeParse(value).success, isJSONRPCResultResponse3 = (value) => JSONRPCResultResponseSchema2.safeParse(value).success, isJSONRPCErrorResponse3 = (value) => JSONRPCErrorResponseSchema2.safeParse(value).success, PERMITTED_X_MCP_HEADER_TYPES2, OBJECT_VALUED_SUBSCHEMA_KEYWORDS2, HEADER_MISMATCH_ERROR_CODE2 = -32020, INBOUND_VALIDATION_LADDER2, LADDER_ERROR_HTTP_STATUS2, warnedZodFallback2 = false, JSON_SCHEMA_CONVERSION_TARGET2 = "draft-2020-12", DATETIME_FRACTION_DIGITS2, ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS2, ROOT_KEYS2, PROPERTY_KEYS_BY_TYPE2, SUPPORTED_STRING_FORMATS2, inputRequired2, SPEC_SCHEMA_KEYS2, authSchemas2, _specTypeSchemas2, _isSpecType2, specTypeSchemas2, isSpecType2, DEFAULT_REQUEST_TIMEOUT_MSEC3 = 60000, RESERVED_ENVELOPE_META_KEYS2, RETRY_PARAMS_KEYS2, NO_REQUEST_STATE2, writeNegotiatedProtocolVersion2, Protocol3, require_content_type3, import_content_type2, STDIO_DEFAULT_MAX_BUFFER_SIZE2;
+var BRANDS2, OAuthError2, SdkErrorCode2, SdkError2, SdkHttpError2, FIRST_MODERN_PROTOCOL_VERSION2 = "2026-07-28", TOOL_RESULT_FOREIGN_FAMILY_KEYS2, memo$12, REF_REWRITE_DATA_POSITION_KEYS2, REF_REWRITE_NAME_MAP_KEYS2, requestMethodKeys$12, notificationMethodKeys$12, resultMethodKeys2, maps$12, rev2025RequestMethods2, rev2025NotificationMethods2, NOT_IN_ERA$12, rev2025Codec2, memo3, CACHEABLE_RESULT_METHODS2, RESULT_CACHE_HINT_FALLBACK2, ProtocolErrorCode2, ProtocolError2, ResourceNotFoundError2, UrlElicitationRequiredError2, UnsupportedProtocolVersionError2, MissingRequiredClientCapabilityError2, DEFAULT_CACHE_TTL_MS2 = 0, DEFAULT_CACHE_SCOPE2 = "private", EXTENDED_RESULT_TYPE_METHODS2, INPUT_REQUEST_METHODS_20262, maps2, requestMethodKeys2, notificationMethodKeys2, rev2026RequestMethods2, rev2026NotificationMethods2, NOT_IN_ERA2, REQUIRED_ENVELOPE_KEYS2, rev2026Codec2, wireResultSchemasMemo2, MODERN_WIRE_REVISION2 = "2026-07-28", ALL_CODECS2, schemas_exports2, isJSONRPCRequest2 = (value) => JSONRPCRequestSchema.safeParse(value).success, isJSONRPCNotification2 = (value) => JSONRPCNotificationSchema.safeParse(value).success, isJSONRPCResultResponse2 = (value) => JSONRPCResultResponseSchema.safeParse(value).success, isJSONRPCErrorResponse2 = (value) => JSONRPCErrorResponseSchema.safeParse(value).success, PERMITTED_X_MCP_HEADER_TYPES2, OBJECT_VALUED_SUBSCHEMA_KEYWORDS2, HEADER_MISMATCH_ERROR_CODE2 = -32020, INBOUND_VALIDATION_LADDER2, LADDER_ERROR_HTTP_STATUS2, warnedZodFallback2 = false, JSON_SCHEMA_CONVERSION_TARGET2 = "draft-2020-12", DATETIME_FRACTION_DIGITS2, ANNOTATION_ONLY_JSON_SCHEMA_KEYWORDS2, ROOT_KEYS2, PROPERTY_KEYS_BY_TYPE2, SUPPORTED_STRING_FORMATS2, inputRequired2, SPEC_SCHEMA_KEYS2, authSchemas2, _specTypeSchemas2, _isSpecType2, specTypeSchemas2, isSpecType2, DEFAULT_REQUEST_TIMEOUT_MSEC2 = 60000, RESERVED_ENVELOPE_META_KEYS2, RETRY_PARAMS_KEYS2, NO_REQUEST_STATE2, writeNegotiatedProtocolVersion2, Protocol2, require_content_type3, import_content_type2, STDIO_DEFAULT_MAX_BUFFER_SIZE2;
 var init_src_D_zzAWoS = __esm(() => {
   init_chunk_Br0eD_fh2();
   init_dialects_BOhdv1Fc();
@@ -300911,7 +300257,7 @@ var init_src_D_zzAWoS = __esm(() => {
       if (code === ProtocolErrorCode2.UrlElicitationRequired && data) {
         const errorData = data;
         if (errorData.elicitations)
-          return new UrlElicitationRequiredError3(errorData.elicitations, message);
+          return new UrlElicitationRequiredError2(errorData.elicitations, message);
       }
       if (code === ProtocolErrorCode2.UnsupportedProtocolVersion && data) {
         const errorData = data;
@@ -300945,7 +300291,7 @@ var init_src_D_zzAWoS = __esm(() => {
       return this.data.uri;
     }
   };
-  UrlElicitationRequiredError3 = class extends ProtocolError2 {
+  UrlElicitationRequiredError2 = class extends ProtocolError2 {
     static {
       Object.defineProperty(this, "mcpBrand", { value: "mcp.UrlElicitationRequiredError" });
     }
@@ -301143,143 +300489,143 @@ var init_src_D_zzAWoS = __esm(() => {
   };
   ALL_CODECS2 = [rev2025Codec2, rev2026Codec2];
   schemas_exports2 = /* @__PURE__ */ __exportAll4({
-    AnnotationsSchema: () => AnnotationsSchema2,
-    AudioContentSchema: () => AudioContentSchema2,
-    BaseMetadataSchema: () => BaseMetadataSchema2,
-    BaseRequestParamsSchema: () => BaseRequestParamsSchema2,
-    BlobResourceContentsSchema: () => BlobResourceContentsSchema2,
-    BooleanSchemaSchema: () => BooleanSchemaSchema2,
-    CallToolRequestParamsSchema: () => CallToolRequestParamsSchema2,
-    CallToolRequestSchema: () => CallToolRequestSchema2,
-    CallToolResultSchema: () => CallToolResultSchema2,
-    CancelTaskRequestSchema: () => CancelTaskRequestSchema2,
-    CancelTaskResultSchema: () => CancelTaskResultSchema2,
-    CancelledNotificationParamsSchema: () => CancelledNotificationParamsSchema2,
-    CancelledNotificationSchema: () => CancelledNotificationSchema2,
-    ClientCapabilitiesSchema: () => ClientCapabilitiesSchema2,
-    ClientNotificationSchema: () => ClientNotificationSchema2,
-    ClientRequestSchema: () => ClientRequestSchema2,
-    ClientResultSchema: () => ClientResultSchema2,
-    ClientTasksCapabilitySchema: () => ClientTasksCapabilitySchema2,
-    CompatibilityCallToolResultSchema: () => CompatibilityCallToolResultSchema2,
-    CompleteRequestParamsSchema: () => CompleteRequestParamsSchema2,
-    CompleteRequestSchema: () => CompleteRequestSchema2,
-    CompleteResultSchema: () => CompleteResultSchema2,
-    ContentBlockSchema: () => ContentBlockSchema2,
-    CreateMessageRequestParamsSchema: () => CreateMessageRequestParamsSchema2,
-    CreateMessageRequestSchema: () => CreateMessageRequestSchema2,
-    CreateMessageResultSchema: () => CreateMessageResultSchema2,
-    CreateMessageResultWithToolsSchema: () => CreateMessageResultWithToolsSchema2,
-    CreateTaskResultSchema: () => CreateTaskResultSchema2,
-    CursorSchema: () => CursorSchema2,
+    AnnotationsSchema: () => AnnotationsSchema,
+    AudioContentSchema: () => AudioContentSchema,
+    BaseMetadataSchema: () => BaseMetadataSchema,
+    BaseRequestParamsSchema: () => BaseRequestParamsSchema,
+    BlobResourceContentsSchema: () => BlobResourceContentsSchema,
+    BooleanSchemaSchema: () => BooleanSchemaSchema,
+    CallToolRequestParamsSchema: () => CallToolRequestParamsSchema,
+    CallToolRequestSchema: () => CallToolRequestSchema,
+    CallToolResultSchema: () => CallToolResultSchema,
+    CancelTaskRequestSchema: () => CancelTaskRequestSchema,
+    CancelTaskResultSchema: () => CancelTaskResultSchema,
+    CancelledNotificationParamsSchema: () => CancelledNotificationParamsSchema,
+    CancelledNotificationSchema: () => CancelledNotificationSchema,
+    ClientCapabilitiesSchema: () => ClientCapabilitiesSchema,
+    ClientNotificationSchema: () => ClientNotificationSchema,
+    ClientRequestSchema: () => ClientRequestSchema,
+    ClientResultSchema: () => ClientResultSchema,
+    ClientTasksCapabilitySchema: () => ClientTasksCapabilitySchema,
+    CompatibilityCallToolResultSchema: () => CompatibilityCallToolResultSchema,
+    CompleteRequestParamsSchema: () => CompleteRequestParamsSchema,
+    CompleteRequestSchema: () => CompleteRequestSchema,
+    CompleteResultSchema: () => CompleteResultSchema,
+    ContentBlockSchema: () => ContentBlockSchema,
+    CreateMessageRequestParamsSchema: () => CreateMessageRequestParamsSchema,
+    CreateMessageRequestSchema: () => CreateMessageRequestSchema,
+    CreateMessageResultSchema: () => CreateMessageResultSchema,
+    CreateMessageResultWithToolsSchema: () => CreateMessageResultWithToolsSchema,
+    CreateTaskResultSchema: () => CreateTaskResultSchema,
+    CursorSchema: () => CursorSchema,
     DiscoverRequestSchema: () => DiscoverRequestSchema,
     DiscoverResultSchema: () => DiscoverResultSchema,
-    ElicitRequestFormParamsSchema: () => ElicitRequestFormParamsSchema2,
-    ElicitRequestParamsSchema: () => ElicitRequestParamsSchema2,
-    ElicitRequestSchema: () => ElicitRequestSchema2,
-    ElicitRequestURLParamsSchema: () => ElicitRequestURLParamsSchema2,
-    ElicitResultSchema: () => ElicitResultSchema2,
-    ElicitationCompleteNotificationParamsSchema: () => ElicitationCompleteNotificationParamsSchema2,
-    ElicitationCompleteNotificationSchema: () => ElicitationCompleteNotificationSchema2,
-    EmbeddedResourceSchema: () => EmbeddedResourceSchema2,
-    EmptyResultSchema: () => EmptyResultSchema2,
-    EnumSchemaSchema: () => EnumSchemaSchema2,
-    GetPromptRequestParamsSchema: () => GetPromptRequestParamsSchema2,
-    GetPromptRequestSchema: () => GetPromptRequestSchema2,
-    GetPromptResultSchema: () => GetPromptResultSchema2,
-    GetTaskPayloadRequestSchema: () => GetTaskPayloadRequestSchema2,
-    GetTaskPayloadResultSchema: () => GetTaskPayloadResultSchema2,
-    GetTaskRequestSchema: () => GetTaskRequestSchema2,
-    GetTaskResultSchema: () => GetTaskResultSchema2,
-    IconSchema: () => IconSchema2,
-    IconsSchema: () => IconsSchema2,
-    ImageContentSchema: () => ImageContentSchema2,
-    ImplementationSchema: () => ImplementationSchema2,
-    InitializeRequestParamsSchema: () => InitializeRequestParamsSchema2,
-    InitializeRequestSchema: () => InitializeRequestSchema2,
-    InitializeResultSchema: () => InitializeResultSchema2,
-    InitializedNotificationSchema: () => InitializedNotificationSchema2,
+    ElicitRequestFormParamsSchema: () => ElicitRequestFormParamsSchema,
+    ElicitRequestParamsSchema: () => ElicitRequestParamsSchema,
+    ElicitRequestSchema: () => ElicitRequestSchema,
+    ElicitRequestURLParamsSchema: () => ElicitRequestURLParamsSchema,
+    ElicitResultSchema: () => ElicitResultSchema,
+    ElicitationCompleteNotificationParamsSchema: () => ElicitationCompleteNotificationParamsSchema,
+    ElicitationCompleteNotificationSchema: () => ElicitationCompleteNotificationSchema,
+    EmbeddedResourceSchema: () => EmbeddedResourceSchema,
+    EmptyResultSchema: () => EmptyResultSchema,
+    EnumSchemaSchema: () => EnumSchemaSchema,
+    GetPromptRequestParamsSchema: () => GetPromptRequestParamsSchema,
+    GetPromptRequestSchema: () => GetPromptRequestSchema,
+    GetPromptResultSchema: () => GetPromptResultSchema,
+    GetTaskPayloadRequestSchema: () => GetTaskPayloadRequestSchema,
+    GetTaskPayloadResultSchema: () => GetTaskPayloadResultSchema,
+    GetTaskRequestSchema: () => GetTaskRequestSchema,
+    GetTaskResultSchema: () => GetTaskResultSchema,
+    IconSchema: () => IconSchema,
+    IconsSchema: () => IconsSchema,
+    ImageContentSchema: () => ImageContentSchema,
+    ImplementationSchema: () => ImplementationSchema,
+    InitializeRequestParamsSchema: () => InitializeRequestParamsSchema,
+    InitializeRequestSchema: () => InitializeRequestSchema,
+    InitializeResultSchema: () => InitializeResultSchema,
+    InitializedNotificationSchema: () => InitializedNotificationSchema,
     JSONArraySchema: () => JSONArraySchema,
     JSONObjectSchema: () => JSONObjectSchema,
-    JSONRPCErrorResponseSchema: () => JSONRPCErrorResponseSchema2,
-    JSONRPCMessageSchema: () => JSONRPCMessageSchema2,
-    JSONRPCNotificationSchema: () => JSONRPCNotificationSchema2,
-    JSONRPCRequestSchema: () => JSONRPCRequestSchema2,
-    JSONRPCResponseSchema: () => JSONRPCResponseSchema2,
-    JSONRPCResultResponseSchema: () => JSONRPCResultResponseSchema2,
+    JSONRPCErrorResponseSchema: () => JSONRPCErrorResponseSchema,
+    JSONRPCMessageSchema: () => JSONRPCMessageSchema,
+    JSONRPCNotificationSchema: () => JSONRPCNotificationSchema,
+    JSONRPCRequestSchema: () => JSONRPCRequestSchema,
+    JSONRPCResponseSchema: () => JSONRPCResponseSchema,
+    JSONRPCResultResponseSchema: () => JSONRPCResultResponseSchema,
     JSONValueSchema: () => JSONValueSchema,
-    LegacyTitledEnumSchemaSchema: () => LegacyTitledEnumSchemaSchema2,
-    ListChangedOptionsBaseSchema: () => ListChangedOptionsBaseSchema2,
-    ListPromptsRequestSchema: () => ListPromptsRequestSchema2,
-    ListPromptsResultSchema: () => ListPromptsResultSchema2,
-    ListResourceTemplatesRequestSchema: () => ListResourceTemplatesRequestSchema2,
-    ListResourceTemplatesResultSchema: () => ListResourceTemplatesResultSchema2,
-    ListResourcesRequestSchema: () => ListResourcesRequestSchema2,
-    ListResourcesResultSchema: () => ListResourcesResultSchema2,
-    ListRootsRequestSchema: () => ListRootsRequestSchema2,
-    ListRootsResultSchema: () => ListRootsResultSchema2,
-    ListTasksRequestSchema: () => ListTasksRequestSchema2,
-    ListTasksResultSchema: () => ListTasksResultSchema2,
-    ListToolsRequestSchema: () => ListToolsRequestSchema2,
-    ListToolsResultSchema: () => ListToolsResultSchema2,
-    LoggingLevelSchema: () => LoggingLevelSchema2,
-    LoggingMessageNotificationParamsSchema: () => LoggingMessageNotificationParamsSchema2,
-    LoggingMessageNotificationSchema: () => LoggingMessageNotificationSchema2,
-    ModelHintSchema: () => ModelHintSchema2,
-    ModelPreferencesSchema: () => ModelPreferencesSchema2,
-    MultiSelectEnumSchemaSchema: () => MultiSelectEnumSchemaSchema2,
-    NotificationSchema: () => NotificationSchema2,
-    NotificationsParamsSchema: () => NotificationsParamsSchema2,
-    NumberSchemaSchema: () => NumberSchemaSchema2,
-    PaginatedRequestParamsSchema: () => PaginatedRequestParamsSchema2,
-    PaginatedRequestSchema: () => PaginatedRequestSchema2,
-    PaginatedResultSchema: () => PaginatedResultSchema2,
-    PingRequestSchema: () => PingRequestSchema2,
-    PrimitiveSchemaDefinitionSchema: () => PrimitiveSchemaDefinitionSchema2,
-    ProgressNotificationParamsSchema: () => ProgressNotificationParamsSchema2,
-    ProgressNotificationSchema: () => ProgressNotificationSchema2,
-    ProgressSchema: () => ProgressSchema2,
-    ProgressTokenSchema: () => ProgressTokenSchema2,
-    PromptArgumentSchema: () => PromptArgumentSchema2,
-    PromptListChangedNotificationSchema: () => PromptListChangedNotificationSchema2,
-    PromptMessageSchema: () => PromptMessageSchema2,
-    PromptReferenceSchema: () => PromptReferenceSchema2,
-    PromptSchema: () => PromptSchema2,
-    ReadResourceRequestParamsSchema: () => ReadResourceRequestParamsSchema2,
-    ReadResourceRequestSchema: () => ReadResourceRequestSchema2,
-    ReadResourceResultSchema: () => ReadResourceResultSchema2,
-    RelatedTaskMetadataSchema: () => RelatedTaskMetadataSchema2,
-    RequestIdSchema: () => RequestIdSchema2,
-    RequestMetaSchema: () => RequestMetaSchema2,
-    RequestSchema: () => RequestSchema2,
-    ResourceContentsSchema: () => ResourceContentsSchema2,
-    ResourceLinkSchema: () => ResourceLinkSchema2,
-    ResourceListChangedNotificationSchema: () => ResourceListChangedNotificationSchema2,
-    ResourceRequestParamsSchema: () => ResourceRequestParamsSchema2,
-    ResourceSchema: () => ResourceSchema2,
-    ResourceTemplateReferenceSchema: () => ResourceTemplateReferenceSchema2,
-    ResourceTemplateSchema: () => ResourceTemplateSchema2,
-    ResourceUpdatedNotificationParamsSchema: () => ResourceUpdatedNotificationParamsSchema2,
-    ResourceUpdatedNotificationSchema: () => ResourceUpdatedNotificationSchema2,
+    LegacyTitledEnumSchemaSchema: () => LegacyTitledEnumSchemaSchema,
+    ListChangedOptionsBaseSchema: () => ListChangedOptionsBaseSchema,
+    ListPromptsRequestSchema: () => ListPromptsRequestSchema,
+    ListPromptsResultSchema: () => ListPromptsResultSchema,
+    ListResourceTemplatesRequestSchema: () => ListResourceTemplatesRequestSchema,
+    ListResourceTemplatesResultSchema: () => ListResourceTemplatesResultSchema,
+    ListResourcesRequestSchema: () => ListResourcesRequestSchema,
+    ListResourcesResultSchema: () => ListResourcesResultSchema,
+    ListRootsRequestSchema: () => ListRootsRequestSchema,
+    ListRootsResultSchema: () => ListRootsResultSchema,
+    ListTasksRequestSchema: () => ListTasksRequestSchema,
+    ListTasksResultSchema: () => ListTasksResultSchema,
+    ListToolsRequestSchema: () => ListToolsRequestSchema,
+    ListToolsResultSchema: () => ListToolsResultSchema,
+    LoggingLevelSchema: () => LoggingLevelSchema,
+    LoggingMessageNotificationParamsSchema: () => LoggingMessageNotificationParamsSchema,
+    LoggingMessageNotificationSchema: () => LoggingMessageNotificationSchema,
+    ModelHintSchema: () => ModelHintSchema,
+    ModelPreferencesSchema: () => ModelPreferencesSchema,
+    MultiSelectEnumSchemaSchema: () => MultiSelectEnumSchemaSchema,
+    NotificationSchema: () => NotificationSchema,
+    NotificationsParamsSchema: () => NotificationsParamsSchema,
+    NumberSchemaSchema: () => NumberSchemaSchema,
+    PaginatedRequestParamsSchema: () => PaginatedRequestParamsSchema,
+    PaginatedRequestSchema: () => PaginatedRequestSchema,
+    PaginatedResultSchema: () => PaginatedResultSchema,
+    PingRequestSchema: () => PingRequestSchema,
+    PrimitiveSchemaDefinitionSchema: () => PrimitiveSchemaDefinitionSchema,
+    ProgressNotificationParamsSchema: () => ProgressNotificationParamsSchema,
+    ProgressNotificationSchema: () => ProgressNotificationSchema,
+    ProgressSchema: () => ProgressSchema,
+    ProgressTokenSchema: () => ProgressTokenSchema,
+    PromptArgumentSchema: () => PromptArgumentSchema,
+    PromptListChangedNotificationSchema: () => PromptListChangedNotificationSchema,
+    PromptMessageSchema: () => PromptMessageSchema,
+    PromptReferenceSchema: () => PromptReferenceSchema,
+    PromptSchema: () => PromptSchema,
+    ReadResourceRequestParamsSchema: () => ReadResourceRequestParamsSchema,
+    ReadResourceRequestSchema: () => ReadResourceRequestSchema,
+    ReadResourceResultSchema: () => ReadResourceResultSchema,
+    RelatedTaskMetadataSchema: () => RelatedTaskMetadataSchema,
+    RequestIdSchema: () => RequestIdSchema,
+    RequestMetaSchema: () => RequestMetaSchema,
+    RequestSchema: () => RequestSchema,
+    ResourceContentsSchema: () => ResourceContentsSchema,
+    ResourceLinkSchema: () => ResourceLinkSchema,
+    ResourceListChangedNotificationSchema: () => ResourceListChangedNotificationSchema,
+    ResourceRequestParamsSchema: () => ResourceRequestParamsSchema,
+    ResourceSchema: () => ResourceSchema,
+    ResourceTemplateReferenceSchema: () => ResourceTemplateReferenceSchema,
+    ResourceTemplateSchema: () => ResourceTemplateSchema,
+    ResourceUpdatedNotificationParamsSchema: () => ResourceUpdatedNotificationParamsSchema,
+    ResourceUpdatedNotificationSchema: () => ResourceUpdatedNotificationSchema,
     ResultMetaObjectSchema: () => ResultMetaObjectSchema,
-    ResultSchema: () => ResultSchema2,
-    RoleSchema: () => RoleSchema2,
-    RootSchema: () => RootSchema2,
-    RootsListChangedNotificationSchema: () => RootsListChangedNotificationSchema2,
-    SamplingContentSchema: () => SamplingContentSchema2,
-    SamplingMessageContentBlockSchema: () => SamplingMessageContentBlockSchema2,
-    SamplingMessageSchema: () => SamplingMessageSchema2,
-    ServerCapabilitiesSchema: () => ServerCapabilitiesSchema2,
-    ServerNotificationSchema: () => ServerNotificationSchema2,
-    ServerRequestSchema: () => ServerRequestSchema2,
-    ServerResultSchema: () => ServerResultSchema2,
-    ServerTasksCapabilitySchema: () => ServerTasksCapabilitySchema2,
-    SetLevelRequestParamsSchema: () => SetLevelRequestParamsSchema2,
-    SetLevelRequestSchema: () => SetLevelRequestSchema2,
-    SingleSelectEnumSchemaSchema: () => SingleSelectEnumSchemaSchema2,
-    StringSchemaSchema: () => StringSchemaSchema2,
-    SubscribeRequestParamsSchema: () => SubscribeRequestParamsSchema2,
-    SubscribeRequestSchema: () => SubscribeRequestSchema2,
+    ResultSchema: () => ResultSchema,
+    RoleSchema: () => RoleSchema,
+    RootSchema: () => RootSchema,
+    RootsListChangedNotificationSchema: () => RootsListChangedNotificationSchema,
+    SamplingContentSchema: () => SamplingContentSchema,
+    SamplingMessageContentBlockSchema: () => SamplingMessageContentBlockSchema,
+    SamplingMessageSchema: () => SamplingMessageSchema,
+    ServerCapabilitiesSchema: () => ServerCapabilitiesSchema,
+    ServerNotificationSchema: () => ServerNotificationSchema,
+    ServerRequestSchema: () => ServerRequestSchema,
+    ServerResultSchema: () => ServerResultSchema,
+    ServerTasksCapabilitySchema: () => ServerTasksCapabilitySchema,
+    SetLevelRequestParamsSchema: () => SetLevelRequestParamsSchema,
+    SetLevelRequestSchema: () => SetLevelRequestSchema,
+    SingleSelectEnumSchemaSchema: () => SingleSelectEnumSchemaSchema,
+    StringSchemaSchema: () => StringSchemaSchema,
+    SubscribeRequestParamsSchema: () => SubscribeRequestParamsSchema,
+    SubscribeRequestSchema: () => SubscribeRequestSchema,
     SubscriptionFilterSchema: () => SubscriptionFilterSchema,
     SubscriptionsAcknowledgedNotificationParamsSchema: () => SubscriptionsAcknowledgedNotificationParamsSchema,
     SubscriptionsAcknowledgedNotificationSchema: () => SubscriptionsAcknowledgedNotificationSchema,
@@ -301287,28 +300633,28 @@ var init_src_D_zzAWoS = __esm(() => {
     SubscriptionsListenRequestSchema: () => SubscriptionsListenRequestSchema,
     SubscriptionsListenResultMetaSchema: () => SubscriptionsListenResultMetaSchema,
     SubscriptionsListenResultSchema: () => SubscriptionsListenResultSchema,
-    TaskAugmentedRequestParamsSchema: () => TaskAugmentedRequestParamsSchema2,
-    TaskCreationParamsSchema: () => TaskCreationParamsSchema2,
-    TaskMetadataSchema: () => TaskMetadataSchema2,
-    TaskSchema: () => TaskSchema2,
-    TaskStatusNotificationParamsSchema: () => TaskStatusNotificationParamsSchema2,
-    TaskStatusNotificationSchema: () => TaskStatusNotificationSchema2,
-    TaskStatusSchema: () => TaskStatusSchema2,
-    TextContentSchema: () => TextContentSchema2,
-    TextResourceContentsSchema: () => TextResourceContentsSchema2,
-    TitledMultiSelectEnumSchemaSchema: () => TitledMultiSelectEnumSchemaSchema2,
-    TitledSingleSelectEnumSchemaSchema: () => TitledSingleSelectEnumSchemaSchema2,
-    ToolAnnotationsSchema: () => ToolAnnotationsSchema2,
-    ToolChoiceSchema: () => ToolChoiceSchema2,
-    ToolExecutionSchema: () => ToolExecutionSchema2,
-    ToolListChangedNotificationSchema: () => ToolListChangedNotificationSchema2,
-    ToolResultContentSchema: () => ToolResultContentSchema2,
-    ToolSchema: () => ToolSchema2,
-    ToolUseContentSchema: () => ToolUseContentSchema2,
-    UnsubscribeRequestParamsSchema: () => UnsubscribeRequestParamsSchema2,
-    UnsubscribeRequestSchema: () => UnsubscribeRequestSchema2,
-    UntitledMultiSelectEnumSchemaSchema: () => UntitledMultiSelectEnumSchemaSchema2,
-    UntitledSingleSelectEnumSchemaSchema: () => UntitledSingleSelectEnumSchemaSchema2
+    TaskAugmentedRequestParamsSchema: () => TaskAugmentedRequestParamsSchema,
+    TaskCreationParamsSchema: () => TaskCreationParamsSchema,
+    TaskMetadataSchema: () => TaskMetadataSchema,
+    TaskSchema: () => TaskSchema,
+    TaskStatusNotificationParamsSchema: () => TaskStatusNotificationParamsSchema,
+    TaskStatusNotificationSchema: () => TaskStatusNotificationSchema,
+    TaskStatusSchema: () => TaskStatusSchema,
+    TextContentSchema: () => TextContentSchema,
+    TextResourceContentsSchema: () => TextResourceContentsSchema,
+    TitledMultiSelectEnumSchemaSchema: () => TitledMultiSelectEnumSchemaSchema,
+    TitledSingleSelectEnumSchemaSchema: () => TitledSingleSelectEnumSchemaSchema,
+    ToolAnnotationsSchema: () => ToolAnnotationsSchema,
+    ToolChoiceSchema: () => ToolChoiceSchema,
+    ToolExecutionSchema: () => ToolExecutionSchema,
+    ToolListChangedNotificationSchema: () => ToolListChangedNotificationSchema,
+    ToolResultContentSchema: () => ToolResultContentSchema,
+    ToolSchema: () => ToolSchema,
+    ToolUseContentSchema: () => ToolUseContentSchema,
+    UnsubscribeRequestParamsSchema: () => UnsubscribeRequestParamsSchema,
+    UnsubscribeRequestSchema: () => UnsubscribeRequestSchema,
+    UntitledMultiSelectEnumSchemaSchema: () => UntitledMultiSelectEnumSchemaSchema,
+    UntitledSingleSelectEnumSchemaSchema: () => UntitledSingleSelectEnumSchemaSchema
   });
   PERMITTED_X_MCP_HEADER_TYPES2 = new Set([
     "string",
@@ -301418,20 +300764,20 @@ var init_src_D_zzAWoS = __esm(() => {
     "title",
     "writeOnly"
   ]);
-  ROOT_KEYS2 = new Set(["$schema", ...Object.keys(ElicitRequestFormParamsSchema2.shape.requestedSchema.shape)]);
+  ROOT_KEYS2 = new Set(["$schema", ...Object.keys(ElicitRequestFormParamsSchema.shape.requestedSchema.shape)]);
   PROPERTY_KEYS_BY_TYPE2 = {
     string: shapeKeys2([
-      StringSchemaSchema2,
-      UntitledSingleSelectEnumSchemaSchema2,
-      TitledSingleSelectEnumSchemaSchema2,
-      LegacyTitledEnumSchemaSchema2
+      StringSchemaSchema,
+      UntitledSingleSelectEnumSchemaSchema,
+      TitledSingleSelectEnumSchemaSchema,
+      LegacyTitledEnumSchemaSchema
     ]),
-    number: shapeKeys2([NumberSchemaSchema2]),
-    integer: shapeKeys2([NumberSchemaSchema2]),
-    boolean: shapeKeys2([BooleanSchemaSchema2]),
-    array: shapeKeys2([UntitledMultiSelectEnumSchemaSchema2, TitledMultiSelectEnumSchemaSchema2])
+    number: shapeKeys2([NumberSchemaSchema]),
+    integer: shapeKeys2([NumberSchemaSchema]),
+    boolean: shapeKeys2([BooleanSchemaSchema]),
+    array: shapeKeys2([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema])
   };
-  SUPPORTED_STRING_FORMATS2 = new Set(StringSchemaSchema2.shape.format.unwrap().options);
+  SUPPORTED_STRING_FORMATS2 = new Set(StringSchemaSchema.shape.format.unwrap().options);
   inputRequired2 = Object.assign(buildInputRequired2, {
     elicit(params) {
       try {
@@ -301655,7 +301001,7 @@ var init_src_D_zzAWoS = __esm(() => {
   ];
   RETRY_PARAMS_KEYS2 = ["inputResponses", "requestState"];
   NO_REQUEST_STATE2 = requestStateAccessor2(undefined);
-  Protocol3 = class {
+  Protocol2 = class {
     _transport;
     _requestMessageId = 0;
     _requestHandlers = /* @__PURE__ */ new Map;
@@ -301770,11 +301116,11 @@ var init_src_D_zzAWoS = __esm(() => {
       const _onmessage = this._transport?.onmessage;
       this._transport.onmessage = (message, extra) => {
         _onmessage?.(message, extra);
-        if (isJSONRPCResultResponse3(message) || isJSONRPCErrorResponse3(message))
+        if (isJSONRPCResultResponse2(message) || isJSONRPCErrorResponse2(message))
           this._onresponse(message);
-        else if (isJSONRPCRequest3(message))
+        else if (isJSONRPCRequest2(message))
           this._onrequest(message, extra);
-        else if (isJSONRPCNotification3(message))
+        else if (isJSONRPCNotification2(message))
           this._onnotification(message, extra);
         else
           this._onerror(/* @__PURE__ */ new Error(`Unknown message type: ${JSON.stringify(message)}`));
@@ -301977,7 +301323,7 @@ var init_src_D_zzAWoS = __esm(() => {
       this._responseHandlers.delete(messageId);
       this._cleanupTimeout(messageId);
       this._progressHandlers.delete(messageId);
-      if (isJSONRPCResultResponse3(response))
+      if (isJSONRPCResultResponse2(response))
         handler(response);
       else
         handler(ProtocolError2.fromError(response.error.code, response.error.message, response.error.data));
@@ -302129,7 +301475,7 @@ var init_src_D_zzAWoS = __esm(() => {
         });
         onAbort = () => cancel(options?.signal?.reason);
         options?.signal?.addEventListener("abort", onAbort, { once: true });
-        const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC3;
+        const timeout = options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MSEC2;
         const timeoutHandler = () => cancel(new SdkError2(SdkErrorCode2.RequestTimeout, "Request timed out", { timeout }));
         this._setupTimeout(messageId, timeout, options?.maxTotalTimeout, timeoutHandler, options?.resetTimeoutOnProgress ?? false);
         this._transport.send(outbound, {
@@ -310145,7 +309491,7 @@ var init_vaultProfileDerivation = __esm(() => {
       return false;
     }
   });
-  vaultProfileLeafSchema = object2({
+  vaultProfileLeafSchema = object({
     scheme: literal("brc42"),
     protocolID: tuple([
       union([literal(0), literal(1), literal(2)]),
@@ -310155,17 +309501,17 @@ var init_vaultProfileDerivation = __esm(() => {
     counterparty: union([_enum(["self", "anyone"]), publicKeySchema])
   }).strict();
   vaultProfileDerivationSchema = discriminatedUnion("scheme", [
-    object2({
+    object({
       scheme: literal("brc157"),
       index: number2().int().min(0).max(2147483647),
       leaf: vaultProfileLeafSchema
     }).strict(),
-    object2({
+    object({
       scheme: literal("yours-legacy-bip32"),
       path: _enum(YOURS_LEGACY_PROFILE_PATHS)
     }).strict()
   ]);
-  referenceSchema = object2({
+  referenceSchema = object({
     vaultId: identifier,
     entryId: identifier,
     derivation: vaultProfileDerivationSchema
@@ -310282,7 +309628,7 @@ var init_projectRoleBindings = __esm(() => {
       return false;
     }
   }, "Expected a valid compressed public key");
-  projectBrc42DerivationSchema = object2({
+  projectBrc42DerivationSchema = object({
     scheme: literal("brc42"),
     protocolID: tuple([
       union([literal(0), literal(1), literal(2)]),
@@ -310291,13 +309637,13 @@ var init_projectRoleBindings = __esm(() => {
     keyID: string2().min(1).max(800),
     counterparty: union([_enum(["self", "anyone"]), publicKey2])
   }).strict();
-  projectVaultKeyReferenceSchema = object2({
+  projectVaultKeyReferenceSchema = object({
     vaultId: identifier2,
     entryId: identifier2,
     expectedPublicKey: publicKey2,
     derivation: union([projectBrc42DerivationSchema, vaultProfileDerivationSchema]).optional()
   }).strict();
-  bindingFields = object2({
+  bindingFields = object({
     bindingId: identifier2,
     role: projectKeyRoleSchema,
     accountId: accountNameSchema,
@@ -310308,7 +309654,7 @@ var init_projectRoleBindings = __esm(() => {
       "brc157-leaf-v1",
       "yours-legacy-leaf-v1"
     ]),
-    createdAt: exports_iso2.datetime({ offset: true }),
+    createdAt: exports_iso.datetime({ offset: true }),
     previousBindingId: identifier2.optional()
   }).strict();
   projectRoleBindingSchema = bindingFields.superRefine((binding, ctx) => {
@@ -310339,18 +309685,18 @@ var init_projectRoleBindings = __esm(() => {
     "one-sat": ["asset-recovery", "pending-actions"],
     encryption: ["decrypt-history"]
   };
-  projectRoleBindingsSchema = object2({
+  projectRoleBindingsSchema = object({
     schemaVersion: literal(1),
     projectId: identifier2,
     revision: number2().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    current: object2({
+    current: object({
       "identity-signing": identifier2.nullable(),
       payments: identifier2.nullable(),
       "one-sat": identifier2.nullable(),
       encryption: identifier2.nullable()
     }).strict(),
     bindings: array(projectRoleBindingSchema),
-    retained: array(object2({
+    retained: array(object({
       bindingId: identifier2,
       uses: array(retentionUseSchema).min(1)
     }).strict())
@@ -310393,7 +309739,7 @@ var init_projectRoleBindings = __esm(() => {
         fail("Historical binding must retain all role recovery uses");
     }
   });
-  selectionChangeSchema = object2({
+  selectionChangeSchema = object({
     role: projectKeyRoleSchema,
     binding: bindingFields.omit({ role: true, previousBindingId: true }).nullable()
   }).strict();
@@ -310401,7 +309747,7 @@ var init_projectRoleBindings = __esm(() => {
 
 // utils/projectRoleBindingsStore.ts
 import { randomUUID as randomUUID6 } from "node:crypto";
-import { constants as constants4 } from "node:fs";
+import { constants as constants5 } from "node:fs";
 import {
   lstat as lstat2,
   open as open4,
@@ -310409,7 +309755,7 @@ import {
   rename as rename3,
   unlink
 } from "node:fs/promises";
-import { isAbsolute as isAbsolute8, join as join16 } from "node:path";
+import { isAbsolute as isAbsolute10, join as join18 } from "node:path";
 function fail4(code, message) {
   throw new ProjectRoleStoreError(code, message);
 }
@@ -310420,7 +309766,7 @@ function sameFile(a, b) {
   return a.dev === b.dev && a.ino === b.ino;
 }
 async function projectLocation(projectRoot) {
-  if (!isAbsolute8(projectRoot))
+  if (!isAbsolute10(projectRoot))
     fail4("PROJECT_ROLE_ROOT_INVALID", "An explicit absolute project root is required");
   const requested = await lstat2(projectRoot);
   if (!requested.isDirectory() || requested.isSymbolicLink())
@@ -310430,8 +309776,8 @@ async function projectLocation(projectRoot) {
   return {
     root,
     identity,
-    configPath: join16(root, PROJECT_ROLE_CONFIG_FILENAME),
-    lockPath: join16(root, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`)
+    configPath: join18(root, PROJECT_ROLE_CONFIG_FILENAME),
+    lockPath: join18(root, `${PROJECT_ROLE_CONFIG_FILENAME}.lock`)
   };
 }
 async function assertRoot(location2) {
@@ -310443,7 +309789,7 @@ async function readDocument(location2) {
   await assertRoot(location2);
   let file;
   try {
-    file = await open4(location2.configPath, constants4.O_RDONLY | constants4.O_NOFOLLOW);
+    file = await open4(location2.configPath, constants5.O_RDONLY | constants5.O_NOFOLLOW);
   } catch (error) {
     if (isErrno(error, "ENOENT"))
       return { raw: null, document: {} };
@@ -310510,7 +309856,7 @@ async function saveProjectRoleBindings(projectRoot, input, options) {
   const location2 = await projectLocation(projectRoot);
   let lock;
   try {
-    lock = await open4(location2.lockPath, constants4.O_WRONLY | constants4.O_CREAT | constants4.O_EXCL | constants4.O_NOFOLLOW, 384);
+    lock = await open4(location2.lockPath, constants5.O_WRONLY | constants5.O_CREAT | constants5.O_EXCL | constants5.O_NOFOLLOW, 384);
   } catch (error) {
     if (isErrno(error, "EEXIST") || isErrno(error, "ELOOP")) {
       const existing = await lstat2(location2.lockPath);
@@ -310547,7 +309893,7 @@ async function saveProjectRoleBindings(projectRoot, input, options) {
 `;
     if (Buffer.byteLength(serialized, "utf8") > MAX_CONFIG_BYTES)
       fail4("PROJECT_ROLE_CONFIG_INVALID", "Project config exceeds the size limit");
-    temporaryPath = join16(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID6()}.tmp`);
+    temporaryPath = join18(location2.root, `${PROJECT_ROLE_CONFIG_FILENAME}.${randomUUID6()}.tmp`);
     const temporary = await open4(temporaryPath, "wx", 384);
     try {
       await temporary.writeFile(serialized, "utf8");
@@ -310603,7 +309949,7 @@ var init_vaultProfileBinding = __esm(() => {
   init_zod();
   init_projectRoleBindings();
   init_vaultProfileDerivation();
-  vaultProfileBindingSchema = object2({
+  vaultProfileBindingSchema = object({
     keyUseContract: _enum(["brc157-leaf-v1", "yours-legacy-leaf-v1"]),
     key: projectVaultKeyReferenceSchema
   }).strict().superRefine((binding, ctx) => {
@@ -310618,7 +309964,7 @@ var init_vaultProfileBinding = __esm(() => {
 });
 
 // utils/vaultWallet.ts
-import { isAbsolute as isAbsolute9 } from "node:path";
+import { isAbsolute as isAbsolute11 } from "node:path";
 function createOplVaultLoader(module) {
   return async (path, passphrase) => {
     let vault;
@@ -310654,7 +310000,7 @@ function createOplVaultLoader(module) {
 }
 async function openVaultWalletSession(selection, passphrase, dependencies) {
   const parsed = vaultWalletBindingSchema.safeParse(selection.binding);
-  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute9(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
+  if (!parsed.success || parsed.data.accountId !== selection.accountName || !isAbsolute11(selection.vaultPath) || !accountNameSchema.safeParse(selection.accountName).success || !["main", "test"].includes(selection.chain) || !selection.reason.trim()) {
     throw new VaultWalletError("INVALID_SELECTION", "Select a valid Vault entry and existing wallet account.");
   }
   const ttl = selection.ttlSeconds ?? 300;
@@ -310874,7 +310220,7 @@ var init_vaultWallet = __esm(() => {
   init_vaultProfileDerivation();
   init_walletInit();
   init_walletKeyStorage();
-  vaultWalletBindingSchema = object2({
+  vaultWalletBindingSchema = object({
     projectId: string2().min(1),
     revision: number2().int().nonnegative(),
     bindingId: string2().min(1),
@@ -310917,7 +310263,7 @@ var init_vaultWallet = __esm(() => {
 });
 
 // utils/vaultWalletController.ts
-import { isAbsolute as isAbsolute10 } from "node:path";
+import { isAbsolute as isAbsolute12 } from "node:path";
 async function loadInstalledVaultModule(importModule = (specifier) => import(specifier)) {
   let module;
   try {
@@ -310952,7 +310298,7 @@ function vaultSelectionFromSnapshot(snapshot, options) {
   };
 }
 function createVaultWalletController(options) {
-  if (!isAbsolute10(options.projectRoot) || !options.expectedProjectId)
+  if (!isAbsolute12(options.projectRoot) || !options.expectedProjectId)
     throw new VaultWalletError("PROJECT_REQUIRED", "An explicit absolute project root and project ID are required.");
   const projectRoot = options.projectRoot;
   const expectedProjectId = options.expectedProjectId;
@@ -311061,14 +310407,14 @@ var init_vaultWalletController = __esm(() => {
 });
 
 // utils/projectWalletRuntime.ts
-import { isAbsolute as isAbsolute11, resolve as resolve5 } from "node:path";
+import { isAbsolute as isAbsolute13, resolve as resolve5 } from "node:path";
 function fail5(code, message) {
   throw new VaultWalletError(code, message);
 }
 function explicitPath(value, name) {
   if (!value?.trim())
     fail5("PROJECT_PATH_INVALID", `${name} is required`);
-  if (!isAbsolute11(value))
+  if (!isAbsolute13(value))
     fail5("PROJECT_PATH_INVALID", `${name} must be an absolute path`);
   return resolve5(value);
 }
@@ -311377,13 +310723,13 @@ var init_projectRoleSelection = __esm(() => {
   init_zod();
   init_projectRoleBindings();
   choice = string2().regex(/^(unassigned|(?:keep|select):[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127})$/);
-  projectRoleAssignmentsSchema = object2({
+  projectRoleAssignmentsSchema = object({
     "identity-signing": choice,
     payments: choice,
     "one-sat": choice,
     encryption: choice
   }).strict();
-  projectRoleSelectionRequestSchema = object2({
+  projectRoleSelectionRequestSchema = object({
     expectedProjectId: string2().min(1),
     expectedRevision: number2().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
     roleAssignments: projectRoleAssignmentsSchema
@@ -311392,28 +310738,28 @@ var init_projectRoleSelection = __esm(() => {
 
 // utils/vaultMigrationJournal.ts
 import { randomUUID as randomUUID7 } from "node:crypto";
-import { existsSync as existsSync11, lstatSync as lstatSync6, readFileSync as readFileSync6, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync12, lstatSync as lstatSync7, readFileSync as readFileSync7, realpathSync as realpathSync3 } from "node:fs";
 import { open as open5, rename as rename4, rm as rm4 } from "node:fs/promises";
-import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute12, join as join17, resolve as resolve6 } from "node:path";
+import { basename as basename2, dirname as dirname5, isAbsolute as isAbsolute14, join as join19, resolve as resolve6 } from "node:path";
 function canonicalMigrationPath(input) {
-  if (!isAbsolute12(input))
+  if (!isAbsolute14(input))
     throw new VaultWalletError("INVALID_PATH", "Migration paths must be absolute.");
   let parent = resolve6(input);
   const tail = [];
-  while (!existsSync11(parent)) {
+  while (!existsSync12(parent)) {
     const next = dirname5(parent);
     if (next === parent)
       throw new VaultWalletError("INVALID_PATH", "Migration path could not be resolved.");
     tail.unshift(basename2(parent));
     parent = next;
   }
-  return join17(realpathSync3(parent), ...tail);
+  return join19(realpathSync3(parent), ...tail);
 }
 function migrationJournalPaths(vaultPath, sessionId) {
   const id = uuid2().parse(sessionId);
   return {
-    journal: join17(dirname5(vaultPath), `.vault-migration-${id}.json`),
-    stageDirectory: join17(dirname5(vaultPath), `.vault-migration-${id}`)
+    journal: join19(dirname5(vaultPath), `.vault-migration-${id}.json`),
+    stageDirectory: join19(dirname5(vaultPath), `.vault-migration-${id}`)
   };
 }
 async function writeMigrationJournal(journal) {
@@ -311443,11 +310789,11 @@ async function writeMigrationJournal(journal) {
 function readMigrationJournal(context) {
   const path = migrationJournalPaths(context.vaultPath, context.sessionId).journal;
   regularPath(path);
-  if (!existsSync11(path))
+  if (!existsSync12(path))
     return;
   let journal;
   try {
-    journal = migrationJournalSchema.parse(JSON.parse(readFileSync6(path, "utf8")));
+    journal = migrationJournalSchema.parse(JSON.parse(readFileSync7(path, "utf8")));
   } catch {
     throw new VaultWalletError("MIGRATION_JOURNAL_INVALID", "Migration recovery metadata is invalid; preserve the encrypted files for manual recovery.");
   }
@@ -311463,7 +310809,7 @@ var init_vaultMigrationJournal = __esm(() => {
   init_vaultWallet();
   digestSchema = string2().regex(/^[0-9a-f]{64}$/);
   databaseName = string2().regex(/^wallet(?:-(?:main|test))?\.db(?:-wal|-shm)?$/);
-  migrationJournalSchema = object2({
+  migrationJournalSchema = object({
     version: literal(1),
     sessionId: uuid2(),
     projectRoot: string2(),
@@ -311483,7 +310829,7 @@ var init_vaultMigrationJournal = __esm(() => {
     stagedVaultHash: digestSchema.optional(),
     beforeConfigHash: digestSchema.nullable(),
     nextProjectConfig: projectRoleBindingsSchema.optional(),
-    preserved: object2({
+    preserved: object({
       identity: literal(true),
       addresses: boolean2(),
       databases: array(databaseName),
@@ -311494,7 +310840,7 @@ var init_vaultMigrationJournal = __esm(() => {
 
 // utils/vaultMigrationBackend.ts
 import { createHash as createHash8, randomUUID as randomUUID8 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync13, readdirSync as readdirSync5, readFileSync as readFileSync8 } from "node:fs";
 import {
   chmod as chmod4,
   copyFile as copyFile3,
@@ -311505,7 +310851,7 @@ import {
   rename as rename5,
   rm as rm5
 } from "node:fs/promises";
-import { dirname as dirname6, isAbsolute as isAbsolute13, join as join18, sep as sep2 } from "node:path";
+import { dirname as dirname6, isAbsolute as isAbsolute15, join as join20, sep as sep2 } from "node:path";
 function roleCandidates(prepared) {
   return Object.entries(prepared.entries).flatMap(([candidateId, entry]) => entry?.publicKey ? [
     {
@@ -311542,18 +310888,18 @@ function sameDestination(prepared, destination) {
   return destination.accountName === prepared.accountName && canonicalMigrationPath(destination.vaultPath) === prepared.session.vaultPath && destination.vaultEntryId === prepared.session.vaultEntryId && (destination.expectedPublicKey === undefined || destination.expectedPublicKey === prepared.session.publicKey);
 }
 async function createAccountVaultMigrationBackend(options) {
-  if (!isAbsolute13(options.projectRoot) || !isAbsolute13(options.vaultPath) || !options.expectedProjectId)
-    throw failure4("PROJECT_REQUIRED", "Configure an explicit project root, project ID and absolute Vault path.");
+  if (!isAbsolute15(options.projectRoot) || !isAbsolute15(options.vaultPath) || !options.expectedProjectId)
+    throw failure5("PROJECT_REQUIRED", "Configure an explicit project root, project ID and absolute Vault path.");
   const projectRoot = canonicalMigrationPath(options.projectRoot);
   const expectedProjectId = options.expectedProjectId;
   const roleAssignments = Object.freeze({ ...options.roleAssignments });
   const vaultPath = canonicalMigrationPath(options.vaultPath);
   const root = canonicalMigrationPath(options.accountsDirectory ?? accountsRoot());
-  if (!isAbsolute13(root))
-    throw failure4("PROJECT_REQUIRED", "The account directory must be an explicit absolute path.");
+  if (!isAbsolute15(root))
+    throw failure5("PROJECT_REQUIRED", "The account directory must be an explicit absolute path.");
   const now = options.now ?? Date.now;
   if (vaultPath === root || vaultPath === dirname6(vaultPath) || vaultPath.startsWith(`${root}${sep2}`))
-    throw failure4("INVALID_DESTINATION", "The Vault destination must be outside the original account directory tree.");
+    throw failure5("INVALID_DESTINATION", "The Vault destination must be outside the original account directory tree.");
   let module;
   try {
     const candidate = await (options.loadModule ?? loadInstalledVaultModule)();
@@ -311565,7 +310911,7 @@ async function createAccountVaultMigrationBackend(options) {
       "createVault",
       "saveVault"
     ].every((name) => (name in candidate) && typeof candidate[name] === "function"))
-      throw failure4("VAULT_PACKAGE_INCOMPATIBLE", "The installed Vault package does not provide encrypted migration support.");
+      throw failure5("VAULT_PACKAGE_INCOMPATIBLE", "The installed Vault package does not provide encrypted migration support.");
     module = candidate;
   } catch (error) {
     const safe = noSecrets(error);
@@ -311599,21 +310945,21 @@ async function createAccountVaultMigrationBackend(options) {
     const prepared = sessions.get(id);
     if (!prepared || now() >= prepared.session.expiresAt) {
       close(id);
-      throw failure4("SESSION_EXPIRED", "Unlock the account and Vault again before migrating.");
+      throw failure5("SESSION_EXPIRED", "Unlock the account and Vault again before migrating.");
     }
     return prepared;
   };
   const checkSource = (prepared) => {
     for (const [name, hash] of prepared.sourceHashes) {
-      const path = join18(prepared.sourceDir, name);
+      const path = join20(prepared.sourceDir, name);
       regularPath(path);
-      if (!existsSync12(path) || digest3(readFileSync7(path)) !== hash)
-        throw failure4("SOURCE_CHANGED", "The account changed since preview. Close its wallet and unlock again before migration.");
+      if (!existsSync13(path) || digest3(readFileSync8(path)) !== hash)
+        throw failure5("SOURCE_CHANGED", "The account changed since preview. Close its wallet and unlock again before migration.");
     }
   };
   const assertRequest = (prepared, input) => {
     if (input.source.location !== "account" || input.source.account !== prepared.accountName || !sameDestination(prepared, input.destination))
-      throw failure4("INVALID_SELECTION", "Migration must preserve the explicitly selected existing account and Vault destination.");
+      throw failure5("INVALID_SELECTION", "Migration must preserve the explicitly selected existing account and Vault destination.");
   };
   return {
     available: true,
@@ -311622,46 +310968,46 @@ async function createAccountVaultMigrationBackend(options) {
       try {
         const credentials = input;
         if (typeof credentials.sourcePassphrase !== "string" || !credentials.sourcePassphrase || typeof credentials.destinationPassphrase !== "string" || credentials.destinationPassphrase.length < 8)
-          throw failure4("CREDENTIALS_REQUIRED", "Enter the account passphrase and a Vault passphrase of at least eight characters separately.");
+          throw failure5("CREDENTIALS_REQUIRED", "Enter the account passphrase and a Vault passphrase of at least eight characters separately.");
         const name = accountNameSchema.parse(input.accountName);
         if (input.source.location !== "account" || input.source.account !== name)
-          throw failure4("SOURCE_UNSUPPORTED", "Choose the same existing encrypted named account as source and destination.");
+          throw failure5("SOURCE_UNSUPPORTED", "Choose the same existing encrypted named account as source and destination.");
         if (canonicalMigrationPath(input.vaultPath) !== vaultPath)
-          throw failure4("INVALID_DESTINATION", "Choose the locally configured Vault destination.");
+          throw failure5("INVALID_DESTINATION", "Choose the locally configured Vault destination.");
         const ttl = input.ttlMs ?? 300000;
         if (!Number.isSafeInteger(ttl) || ttl < 1000 || ttl > 3600000)
-          throw failure4("INVALID_TTL", "Migration unlock duration must be between one second and one hour.");
+          throw failure5("INVALID_TTL", "Migration unlock duration must be between one second and one hour.");
         regularPath(root, true);
         const sourceDir = accountDir(name, root);
         regularPath(sourceDir, true);
-        const configPath = join18(sourceDir, "config.json");
+        const configPath = join20(sourceDir, "config.json");
         regularPath(configPath);
-        const configBytes = readFileSync7(configPath);
+        const configBytes = readFileSync8(configPath);
         const config = readAccount(name, root);
         if (!config)
-          throw failure4("ACCOUNT_UNAVAILABLE", "The selected existing account configuration is unavailable.");
-        const sourcePath = join18(sourceDir, "keys.bep");
+          throw failure5("ACCOUNT_UNAVAILABLE", "The selected existing account configuration is unavailable.");
+        const sourcePath = join20(sourceDir, "keys.bep");
         regularPath(sourcePath);
-        const sourceBytes = readFileSync7(sourcePath);
+        const sourceBytes = readFileSync8(sourcePath);
         const keys = await decodeEncryptedKeys(sourceBytes.toString("utf8"), credentials.sourcePassphrase);
         if (!keys.payPk)
-          throw failure4("SOURCE_UNSUPPORTED", "The encrypted account has no payment key.");
+          throw failure5("SOURCE_UNSUPPORTED", "The encrypted account has no payment key.");
         const paymentPublicKey = keys.payPk.toPublicKey().toString();
         if (input.expectedPublicKey && input.expectedPublicKey !== paymentPublicKey)
-          throw failure4("IDENTITY_MISMATCH", "The account payment key does not match the approved public key.");
+          throw failure5("IDENTITY_MISMATCH", "The account payment key does not match the approved public key.");
         regularPath(dirname6(vaultPath), true);
         regularPath(vaultPath);
-        const vaultBefore = existsSync12(vaultPath) ? readFileSync7(vaultPath) : null;
+        const vaultBefore = existsSync13(vaultPath) ? readFileSync8(vaultPath) : null;
         vault = vaultBefore ? await module.openVault(vaultPath, new module.PassphraseProvider(credentials.destinationPassphrase)) : new module.Vault(module.createVaultDocument({ revealEnabled: true }));
         if (!vault.toDocument().settings.revealEnabled)
-          throw failure4("REVEAL_DISABLED", "Enable Vault reveal locally before choosing in-memory wallet use.");
+          throw failure5("REVEAL_DISABLED", "Enable Vault reveal locally before choosing in-memory wallet use.");
         const originalEntries = vault.list();
         vault.unlock("Review encrypted account migration", Math.ceil(ttl / 1000));
         if (input.vaultEntryId !== "new")
-          throw failure4("DESTINATION_UNSUPPORTED", "Choose a new Vault entry; existing entries are retained without replacement.");
+          throw failure5("DESTINATION_UNSUPPORTED", "Choose a new Vault entry; existing entries are retained without replacement.");
         const payment = vault.importPlain({ wif: keys.payPk.toWif() }, `${name} payment`)[0];
         if (!payment)
-          throw failure4("IMPORT_FAILED", "Vault did not create the payment entry.");
+          throw failure5("IMPORT_FAILED", "Vault did not create the payment entry.");
         const identity = keys.identityPk ? vault.importPlain({ wif: keys.identityPk.toWif() }, `${name} identity`)[0] : undefined;
         if (keys.xprv) {
           const at = new Date(now()).toISOString();
@@ -311679,21 +311025,21 @@ async function createAccountVaultMigrationBackend(options) {
         }
         for (const source of Object.values(roleAssignments)) {
           if (source !== "payment" && source !== "identity")
-            throw failure4("ROLE_SELECTION_REQUIRED", "Choose explicit supported project key roles.");
+            throw failure5("ROLE_SELECTION_REQUIRED", "Choose explicit supported project key roles.");
           if (source === "identity" && !identity)
-            throw failure4("IDENTITY_UNAVAILABLE", "This account has no standalone identity key for the selected role.");
+            throw failure5("IDENTITY_UNAVAILABLE", "This account has no standalone identity key for the selected role.");
         }
         const projectConfig = await loadProjectRoleBindings(projectRoot, expectedProjectId);
         const sourceHashes = new Map;
         for (const file of readdirSync5(sourceDir)) {
           if (file === "keys.bep" || file === "config.json" || /^wallet(?:-(main|test))?\.db(?:-wal|-shm)?$/.test(file)) {
-            const path = join18(sourceDir, file);
+            const path = join20(sourceDir, file);
             regularPath(path);
-            sourceHashes.set(file, digest3(readFileSync7(path)));
+            sourceHashes.set(file, digest3(readFileSync8(path)));
           }
         }
         if (digest3(sourceBytes) !== sourceHashes.get("keys.bep") || digest3(configBytes) !== sourceHashes.get("config.json"))
-          throw failure4("SOURCE_CHANGED", "The source changed while unlocking. Try again.");
+          throw failure5("SOURCE_CHANGED", "The source changed while unlocking. Try again.");
         const session = {
           sessionId: randomUUID8(),
           expiresAt: now() + ttl,
@@ -311777,12 +311123,12 @@ async function createAccountVaultMigrationBackend(options) {
         prepared = current(input.sessionId);
         assertRequest(prepared, input);
         if (input.confirmation !== "MIGRATE_AND_SWITCH")
-          throw failure4("CONFIRMATION_REQUIRED", "Confirm migration before writing the encrypted destination.");
+          throw failure5("CONFIRMATION_REQUIRED", "Confirm migration before writing the encrypted destination.");
         if (prepared.busy)
-          throw failure4("MIGRATION_BUSY", "This migration is already running.");
+          throw failure5("MIGRATION_BUSY", "This migration is already running.");
         const selectionRequest = input.roleSelection;
         if (!selectionRequest && Object.keys(roleAssignments).length === 0)
-          throw failure4("ROLE_SELECTION_REQUIRED", "Choose explicit project key roles before cutover.");
+          throw failure5("ROLE_SELECTION_REQUIRED", "Choose explicit project key roles before cutover.");
         if (selectionRequest)
           prepareProjectRoleSelection(prepared.projectConfig, roleCandidates(prepared), selectionRequest, {
             createBindingId: () => randomUUID8(),
@@ -311837,14 +311183,14 @@ async function createAccountVaultMigrationBackend(options) {
         await lockHandle.sync();
         await writeMigrationJournal(journal);
         regularPath(vaultPath);
-        const actual = existsSync12(vaultPath) ? await readFile4(vaultPath) : null;
+        const actual = existsSync13(vaultPath) ? await readFile4(vaultPath) : null;
         if (actual === null !== (prepared.vaultBefore === null) || actual && prepared.vaultBefore && digest3(actual) !== digest3(prepared.vaultBefore))
-          throw failure4("VAULT_CHANGED", "The destination Vault changed after preview. Unlock again to preserve its current entries.");
+          throw failure5("VAULT_CHANGED", "The destination Vault changed after preview. Unlock again to preserve its current entries.");
         progress("backup", 0, "Preserving the original encrypted account and destination.");
         stageDirectory = migrationJournalPaths(vaultPath, input.sessionId).stageDirectory;
         await mkdir4(stageDirectory, { mode: 448 });
         await chmod4(stageDirectory, 448);
-        const backup = join18(stageDirectory, "source-keys.bep");
+        const backup = join20(stageDirectory, "source-keys.bep");
         const backupHandle = await open6(backup, "wx", 384);
         try {
           await backupHandle.writeFile(prepared.sourceBytes);
@@ -311852,9 +311198,9 @@ async function createAccountVaultMigrationBackend(options) {
         } finally {
           await backupHandle.close();
         }
-        const stage = join18(stageDirectory, "destination.bep");
+        const stage = join20(stageDirectory, "destination.bep");
         if (prepared.vaultBefore) {
-          const previousBackup = join18(stageDirectory, "previous-vault.bep");
+          const previousBackup = join20(stageDirectory, "previous-vault.bep");
           await copyFile3(vaultPath, previousBackup);
           await chmod4(previousBackup, 384);
           await syncFile2(previousBackup);
@@ -311876,10 +311222,10 @@ async function createAccountVaultMigrationBackend(options) {
         const verified = await module.openVault(stage, new module.PassphraseProvider(prepared.password));
         try {
           if (JSON.stringify(verified.toDocument().entries) !== JSON.stringify(prepared.vault.toDocument().entries))
-            throw failure4("VERIFICATION_FAILED", "The encrypted destination did not preserve every Vault entry.");
+            throw failure5("VERIFICATION_FAILED", "The encrypted destination did not preserve every Vault entry.");
           verified.unlock("Verify migrated payment identity", 30);
           if (PrivateKey.fromWif(verified.reveal(prepared.entries.payment.id, "Verify migrated payment identity")).toPublicKey().toString() !== prepared.session.publicKey)
-            throw failure4("VERIFICATION_FAILED", "The encrypted payment identity could not be verified.");
+            throw failure5("VERIFICATION_FAILED", "The encrypted payment identity could not be verified.");
         } finally {
           verified.lock();
         }
@@ -311901,7 +311247,7 @@ async function createAccountVaultMigrationBackend(options) {
         const changes = Object.entries(roleAssignments).map(([role, source]) => {
           const entry = prepared.entries[source];
           if (!entry?.publicKey)
-            throw failure4("VERIFICATION_FAILED", "A selected project role has no verified public key.");
+            throw failure5("VERIFICATION_FAILED", "A selected project role has no verified public key.");
           return {
             role,
             binding: {
@@ -311933,7 +311279,7 @@ async function createAccountVaultMigrationBackend(options) {
         await writeMigrationJournal(journal);
         const latest = await loadProjectRoleBindings(projectRoot, expectedProjectId);
         if ((latest?.revision ?? null) !== prepared.projectRevision)
-          throw failure4("PROJECT_CHANGED", "Project roles changed after preview. Unlock again before cutover.");
+          throw failure5("PROJECT_CHANGED", "Project roles changed after preview. Unlock again before cutover.");
         current(input.sessionId);
         progress("cutover", 3, "Activating the verified encrypted Vault; original account files stay in place.");
         outcome.activationAttempted = true;
@@ -311956,7 +311302,7 @@ async function createAccountVaultMigrationBackend(options) {
         journal.phase = "bindings-committed";
         await writeMigrationJournal(journal);
         if (digest3(await readFile4(vaultPath)) !== journal.stagedVaultHash || JSON.stringify(await loadProjectRoleBindings(projectRoot, expectedProjectId)) !== JSON.stringify(journal.nextProjectConfig))
-          throw failure4("POST_COMMIT_CHANGED", "Migration state changed after activation. Preserve the recovery files and reconcile before retrying.");
+          throw failure5("POST_COMMIT_CHANGED", "Migration state changed after activation. Preserve the recovery files and reconcile before retrying.");
         checkSource(prepared);
         journal.phase = "complete";
         await writeMigrationJournal(journal);
@@ -312000,7 +311346,7 @@ async function createAccountVaultMigrationBackend(options) {
       if (prepared)
         assertRequest(prepared, input);
       if (input.source.location !== "account" || input.source.account !== input.destination.accountName || canonicalMigrationPath(input.destination.vaultPath) !== vaultPath || input.destination.vaultEntryId !== "new")
-        throw failure4("INVALID_SELECTION", "Recovery must use the same project, account and Vault destination.");
+        throw failure5("INVALID_SELECTION", "Recovery must use the same project, account and Vault destination.");
       const recovered = readMigrationJournal({
         projectRoot,
         projectId: expectedProjectId,
@@ -312013,13 +311359,13 @@ async function createAccountVaultMigrationBackend(options) {
       const sourceDir = accountDir(recovered.accountName, root);
       regularPath(sourceDir, true);
       for (const [name, hash] of Object.entries(recovered.sourceHashes)) {
-        const path = join18(sourceDir, name);
+        const path = join20(sourceDir, name);
         regularPath(path);
-        if (!existsSync12(path) || digest3(readFileSync7(path)) !== hash)
+        if (!existsSync13(path) || digest3(readFileSync8(path)) !== hash)
           return { status: "unknown" };
       }
       regularPath(vaultPath);
-      const actualVaultHash = existsSync12(vaultPath) ? digest3(readFileSync7(vaultPath)) : null;
+      const actualVaultHash = existsSync13(vaultPath) ? digest3(readFileSync8(vaultPath)) : null;
       const config = await loadProjectRoleBindings(projectRoot, expectedProjectId);
       if (recovered.stagedVaultHash && actualVaultHash === recovered.stagedVaultHash && recovered.nextProjectConfig && JSON.stringify(config) === JSON.stringify(recovered.nextProjectConfig))
         return {
@@ -312032,14 +311378,14 @@ async function createAccountVaultMigrationBackend(options) {
           }
         };
       const actualConfigHash = config === null ? null : digest3(JSON.stringify(config));
-      if (!existsSync12(`${vaultPath}.lock`) && actualVaultHash === recovered.beforeVaultHash && actualConfigHash === recovered.beforeConfigHash && ["prepared", "stage-verified"].includes(recovered.phase))
+      if (!existsSync13(`${vaultPath}.lock`) && actualVaultHash === recovered.beforeVaultHash && actualConfigHash === recovered.beforeConfigHash && ["prepared", "stage-verified"].includes(recovered.phase))
         return { status: "safe-to-retry" };
       return { status: "unknown" };
     },
     lock: close
   };
 }
-var digest3 = (data) => createHash8("sha256").update(data).digest("hex"), failure4 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure4("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
+var digest3 = (data) => createHash8("sha256").update(data).digest("hex"), failure5 = (code, message) => new VaultWalletError(code, message), noSecrets = (error) => error instanceof VaultWalletError ? error : failure5("MIGRATION_FAILED", "Migration did not complete. The original account files remain available; unlock again to inspect recovery state.");
 var init_vaultMigrationBackend = __esm(() => {
   init_mod();
   init_accounts();
@@ -312053,8 +311399,8 @@ var init_vaultMigrationBackend = __esm(() => {
 });
 
 // utils/vaultSetupBootstrap.ts
-import { homedir as homedir10 } from "node:os";
-import { isAbsolute as isAbsolute14, join as join19 } from "node:path";
+import { homedir as homedir11 } from "node:os";
+import { isAbsolute as isAbsolute16, join as join21 } from "node:path";
 function unavailable3(reason) {
   const fail = async () => {
     throw new Error(reason);
@@ -312071,10 +311417,10 @@ function unavailable3(reason) {
 async function createConfiguredVaultSetupBackend(env = process.env, dependencies = {}) {
   const projectRoot = env.BSV_MCP_PROJECT_ROOT;
   const projectId = env.BSV_MCP_PROJECT_ID;
-  if (!projectRoot || !projectId || !isAbsolute14(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
+  if (!projectRoot || !projectId || !isAbsolute16(projectRoot) || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(projectId))
     return unavailable3("Configure BSV_MCP_PROJECT_ROOT as an absolute project directory and BSV_MCP_PROJECT_ID before enabling migration.");
-  const vaultPath = env.VAULT_PATH ?? join19(dependencies.home ?? homedir10(), ".bsv", "vault.bep");
-  if (!vaultPath || !isAbsolute14(vaultPath))
+  const vaultPath = env.VAULT_PATH ?? join21(dependencies.home ?? homedir11(), ".bsv", "vault.bep");
+  if (!vaultPath || !isAbsolute16(vaultPath))
     return unavailable3("VAULT_PATH must be an absolute path to the locally selected encrypted Vault.");
   try {
     return await (dependencies.createBackend ?? createAccountVaultMigrationBackend)({
@@ -312094,7 +311440,7 @@ async function runConfiguredVaultSetup(options = {}) {
 `));
   await (options.run ?? runVaultSetupCommand)({
     start: () => {
-      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join19(homedir10(), ".bsv", "vault.bep");
+      const vaultPath = (options.env ?? process.env).VAULT_PATH ?? join21(homedir11(), ".bsv", "vault.bep");
       return (options.start ?? startVaultSetup)({
         migrationBackend,
         embeddedActions: options.embeddedActions ?? createEmbeddedSetupActions({
@@ -312104,7 +311450,7 @@ async function runConfiguredVaultSetup(options = {}) {
           }
         }),
         flow: migrationBackend.available && (options.env ?? process.env).BSV_MCP_PROJECT_ROOT ? "project" : options.embeddedActions ? "embedded" : "standalone",
-        ...isAbsolute14(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
+        ...isAbsolute16(vaultPath) ? { destinationDefaults: { vaultPath } } : {}
       });
     },
     open: options.open,
@@ -312209,8 +311555,8 @@ var init_walletOnboarding = __esm(() => {
 
 // server.ts
 import { readFile as readFile5 } from "node:fs/promises";
-import { homedir as homedir11 } from "node:os";
-import path4, { dirname as dirname7, join as join20 } from "node:path";
+import { homedir as homedir12 } from "node:os";
+import path4, { dirname as dirname7, join as join23 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function getConfiguredTools(server) {
   return configuredTools.get(server)?.() ?? [];
@@ -312222,13 +311568,13 @@ function createConfiguredServer(opts) {
       resources: {},
       tools: {},
       extensions: {
-        [TQ]: { version: "0.1" }
+        [W]: { version: "0.1" }
       },
       experimental: {
-        [TQ]: { version: "0.1" }
+        [W]: { version: "0.1" }
       }
     },
-    instructions: `
+    instructions: opts.instructions ?? `
 				This server exposes Bitcoin SV helpers.
 				Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first.
 			`
@@ -312303,7 +311649,7 @@ function registerMcpAppTools(server, config) {
   registerAppTool(server, "bsv_dashboard", {
     title: "BSV Dashboard",
     description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs. Use this for any BSV-related query that benefits from visual display.",
-    inputSchema: object2({}),
+    inputSchema: object({}),
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -312323,7 +311669,7 @@ function registerMcpAppTools(server, config) {
     registerAppTool(server, "app_explorer_data", {
       title: "Explorer Data",
       description: "App-only: fetches BSV price, chain info, decodes transactions, and looks up addresses.",
-      inputSchema: object2({
+      inputSchema: object({
         txid: string2().optional().describe("Transaction ID to decode"),
         address: string2().optional().describe("Address to look up balance/history")
       }),
@@ -312446,7 +311792,7 @@ function registerMcpAppTools(server, config) {
     registerAppTool(server, "app_wallet_data", {
       title: "Wallet Data",
       description: "App-only: fetches wallet balance, UTXOs, and address.",
-      inputSchema: object2({}),
+      inputSchema: object({}),
       _meta: {
         ui: { resourceUri: APP_RESOURCE_URI, visibility: ["app"] }
       }
@@ -312460,7 +311806,7 @@ function registerMcpAppTools(server, config) {
             }
           ],
           structuredContent: {
-            error: "No wallet configured. Set PRIVATE_KEY_WIF or generate keys."
+            error: "No wallet configured. Call wallet_onboarding to import or create a Vault wallet."
           }
         };
       }
@@ -312532,7 +311878,7 @@ function registerMcpAppTools(server, config) {
     registerAppTool(server, "app_ordinals_data", {
       title: "Ordinals Data",
       description: "App-only: fetches ordinals/NFT marketplace listings and search results.",
-      inputSchema: object2({
+      inputSchema: object({
         query: string2().optional().describe("Search query")
       }),
       _meta: {
@@ -312575,7 +311921,7 @@ function registerMcpAppTools(server, config) {
     registerAppTool(server, "app_sweep_scan", {
       title: "Sweep Scan",
       description: "App-only: scans a Bitcoin address for categorized UTXOs — funding, ordinals, and BSV-21 tokens.",
-      inputSchema: object2({
+      inputSchema: object({
         address: string2().describe("Bitcoin address to scan")
       }),
       _meta: {
@@ -312700,9 +312046,9 @@ function registerMcpAppTools(server, config) {
     registerAppTool(server, "app_sweep_complete", {
       title: "Sweep Complete",
       description: "App-only: verify browser signatures and submit the exact previously prepared sweep once.",
-      inputSchema: object2({
+      inputSchema: object({
         reference: string2().uuid(),
-        spends: record(string2().regex(/^(0|[1-9][0-9]*)$/), object2({
+        spends: record(string2().regex(/^(0|[1-9][0-9]*)$/), object({
           unlockingScript: string2().regex(/^(?:[0-9a-f]{2}){1,108}$/i)
         }))
       }),
@@ -312733,7 +312079,7 @@ function registerMcpAppTools(server, config) {
   registerAppResource(server, "BSV Dashboard", APP_RESOURCE_URI, {
     description: "Interactive BSV dashboard with Explorer, Wallet, and Ordinals tabs"
   }, async () => {
-    const distPath = __appDirname.endsWith("dist") ? join20(__appDirname, "app.html") : join20(__appDirname, "dist", "app.html");
+    const distPath = __appDirname.endsWith("dist") ? join23(__appDirname, "app.html") : join23(__appDirname, "dist", "app.html");
     let html;
     try {
       html = await readFile5(distPath, "utf-8");
@@ -312744,7 +312090,7 @@ function registerMcpAppTools(server, config) {
       contents: [
         {
           uri: APP_RESOURCE_URI,
-          mimeType: p,
+          mimeType: L,
           text: html,
           _meta: {
             ui: {
@@ -312811,12 +312157,13 @@ Tool Categories:
   Ordinals Tools: Search listings, market data
   Utils Tools:    General utilities, conversions
   BAP Tools:      Identity management (requires identity key)
-  BSocial Tools:  Social posts, likes, follows
+  BSocial Tools:  Read posts, likes, and follows; create a post when a wallet is connected
 
 Authentication:
   - Most tools work without authentication
-  - Wallet operations use BRC100_WALLET_URL, an initialized encrypted account or legacy environment keys
-  - Environment WIFs are legacy compatibility inputs and trigger a migration warning
+  - Wallet operations use BRC100_WALLET_URL or an unlocked local Vault
+  - BSV_MCP_PASSWORD is headless-only (process environment, never MCP config)
+  - Environment WIFs are migration sources, not live signing keys
   - BAP tools require identity keys (generated via bap_generate tool)
 		`);
     process.exit(0);
@@ -312878,6 +312225,9 @@ Authentication:
     if (CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && (readAccount()?.vaultBinding || Object.keys(getWalletRoleSettings().effective).length > 0)) {
       walletSetupReason = "locked";
       throw new MissingWalletKeysError("Unlock your wallet in local setup.");
+    }
+    if (CONFIG.transportMode === "stdio" && CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && !process.env.BSV_MCP_PASSWORD && !readAccount()?.vaultBinding && inspectMigration().sources.some((source) => source.location === "environment" || source.location === "mcp-client")) {
+      throw new LegacyWalletMigrationRequiredError("Import detected MCP keys through local wallet setup.");
     }
     if (CONFIG.transportMode === "stdio" && CONFIG.loadTools && CONFIG.loadWalletTools && !projectRuntime && !externalWallet && !CONFIG.useDroplitApi && process.env.PRIVATE_KEY_WIF === undefined && !process.env.BSV_MCP_PASSWORD && inspectMigration().sources.some((source) => source.location === "account" && source.account === accountName() && source.encryptedBackup)) {
       throw new LegacyWalletMigrationRequiredError("Import your encrypted account through local wallet setup.");
@@ -312948,7 +312298,7 @@ Authentication:
     openWalletSetup = createWalletSetupLauncher({
       embeddedActions: createEmbeddedSetupActions({
         getAvailableTools: () => server ? getConfiguredTools(server) : [],
-        vaultPath: process.env.VAULT_PATH ?? join20(homedir11(), ".bsv", "vault.bep"),
+        vaultPath: process.env.VAULT_PATH ?? join23(homedir12(), ".bsv", "vault.bep"),
         onActivated: async (result, selectedAccountName) => {
           const refresh = server ? refreshConfiguredCatalog.get(server) : undefined;
           if (!refresh)
@@ -313052,11 +312402,11 @@ Effective Component Status:`);
     const bapStatus = effectiveConfig.loadBapTools ? "\x1B[32mEnabled\x1B[0m" : "\x1B[31mDisabled\x1B[0m";
     let payKeyNote = "";
     if (!projectRuntime && !externalWallet && !hasPersistentPayKey) {
-      payKeyNote = " \x1B[33m(Using generated payPk)\x1B[0m";
+      payKeyNote = walletSetupNeeded ? " \x1B[33m(setup required)\x1B[0m" : " \x1B[33m(no payment key)\x1B[0m";
     }
     let identityKeyNote = "";
     if (!projectRuntime && !externalWallet && !hasPersistentIdentityKey) {
-      identityKeyNote = " \x1B[33m(Using generated identityPk)\x1B[0m";
+      identityKeyNote = walletSetupNeeded ? " \x1B[33m(setup required)\x1B[0m" : " \x1B[33m(no identity key)\x1B[0m";
     }
     logFunc2(`    Wallet:       ${walletStatus}${payKeyNote}`);
     logFunc2(`    MNEE:         ${mneeStatus}${payKeyNote}`);
@@ -313212,7 +312562,8 @@ Effective Component Status:`);
     wallet,
     ctx: remoteCtx,
     loadPrompts: effectiveConfig.loadPrompts,
-    loadResources: effectiveConfig.loadResources
+    loadResources: effectiveConfig.loadResources,
+    instructions: walletSetupNeeded ? "Local BSV MCP is running without an unlocked Vault wallet. Call wallet_onboarding now. It opens private setup in the local browser so existing keys, including MCP client configs, can be imported into Vault. Never ask for a private key, password, or seed phrase in chat." : "This server exposes Bitcoin SV helpers. Read tools do not spend. Payments, inscriptions, and other writes are not safe to retry after an unknown outcome; inspect wallet history first."
   };
   let stopTransport;
   let shutdown;

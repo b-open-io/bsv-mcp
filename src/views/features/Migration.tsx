@@ -38,6 +38,9 @@ type Inventory = {
 			encryptedBackup?: boolean;
 			plaintextKeys?: boolean;
 			walletDatabases: string[];
+			client?: string;
+			serverName?: string;
+			configPath?: string;
 		}
 	>;
 	environmentKeys: { payment?: boolean; identity?: boolean; empty?: boolean };
@@ -515,6 +518,8 @@ function InventoryStep({
 		"legacy-root": "Earlier BSV MCP wallet",
 		account: "BSV MCP account",
 		custom: "Configured wallet",
+		environment: "Current MCP server environment",
+		"mcp-client": "MCP client config",
 	};
 	return (
 		<Surface>
@@ -538,31 +543,44 @@ function InventoryStep({
 							...(item.encryptedBackup
 								? ["keys.bep — encrypted key backup"]
 								: []),
-							...(item.plaintextKeys
-								? [`${item.keyFile ?? "keys.json"} — unencrypted key file`]
-								: []),
+							...(item.location === "mcp-client" ||
+							item.location === "environment"
+								? ["Payment key in MCP config — import into Vault"]
+								: item.plaintextKeys
+									? [`${item.keyFile ?? "keys.json"} — unencrypted key file`]
+									: []),
 							...item.walletDatabases.map(
 								(name) => `${name} — wallet database`,
 							),
 						];
+						const originLabel =
+							item.location === "mcp-client"
+								? `Saved in ${item.client ?? "an MCP client"}`
+								: origins[item.location];
+						const detail =
+							item.location === "mcp-client"
+								? "A payment key is still in that client’s MCP config. Import it into Vault, then remove it from the client config."
+								: item.location === "environment"
+									? "A payment key is in the server environment. Import it into Vault and remove PRIVATE_KEY_WIF from the client config."
+									: item.encryptedBackup
+										? "An encrypted key backup was found. You’ll need its password."
+										: item.plaintextKeys
+											? "An unencrypted key file was found. Importing will add an encrypted copy to Vault."
+											: "Wallet data was found, but no key backup. This source cannot be imported on its own.";
 						return (
 							<div
 								className="source-row"
 								key={`${item.location}:${item.account}`}
 							>
 								<div className="source-meta">
-									<span className="source-title">{item.account}</span>
-									<span className="source-detail">
-										{origins[item.location]}
+									<span className="source-title">
+										{item.serverName || item.account}
 									</span>
-									<p className="source-detail">
-										{item.encryptedBackup
-											? "An encrypted key backup was found. You’ll need its password."
-											: item.plaintextKeys
-												? "An unencrypted key file was found. Importing will add an encrypted copy to Vault."
-												: "Wallet data was found, but no key backup. This source cannot be imported on its own."}
-									</p>
-									<div className="source-location">{item.directory}</div>
+									<span className="source-detail">{originLabel}</span>
+									<p className="source-detail">{detail}</p>
+									<div className="source-location">
+										{item.configPath || item.directory || item.location}
+									</div>
 									<details className="source-files">
 										<summary>Files found ({files.length})</summary>
 										<ul className="file-list">

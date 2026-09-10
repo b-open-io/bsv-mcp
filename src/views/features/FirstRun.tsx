@@ -1,7 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { AvailableSetupTool } from "../../../utils/vaultSetup";
 import { AvailableTools } from "../components/AvailableTools";
-import { WalletReady } from "../components/WalletReady";
 import {
 	Button,
 	LocalShell,
@@ -9,6 +8,8 @@ import {
 	PageHeader,
 	Surface,
 } from "../components/LocalShell";
+import { WalletReady } from "../components/WalletReady";
+import { vaultPasswordIssue } from "../lib/vaultPassphrase";
 import { ExistingWallet } from "./ExistingWallet";
 import { WalletRoleSettings } from "./WalletRoleSettings";
 
@@ -33,6 +34,7 @@ export function FirstRun({
 	const [tools, setTools] = useState<AvailableSetupTool[]>();
 	const [vaultExists, setVaultExists] = useState(false);
 	const [created, setCreated] = useState(false);
+	const [foundClientKeys, setFoundClientKeys] = useState(false);
 	useEffect(() => {
 		if (!token) return;
 		fetch("/api/inventory", { headers: { Authorization: `Bearer ${token}` } })
@@ -41,6 +43,14 @@ export function FirstRun({
 				if (value?.sources?.length) setName("new-wallet");
 				setBoundAccounts(value?.boundAccounts ?? []);
 				setVaultExists(value?.vaultExists === true);
+				setFoundClientKeys(
+					Array.isArray(value?.sources) &&
+						value.sources.some(
+							(item: { location?: string }) =>
+								item.location === "mcp-client" ||
+								item.location === "environment",
+						),
+				);
 			})
 			.catch(() => {});
 	}, [token]);
@@ -90,9 +100,17 @@ export function FirstRun({
 	async function create(event: FormEvent) {
 		event.preventDefault();
 		if (pending) return;
-		if (password.length < 8) {
-			setError("Choose a password with at least 8 characters.");
-			return;
+		if (choice === "unlock") {
+			if (!password) {
+				setError("Enter your Vault password.");
+				return;
+			}
+		} else {
+			const passwordIssue = vaultPasswordIssue(password);
+			if (passwordIssue) {
+				setError(passwordIssue);
+				return;
+			}
 		}
 		if (choice !== "unlock" && password !== confirmation) {
 			setError("The passwords don’t match. Try again.");
@@ -180,7 +198,12 @@ export function FirstRun({
 				onUnlock={() => navigate("roles")}
 			/>
 		);
-	if (created && !standalone) return <LocalShell navigation={false}><WalletReady tools={tools} /></LocalShell>;
+	if (created && !standalone)
+		return (
+			<LocalShell navigation={false}>
+				<WalletReady tools={tools} />
+			</LocalShell>
+		);
 
 	return (
 		<LocalShell navigation={false}>
@@ -228,6 +251,12 @@ export function FirstRun({
 				</>
 			) : choice === "welcome" ? (
 				<div className="setup-choices">
+					{foundClientKeys ? (
+						<Notice>
+							A payment key is still in an MCP client config. Choose “Use an
+							existing wallet” to import it into Vault.
+						</Notice>
+					) : null}
 					{(boundAccounts.length > 0 || vaultExists) && (
 						<Button onClick={() => navigate("roles")}>
 							Choose default keys
@@ -302,7 +331,7 @@ export function FirstRun({
 							<span className="source-detail">
 								{vaultExists
 									? "Use the password for your existing Vault."
-									: "Use at least 8 characters. Keep this password somewhere safe."}
+									: "Use at least 12 characters, or 16+ as a passphrase. On this Mac, Touch ID can wrap the Vault as well. Keep the recovery password somewhere safe."}
 							</span>
 						</label>
 						{choice !== "unlock" && (

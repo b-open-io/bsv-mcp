@@ -14,6 +14,7 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { HD, PrivateKey } from "@bsv/sdk";
 import type { KeyStore } from "./keyManager";
+import { assertPassphrase } from "./vaultPassphrasePolicy";
 
 export class EmbeddedVaultError extends Error {
 	readonly code: string;
@@ -43,7 +44,7 @@ export interface EmbeddedVaultReceipt {
 }
 
 export interface EmbeddedVaultBinding {
-	password: string;
+	password?: string;
 	binding: EmbeddedVaultReceipt;
 }
 
@@ -70,6 +71,8 @@ export interface EmbeddedVaultIoOptions {
 	vaultPath: string;
 	loadModule?: () => Promise<unknown>;
 	now?: () => number;
+	/** When false, never attach or use the Secure Enclave wrap. */
+	useEnclave?: boolean;
 }
 
 export interface EmbeddedVaultKeyList {
@@ -123,6 +126,8 @@ interface VaultHandle {
 
 interface VaultModule {
 	PassphraseProvider: new (passphrase: string) => unknown;
+	EnclaveProvider?: new (label?: string) => unknown;
+	isEnclaveSupported?: () => boolean;
 	createVault(
 		path: string,
 		providers: unknown[],
@@ -134,7 +139,8 @@ interface VaultModule {
 
 const MESSAGES = {
 	INVALID_PATH: "The vault destination path is invalid.",
-	INVALID_PASSWORD: "The vault password must be at least eight characters.",
+	INVALID_PASSWORD:
+		"The vault password must be at least 12 characters, or 16+ characters without mixed classes.",
 	PASSWORD_MISMATCH: "The vault password confirmation does not match.",
 	INVALID_LABEL: "The vault entry label is invalid.",
 	INVALID_KEY: "One or more imported keys are invalid.",
@@ -168,9 +174,38 @@ function assertLabel(label: unknown): string {
 }
 
 function assertPassword(password: unknown): string {
-	if (typeof password !== "string" || password.length < 8)
+	try {
+		assertPassphrase(password);
+		return password as string;
+	} catch {
 		throw failure("INVALID_PASSWORD");
-	return password;
+	}
+}
+
+function hardwareUnlockEnabled(options: EmbeddedVaultIoOptions): boolean {
+	if (options.useEnclave === false) return false;
+	if (process.env.BSV_MCP_PASSWORD) return false;
+	if (process.env.BSV_MCP_ENCLAVE === "false") return false;
+	return options.useEnclave === true || process.env.BSV_MCP_ENCLAVE !== "false";
+}
+
+function sealingProviders(
+	module: VaultModule,
+	passwordProvider: unknown,
+	enabled: boolean,
+): unknown[] {
+	if (
+		!enabled ||
+		typeof module.EnclaveProvider !== "function" ||
+		(typeof module.isEnclaveSupported === "function" &&
+			!module.isEnclaveSupported())
+	)
+		return [passwordProvider];
+	try {
+		return [passwordProvider, new module.EnclaveProvider("bsv-mcp")];
+	} catch {
+		return [passwordProvider];
+	}
 }
 
 function assertConfirmation(password: string, confirmation: unknown): void {
@@ -317,6 +352,7 @@ export function createEmbeddedVaultIo(
 	options: EmbeddedVaultIoOptions,
 ): EmbeddedVaultIo {
 	const now = options.now ?? Date.now;
+	const enclaveEnabled = hardwareUnlockEnabled(options);
 	const requestedPath = options.vaultPath;
 	const loadModule = options.loadModule;
 	let held: VaultHandle | undefined;
@@ -767,21 +803,19 @@ export function createEmbeddedVaultIo(
 					new module.PassphraseProvider(password),
 				);
 				const vaultId = vault.toDocument().id;
-				const keys = vault
-					.list()
-					.flatMap((entry) =>
-						KEY_KINDS.has(entry.kind) &&
-						typeof entry.publicKey === "string" &&
-						COMPRESSED_PUBKEY.test(entry.publicKey)
-							? [
-									{
-										entryId: entry.id,
-										publicKey: entry.publicKey,
-										label: entry.label ?? "Vault key",
-									},
-								]
-							: [],
-					);
+				const keys = vault.list().flatMap((entry) =>
+					KEY_KINDS.has(entry.kind) &&
+					typeof entry.publicKey === "string" &&
+					COMPRESSED_PUBKEY.test(entry.publicKey)
+						? [
+								{
+									entryId: entry.id,
+									publicKey: entry.publicKey,
+									label: entry.label ?? "Vault key",
+								},
+							]
+						: [],
+				);
 				return { vaultId, keys };
 			} catch {
 				throw failure("UNLOCK_FAILED");
@@ -813,12 +847,20 @@ export function createEmbeddedVaultIo(
 				}
 				const stagePath = join(ctx.stageDir, "vault.bep");
 				const provider = new module.PassphraseProvider(password);
+				const providers = sealingProviders(module, provider, enclaveEnabled);
 				let vault: VaultHandle | undefined;
 				let paymentId = "";
 				try {
-					vault = await module.createVault(stagePath, [provider], {
-						revealEnabled: true,
-					});
+					try {
+						vault = await module.createVault(stagePath, providers, {
+							revealEnabled: true,
+						});
+					} catch {
+						if (providers.length === 1) throw failure("WRITE_FAILED");
+						vault = await module.createVault(stagePath, [provider], {
+							revealEnabled: true,
+						});
+					}
 					const payment = vault.generateKey(label);
 					paymentId = payment.id;
 					await module.saveVault(stagePath, vault, provider);
@@ -942,12 +984,24 @@ export function createEmbeddedVaultIo(
 				let hdId: string | undefined;
 				try {
 					if (fresh) {
+						const providers = sealingProviders(
+							module,
+							provider,
+							enclaveEnabled,
+						);
 						try {
-							vault = await module.createVault(stagePath, [provider], {
+							vault = await module.createVault(stagePath, providers, {
 								revealEnabled: true,
 							});
 						} catch {
-							throw failure("WRITE_FAILED");
+							if (providers.length === 1) throw failure("WRITE_FAILED");
+							try {
+								vault = await module.createVault(stagePath, [provider], {
+									revealEnabled: true,
+								});
+							} catch {
+								throw failure("WRITE_FAILED");
+							}
 						}
 					} else {
 						try {
@@ -1059,11 +1113,10 @@ export function createEmbeddedVaultIo(
 		async unlock(input: EmbeddedVaultBinding): Promise<KeyStore> {
 			lockPrevious();
 			const myEpoch = epoch;
-			const password = input?.password;
+			const password =
+				typeof input?.password === "string" ? input.password : "";
 			const binding = input?.binding;
 			if (
-				typeof password !== "string" ||
-				!password ||
 				!binding ||
 				typeof binding !== "object" ||
 				typeof binding.vaultId !== "string" ||
@@ -1122,11 +1175,24 @@ export function createEmbeddedVaultIo(
 			let vault: VaultHandle | undefined;
 			try {
 				try {
-					vault = await module.openVault(
-						canonical,
-						new module.PassphraseProvider(password),
-					);
-				} catch {
+					if (password)
+						vault = await module.openVault(
+							canonical,
+							new module.PassphraseProvider(password),
+						);
+					else if (
+						enclaveEnabled &&
+						typeof module.EnclaveProvider === "function" &&
+						(typeof module.isEnclaveSupported !== "function" ||
+							module.isEnclaveSupported())
+					)
+						vault = await module.openVault(
+							canonical,
+							new module.EnclaveProvider("bsv-mcp"),
+						);
+					else throw failure("UNLOCK_FAILED");
+				} catch (error) {
+					if (error instanceof EmbeddedVaultError) throw error;
 					throw failure("UNLOCK_FAILED");
 				}
 				const active = vault;

@@ -236,7 +236,7 @@ function getPromptHTML(reason: string, isNewPassphrase = false): string {
           id="passphrase" 
           name="passphrase" 
           placeholder="${isNewPassphrase ? "Choose a strong passphrase" : "Enter your passphrase"}"
-          minlength="8"
+          minlength="12"
           required
           autofocus
         >
@@ -252,7 +252,7 @@ function getPromptHTML(reason: string, isNewPassphrase = false): string {
           id="confirm" 
           name="confirm" 
           placeholder="Confirm your passphrase"
-          minlength="8"
+          minlength="12"
           required
         >
       </div>
@@ -375,7 +375,7 @@ export async function promptForPassphrase(
 					try {
 						const { passphrase } = JSON.parse(body);
 
-						if (!passphrase || passphrase.length < 8) {
+						if (!passphrase || passphrase.length < 12) {
 							res.writeHead(400, { "Content-Type": "application/json" });
 							res.end(JSON.stringify({ error: "Invalid passphrase" }));
 							return;
@@ -455,8 +455,8 @@ export async function promptForPassphraseWithFallback(
 ): Promise<string> {
 	if (isHeadless()) {
 		throw new Error(
-			"Cannot prompt for passphrase in headless environment. " +
-				"Please use PRIVATE_KEY_WIF environment variable or run in an environment with a display.",
+			"Cannot prompt for passphrase in a headless environment. " +
+				"Set BSV_MCP_PASSWORD in the process environment for this session, or run setup on a machine with a display.",
 		);
 	}
 

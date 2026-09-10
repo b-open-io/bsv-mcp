@@ -57,7 +57,7 @@ export const toolCategories: ToolCategory[] = [
 		name: "Social",
 		prefixes: ["bsocial"],
 		description:
-			"Post, like, and follow on BSocial. Your agent can publish to the open social graph.",
+			"Read BSocial posts, likes, and follows. Publish a post when a wallet and identity are connected.",
 	},
 	{
 		key: "tokens",
@@ -115,7 +115,7 @@ export const guarantees = [
 		key: "encrypted",
 		title: "Encrypted at rest",
 		description:
-			"Local accounts use encrypted bitcoin-backup files. Missing keys stop startup; the server never generates a replacement.",
+			"Local keys live in an Argon2id-sealed Vault, with Touch ID on Apple silicon when available. Missing keys stop startup; the server never generates a replacement.",
 	},
 	{
 		key: "browser-unlock",
@@ -246,14 +246,14 @@ export const installTargets: InstallTarget[] = [
 	{
 		key: "grok",
 		label: "Grok Build",
-		command: "grok plugin install b-open-io/bsv-mcp",
+		command: "grok plugin install b-open-io/bsv-mcp --trust",
 		altCommands: [
 			{
 				label: "Or register the local server directly",
 				command: "grok mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio",
 			},
 		],
-		note: "Grok supports Claude-format plugins. The plugin launches the bundled local server; no config file needs to be edited.",
+		note: "Grok will not start plugin MCP servers without --trust. The plugin bundles the local server and requires Bun. No config file needs to be edited.",
 		docsUrl: "https://docs.x.ai/build/features/skills-plugins-marketplaces",
 	},
 	{

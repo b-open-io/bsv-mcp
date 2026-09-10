@@ -14,6 +14,9 @@ codex mcp add bsv-mcp -- npx -y bsv-mcp@latest --stdio
 
 # Claude Code
 claude mcp add --transport stdio bsv-mcp -- npx -y bsv-mcp@latest --stdio
+
+# Grok Build
+grok plugin install b-open-io/bsv-mcp --trust
 ```
 
 Choose one command. For Cursor or Claude Desktop, use this server configuration:
@@ -186,15 +189,13 @@ and the dashboard app resource remain available.
 
 ## Bring your wallet and infrastructure
 
-Connect a compatible existing wallet with `BRC100_WALLET_URL`, select a legacy
-encrypted account with `BSV_MCP_ACCOUNT` and unlock it with
-`BSV_MCP_PASSWORD`, or use the local Vault browser setup. If setup is needed,
-ask your agent to run `wallet_onboarding`; after a restart, run it again to
-unlock the saved Vault. Startup never creates keys. An existing wallet keeps
-its keys and controls permissions. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are
-legacy compatibility inputs; they trigger a persistent Vault migration warning
-and should be removed after importing the keys into Vault. See the wallet setup
-guide for the required wallet API and configuration.
+Connect a compatible existing wallet with `BRC100_WALLET_URL`, or use the local
+Vault browser setup (`wallet_onboarding`). `BSV_MCP_PASSWORD` is only for
+headless agents: set it in the process environment for that session, never in
+MCP client configuration. `PRIVATE_KEY_WIF` and `IDENTITY_KEY_WIF` are
+migration sources, not live signing keys; import them into Vault and remove the
+plaintext copies. Startup never creates keys. See the wallet setup guide for
+the required wallet API and configuration.
 
 The default 1Sat API backend is `https://api.1sat.app`. New mainnet embedded
 accounts use `https://wallet.1sat.app` for wallet storage by default; testnet
