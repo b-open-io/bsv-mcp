@@ -21,6 +21,10 @@
 			"If wallet_onboarding is available, run it so I can import or create a Vault wallet. Then run bsv_status and explain which services are available."
 		],
 		"longDescription": "Run Bitcoin SV tools locally for transaction lookups, payments, ordinals and identity. Connect an external wallet or open local Vault setup. No account sign-in is required.",
-		"capabilities": ["Interactive"]
+		"capabilities": [
+			"Interactive"
+		],
+		"composerIcon": "./assets/icon.png",
+		"logo": "./assets/logo.png"
 	}
 }
