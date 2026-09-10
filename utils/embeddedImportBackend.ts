@@ -50,6 +50,8 @@ export interface EmbeddedImportInput {
 	passwordConfirmation?: string;
 	sourcePassphrase?: string;
 	confirmation: typeof IMPORT_CONFIRMATION;
+	/** Optional destination account when the source name is already taken. */
+	accountName?: string;
 }
 
 export interface EmbeddedImportBackupInput {
@@ -204,6 +206,7 @@ function selectTrustedSource(
 	home: string,
 	destRoot: string,
 	vaultPath: string,
+	destNameOverride?: string,
 ): TrustedSelection {
 	const account =
 		typeof source?.account === "string" ? source.account : undefined;
@@ -232,11 +235,15 @@ function selectTrustedSource(
 			candidate.account === account && candidate.location === location,
 	);
 	if (!entry) throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
-	// Destination name is authoritative inventory state. Legacy and lab
-	// entries already carry their canonical account names.
-	const destName = entry.account;
+	const destName =
+		destNameOverride === undefined ? entry.account : destNameOverride;
 	if (accountNameSchema.safeParse(destName).success !== true)
-		throw failure("UNKNOWN_SOURCE", MESSAGES.UNKNOWN_SOURCE);
+		throw failure(
+			destNameOverride === undefined ? "UNKNOWN_SOURCE" : "ACCOUNT_INVALID",
+			destNameOverride === undefined
+				? MESSAGES.UNKNOWN_SOURCE
+				: MESSAGES.ACCOUNT_INVALID,
+		);
 	const sourceDir = entry.directory;
 	if (
 		(location === "environment" || location === "mcp-client") &&
@@ -906,6 +913,7 @@ export function createEmbeddedImportBackend(
 			home,
 			destRoot,
 			vaultPath,
+			input.accountName,
 		);
 		// Confirmation is enforced before any private material is read or
 		// any byte is written. Inventory above inspects filenames only.

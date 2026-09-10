@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { VaultKeyPicker } from "./VaultKeyPicker";
 import type {
 	WalletRole,
 	WalletRoleDefaults,
 } from "../../../utils/walletRoleDefaults";
+import { Field, SelectInput } from "../components/FormFields";
 import {
 	Button,
 	LocalShell,
@@ -11,6 +11,8 @@ import {
 	PageHeader,
 	Surface,
 } from "../components/LocalShell";
+import { defaultPaymentSelector, friendlySetupError } from "../lib/setupCopy";
+import { VaultKeyPicker } from "./VaultKeyPicker";
 
 const roles = [
 	{ id: "payments", label: "Payment key" },
@@ -26,10 +28,12 @@ type Settings = {
 };
 export function WalletRoleSettings({
 	token,
+	preferredAccount,
 	onBack,
 	onUnlock,
 }: {
 	token: string;
+	preferredAccount?: string;
 	onBack: () => void;
 	onUnlock: (account: string) => void;
 }) {
@@ -40,7 +44,7 @@ export function WalletRoleSettings({
 	const [showVaultKeys, setShowVaultKeys] = useState(false);
 	const [revision, setRevision] = useState(0);
 	useEffect(() => {
-		fetch("/api/embedded/roles", {
+		fetch(`/api/embedded/roles?revision=${revision}`, {
 			headers: { Authorization: `Bearer ${token}` },
 		})
 			.then(async (response) => {
@@ -48,7 +52,11 @@ export function WalletRoleSettings({
 				const value = await response.json();
 				setSettings(value);
 				setDefaults({
-					payments: value.defaults.payments ?? value.keys[0]?.selector ?? null,
+					payments: defaultPaymentSelector(
+						value.keys,
+						value.defaults.payments,
+						preferredAccount,
+					),
 					identity:
 						value.defaults.identity === undefined
 							? undefined
@@ -60,7 +68,7 @@ export function WalletRoleSettings({
 				});
 			})
 			.catch((error) => setError(error.message));
-	}, [token, revision]);
+	}, [token, revision, preferredAccount]);
 	async function save() {
 		if (!settings || pending) return;
 		setPending(true);
@@ -83,7 +91,9 @@ export function WalletRoleSettings({
 			onUnlock(value.effective.payments.split(":")[0]);
 		} catch (error) {
 			setError(
-				error instanceof Error ? error.message : "Could not save settings.",
+				friendlySetupError(
+					error instanceof Error ? error.message : "Could not save settings.",
+				),
 			);
 		} finally {
 			setPending(false);
@@ -96,7 +106,7 @@ export function WalletRoleSettings({
 				title="Choose your default keys"
 				description="Keep all your keys in one Vault. Choose which key each role uses; project MCP settings can override individual roles."
 			/>
-			{error && <Notice tone="error">{error}</Notice>}
+			{error ? <Notice tone="error">{error}</Notice> : null}
 			{showVaultKeys ? (
 				<VaultKeyPicker
 					token={token}
@@ -111,16 +121,31 @@ export function WalletRoleSettings({
 				</Button>
 			)}
 			<Surface>
-				<div className="surface-body">
+				<form
+					className="surface-body form-stack"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void save();
+					}}
+				>
 					<p>
 						Import several wallets before unlocking. Choosing a default does not
-						move keys or funds.
+						move keys or funds. If more than one wallet is listed, choose the
+						one you just created or imported.
 					</p>
 					{roles.map((role) => (
-						<label className="field-label" key={role.id}>
-							{role.label}
-							<select
-								className="field"
+						<Field
+							label={role.label}
+							htmlFor={`role-${role.id}`}
+							key={role.id}
+							hint={
+								settings?.overrides.includes(role.id)
+									? `Project configuration overrides this role: ${settings.effective[role.id] ?? "disabled"}.`
+									: undefined
+							}
+						>
+							<SelectInput
+								id={`role-${role.id}`}
 								value={
 									defaults[role.id] === undefined
 										? "inherit"
@@ -148,24 +173,21 @@ export function WalletRoleSettings({
 										{key.selector} · {key.publicKey.slice(-8)}
 									</option>
 								))}
-							</select>
-							{settings?.overrides.includes(role.id) && (
-								<span className="source-detail">
-									Project configuration overrides this role:{" "}
-									{settings.effective[role.id] ?? "disabled"}.
-								</span>
-							)}
-						</label>
+							</SelectInput>
+						</Field>
 					))}
 					<div className="form-actions">
 						<Button variant="secondary" onClick={onBack} disabled={pending}>
 							Import more wallets
 						</Button>
-						<Button onClick={save} disabled={!settings || pending}>
+						<Button
+							type="submit"
+							disabled={!settings || pending || !defaults.payments}
+						>
 							Save defaults and unlock
 						</Button>
 					</div>
-				</div>
+				</form>
 			</Surface>
 		</LocalShell>
 	);

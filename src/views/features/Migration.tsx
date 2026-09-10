@@ -15,6 +15,7 @@ import {
 	type ProjectRoleSelectionRequest,
 	type VaultMigrationDestination,
 } from "../../../utils/vaultMigrationWizard";
+import { Field, PasswordInput, TextInput } from "../components/FormFields";
 import {
 	Button,
 	LocalShell,
@@ -420,7 +421,7 @@ export function Migration({
 			) : null}
 			{error ? (
 				<Surface>
-					<div className="surface-body">
+					<div className="surface-body form-stack">
 						<Notice tone="error">
 							{error}
 							{errorNoEffect
@@ -731,7 +732,7 @@ function UnlockStep({
 					<h2>Unlock locally and preview</h2>
 				</div>
 			</div>
-			<div className="surface-body">
+			<div className="surface-body form-stack">
 				{backend ? (
 					<Notice tone={backend.available ? "success" : "warning"}>
 						{backend.available
@@ -741,17 +742,13 @@ function UnlockStep({
 				) : (
 					<Spinner label="Checking Vault migration support" />
 				)}
-				<form onSubmit={onSubmit}>
-					<label className="field-label">
-						Source backup passphrase
-						<input
-							className="field"
-							type="password"
+				<form className="form-stack" onSubmit={onSubmit}>
+					<Field label="Source backup passphrase" htmlFor="source-passphrase">
+						<PasswordInput
+							id="source-passphrase"
 							value={sourcePassphrase}
-							onChange={(event) => setSourcePassphrase(event.target.value)}
+							onValueChange={setSourcePassphrase}
 							autoComplete="current-password"
-							pattern=".*\S.*"
-							title="Use at least one non-whitespace character."
 							aria-invalid={validationError ? true : undefined}
 							aria-describedby={
 								validationError ? "unlock-validation-error" : undefined
@@ -763,17 +760,16 @@ function UnlockStep({
 								pending !== undefined
 							}
 						/>
-					</label>
-					<label className="field-label">
-						Destination Vault passphrase
-						<input
-							className="field"
-							type="password"
+					</Field>
+					<Field
+						label="Destination Vault passphrase"
+						htmlFor="destination-passphrase"
+					>
+						<PasswordInput
+							id="destination-passphrase"
 							value={destinationPassphrase}
-							onChange={(event) => setDestinationPassphrase(event.target.value)}
+							onValueChange={setDestinationPassphrase}
 							autoComplete="new-password"
-							pattern=".*\S.*"
-							title="Use at least one non-whitespace character."
 							aria-invalid={validationError ? true : undefined}
 							aria-describedby={
 								validationError ? "unlock-validation-error" : undefined
@@ -785,7 +781,7 @@ function UnlockStep({
 								pending !== undefined
 							}
 						/>
-					</label>
+					</Field>
 					{validationError ? (
 						<div id="unlock-validation-error">
 							<Notice tone="error">{validationError}</Notice>
@@ -870,7 +866,7 @@ function PreviewStep({
 					{pending === "refresh" ? "Refreshing preview…" : "Refresh preview"}
 				</Button>
 			</div>
-			<div className="surface-body">
+			<div className="surface-body form-stack">
 				<Notice tone="info">{status}</Notice>
 				<div className="grid grid-two">
 					<div className="data-list">
@@ -948,16 +944,22 @@ function PreviewStep({
 				) : (
 					<p className="dim">No conflicts reported.</p>
 				)}
-				<label className="field-label">
-					Type <strong>MIGRATE_AND_SWITCH</strong> to authorize
-					<input
-						className="field"
+				<Field
+					label={
+						<>
+							Type <strong>MIGRATE_AND_SWITCH</strong> to authorize
+						</>
+					}
+					htmlFor="migrate-confirmation"
+				>
+					<TextInput
+						id="migrate-confirmation"
 						value={confirmation}
 						onChange={(event) => setConfirmation(event.target.value)}
 						autoComplete="off"
 						disabled={pending !== undefined}
 					/>
-				</label>
+				</Field>
 				<div className="form-actions">
 					<Button
 						onClick={onCutover}
