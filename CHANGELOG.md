@@ -1,5 +1,12 @@
 # BSV MCP Server Changelog
 
+## [0.6.3] - 2026-09-10
+
+### Fixed
+
+- Reword the leftover client-key welcome notice and wrap it so the last
+  words stay with the rest of the sentence.
+
 ## [0.6.2] - 2026-09-10
 
 ### Fixed
