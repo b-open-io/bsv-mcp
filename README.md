@@ -226,11 +226,6 @@ Experimental software; APIs may change. Keep a wallet backup. If a transaction r
 
 ## Preparing a release package
 
-Run `bun run pack:release /tmp` to build and create the release tarball. Install
-or publish that tarball, for example `bun publish /tmp/bsv-mcp-0.5.1.tgz`,
-after completing the release checks and selecting the release version.
-Do not publish directly from the checkout: its manifest contains Bun patches
-needed to build the wallet fixes, which fail to resolve in consumer projects.
-The release command stages a separate manifest without build scripts, development
-dependencies, or patch declarations; the compiled bundle includes the wallet fixes.
-The destination directory must already exist.
+`package.json` `"files"` is the tarball. `prepack` runs `bun run build:all`.
+Publish with `bun publish`. Compile-time libraries are `devDependencies`;
+consumers get the bundled `dist/` files, not a second copy of the source tree.

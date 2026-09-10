@@ -11,7 +11,9 @@
 - Import leftover plaintext key sources into Vault, then optionally erase the
   source files. Passphrase policy is enforced before Vault create or unlock.
 - Stop tracking generated `dist/` in git. Work from source (`bun index.ts`).
-  `prepack` and `pack:release` still build and ship `dist/` in the npm package.
+  `package.json` `files` plus `prepack` (`build:all`) are the npm tarball.
+  Compile-time libraries live in `devDependencies`; the published bundle does
+  not reinstall them.
 
 ### Fixed
 

@@ -56,12 +56,7 @@
 		"tailwind-merge": "^3.6.0",
 		"tailwindcss": "^4.3.3",
 		"vite": "^8.2.2",
-		"vite-plugin-singlefile": "^2.3.3"
-	},
-	"peerDependencies": {
-		"typescript": "^7.0.2"
-	},
-	"dependencies": {
+		"vite-plugin-singlefile": "^2.3.3",
 		"@1sat/actions": "^0.0.208",
 		"@1sat/client": "0.0.51",
 		"@1sat/wallet-node": "0.0.73",
@@ -85,7 +80,8 @@
 		"schema-dts": "^2.0.0",
 		"shiki": "^4.4.3",
 		"zod": "^4.6.1",
-		"@bsv/message-box-client": "2.4.2"
+		"@bsv/message-box-client": "2.4.2",
+		"typescript": "^7.0.2"
 	},
 	"scripts": {
 		"build": "bun run ./scripts/build.ts",
@@ -97,7 +93,6 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check . --write",
 		"prepack": "bun run build:all",
-		"pack:release": "bun run scripts/pack-release.ts",
 		"tools:manifest": "bun run ./scripts/generate-tool-manifest.ts"
 	},
 	"patchedDependencies": {
