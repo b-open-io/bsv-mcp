@@ -1,6 +1,13 @@
 import { useState } from "react";
 import type { EmbeddedVaultKeyList } from "../../../utils/embeddedVaultIo";
+import {
+	Field,
+	PasswordInput,
+	SelectInput,
+	TextInput,
+} from "../components/FormFields";
 import { Button, Notice, Surface } from "../components/LocalShell";
+import { friendlySetupError } from "../lib/setupCopy";
 
 export function VaultKeyPicker({
 	token,
@@ -56,7 +63,9 @@ export function VaultKeyPicker({
 			}
 		} catch (error) {
 			setError(
-				error instanceof Error ? error.message : "Could not use this key.",
+				friendlySetupError(
+					error instanceof Error ? error.message : "Could not use this key.",
+				),
 			);
 		} finally {
 			setPending(false);
@@ -64,31 +73,28 @@ export function VaultKeyPicker({
 	}
 	return (
 		<Surface>
-			<div className="surface-body">
+			<div className="surface-body form-stack">
 				<h2>Use a key already in your Vault</h2>
 				<p>
 					Link an existing private key to a new wallet account, then assign it
 					to a role. This does not import another wallet’s transaction history.
 				</p>
-				{error && <Notice tone="error">{error}</Notice>}
+				{error ? <Notice tone="error">{error}</Notice> : null}
 				{!inventory ? (
-					<label className="field-label">
-						Vault password
-						<input
-							className="field"
-							type="password"
+					<Field label="Vault password" htmlFor="vault-key-password">
+						<PasswordInput
+							id="vault-key-password"
 							autoComplete="off"
 							value={password}
-							onChange={(event) => setPassword(event.target.value)}
+							onValueChange={setPassword}
 							disabled={pending}
 						/>
-					</label>
+					</Field>
 				) : (
 					<>
-						<label className="field-label">
-							Private key
-							<select
-								className="field"
+						<Field label="Private key" htmlFor="vault-private-key">
+							<SelectInput
+								id="vault-private-key"
 								value={entryId}
 								onChange={(event) => setEntryId(event.target.value)}
 								disabled={pending}
@@ -98,23 +104,24 @@ export function VaultKeyPicker({
 										{key.label} · {key.publicKey.slice(-8)}
 									</option>
 								))}
-							</select>
-						</label>
-						{!inventory.keys.length && (
+							</SelectInput>
+						</Field>
+						{!inventory.keys.length ? (
 							<Notice>
 								No compatible private keys found. HD roots and non-key entries
 								cannot be used directly.
 							</Notice>
-						)}
-						<label className="field-label">
-							Account name
-							<input
-								className="field"
+						) : null}
+						<Field label="Account name" htmlFor="vault-account-name">
+							<TextInput
+								id="vault-account-name"
 								value={name}
 								onChange={(event) => setName(event.target.value)}
 								disabled={pending}
+								autoComplete="off"
+								pattern="[a-z0-9][a-z0-9_-]{0,63}"
 							/>
-						</label>
+						</Field>
 					</>
 				)}
 				<div className="form-actions">

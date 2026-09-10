@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { P1SAT_PROTOCOL } from "@1sat/actions";
 import { HD, PrivateKey, ProtoWallet, PublicKey } from "@bsv/sdk";
 import { encryptBackup } from "bitcoin-backup";
-import { readAccount, writeAccount } from "./accounts";
+import { newAccountConfig, readAccount, writeAccount } from "./accounts";
 import { createEmbeddedImportBackend } from "./embeddedImportBackend";
 import { SecureKeyManager } from "./keyManager";
 
@@ -553,6 +553,55 @@ describe.skipIf(!actual)("embedded import with real Vault files", () => {
 			readFileSync(join(sourceDir, "wallet-main.db")).equals(sourceDb),
 		).toBe(true);
 		expect(existsSync(join(root, "vault.bep"))).toBe(false);
+	});
+
+	it("imports a legacy root under a new name when default is already bound", async () => {
+		const root = freshRoot();
+		const home = join(root, "home");
+		writeLegacyRoot(home);
+		const destRoot = join(home, ".bsv-mcp", "accounts");
+		const other = PrivateKey.fromHex("98");
+		writeAccount(
+			"default",
+			{
+				...newAccountConfig("main", other.toAddress()),
+				vaultBinding: {
+					version: 1,
+					contract: "embedded-roots-v1",
+					vaultId: "other-vault",
+					payment: {
+						entryId: "pay",
+						publicKey: other.toPublicKey().toString(),
+					},
+				},
+			},
+			destRoot,
+		);
+		const backend = createEmbeddedImportBackend({
+			vaultPath: join(root, "vault.bep"),
+			home,
+			loadModule,
+		});
+		const occupied = {
+			source: {
+				account: "default",
+				location: "legacy-root" as const,
+				encryptedBackup: false,
+				plaintextKeys: true,
+				walletDatabases: ["wallet-main.db"],
+			},
+			password: VAULT_PASSWORD,
+			passwordConfirmation: VAULT_PASSWORD,
+			confirmation: "IMPORT_WALLET_CONFIRMED" as const,
+		};
+		await expect(backend.import(occupied)).rejects.toThrow("do not match");
+		const result = await backend.import({
+			...occupied,
+			accountName: "imported-wallet",
+		});
+		expect(result.accountName).toBe("imported-wallet");
+		expect(result.address).toBe(PAY.toAddress());
+		expect(readAccount("default", destRoot)?.address).toBe(other.toAddress());
 	});
 
 	it("writes nothing for a wrong source passphrase", async () => {

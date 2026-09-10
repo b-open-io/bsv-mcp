@@ -1,6 +1,7 @@
 import { P2PKH, PrivateKey, Transaction, Utils } from "@bsv/sdk";
 import { App } from "@modelcontextprotocol/ext-apps";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Field, PasswordInput } from "../components/FormFields";
 import {
 	Button,
 	DataRow,
@@ -716,23 +717,19 @@ function Sweep({ call }: { call: Caller }) {
 				</div>
 				<div className="surface-body">
 					{state === "input" || state === "error" ? (
-						<>
-							<label className="field-label" htmlFor="sweep-key">
-								WIF or 64-character hex
-								<input
+						<div className="form-stack">
+							<Field label="WIF or 64-character hex" htmlFor="sweep-key">
+								<PasswordInput
 									id="sweep-key"
-									className="field"
-									type="password"
 									value={keyInput}
-									onChange={(event) => setKeyInput(event.target.value)}
+									onValueChange={setKeyInput}
+									autoComplete="off"
 									onKeyDown={(event) => {
 										if (event.key === "Enter") void scanKey();
 									}}
-									autoComplete="new-password"
-									spellCheck={false}
 								/>
-							</label>
-							<p className="dim">
+							</Field>
+							<p className="field-hint">
 								The key is used only in this tab and cleared after scanning or
 								sweeping.
 							</p>
@@ -744,7 +741,7 @@ function Sweep({ call }: { call: Caller }) {
 									Scan address
 								</Button>
 							</div>
-						</>
+						</div>
 					) : null}
 					{state === "scanning" || state === "working" ? (
 						<Spinner

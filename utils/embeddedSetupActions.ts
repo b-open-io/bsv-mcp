@@ -179,14 +179,13 @@ export function createEmbeddedSetupActions(options: {
 						backupName: input.backupName ?? "backup",
 					});
 				} else {
-					if (!input.source || input.source.account !== input.accountName)
-						throw new Error(
-							"Choose the original account name for this local wallet.",
-						);
+					if (!input.source)
+						throw new Error("Choose a local wallet to import.");
 					saved = await importer.import({
 						source: input.source as Parameters<
 							typeof importer.import
 						>[0]["source"],
+						accountName: input.accountName,
 						password: input.destinationPassphrase,
 						passwordConfirmation: input.passwordConfirmation,
 						sourcePassphrase: input.sourcePassphrase,

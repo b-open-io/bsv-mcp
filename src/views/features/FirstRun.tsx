@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import type { AvailableSetupTool } from "../../../utils/vaultSetup";
 import { AvailableTools } from "../components/AvailableTools";
+import { Field, PasswordInput, TextInput } from "../components/FormFields";
 import {
 	Button,
 	LocalShell,
@@ -9,6 +10,7 @@ import {
 	Surface,
 } from "../components/LocalShell";
 import { WalletReady } from "../components/WalletReady";
+import { friendlySetupError } from "../lib/setupCopy";
 import { vaultPasswordIssue } from "../lib/vaultPassphrase";
 import { ExistingWallet } from "./ExistingWallet";
 import { WalletRoleSettings } from "./WalletRoleSettings";
@@ -27,6 +29,7 @@ export function FirstRun({
 		[],
 	);
 	const [name, setName] = useState("default");
+	const [preferredAccount, setPreferredAccount] = useState<string>();
 	const [password, setPassword] = useState("");
 	const [confirmation, setConfirmation] = useState("");
 	const [pending, setPending] = useState(false);
@@ -95,7 +98,20 @@ export function FirstRun({
 		setPassword("");
 		setConfirmation("");
 		setError("");
+		if (choice === "unlock") {
+			navigate("roles");
+			return;
+		}
 		navigate("welcome");
+	}
+	function rememberAccount(account: string) {
+		setName(account);
+		setPreferredAccount(account);
+		setBoundAccounts((current) =>
+			current.some((item) => item.name === account)
+				? current
+				: [...current, { name: account }],
+		);
 	}
 	async function create(event: FormEvent) {
 		event.preventDefault();
@@ -144,6 +160,7 @@ export function FirstRun({
 			setPassword("");
 			setConfirmation("");
 			if (value.saved === true) {
+				rememberAccount(name);
 				setChoice("roles");
 				window.history.pushState(
 					{ view: "roles" },
@@ -160,9 +177,12 @@ export function FirstRun({
 			setCreated(true);
 		} catch (reason) {
 			setError(
-				reason instanceof Error
-					? reason.message
-					: "Your wallet could not be created.",
+				friendlySetupError(
+					reason instanceof Error
+						? reason.message
+						: "Your wallet could not be created.",
+					name,
+				),
 			);
 		} finally {
 			setPending(false);
@@ -182,9 +202,10 @@ export function FirstRun({
 		return (
 			<WalletRoleSettings
 				token={token}
+				preferredAccount={preferredAccount}
 				onBack={() => navigate("existing")}
 				onUnlock={(account) => {
-					setName(account);
+					rememberAccount(account);
 					navigate("unlock");
 				}}
 			/>
@@ -195,7 +216,10 @@ export function FirstRun({
 				token={token}
 				standalone={standalone}
 				onWelcome={back}
-				onUnlock={() => navigate("roles")}
+				onUnlock={(account) => {
+					rememberAccount(account);
+					navigate("roles");
+				}}
 			/>
 		);
 	if (created && !standalone)
@@ -301,12 +325,18 @@ export function FirstRun({
 				</div>
 			) : (
 				<Surface>
-					<form className="surface-body" onSubmit={create}>
-						<label className="field-label" htmlFor="wallet-name">
-							Wallet name
-							<input
+					<form className="surface-body form-stack" onSubmit={create}>
+						<Field
+							label="Wallet name"
+							htmlFor="wallet-name"
+							hint={
+								choice === "unlock"
+									? "This is the payment key you chose. Go back to pick a different wallet."
+									: undefined
+							}
+						>
+							<TextInput
 								id="wallet-name"
-								className="field"
 								value={name}
 								onChange={(event) => setName(event.target.value)}
 								autoComplete="off"
@@ -314,46 +344,45 @@ export function FirstRun({
 								required
 								disabled={pending || choice === "unlock"}
 							/>
-						</label>
-						<label className="field-label" htmlFor="new-password">
-							Password
-							<input
+						</Field>
+						<Field
+							label="Password"
+							htmlFor="new-password"
+							hint={
+								choice === "unlock"
+									? "Use the password for your existing Vault."
+									: vaultExists
+										? "Use the password for your existing Vault."
+										: "Use at least 12 characters, or 16+ as a passphrase. On this Mac, Touch ID can wrap the Vault as well. Keep the recovery password somewhere safe."
+							}
+						>
+							<PasswordInput
 								id="new-password"
-								className="field"
-								type="password"
 								value={password}
-								onChange={(event) => setPassword(event.target.value)}
-								autoComplete="new-password"
-								minLength={8}
+								onValueChange={setPassword}
+								autoComplete={
+									choice === "unlock" ? "current-password" : "new-password"
+								}
+								minLength={choice === "unlock" ? undefined : 8}
 								required
 								disabled={pending}
+								aria-invalid={Boolean(error)}
 							/>
-							<span className="source-detail">
-								{vaultExists
-									? "Use the password for your existing Vault."
-									: "Use at least 12 characters, or 16+ as a passphrase. On this Mac, Touch ID can wrap the Vault as well. Keep the recovery password somewhere safe."}
-							</span>
-						</label>
+						</Field>
 						{choice !== "unlock" && (
-							<label className="field-label" htmlFor="confirm-password">
-								Confirm password
-								<input
+							<Field label="Confirm password" htmlFor="confirm-password">
+								<PasswordInput
 									id="confirm-password"
-									className="field"
-									type="password"
 									value={confirmation}
-									onChange={(event) => setConfirmation(event.target.value)}
+									onValueChange={setConfirmation}
 									autoComplete="new-password"
 									required
 									disabled={pending}
+									aria-invalid={Boolean(error)}
 								/>
-							</label>
+							</Field>
 						)}
-						{error ? (
-							<div className="stack-surface">
-								<Notice tone="error">{error}</Notice>
-							</div>
-						) : null}
+						{error ? <Notice tone="error">{error}</Notice> : null}
 						<div className="form-actions">
 							<Button variant="secondary" onClick={back} disabled={pending}>
 								Back
