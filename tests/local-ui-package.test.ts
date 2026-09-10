@@ -61,7 +61,7 @@ test("npm artifact ships the modular local UI and every referenced asset", async
 	) as {
 		dependencies?: Record<string, string>;
 	};
-	expect(packageJson.dependencies?.next).toBeUndefined();
+	expect(packageJson.dependencies ?? {}).toEqual({});
 
 	const packed = await npmPackPreview();
 	const packedPaths = new Set(packed.files.map((file) => file.path));

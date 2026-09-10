@@ -50,9 +50,9 @@ bun run dev             # Next.js site locally
 ```
 
 The package version is defined in `package.json`. Git tracks source. The
-published npm package includes the built `dist/` bundle via `"files"` and
-`prepack` / `pack:release`, plus README, changelog, license, and Smithery
-manifest.
+published npm package is `"files"` plus `prepack` (`bun run build:all`): the
+`dist/` bundle, README, changelog, license, and Smithery manifest. Libraries
+used to build the bundle are `devDependencies`.
 
 For a local MCP connection to the published package:
 
