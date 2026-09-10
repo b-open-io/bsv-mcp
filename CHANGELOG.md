@@ -1,5 +1,14 @@
 # BSV MCP Server Changelog
 
+## [0.6.2] - 2026-09-10
+
+### Fixed
+
+- Unlock the wallet just created or imported instead of leftover `default`.
+- Import an occupied source name under a free Vault account name.
+- Use labeled setup fields, password visibility toggles, and checkboxes, with
+  spacing so errors do not touch adjacent controls.
+
 ## [0.6.1] - 2026-09-09
 
 ### Changed
