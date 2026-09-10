@@ -277,8 +277,8 @@ export function FirstRun({
 				<div className="setup-choices">
 					{foundClientKeys ? (
 						<Notice>
-							A payment key is still in an MCP client config. Choose “Use an
-							existing wallet” to import it into Vault.
+							An AI client on this computer still has a payment key in its
+							settings. Import it into Vault rather than leaving it there.
 						</Notice>
 					) : null}
 					{(boundAccounts.length > 0 || vaultExists) && (
